@@ -5,8 +5,11 @@
   "type": "module",
   "scripts": {
     "start": "node dist/index.js",
-    "build": "tsc",
-    "dev": "tsc && nodemon dist/index.js"
+    "build": "tsc --outDir dist",
+    "dev": "tsc && nodemon dist/index.js",
+    "debug:files": "find . -type f | grep -i index.js",
+    "debug:structure": "tree -L 3"
+
   },
   "keywords": [],
   "author": "",

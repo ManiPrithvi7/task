@@ -8,6 +8,9 @@ import mongoose from "mongoose";
 import swaggerSpec from "./helper/index.js";
 import routes from './routes/index.js';
 import ProductModel from "./db/productModel.js";
+import { fileURLToPath } from "url";
+import path from "path";
+import fs from 'fs'
 
 dotenv.config();
 
@@ -22,8 +25,8 @@ app.use(express.urlencoded({ extended: true }));
 // Routes
 app.use('/', routes);
 
-app.get('/hai', (req, res) => {
-  res.send({ message: "haii" });
+app.get('/', (req, res) => {
+  res.send({ message: "product apis" });
 });
 
 // Swagger
@@ -33,6 +36,10 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 mongoose.Promise = Promise;
 const PORT = process.env.PORT || 3000;
 
+// const __filename = fileURLToPath(import.meta.url);
+// const __dirname = path.dirname(__filename);
+// console.log("__dirname:", __dirname);
+// console.log("Files in dir:", fs.readdirSync(__dirname));
 async function startServer() {
   try {
     if (!process.env.MONGO_URI) {
