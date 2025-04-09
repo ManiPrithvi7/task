@@ -8,9 +8,7 @@ import mongoose from "mongoose";
 import swaggerSpec from "./helper/index.js";
 import routes from './routes/index.js';
 import ProductModel from "./db/productModel.js";
-import { fileURLToPath } from "url";
-import path from "path";
-import fs from 'fs'
+
 
 dotenv.config();
 

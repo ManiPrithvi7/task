@@ -1,21 +1,18 @@
 /**
  * @swagger
- * /users:
+ * /products:
  *   get:
- *     summary: Get a list of users
- *     description: Retrieve a list of users from the database.
+ *     summary: Get a list of products
+ *     description: Retrieve a list of products from the database.
  *     responses:
  *       200:
- *         description: Successful response with a list of users.
+ *         description: Successful response with a list of products.
  */
 import express from 'express'
 import productController from '../controller/productController.js';
 
 const router = express.Router()
-router.get('users', (req, res) => {
-    // Your logic to fetch and return users
-    res.json({ users: [] });
-});
+
 router.get('/products', async (req, res) => {
 
     try {

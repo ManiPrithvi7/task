@@ -38,3 +38,4 @@ Thumbs.db
 
 # Other build artifacts
 *.tgz
+.qodo
