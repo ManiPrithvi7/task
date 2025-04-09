@@ -4,9 +4,9 @@
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
-    "start": "/opt/render/project/dist/src/index.js",
+    "start": "dist/index.js",
     "build": "tsc --outDir dist",
-    "dev": "tsc && nodemon /opt/render/project/dist/src/index.js",
+    "dev": "tsc && nodemon dist/index.js",
     "debug:files": "find . -type f | grep -i index.js",
     "debug:structure": "tree -L 3"
 
