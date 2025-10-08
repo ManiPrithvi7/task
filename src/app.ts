@@ -333,8 +333,8 @@ export class StatsMqttLite {
 
   private initializeKeepAlive(): void {
     // Keep-alive for Render.com free tier (prevents spin-down)
-    // Pings self every 14 minutes to keep service awake
-    const keepAliveInterval = 14 * 60 * 1000;  // 14 minutes
+    // Pings self every 10 minutes to keep service awake (5-minute safety margin)
+    const keepAliveInterval = 10 * 60 * 1000;  // 10 minutes
     
     this.keepAliveTimer = setInterval(() => {
       const url = `http://localhost:${this.config.http.port}/health`;
@@ -344,7 +344,7 @@ export class StatsMqttLite {
       http.get(url, (res: any) => {
         logger.debug('Keep-alive ping sent', { 
           status: res.statusCode,
-          interval: '14min'
+          interval: '10min'
         });
       }).on('error', (err: any) => {
         logger.debug('Keep-alive ping failed (normal if external monitoring exists)', { 
@@ -354,8 +354,8 @@ export class StatsMqttLite {
     }, keepAliveInterval);
     
     logger.info('🔄 Keep-alive enabled for free tier', { 
-      interval: '14 minutes',
-      note: 'Prevents Render.com spin-down'
+      interval: '10 minutes',
+      note: 'Prevents Render.com spin-down (5min safety margin)'
     });
   }
 

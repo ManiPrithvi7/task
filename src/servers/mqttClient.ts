@@ -40,8 +40,9 @@ export class MqttClientManager {
         clientId: this.config.clientId,
         clean: true,
         connectTimeout: 30000,
-        reconnectPeriod: 5000,
-        keepalive: 60
+        reconnectPeriod: 30000,  // Reduced from 5s to 30s - less aggressive
+        keepalive: 120,  // Increased from 60s to 120s - more stable
+        protocolVersion: 5  // Use MQTT 5 for better connection stability
       };
 
       if (this.config.username) {
@@ -80,21 +81,25 @@ export class MqttClientManager {
       this.client.on('reconnect', () => {
         this.reconnectAttempts++;
         if (this.reconnectAttempts > this.maxReconnectAttempts) {
-          logger.error('Max reconnect attempts reached');
+          logger.error('Max reconnect attempts reached - stopping reconnect');
           this.client?.end(true);
         } else {
-          logger.info('Attempting to reconnect...', {
-            attempt: this.reconnectAttempts
+          // Use debug level to reduce log spam
+          logger.debug('Attempting to reconnect to MQTT broker...', {
+            attempt: this.reconnectAttempts,
+            maxAttempts: this.maxReconnectAttempts
           });
         }
       });
 
       this.client.on('close', () => {
-        logger.info('MQTT connection closed');
+        // Use debug level - only show errors, not normal reconnects
+        logger.debug('MQTT connection closed - will reconnect automatically');
       });
 
       this.client.on('offline', () => {
-        logger.warn('MQTT client is offline');
+        // Use debug level to reduce log spam
+        logger.debug('MQTT client is offline - reconnecting...');
       });
 
       // Track PUBACK for QoS 1 messages using packetreceive event
