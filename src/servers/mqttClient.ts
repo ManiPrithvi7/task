@@ -1,0 +1,336 @@
+import mqtt, { MqttClient, IClientOptions } from 'mqtt';
+import { logger } from '../utils/logger';
+import { AppConfig } from '../config';
+import { MqttMessage } from '../types';
+
+export class MqttClientManager {
+  private client: MqttClient | null = null;
+  private config: AppConfig['mqtt'];
+  private messageHandlers: Map<string, (topic: string, payload: Buffer, packet?: any) => void> = new Map();
+  private reconnectAttempts = 0;
+  private maxReconnectAttempts = 10;
+  
+  // QoS 1 tracking for device liveness
+  private pendingAcks: Map<number, {
+    topic: string;
+    deviceId: string;
+    timestamp: number;
+    timeout: NodeJS.Timeout;
+  }> = new Map();
+  
+  // Device connectivity callbacks
+  private onDeviceInactive?: (deviceId: string) => void;
+  private onDeviceActive?: (deviceId: string) => void;
+
+  constructor(config: AppConfig['mqtt']) {
+    this.config = config;
+  }
+  
+  setDeviceCallbacks(
+    onInactive: (deviceId: string) => void,
+    onActive: (deviceId: string) => void
+  ): void {
+    this.onDeviceInactive = onInactive;
+    this.onDeviceActive = onActive;
+  }
+
+  async connect(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const options: IClientOptions = {
+        clientId: this.config.clientId,
+        clean: true,
+        connectTimeout: 30000,
+        reconnectPeriod: 5000,
+        keepalive: 60
+      };
+
+      if (this.config.username) {
+        options.username = this.config.username;
+      }
+
+      if (this.config.password) {
+        options.password = this.config.password;
+      }
+
+      const brokerUrl = `mqtt://${this.config.broker}:${this.config.port}`;
+      logger.info('Connecting to MQTT broker...', {
+        broker: this.config.broker,
+        port: this.config.port,
+        clientId: this.config.clientId
+      });
+
+      this.client = mqtt.connect(brokerUrl, options);
+
+      this.client.on('connect', () => {
+        this.reconnectAttempts = 0;
+        logger.info('Connected to MQTT broker', {
+          broker: this.config.broker,
+          clientId: this.config.clientId
+        });
+        resolve();
+      });
+
+      this.client.on('error', (error) => {
+        logger.error('MQTT client error', { error: error.message });
+        if (this.reconnectAttempts === 0) {
+          reject(error);
+        }
+      });
+
+      this.client.on('reconnect', () => {
+        this.reconnectAttempts++;
+        if (this.reconnectAttempts > this.maxReconnectAttempts) {
+          logger.error('Max reconnect attempts reached');
+          this.client?.end(true);
+        } else {
+          logger.info('Attempting to reconnect...', {
+            attempt: this.reconnectAttempts
+          });
+        }
+      });
+
+      this.client.on('close', () => {
+        logger.info('MQTT connection closed');
+      });
+
+      this.client.on('offline', () => {
+        logger.warn('MQTT client is offline');
+      });
+
+      // Track PUBACK for QoS 1 messages using packetreceive event
+      (this.client as any).on('packetsend', (packet: any) => {
+        if (packet.cmd === 'publish' && packet.qos === 1 && packet.messageId) {
+          logger.info('📤 QoS 1 message sent', {
+            messageId: packet.messageId,
+            topic: packet.topic,
+            qos: packet.qos
+          });
+          this.trackQoS1Message(packet);
+        }
+      });
+
+      (this.client as any).on('packetreceive', (packet: any) => {
+        if (packet.cmd === 'puback' && packet.messageId) {
+          logger.info('✅ PUBACK received', { messageId: packet.messageId });
+          this.handlePubAck(packet.messageId);
+        }
+      });
+
+      this.client.on('message', (topic, payload, packet) => {
+        logger.debug('Message received', { 
+          topic, 
+          size: payload.length,
+          retain: packet?.retain || false
+        });
+        
+        // Call registered handlers with packet info
+        for (const [pattern, handler] of this.messageHandlers) {
+          if (this.topicMatches(topic, pattern)) {
+            try {
+              handler(topic, payload, packet);
+            } catch (error: any) {
+              logger.error('Error in message handler', {
+                topic,
+                pattern,
+                error: error.message
+              });
+            }
+          }
+        }
+      });
+    });
+  }
+
+  async publish(message: MqttMessage): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (!this.client) {
+        reject(new Error('MQTT client not connected'));
+        return;
+      }
+
+      const fullTopic = this.config.topicPrefix 
+        ? `${this.config.topicPrefix}/${message.topic}`
+        : message.topic;
+
+      this.client.publish(
+        fullTopic,
+        message.payload,
+        { qos: message.qos, retain: message.retain },
+        (error) => {
+          if (error) {
+            logger.error('Failed to publish message', {
+              topic: fullTopic,
+              error: error.message
+            });
+            reject(error);
+          } else {
+            logger.debug('Message published', {
+              topic: fullTopic,
+              qos: message.qos
+            });
+            resolve();
+          }
+        }
+      );
+    });
+  }
+
+  async subscribe(topic: string, handler: (topic: string, payload: Buffer, packet?: any) => void): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (!this.client) {
+        reject(new Error('MQTT client not connected'));
+        return;
+      }
+
+      const fullTopic = this.config.topicPrefix 
+        ? `${this.config.topicPrefix}/${topic}`
+        : topic;
+
+      this.client.subscribe(fullTopic, { qos: 1 }, (error) => {
+        if (error) {
+          logger.error('Failed to subscribe', {
+            topic: fullTopic,
+            error: error.message
+          });
+          reject(error);
+        } else {
+          this.messageHandlers.set(fullTopic, handler);
+          logger.info('Subscribed to topic', { topic: fullTopic });
+          resolve();
+        }
+      });
+    });
+  }
+
+  async unsubscribe(topic: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (!this.client) {
+        reject(new Error('MQTT client not connected'));
+        return;
+      }
+
+      const fullTopic = this.config.topicPrefix 
+        ? `${this.config.topicPrefix}/${topic}`
+        : topic;
+
+      this.client.unsubscribe(fullTopic, (error) => {
+        if (error) {
+          logger.error('Failed to unsubscribe', {
+            topic: fullTopic,
+            error: error.message
+          });
+          reject(error);
+        } else {
+          this.messageHandlers.delete(fullTopic);
+          logger.info('Unsubscribed from topic', { topic: fullTopic });
+          resolve();
+        }
+      });
+    });
+  }
+
+  private topicMatches(topic: string, pattern: string): boolean {
+    // Convert MQTT wildcards to regex
+    const regexPattern = pattern
+      .replace(/\+/g, '[^/]+')
+      .replace(/#/g, '.*');
+    
+    const regex = new RegExp(`^${regexPattern}$`);
+    return regex.test(topic);
+  }
+
+  isConnected(): boolean {
+    return this.client?.connected || false;
+  }
+
+  async disconnect(): Promise<void> {
+    return new Promise((resolve) => {
+      // Clear all pending ACK timeouts
+      for (const pending of this.pendingAcks.values()) {
+        clearTimeout(pending.timeout);
+      }
+      this.pendingAcks.clear();
+
+      if (this.client) {
+        this.client.end(false, {}, () => {
+          logger.info('MQTT client disconnected');
+          resolve();
+        });
+      } else {
+        resolve();
+      }
+    });
+  }
+
+  private trackQoS1Message(packet: any): void {
+    const deviceId = this.extractDeviceIdFromTopic(packet.topic);
+    if (!deviceId) return;
+
+    const messageId = packet.messageId;
+    
+    // Set timeout for PUBACK (30 seconds)
+    const timeout = setTimeout(() => {
+      logger.warn('QoS 1 PUBACK timeout - marking device inactive', {
+        deviceId,
+        topic: packet.topic,
+        messageId,
+        timeout: '30s'
+      });
+      
+      // Mark device as inactive
+      if (this.onDeviceInactive) {
+        this.onDeviceInactive(deviceId);
+      }
+      
+      this.pendingAcks.delete(messageId);
+    }, 30000);  // 30 second timeout
+
+    // Store pending ACK
+    this.pendingAcks.set(messageId, {
+      topic: packet.topic,
+      deviceId,
+      timestamp: Date.now(),
+      timeout
+    });
+
+    logger.info('⏱️ Tracking QoS 1 message (30s timeout)', {
+      deviceId,
+      messageId,
+      topic: packet.topic,
+      pendingCount: this.pendingAcks.size
+    });
+  }
+
+  private handlePubAck(messageId: number): void {
+    const pending = this.pendingAcks.get(messageId);
+    if (!pending) return;
+
+    // Clear timeout
+    clearTimeout(pending.timeout);
+    this.pendingAcks.delete(messageId);
+
+    const deliveryTime = Date.now() - pending.timestamp;
+    
+    logger.info('✅ QoS 1 PUBACK confirmed', {
+      deviceId: pending.deviceId,
+      messageId,
+      deliveryTime: `${deliveryTime}ms`,
+      pendingCount: this.pendingAcks.size
+    });
+
+    // Mark device as active (responsive)
+    if (this.onDeviceActive) {
+      this.onDeviceActive(pending.deviceId);
+    }
+  }
+
+  private extractDeviceIdFromTopic(topic: string): string | null {
+    // Extract from pattern: statsnapp/DEVICE_ID/suffix
+    const match = topic.match(/statsnapp\/([^\/]+)\//);
+    return match ? match[1] : null;
+  }
+
+  getPendingAckCount(): number {
+    return this.pendingAcks.size;
+  }
+}

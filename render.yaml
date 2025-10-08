@@ -1,0 +1,38 @@
+services:
+  # MQTT Publisher Lite - Web Service
+  - type: web
+    name: mqtt-publisher-lite
+    env: node
+    region: oregon  # US West - closest to broker.emqx.io
+    plan: free  # Free tier (750 hours/month)
+    
+    # Build configuration
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    
+    # Health checks
+    healthCheckPath: /health
+    
+    # Environment variables
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MQTT_BROKER
+        value: broker.emqx.io
+      - key: MQTT_PORT
+        value: 1883
+      - key: MQTT_CLIENT_ID
+        generateValue: true  # Render generates unique ID
+      - key: HTTP_HOST
+        value: 0.0.0.0
+      - key: LOG_LEVEL
+        value: info
+      - key: SESSION_TTL
+        value: 86400
+      - key: DEVICE_CLEANUP_INTERVAL
+        value: 3600
+      - key: MQTT_TOPIC_PREFIX
+        value: ""
+    
+    # Auto-deploy on GitHub push
+    autoDeploy: true
