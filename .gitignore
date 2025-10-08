@@ -5,3 +5,4 @@ data/*.csv
 .env
 *.log
 .DS_Store
+Dockerfile.local
