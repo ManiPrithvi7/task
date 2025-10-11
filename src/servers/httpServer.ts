@@ -1,5 +1,6 @@
 import express, { Express, Request, Response } from 'express';
 import { createServer, Server } from 'http';
+import { join } from 'path';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
@@ -38,10 +39,17 @@ export class HttpServer {
 
   private setupMiddleware(): void {
     this.app.use(cors());
-    this.app.use(helmet());
+    this.app.use(helmet({
+      contentSecurityPolicy: false  // Allow inline scripts for testing interface
+    }));
     this.app.use(compression());
     this.app.use(express.json());
     this.app.use(express.urlencoded({ extended: true }));
+
+    // Serve static files from public directory
+    const publicPath = join(__dirname, '../../public');
+    this.app.use(express.static(publicPath));
+    logger.info('Serving static files from', { path: publicPath });
 
     // Request logging
     this.app.use((req, res, next) => {
@@ -227,6 +235,184 @@ export class HttpServer {
         res.json({ success: true, topic, published: new Date().toISOString() });
       } catch (error: any) {
         logger.error('Failed to publish message', { error: error.message });
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // ===== TESTING API ENDPOINTS =====
+    
+    // Simulate device registration
+    this.app.post('/api/test/register', async (req: Request, res: Response) => {
+      try {
+        const { deviceId, userId, deviceType = 'mobile', os = 'iOS 17.0', appVersion = '1.0.0' } = req.body;
+        
+        if (!deviceId || !userId) {
+          return res.status(400).json({ error: 'deviceId and userId are required' });
+        }
+
+        const registrationMessage = {
+          type: 'device_registration',
+          userId,
+          clientId: deviceId,
+          timestamp: new Date().toISOString(),
+          deviceType,
+          os,
+          appVersion,
+          metadata: {
+            deviceType,
+            os,
+            appVersion,
+            ipAddress: req.ip || '127.0.0.1',
+            userAgent: req.headers['user-agent'] || 'Test-Client'
+          }
+        };
+
+        const topic = `statsnapp/${deviceId}/active`;
+        
+        await this.mqttClient.publish({
+          topic,
+          payload: JSON.stringify(registrationMessage),
+          qos: 1,
+          retain: false
+        });
+
+        res.json({ 
+          success: true, 
+          message: 'Device registration message published',
+          topic,
+          deviceId,
+          timestamp: new Date().toISOString()
+        });
+      } catch (error: any) {
+        logger.error('Failed to register test device', { error: error.message });
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // Simulate device unregistration
+    this.app.post('/api/test/unregister', async (req: Request, res: Response) => {
+      try {
+        const { deviceId, userId } = req.body;
+        
+        if (!deviceId || !userId) {
+          return res.status(400).json({ error: 'deviceId and userId are required' });
+        }
+
+        // ✅ FIX: Process unregistration directly instead of relying on MQTT message routing
+        // Since MQTT brokers typically don't deliver messages back to the same client,
+        // we'll process the unregistration directly here
+        
+        logger.info('📱 Device Un-registration (Direct)', {
+          deviceId,
+          userId
+        });
+        
+        // Update device status to inactive
+        await this.deviceStorage.updateDeviceStatus(deviceId, 'inactive');
+        logger.info('✅ Device marked as inactive (unregistered)', { deviceId });
+        
+        // Also publish the unregistration message for other subscribers (like real devices)
+        const unregistrationMessage = {
+          type: 'un_registration',
+          userId,
+          clientId: deviceId,
+          timestamp: new Date().toISOString()
+        };
+
+        const topic = `statsnapp/${deviceId}/active`;
+        
+        await this.mqttClient.publish({
+          topic,
+          payload: JSON.stringify(unregistrationMessage),
+          qos: 1,
+          retain: false
+        });
+
+        res.json({ 
+          success: true, 
+          message: 'Device unregistered successfully (processed directly)',
+          topic,
+          deviceId,
+          timestamp: new Date().toISOString()
+        });
+      } catch (error: any) {
+        logger.error('Failed to unregister test device', { error: error.message });
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // Publish custom test message
+    this.app.post('/api/test/publish-custom', async (req: Request, res: Response) => {
+      try {
+        const { deviceId, messageType, payload, qos = 1, retain = false } = req.body;
+        
+        if (!deviceId || !messageType || !payload) {
+          return res.status(400).json({ 
+            error: 'deviceId, messageType, and payload are required' 
+          });
+        }
+
+        // Map message types to topics
+        const topicMap: { [key: string]: string } = {
+          registration: 'active',
+          status: 'status',
+          update: 'update',
+          milestone: 'milestone',
+          alert: 'alert',
+          metrics: 'metrics',
+          events: 'events'
+        };
+
+        const topicSuffix = topicMap[messageType] || messageType;
+        const topic = `statsnapp/${deviceId}/${topicSuffix}`;
+        
+        await this.mqttClient.publish({
+          topic,
+          payload: typeof payload === 'string' ? payload : JSON.stringify(payload),
+          qos: qos as 0 | 1 | 2,
+          retain
+        });
+
+        res.json({ 
+          success: true, 
+          message: 'Custom message published',
+          topic,
+          deviceId,
+          messageType,
+          qos,
+          retain,
+          timestamp: new Date().toISOString()
+        });
+      } catch (error: any) {
+        logger.error('Failed to publish custom test message', { error: error.message });
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // DEBUG: Direct device status update (for testing)
+    this.app.post('/api/test/set-device-status', async (req: Request, res: Response) => {
+      try {
+        const { deviceId, status } = req.body;
+        
+        if (!deviceId || !status) {
+          return res.status(400).json({ error: 'deviceId and status are required' });
+        }
+
+        if (!['active', 'inactive'].includes(status)) {
+          return res.status(400).json({ error: 'status must be active or inactive' });
+        }
+
+        await this.deviceStorage.updateDeviceStatus(deviceId, status);
+
+        res.json({ 
+          success: true, 
+          message: `Device ${deviceId} status set to ${status}`,
+          deviceId,
+          status,
+          timestamp: new Date().toISOString()
+        });
+      } catch (error: any) {
+        logger.error('Failed to update device status', { error: error.message });
         res.status(500).json({ error: error.message });
       }
     });

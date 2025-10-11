@@ -78,10 +78,18 @@ export class DeviceStorage {
   }
 
   async updateLastSeen(deviceId: string): Promise<void> {
+    // ✅ FIX: Wait for any pending status update to complete to avoid race conditions
+    const existingUpdate = this.statusUpdateQueue.get(deviceId);
+    if (existingUpdate) {
+      await existingUpdate.catch(() => {});  // Wait for status update to complete
+    }
+    
     const device = await this.getDevice(deviceId);
     if (device) {
+      const currentStatus = device.status;  // Preserve current status
       device.lastSeen = new Date().toISOString();
-      device.status = 'active';
+      // Don't change the status - keep it as is
+      device.status = currentStatus;
       await this.storage.set(deviceId, device);
     }
   }

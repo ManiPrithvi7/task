@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MQTT Publisher Lite - Firmware Testing Interface</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <h1>🚀 MQTT Publisher Lite - Firmware Testing Interface</h1>
+      <p class="subtitle">Interactive tool for testing MQTT device interactions</p>
+      <div class="server-status">
+        <span id="connection-status" class="status-badge status-disconnected">Disconnected</span>
+        <span id="mqtt-status" class="status-badge status-unknown">MQTT: Unknown</span>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="content">
+      <!-- Left Column -->
+      <div class="column">
+        
+        <!-- Device Registration Section -->
+        <section class="card">
+          <h2>📱 Device Registration</h2>
+          <form id="registration-form">
+            <div class="form-group">
+              <label for="deviceId">Device ID:</label>
+              <input type="text" id="deviceId" placeholder="STATSNAPP_US-123456" required>
+            </div>
+            <div class="form-group">
+              <label for="userId">User ID:</label>
+              <input type="text" id="userId" placeholder="user-123" required>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="deviceType">Device Type:</label>
+                <select id="deviceType">
+                  <option value="mobile">Mobile</option>
+                  <option value="tablet">Tablet</option>
+                  <option value="desktop">Desktop</option>
+                  <option value="iot">IoT Device</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="os">OS:</label>
+                <input type="text" id="os" placeholder="iOS 17.0" value="iOS 17.0">
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="appVersion">App Version:</label>
+              <input type="text" id="appVersion" placeholder="1.0.0" value="1.0.0">
+            </div>
+            <div class="button-group">
+              <button type="submit" class="btn btn-primary">Register Device</button>
+              <button type="button" class="btn btn-secondary" id="unregister-btn">Unregister Device</button>
+              <button type="button" class="btn btn-tertiary" id="generate-id-btn">Generate ID</button>
+            </div>
+          </form>
+        </section>
+
+        <!-- Custom Message Publisher -->
+        <section class="card">
+          <h2>📤 Custom Message Publisher</h2>
+          <form id="custom-message-form">
+            <div class="form-group">
+              <label for="custom-deviceId">Device ID:</label>
+              <input type="text" id="custom-deviceId" placeholder="STATSNAPP_US-123456" required>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="messageType">Message Type:</label>
+                <select id="messageType">
+                  <option value="registration">Registration (active)</option>
+                  <option value="status">Status Update</option>
+                  <option value="update">Metrics Update</option>
+                  <option value="milestone">Milestone</option>
+                  <option value="alert">Alert</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="qos">QoS:</label>
+                <select id="qos">
+                  <option value="0">0 - At most once</option>
+                  <option value="1" selected>1 - At least once</option>
+                  <option value="2">2 - Exactly once</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="payload">Payload (JSON):</label>
+              <textarea id="payload" rows="10" placeholder='{"type": "device_registration", "userId": "user-123"}'></textarea>
+            </div>
+            <div class="form-group">
+              <label class="checkbox-label">
+                <input type="checkbox" id="retain">
+                Retain Message
+              </label>
+            </div>
+            <div class="topic-preview">
+              Topic: <code id="topic-preview">statsnapp/DEVICE_ID/TYPE</code>
+            </div>
+            <button type="submit" class="btn btn-primary">Publish Message</button>
+          </form>
+        </section>
+
+      </div>
+
+      <!-- Right Column -->
+      <div class="column">
+        
+        <!-- Active Devices -->
+        <section class="card">
+          <h2>📊 Active Devices</h2>
+          <div class="devices-header">
+            <div id="devices-count">Loading...</div>
+            <button class="btn btn-small" id="refresh-devices-btn">Refresh</button>
+          </div>
+          <div id="devices-list" class="devices-list">
+            <div class="loading">Loading devices...</div>
+          </div>
+        </section>
+
+        <!-- Message Monitor -->
+        <section class="card">
+          <h2>📨 Message Monitor</h2>
+          <div class="monitor-controls">
+            <select id="device-filter">
+              <option value="">All Devices</option>
+            </select>
+            <button class="btn btn-small" id="clear-monitor-btn">Clear</button>
+            <button class="btn btn-small" id="toggle-monitor-btn">Pause</button>
+          </div>
+          <div id="message-monitor" class="message-monitor">
+            <div class="monitor-message info">
+              <div class="message-time">--:--:--</div>
+              <div class="message-content">Waiting for messages...</div>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <p>MQTT Publisher Lite v1.0.0 | For firmware testing purposes only</p>
+    </footer>
+  </div>
+
+  <!-- Toast Notifications -->
+  <div id="toast-container"></div>
+
+  <script src="/js/mqtt-tester.js"></script>
+</body>
+</html>
+

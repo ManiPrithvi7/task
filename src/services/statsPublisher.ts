@@ -91,11 +91,14 @@ export class StatsPublisher {
 
       for (const device of activeDevices) {
         try {
-          // Double-check device is still active before publishing
-          if (device.status === 'active') {
+          // ✅ FIX: Re-check current device status from storage to avoid race conditions
+          // Don't rely on the cached device object - get the latest status
+          const currentDevice = await this.deviceStorage.getDevice(device.deviceId);
+          if (currentDevice && currentDevice.status === 'active') {
             await this.publishDeviceStats(device.deviceId);
             publishedCount++;
           } else {
+            logger.debug('Skipping device - no longer active', { deviceId: device.deviceId });
             skippedCount++;
           }
         } catch (error: any) {

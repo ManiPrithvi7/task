@@ -104,8 +104,14 @@ export class StatsMqttLite {
         await this.deviceStorage.updateDeviceStatus(deviceId, 'inactive');
       },
       // On device active (PUBACK received)
+      // ✅ FIX: Don't automatically set device to active on PUBACK
+      // This was interfering with explicit unregistration
       async (deviceId: string) => {
-        await this.deviceStorage.updateDeviceStatus(deviceId, 'active');
+        // Only mark device as active if it's not explicitly inactive
+        const device = await this.deviceStorage.getDevice(deviceId);
+        if (device && device.status !== 'inactive') {
+          await this.deviceStorage.updateDeviceStatus(deviceId, 'active');
+        }
       }
     );
     
@@ -192,9 +198,10 @@ export class StatsMqttLite {
             });
           }
           
-          // Update device last seen
+          // Update device last seen (but skip for unregistration messages)
+          // ✅ FIX: Don't update lastSeen for unregistration to preserve inactive status
           const deviceId = this.extractDeviceId(receivedTopic);
-          if (deviceId) {
+          if (deviceId && message.type !== 'un_registration') {
             await this.deviceStorage.updateLastSeen(deviceId).catch(err => {
               logger.debug('Device not found in storage', { deviceId });
             });
