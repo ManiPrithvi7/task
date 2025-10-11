@@ -95,7 +95,7 @@ export class HttpServer {
     });
 
     // Root endpoint
-    this.app.get('/', (req: Request, res: Response) => {
+    this.app.get('/api', (req: Request, res: Response) => {
       res.json({
         name: 'mqtt-publisher-lite',
         version: '1.0.0',
