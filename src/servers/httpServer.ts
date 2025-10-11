@@ -47,9 +47,14 @@ export class HttpServer {
     this.app.use(express.urlencoded({ extended: true }));
 
     // Serve static files from public directory
-    const publicPath = join(__dirname, '../../public');
+    // ✅ FIX: Use process.cwd() for deployment compatibility
+    const publicPath = join(process.cwd(), 'public');
     this.app.use(express.static(publicPath));
-    logger.info('Serving static files from', { path: publicPath });
+    logger.info('Serving static files from', { 
+      path: publicPath,
+      __dirname: __dirname,
+      cwd: process.cwd()
+    });
 
     // Request logging
     this.app.use((req, res, next) => {

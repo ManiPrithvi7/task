@@ -50,6 +50,9 @@ RUN npm ci --only=production && \
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist
 
+# Copy public directory for static file serving
+COPY public ./public
+
 # Create data directory with proper permissions
 RUN mkdir -p data && chown -R nodejs:nodejs data
 
