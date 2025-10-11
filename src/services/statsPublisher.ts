@@ -17,6 +17,9 @@ export class StatsPublisher {
     engagement: number;
     lastMilestone: number;
   }> = new Map();
+  
+  // ✅ FIX #2: Track when to cleanup stats to prevent memory leak
+  private lastCleanupTime: number = Date.now();
 
   constructor(
     mqttClient: MqttClientManager,
@@ -59,6 +62,9 @@ export class StatsPublisher {
 
   private async publishStats(): Promise<void> {
     try {
+      // ✅ FIX #2: Cleanup deviceStats periodically to prevent memory leak
+      await this.cleanupInactiveDeviceStats();
+      
       // Get all devices
       const allDevices = await this.deviceStorage.getAllDevices();
       
@@ -208,6 +214,44 @@ export class StatsPublisher {
       deviceId,
       engagement: engagement.toFixed(2)
     });
+  }
+
+  // ✅ FIX #2: Cleanup inactive device stats to prevent memory leak
+  private async cleanupInactiveDeviceStats(): Promise<void> {
+    const now = Date.now();
+    const CLEANUP_INTERVAL = 60000;  // Cleanup every 60 seconds
+    
+    if (now - this.lastCleanupTime < CLEANUP_INTERVAL) {
+      return;  // Skip if cleaned up recently
+    }
+    
+    this.lastCleanupTime = now;
+    
+    try {
+      const allDevices = await this.deviceStorage.getAllDevices();
+      const activeDeviceIds = new Set(
+        Array.from(allDevices.values())
+          .filter(d => d.status === 'active')
+          .map(d => d.deviceId)
+      );
+      
+      let cleanedCount = 0;
+      for (const deviceId of this.deviceStats.keys()) {
+        if (!activeDeviceIds.has(deviceId)) {
+          this.deviceStats.delete(deviceId);
+          cleanedCount++;
+        }
+      }
+      
+      if (cleanedCount > 0) {
+        logger.debug('Cleaned up inactive device stats', {
+          removed: cleanedCount,
+          remaining: this.deviceStats.size
+        });
+      }
+    } catch (error: any) {
+      logger.error('Error cleaning up device stats', { error: error.message });
+    }
   }
 
   private async publishFollowingMetric(deviceId: string, following: number): Promise<void> {

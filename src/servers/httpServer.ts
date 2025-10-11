@@ -95,7 +95,7 @@ export class HttpServer {
         endpoints: {
           health: '/health',
           sessions: '/api/sessions',
-          devices: '/api/devices',
+          devices: '/api/devices (supports ?status=active or ?status=inactive)',
           users: '/api/users',
           publish: '/api/publish'
         }
@@ -155,7 +155,16 @@ export class HttpServer {
     this.app.get('/api/devices', async (req: Request, res: Response) => {
       try {
         const devices = await this.deviceStorage.getAllDevices();
-        res.json(Array.from(devices.values()));
+        const devicesArray = Array.from(devices.values());
+        
+        // Filter by status if provided (?status=active or ?status=inactive)
+        const status = req.query.status as string;
+        if (status) {
+          const filtered = devicesArray.filter(d => d.status === status);
+          return res.json(filtered);
+        }
+        
+        res.json(devicesArray);
       } catch (error: any) {
         res.status(500).json({ error: error.message });
       }

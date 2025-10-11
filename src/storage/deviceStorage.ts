@@ -6,6 +6,8 @@ export class DeviceStorage {
   private storage: FileStorage<Device>;
   private cleanupInterval: NodeJS.Timeout | null = null;
   private cleanupIntervalMs: number;
+  private readonly MAX_DEVICES = 1000;  // ✅ FIX #5: Device limit for DoS prevention
+  private statusUpdateQueue: Map<string, Promise<void>> = new Map();  // ✅ FIX #4: Queue for status updates
 
   constructor(dataDir: string, cleanupIntervalSeconds: number = 3600) {
     this.storage = new FileStorage<Device>('devices.json', dataDir);
@@ -24,6 +26,16 @@ export class DeviceStorage {
   }
 
   async registerDevice(device: Device): Promise<void> {
+    // ✅ FIX #5: Check device limit before registering
+    const deviceCount = await this.storage.size();
+    if (deviceCount >= this.MAX_DEVICES) {
+      logger.warn('Maximum device limit reached', {
+        limit: this.MAX_DEVICES,
+        current: deviceCount
+      });
+      throw new Error(`Maximum device limit reached: ${this.MAX_DEVICES}`);
+    }
+
     await this.storage.set(device.deviceId, device);
     logger.info('Device registered', {
       deviceId: device.deviceId,
@@ -40,13 +52,29 @@ export class DeviceStorage {
     deviceId: string, 
     status: 'active' | 'inactive'
   ): Promise<void> {
-    const device = await this.getDevice(deviceId);
-    if (device) {
-      device.status = status;
-      device.lastSeen = new Date().toISOString();
-      await this.storage.set(deviceId, device);
-      logger.debug('Device status updated', { deviceId, status });
-    }
+    // ✅ FIX #4: Prevent race conditions - queue status updates per device
+    const existingUpdate = this.statusUpdateQueue.get(deviceId);
+    
+    const updatePromise = (async () => {
+      // Wait for any pending update for this device
+      if (existingUpdate) {
+        await existingUpdate.catch(() => {});  // Ignore errors from previous update
+      }
+      
+      const device = await this.getDevice(deviceId);
+      if (device) {
+        device.status = status;
+        device.lastSeen = new Date().toISOString();
+        await this.storage.set(deviceId, device);
+        logger.debug('Device status updated', { deviceId, status });
+      }
+      
+      // Remove from queue when done
+      this.statusUpdateQueue.delete(deviceId);
+    })();
+    
+    this.statusUpdateQueue.set(deviceId, updatePromise);
+    await updatePromise;
   }
 
   async updateLastSeen(deviceId: string): Promise<void> {

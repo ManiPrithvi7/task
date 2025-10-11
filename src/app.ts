@@ -215,6 +215,21 @@ export class StatsMqttLite {
     const deviceId = this.extractDeviceId(topic);
     if (!deviceId) return;
 
+    // ✅ FIX #1: Handle unregistration messages
+    if (message.type === 'un_registration') {
+      logger.info('📱 Device Un-registration Received', {
+        deviceId,
+        userId: message.userId || message.user_id
+      });
+      
+      await this.deviceStorage.updateDeviceStatus(deviceId, 'inactive');
+      logger.info('✅ Device marked as inactive (unregistered)', { deviceId });
+      
+      // Send unregistration confirmation
+      await this.sendRegistrationResponse(deviceId, false, 'Device unregistered successfully');
+      return;  // Exit early for unregistration
+    }
+
     logger.info('📱 Device Registration Received', {
       deviceId,
       userId: message.userId || message.user_id,
@@ -239,9 +254,15 @@ export class StatsMqttLite {
         }
       });
       logger.info('✅ New device registered', { deviceId });
+      
+      // Send registration confirmation for new device
+      await this.sendRegistrationResponse(deviceId, true, 'Device registered successfully', true);
     } else {
       await this.deviceStorage.updateDeviceStatus(deviceId, 'active');
       logger.info('✅ Existing device reconnected', { deviceId });
+      
+      // Send registration confirmation for existing device
+      await this.sendRegistrationResponse(deviceId, true, 'Device reconnected successfully', false);
     }
   }
 
@@ -282,6 +303,42 @@ export class StatsMqttLite {
       alert: message.payload?.alert_type,
       message: message.payload?.message
     });
+  }
+
+  private async sendRegistrationResponse(
+    deviceId: string, 
+    success: boolean, 
+    message: string,
+    isNewDevice: boolean = false
+  ): Promise<void> {
+    try {
+      const response = {
+        success,
+        message,
+        deviceId,
+        isNewDevice,
+        timestamp: new Date().toISOString(),
+        serverVersion: '1.0.0'
+      };
+
+      await this.mqttClient.publish({
+        topic: `statsnapp/${deviceId}/registration_ack`,
+        payload: JSON.stringify(response),
+        qos: 1,
+        retain: false
+      });
+
+      logger.info('📤 Registration response sent', {
+        deviceId,
+        success,
+        isNewDevice
+      });
+    } catch (error: any) {
+      logger.error('Failed to send registration response', {
+        deviceId,
+        error: error.message
+      });
+    }
   }
 
   private extractDeviceId(topic: string): string | null {
