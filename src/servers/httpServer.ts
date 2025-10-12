@@ -235,6 +235,11 @@ export class HttpServer {
           payload: typeof payload === 'string' ? payload : JSON.stringify(payload),
           qos: qos as 0 | 1 | 2,
           retain
+        }, {
+          direction: 'server_to_client',
+          source: 'http_api',
+          timestamp: new Date().toISOString(),
+          initiator: req.ip || 'unknown'
         });
 
         res.json({ success: true, topic, published: new Date().toISOString() });
@@ -279,6 +284,12 @@ export class HttpServer {
           payload: JSON.stringify(registrationMessage),
           qos: 1,
           retain: false
+        }, {
+          direction: 'server_to_client',
+          source: 'http_api',
+          deviceId,
+          timestamp: new Date().toISOString(),
+          initiator: req.ip || 'unknown'
         });
 
         res.json({ 
@@ -331,6 +342,12 @@ export class HttpServer {
           payload: JSON.stringify(unregistrationMessage),
           qos: 1,
           retain: false
+        }, {
+          direction: 'server_to_client',
+          source: 'http_api',
+          deviceId,
+          timestamp: new Date().toISOString(),
+          initiator: req.ip || 'unknown'
         });
 
         res.json({ 
@@ -376,6 +393,12 @@ export class HttpServer {
           payload: typeof payload === 'string' ? payload : JSON.stringify(payload),
           qos: qos as 0 | 1 | 2,
           retain
+        }, {
+          direction: 'server_to_client',
+          source: 'http_api',
+          deviceId,
+          timestamp: new Date().toISOString(),
+          initiator: req.ip || 'unknown'
         });
 
         res.json({ 

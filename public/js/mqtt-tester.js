@@ -4,22 +4,26 @@ class MQTTTester {
   constructor() {
     this.baseURL = window.location.origin;
     this.ws = null;
-    this.monitorPaused = false;
-    this.messageHistory = [];
-    this.maxMessages = 100;
     
     this.init();
   }
 
   init() {
+    // Initialize message viewer (from message-viewer.js)
+    window.messageViewer = new MqttMessageViewer('message-viewer', 'message-stats');
+    
     // Initialize UI
     this.setupEventListeners();
+    this.setupFilterListeners();
     this.loadDevices();
     this.checkServerStatus();
     this.connectWebSocket();
     
     // Auto-refresh devices every 10 seconds
     setInterval(() => this.loadDevices(), 10000);
+    
+    // Auto-refresh server status every 5 seconds
+    setInterval(() => this.checkServerStatus(), 5000);
     
     // Update topic preview on change
     document.getElementById('custom-deviceId').addEventListener('input', () => this.updateTopicPreview());
@@ -54,20 +58,84 @@ class MQTTTester {
       this.loadDevices();
     });
 
-    // Clear monitor button
-    document.getElementById('clear-monitor-btn').addEventListener('click', () => {
-      this.clearMonitor();
+    // Clear viewer button
+    document.getElementById('clear-viewer-btn').addEventListener('click', () => {
+      window.messageViewer.clear();
+      this.showToast('info', 'Message viewer cleared');
     });
 
-    // Toggle monitor button
-    document.getElementById('toggle-monitor-btn').addEventListener('click', () => {
-      this.toggleMonitor();
+    // Toggle pause button
+    document.getElementById('pause-viewer-btn').addEventListener('click', (e) => {
+      const isPaused = window.messageViewer.togglePause();
+      e.target.textContent = isPaused ? '▶️ Resume' : '⏸️ Pause';
+      this.showToast('info', isPaused ? 'Viewer paused' : 'Viewer resumed');
     });
 
-    // Device filter
-    document.getElementById('device-filter').addEventListener('change', () => {
-      this.filterMessages();
+    // Export buttons
+    document.getElementById('export-json-btn').addEventListener('click', () => {
+      window.messageViewer.exportMessages('json');
     });
+
+    document.getElementById('export-csv-btn').addEventListener('click', () => {
+      window.messageViewer.exportMessages('csv');
+    });
+  }
+
+  setupFilterListeners() {
+    // Topic filter
+    const topicFilter = document.getElementById('topic-filter');
+    if (topicFilter) {
+      topicFilter.addEventListener('input', (e) => {
+        window.messageViewer.setFilter('topic', e.target.value);
+      });
+    }
+
+    // Direction filter
+    const directionFilter = document.getElementById('direction-filter');
+    if (directionFilter) {
+      directionFilter.addEventListener('change', (e) => {
+        window.messageViewer.setFilter('direction', e.target.value);
+      });
+    }
+
+    // QoS filter
+    const qosFilter = document.getElementById('qos-filter');
+    if (qosFilter) {
+      qosFilter.addEventListener('change', (e) => {
+        window.messageViewer.setFilter('minQos', parseInt(e.target.value));
+      });
+    }
+
+    // Source filter
+    const sourceFilter = document.getElementById('source-filter');
+    if (sourceFilter) {
+      sourceFilter.addEventListener('change', (e) => {
+        window.messageViewer.setFilter('source', e.target.value);
+      });
+    }
+
+    // Device ID filter
+    const deviceIdFilter = document.getElementById('device-filter');
+    if (deviceIdFilter) {
+      deviceIdFilter.addEventListener('input', (e) => {
+        window.messageViewer.setFilter('deviceId', e.target.value);
+      });
+    }
+
+    // Clear filters button
+    const clearFiltersBtn = document.getElementById('clear-filters-btn');
+    if (clearFiltersBtn) {
+      clearFiltersBtn.addEventListener('click', () => {
+        window.messageViewer.clearFilters();
+        // Reset filter inputs
+        if (topicFilter) topicFilter.value = '';
+        if (directionFilter) directionFilter.value = 'all';
+        if (qosFilter) qosFilter.value = '0';
+        if (sourceFilter) sourceFilter.value = 'all';
+        if (deviceIdFilter) deviceIdFilter.value = '';
+        this.showToast('info', 'Filters cleared');
+      });
+    }
   }
 
   // API Methods
@@ -89,8 +157,6 @@ class MQTTTester {
 
       if (data.success) {
         this.showToast('success', `✅ Device registered: ${deviceId}`);
-        this.addMonitorMessage('success', 'Registration Published', 
-          `Device: ${deviceId}\nTopic: ${data.topic}\nWaiting for server confirmation...`);
         this.loadDevices();
       } else {
         this.showToast('error', `❌ Registration failed: ${data.error}`);
@@ -120,8 +186,6 @@ class MQTTTester {
 
       if (data.success) {
         this.showToast('success', `✅ Device unregistered: ${deviceId}`);
-        this.addMonitorMessage('info', 'Unregistration Published', 
-          `Device: ${deviceId}\nTopic: ${data.topic}`);
         setTimeout(() => this.loadDevices(), 1000);
       } else {
         this.showToast('error', `❌ Unregistration failed: ${data.error}`);
@@ -151,8 +215,6 @@ class MQTTTester {
 
       if (data.success) {
         this.showToast('success', `✅ Message published to ${data.topic}`);
-        this.addMonitorMessage('success', 'Custom Message Published', 
-          `Topic: ${data.topic}\nQoS: ${qos}\nRetain: ${retain}`);
       } else {
         this.showToast('error', `❌ Publish failed: ${data.error}`);
       }
@@ -223,24 +285,20 @@ class MQTTTester {
   }
 
   handleWebSocketMessage(data) {
-    if (this.monitorPaused) return;
-
     try {
       const message = JSON.parse(data);
       
-      // Determine message type and display accordingly
-      if (message.topic && message.topic.includes('/registration_ack')) {
-        this.addMonitorMessage('success', 'Registration Confirmed', 
-          `Device: ${message.deviceId || 'Unknown'}\nStatus: ${message.message || 'Confirmed'}\nNew Device: ${message.isNewDevice ? 'Yes' : 'No'}`);
-      } else if (message.topic && message.topic.includes('/update')) {
-        this.addMonitorMessage('info', 'Stats Update', 
-          `Device: ${this.extractDeviceId(message.topic)}\nType: ${message.subtype || 'update'}`);
-      } else if (message.topic && message.topic.includes('/milestone')) {
-        this.addMonitorMessage('warning', 'Milestone Reached', 
-          `Device: ${this.extractDeviceId(message.topic)}\nMilestone: ${message.payload?.milestone || 'Unknown'}`);
-      } else {
-        this.addMonitorMessage('info', 'MQTT Message', 
-          `Topic: ${message.topic || 'Unknown'}\n${JSON.stringify(message, null, 2)}`);
+      // Skip non-message events
+      if (message.type !== 'message') {
+        return;
+      }
+      
+      // Add message to viewer
+      window.messageViewer.addMessage(message);
+      
+      // Reload devices if it's a registration/unregistration
+      if (message.topic && (message.topic.includes('/active') || message.topic.includes('/registration'))) {
+        setTimeout(() => this.loadDevices(), 500);
       }
     } catch (error) {
       console.error('Error parsing WebSocket message:', error);
@@ -276,15 +334,7 @@ class MQTTTester {
   }
 
   updateDeviceFilter(devices) {
-    const filter = document.getElementById('device-filter');
-    const currentValue = filter.value;
-    
-    filter.innerHTML = '<option value="">All Devices</option>' +
-      devices.map(d => `<option value="${d.deviceId}">${d.deviceId}</option>`).join('');
-    
-    if (currentValue) {
-      filter.value = currentValue;
-    }
+    // No longer needed - device filter is now a text input in message viewer
   }
 
   updateServerStatus(health) {
@@ -327,55 +377,6 @@ class MQTTTester {
     const topic = `statsnapp/${deviceId}/${topicSuffix}`;
     
     document.getElementById('topic-preview').textContent = `Topic: ${topic}`;
-  }
-
-  addMonitorMessage(type, title, content) {
-    if (this.monitorPaused) return;
-
-    const time = new Date().toLocaleTimeString();
-    const message = { type, title, content, time, timestamp: Date.now() };
-    
-    this.messageHistory.unshift(message);
-    if (this.messageHistory.length > this.maxMessages) {
-      this.messageHistory.pop();
-    }
-
-    this.renderMonitor();
-  }
-
-  renderMonitor() {
-    const filter = document.getElementById('device-filter').value;
-    const messages = filter ? 
-      this.messageHistory.filter(m => m.content.includes(filter)) :
-      this.messageHistory;
-
-    const monitorHTML = messages.length === 0 ?
-      '<div class="monitor-message info"><div class="message-time">--:--:--</div><div class="message-content">No messages yet...</div></div>' :
-      messages.map(m => `
-        <div class="monitor-message ${m.type}">
-          <div class="message-time">${m.time}</div>
-          <div class="message-content"><strong>${m.title}</strong><br>${m.content.replace(/\n/g, '<br>')}</div>
-        </div>
-      `).join('');
-
-    document.getElementById('message-monitor').innerHTML = monitorHTML;
-  }
-
-  clearMonitor() {
-    this.messageHistory = [];
-    this.renderMonitor();
-    this.showToast('info', 'Monitor cleared');
-  }
-
-  toggleMonitor() {
-    this.monitorPaused = !this.monitorPaused;
-    const btn = document.getElementById('toggle-monitor-btn');
-    btn.textContent = this.monitorPaused ? 'Resume' : 'Pause';
-    this.showToast('info', this.monitorPaused ? 'Monitor paused' : 'Monitor resumed');
-  }
-
-  filterMessages() {
-    this.renderMonitor();
   }
 
   // Utility Methods
@@ -429,6 +430,13 @@ class MQTTTester {
     }, 3000);
   }
 }
+
+// Global toast function for other components
+window.showToast = function(type, message) {
+  if (window.mqttTester) {
+    window.mqttTester.showToast(type, message);
+  }
+};
 
 // Initialize the app when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {

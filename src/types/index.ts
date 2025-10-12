@@ -54,3 +54,54 @@ export interface StatsMessage {
   timestamp: string;
   data: Record<string, any>;
 }
+
+// Message Direction Types
+export type MessageDirection = 
+  | 'client_to_server'    // Device/client publishes to server
+  | 'server_to_client'    // Server publishes to device/client
+  | 'broker_to_server'    // Server receives from broker
+  | 'server_to_broker';   // Server publishes to broker
+
+// Message Source Types
+export type MessageSource = 
+  | 'http_api'           // Message originated from HTTP API
+  | 'websocket'          // Message originated from WebSocket
+  | 'backend'            // Message originated from backend logic
+  | 'broker'             // Message originated from MQTT broker
+  | 'device'             // Message originated from a device
+  | 'system';            // System-generated message
+
+// Enhanced Message Metadata
+export interface MessageMetadata {
+  direction: MessageDirection;
+  source: MessageSource;
+  deviceId?: string;
+  initiator?: string;
+  timestamp: string;
+  byteSize?: number;
+  packetId?: number;
+  deliveryTime?: number;
+}
+
+// Enhanced MQTT Message with Metadata
+export interface EnhancedMqttMessage extends MqttMessage {
+  metadata: MessageMetadata;
+}
+
+// WebSocket Message Format
+export interface WebSocketMessage {
+  type: 'message' | 'connected' | 'subscribed' | 'published' | 'error' | 'pong';
+  topic?: string;
+  payload?: string;
+  qos?: 0 | 1 | 2;
+  retain?: boolean;
+  direction?: MessageDirection;
+  source?: MessageSource;
+  deviceId?: string;
+  timestamp: string;
+  byteSize?: number;
+  packetId?: number;
+  deliveryTime?: number;
+  message?: string;
+  error?: string;
+}

@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MQTT Publisher Lite - Firmware Testing Interface</title>
   <link rel="stylesheet" href="/css/styles.css">
+  <link rel="stylesheet" href="/css/message-viewer.css">
 </head>
 <body>
   <div class="container">
@@ -71,16 +72,27 @@
               <input type="text" id="custom-deviceId" placeholder="STATSNAPP_US-123456" required>
             </div>
             <div class="form-row">
-              <div class="form-group">
-                <label for="messageType">Message Type:</label>
-                <select id="messageType">
-                  <option value="registration">Registration (active)</option>
-                  <option value="status">Status Update</option>
-                  <option value="update">Metrics Update</option>
-                  <option value="milestone">Milestone</option>
-                  <option value="alert">Alert</option>
-                </select>
+            <div class="form-group">
+              <label for="messageType">Message Type:</label>
+              <select id="messageType">
+                <option value="registration">Registration (active)</option>
+                <option value="status">Status Update</option>
+                <option value="update">Metrics Update</option>
+                <option value="milestone">Milestone</option>
+                <option value="alert">Alert</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Or Load Template:</label>
+              <div class="template-buttons">
+                <button type="button" class="btn btn-small" onclick="applyTemplate('device_registration')">📱 Register</button>
+                <button type="button" class="btn btn-small" onclick="applyTemplate('device_unregistration')">🚫 Unregister</button>
+                <button type="button" class="btn btn-small" onclick="applyTemplate('status_update')">📊 Status</button>
+                <button type="button" class="btn btn-small" onclick="applyTemplate('metrics_update')">📈 Metrics</button>
+                <button type="button" class="btn btn-small" onclick="applyTemplate('milestone')">🎯 Milestone</button>
+                <button type="button" class="btn btn-small" onclick="applyTemplate('alert')">🚨 Alert</button>
               </div>
+            </div>
               <div class="form-group">
                 <label for="qos">QoS:</label>
                 <select id="qos">
@@ -124,21 +136,75 @@
           </div>
         </section>
 
-        <!-- Message Monitor -->
-        <section class="card">
-          <h2>📨 Message Monitor</h2>
-          <div class="monitor-controls">
-            <select id="device-filter">
-              <option value="">All Devices</option>
-            </select>
-            <button class="btn btn-small" id="clear-monitor-btn">Clear</button>
-            <button class="btn btn-small" id="toggle-monitor-btn">Pause</button>
-          </div>
-          <div id="message-monitor" class="message-monitor">
-            <div class="monitor-message info">
-              <div class="message-time">--:--:--</div>
-              <div class="message-content">Waiting for messages...</div>
+        <!-- Enhanced Message Viewer -->
+        <section class="card message-viewer-section">
+          <h2>📨 Live Message Viewer</h2>
+          
+          <!-- Advanced Filters -->
+          <div class="message-filters">
+            <div class="filter-row">
+              <div class="filter-group">
+                <label for="topic-filter">Topic Pattern:</label>
+                <input type="text" id="topic-filter" placeholder="statsnapp/+/active or statsnapp/#">
+              </div>
+              <div class="filter-group">
+                <label for="direction-filter">Direction:</label>
+                <select id="direction-filter">
+                  <option value="all">All</option>
+                  <option value="client_to_server">⬆️ Client → Server</option>
+                  <option value="server_to_client">⬇️ Server → Client</option>
+                  <option value="broker_to_server">📨 Broker → Server</option>
+                </select>
+              </div>
             </div>
+            
+            <div class="filter-row">
+              <div class="filter-group">
+                <label for="source-filter">Source:</label>
+                <select id="source-filter">
+                  <option value="all">All</option>
+                  <option value="http_api">HTTP API</option>
+                  <option value="websocket">WebSocket</option>
+                  <option value="backend">Backend</option>
+                  <option value="broker">Broker</option>
+                  <option value="device">Device</option>
+                </select>
+              </div>
+              <div class="filter-group">
+                <label for="device-filter">Device ID:</label>
+                <input type="text" id="device-filter" placeholder="Filter by device ID">
+              </div>
+              <div class="filter-group">
+                <label for="qos-filter">Min QoS:</label>
+                <select id="qos-filter">
+                  <option value="0">0</option>
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                </select>
+              </div>
+            </div>
+            
+            <!-- Action Buttons -->
+            <div class="filter-actions">
+              <button class="btn btn-small" id="pause-viewer-btn">⏸️ Pause</button>
+              <button class="btn btn-small" id="clear-viewer-btn">🗑️ Clear</button>
+              <button class="btn btn-small" id="clear-filters-btn">🔄 Clear Filters</button>
+              <button class="btn btn-small" id="export-json-btn">💾 Export JSON</button>
+              <button class="btn btn-small" id="export-csv-btn">📊 Export CSV</button>
+            </div>
+          </div>
+          
+          <!-- Statistics Bar -->
+          <div id="message-stats" class="message-stats">
+            <span>📊 Total: <strong>0</strong></span>
+            <span>⬆️ Client→Server: <strong>0</strong></span>
+            <span>⬇️ Server→Client: <strong>0</strong></span>
+            <span>📈 Rate: <strong>0</strong> msg/s</span>
+          </div>
+          
+          <!-- Message Container -->
+          <div id="message-viewer" class="message-viewer-container">
+            <div class="empty-state">Waiting for messages...</div>
           </div>
         </section>
 
@@ -154,6 +220,8 @@
   <!-- Toast Notifications -->
   <div id="toast-container"></div>
 
+  <!-- Scripts -->
+  <script src="/js/message-viewer.js"></script>
   <script src="/js/mqtt-tester.js"></script>
 </body>
 </html>

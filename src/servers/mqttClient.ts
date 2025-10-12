@@ -1,9 +1,10 @@
 import mqtt, { MqttClient, IClientOptions } from 'mqtt';
+import { EventEmitter } from 'events';
 import { logger } from '../utils/logger';
 import { AppConfig } from '../config';
-import { MqttMessage } from '../types';
+import { MqttMessage, MessageMetadata, WebSocketMessage } from '../types';
 
-export class MqttClientManager {
+export class MqttClientManager extends EventEmitter {
   private client: MqttClient | null = null;
   private config: AppConfig['mqtt'];
   private messageHandlers: Map<string, (topic: string, payload: Buffer, packet?: any) => void> = new Map();
@@ -18,11 +19,16 @@ export class MqttClientManager {
     timeout: NodeJS.Timeout;
   }> = new Map();
   
+  // Track recently published messages to avoid duplicates (echo from broker)
+  private recentPublishes: Map<string, { timestamp: number; metadata: Partial<MessageMetadata> }> = new Map();
+  private readonly ECHO_WINDOW_MS = 2000; // 2 second window to detect echoes
+  
   // Device connectivity callbacks
   private onDeviceInactive?: (deviceId: string) => void;
   private onDeviceActive?: (deviceId: string) => void;
 
   constructor(config: AppConfig['mqtt']) {
+    super();
     this.config = config;
   }
   
@@ -127,6 +133,64 @@ export class MqttClientManager {
           size: payload.length,
           retain: packet?.retain || false
         });
+
+        // Check if this is an echo of our own published message
+        const messageKey = `${topic}:${payload.toString().substring(0, 100)}`;
+        const recentPublish = this.recentPublishes.get(messageKey);
+        const now = Date.now();
+        
+        // Clean up old entries
+        for (const [key, entry] of this.recentPublishes.entries()) {
+          if (now - entry.timestamp > this.ECHO_WINDOW_MS) {
+            this.recentPublishes.delete(key);
+          }
+        }
+
+        // Determine message direction and source
+        let direction: WebSocketMessage['direction'];
+        let source: WebSocketMessage['source'];
+        
+        if (recentPublish && (now - recentPublish.timestamp) < this.ECHO_WINDOW_MS) {
+          // This is an echo of our own message - skip it to avoid duplicates
+          logger.debug('Skipping echo message', { topic, age: `${now - recentPublish.timestamp}ms` });
+          this.recentPublishes.delete(messageKey);
+          
+          // Still call handlers for processing but don't broadcast to WebSocket
+          for (const [pattern, handler] of this.messageHandlers) {
+            if (this.topicMatches(topic, pattern)) {
+              try {
+                handler(topic, payload, packet);
+              } catch (error: any) {
+                logger.error('Error in message handler', {
+                  topic,
+                  pattern,
+                  error: error.message
+                });
+              }
+            }
+          }
+          return;
+        }
+        
+        // This is a genuine message from an external device/client
+        direction = 'client_to_server';
+        source = 'device';
+        
+        // Emit message event for WebSocket broadcast
+        const wsMessage: WebSocketMessage = {
+          type: 'message',
+          topic,
+          payload: payload.toString(),
+          qos: packet?.qos as 0 | 1 | 2 || 0,
+          retain: packet?.retain || false,
+          direction,
+          source,
+          deviceId: this.extractDeviceIdFromTopic(topic) || undefined,
+          timestamp: new Date().toISOString(),
+          byteSize: payload.length
+        };
+
+        this.emit('messageReceived', wsMessage);
         
         // Call registered handlers with packet info
         for (const [pattern, handler] of this.messageHandlers) {
@@ -146,7 +210,7 @@ export class MqttClientManager {
     });
   }
 
-  async publish(message: MqttMessage): Promise<void> {
+  async publish(message: MqttMessage, metadata?: Partial<MessageMetadata>): Promise<void> {
     return new Promise((resolve, reject) => {
       if (!this.client) {
         reject(new Error('MQTT client not connected'));
@@ -156,6 +220,10 @@ export class MqttClientManager {
       const fullTopic = this.config.topicPrefix 
         ? `${this.config.topicPrefix}/${message.topic}`
         : message.topic;
+
+      const publishTime = Date.now();
+      const payloadString = typeof message.payload === 'string' ? message.payload : message.payload.toString();
+      const byteSize = Buffer.byteLength(payloadString);
 
       this.client.publish(
         fullTopic,
@@ -169,10 +237,37 @@ export class MqttClientManager {
             });
             reject(error);
           } else {
+            const deliveryTime = Date.now() - publishTime;
+            
             logger.debug('Message published', {
               topic: fullTopic,
-              qos: message.qos
+              qos: message.qos,
+              deliveryTime: `${deliveryTime}ms`
             });
+
+            // Track this message to identify echoes from broker
+            const messageKey = `${fullTopic}:${payloadString.substring(0, 100)}`;
+            this.recentPublishes.set(messageKey, {
+              timestamp: Date.now(),
+              metadata: metadata || {}
+            });
+
+            // Emit message event with metadata for WebSocket broadcast
+            const wsMessage: WebSocketMessage = {
+              type: 'message',
+              topic: fullTopic,
+              payload: payloadString,
+              qos: message.qos,
+              retain: message.retain,
+              direction: metadata?.direction || 'server_to_client',
+              source: metadata?.source || 'backend',
+              deviceId: metadata?.deviceId || this.extractDeviceIdFromTopic(fullTopic) || undefined,
+              timestamp: new Date().toISOString(),
+              byteSize,
+              deliveryTime
+            };
+
+            this.emit('messagePublished', wsMessage);
             resolve();
           }
         }
@@ -255,6 +350,9 @@ export class MqttClientManager {
         clearTimeout(pending.timeout);
       }
       this.pendingAcks.clear();
+      
+      // Clear recent publishes tracking
+      this.recentPublishes.clear();
 
       if (this.client) {
         this.client.end(false, {}, () => {

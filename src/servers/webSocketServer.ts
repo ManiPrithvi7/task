@@ -2,6 +2,7 @@ import { Server as HttpServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { logger } from '../utils/logger';
 import { MqttClientManager } from './mqttClient';
+import { WebSocketMessage } from '../types';
 
 export class WebSocketServerManager {
   private wss: WebSocketServer;
@@ -12,6 +13,7 @@ export class WebSocketServerManager {
     this.mqttClient = mqttClient;
     this.wss = new WebSocketServer({ server: httpServer, path: '/ws' });
     this.setupWebSocketServer();
+    this.setupMqttEventListeners();
   }
 
   private setupWebSocketServer(): void {
@@ -47,6 +49,18 @@ export class WebSocketServerManager {
     });
 
     logger.info('WebSocket server initialized');
+  }
+
+  private setupMqttEventListeners(): void {
+    // Listen for published messages from MQTT client
+    this.mqttClient.on('messagePublished', (wsMessage: WebSocketMessage) => {
+      this.broadcast(wsMessage);
+    });
+
+    // Listen for received messages from MQTT broker
+    this.mqttClient.on('messageReceived', (wsMessage: WebSocketMessage) => {
+      this.broadcast(wsMessage);
+    });
   }
 
   private async handleMessage(ws: WebSocket, message: any): Promise<void> {
@@ -115,6 +129,10 @@ export class WebSocketServerManager {
       payload: typeof payload === 'string' ? payload : JSON.stringify(payload),
       qos: qos as 0 | 1 | 2,
       retain
+    }, {
+      direction: 'client_to_server',
+      source: 'websocket',
+      timestamp: new Date().toISOString()
     });
 
     ws.send(JSON.stringify({
@@ -126,7 +144,7 @@ export class WebSocketServerManager {
     logger.debug('WebSocket client published', { topic });
   }
 
-  broadcast(message: any): void {
+  broadcast(message: WebSocketMessage | any): void {
     const data = JSON.stringify(message);
     let sent = 0;
 
@@ -137,7 +155,9 @@ export class WebSocketServerManager {
       }
     }
 
-    logger.debug('Broadcast message', { clients: sent });
+    if (sent > 0) {
+      logger.debug('Broadcast message', { clients: sent, type: message.type });
+    }
   }
 
   getClientCount(): number {
