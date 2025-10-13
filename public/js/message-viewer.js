@@ -399,14 +399,13 @@ const MESSAGE_TEMPLATES = {
     }
   },
   device_unregistration: {
-    name: 'Device Unregistration',
-    topic: 'statsnapp/${deviceId}/active',
+    name: 'Device Unregistration (LWT)',
+    topic: 'statsnapp/${deviceId}/lwt',
     payload: {
       type: 'un_registration',
-      userId: '${userId}',
-      clientId: '${deviceId}',
-      timestamp: '${timestamp}'
-    }
+      clientId: '${deviceId}'
+    },
+    note: 'LWT (Last Will Testament) - broker-generated, minimal payload'
   },
   status_update: {
     name: 'Status Update',

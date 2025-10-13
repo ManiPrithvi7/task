@@ -127,6 +127,7 @@ export class StatsMqttLite {
     // Subscribe to statsnapp topics (matching original mqtt-publisher)
     const topics = [
       'statsnapp/+/active',      // Device registration messages
+      'statsnapp/+/lwt',         // Last Will and Testament (broker-generated disconnect)
       'statsnapp/+/status',      // Device status messages
       'statsnapp/+/update',      // Live metrics updates
       'statsnapp/+/milestone',   // Milestone notifications
@@ -182,6 +183,8 @@ export class StatsMqttLite {
           // Log based on topic type
           if (receivedTopic.endsWith('/active')) {
             await this.handleDeviceRegistration(receivedTopic, message);
+          } else if (receivedTopic.endsWith('/lwt')) {
+            await this.handleDeviceLWT(receivedTopic, message);
           } else if (receivedTopic.endsWith('/status')) {
             await this.handleDeviceStatus(receivedTopic, message);
           } else if (receivedTopic.endsWith('/update')) {
@@ -222,21 +225,9 @@ export class StatsMqttLite {
     const deviceId = this.extractDeviceId(topic);
     if (!deviceId) return;
 
-    // ✅ FIX #1: Handle unregistration messages
-    if (message.type === 'un_registration') {
-      logger.info('📱 Device Un-registration Received', {
-        deviceId,
-        userId: message.userId || message.user_id
-      });
-      
-      await this.deviceStorage.updateDeviceStatus(deviceId, 'inactive');
-      logger.info('✅ Device marked as inactive (unregistered)', { deviceId });
-      
-      // Send unregistration confirmation
-      await this.sendRegistrationResponse(deviceId, false, 'Device unregistered successfully');
-      return;  // Exit early for unregistration
-    }
-
+    // ✅ /active topic is ONLY for registration
+    // Unregistration is handled exclusively via /lwt topic (broker-generated)
+    
     logger.info('📱 Device Registration Received', {
       deviceId,
       userId: message.userId || message.user_id,
@@ -271,6 +262,47 @@ export class StatsMqttLite {
       // Send registration confirmation for existing device
       await this.sendRegistrationResponse(deviceId, true, 'Device reconnected successfully', false);
     }
+  }
+
+  /**
+   * Handle Last Will and Testament (LWT) messages
+   * LWT is broker-generated when a client disconnects unexpectedly
+   * Payload is minimal: {"type":"un_registration","clientId":"client-XXX"}
+   */
+  private async handleDeviceLWT(topic: string, message: any): Promise<void> {
+    const deviceId = this.extractDeviceId(topic);
+    if (!deviceId) {
+      logger.warn('⚠️ LWT message received but could not extract deviceId', { topic });
+      return;
+    }
+
+    // Validate LWT message format (minimal payload expected)
+    if (message.type !== 'un_registration') {
+      logger.warn('⚠️ Invalid LWT message type', { 
+        deviceId, 
+        type: message.type,
+        expected: 'un_registration'
+      });
+      return;
+    }
+
+    if (!message.clientId) {
+      logger.warn('⚠️ LWT message missing clientId', { deviceId });
+      return;
+    }
+
+    logger.info('💀 LWT: Device Disconnected Unexpectedly (Broker-Generated)', {
+      deviceId,
+      clientId: message.clientId,
+      topic: '/lwt',
+      reason: 'Unexpected disconnection detected by broker'
+    });
+    
+    // Mark device as inactive
+    await this.deviceStorage.updateDeviceStatus(deviceId, 'inactive');
+    logger.info('✅ Device marked as inactive due to LWT', { deviceId });
+    
+    // Note: No confirmation is sent for LWT since the device is already disconnected
   }
 
   private async handleDeviceStatus(topic: string, message: any): Promise<void> {

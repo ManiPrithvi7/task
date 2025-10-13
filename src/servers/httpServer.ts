@@ -305,60 +305,62 @@ export class HttpServer {
       }
     });
 
-    // Simulate device unregistration
+    // Simulate device unregistration via LWT (Last Will and Testament)
+    // LWT is broker-generated when device disconnects unexpectedly
     this.app.post('/api/test/unregister', async (req: Request, res: Response) => {
       try {
         const { deviceId, userId } = req.body;
         
-        if (!deviceId || !userId) {
-          return res.status(400).json({ error: 'deviceId and userId are required' });
+        if (!deviceId) {
+          return res.status(400).json({ error: 'deviceId is required' });
         }
 
-        // ✅ FIX: Process unregistration directly instead of relying on MQTT message routing
-        // Since MQTT brokers typically don't deliver messages back to the same client,
-        // we'll process the unregistration directly here
+        // ✅ NEW: Use LWT topic with simplified payload (broker-generated format)
+        // LWT payload is minimal: only type and clientId
+        const clientId = `client-${deviceId.replace('STATSNAPP_US-', '')}`;
         
-        logger.info('📱 Device Un-registration (Direct)', {
+        logger.info('💀 Simulating LWT: Device Disconnect (Test)', {
           deviceId,
-          userId
+          clientId,
+          note: 'This simulates what the broker would send automatically'
         });
         
-        // Update device status to inactive
+        // Update device status to inactive (direct processing)
         await this.deviceStorage.updateDeviceStatus(deviceId, 'inactive');
-        logger.info('✅ Device marked as inactive (unregistered)', { deviceId });
+        logger.info('✅ Device marked as inactive (LWT simulation)', { deviceId });
         
-        // Also publish the unregistration message for other subscribers (like real devices)
-        const unregistrationMessage = {
+        // Publish LWT message with simplified payload
+        const lwtMessage = {
           type: 'un_registration',
-          userId,
-          clientId: deviceId,
-          timestamp: new Date().toISOString()
+          clientId: clientId
         };
 
-        const topic = `statsnapp/${deviceId}/active`;
+        const topic = `statsnapp/${deviceId}/lwt`;
         
         await this.mqttClient.publish({
           topic,
-          payload: JSON.stringify(unregistrationMessage),
+          payload: JSON.stringify(lwtMessage),
           qos: 1,
           retain: false
         }, {
-          direction: 'server_to_client',
-          source: 'http_api',
+          direction: 'broker_to_server',  // LWT is broker-generated
+          source: 'broker',               // Source is the MQTT broker
           deviceId,
           timestamp: new Date().toISOString(),
-          initiator: req.ip || 'unknown'
+          initiator: 'broker-lwt'
         });
 
         res.json({ 
           success: true, 
-          message: 'Device unregistered successfully (processed directly)',
+          message: 'Device disconnected (LWT simulation)',
           topic,
           deviceId,
+          clientId,
+          note: 'LWT payload is minimal (broker-generated)',
           timestamp: new Date().toISOString()
         });
       } catch (error: any) {
-        logger.error('Failed to unregister test device', { error: error.message });
+        logger.error('Failed to simulate LWT disconnect', { error: error.message });
         res.status(500).json({ error: error.message });
       }
     });
