@@ -225,14 +225,17 @@ export class StatsMqttLite {
     const deviceId = this.extractDeviceId(topic);
     if (!deviceId) return;
 
-    // ✅ /active topic is ONLY for registration
-    // Unregistration is handled exclusively via /lwt topic (broker-generated)
+    // ✅ /active topic ONLY handles device registration (client connects)
+    // ✅ /lwt topic handles ALL disconnections (both graceful and unexpected)
+    //    - Broker publishes LWT automatically when client disconnects
+    //    - Works for: Ctrl+C, power cut, crash, network failure, force close
     
     logger.info('📱 Device Registration Received', {
       deviceId,
       userId: message.userId || message.user_id,
       deviceType: message.deviceType || message.device_type,
-      os: message.os
+      os: message.os,
+      type: message.type
     });
 
     // Register device if not exists
@@ -266,7 +269,16 @@ export class StatsMqttLite {
 
   /**
    * Handle Last Will and Testament (LWT) messages
-   * LWT is broker-generated when a client disconnects unexpectedly
+   * ✅ LWT is broker-generated for ALL client disconnections:
+   *    - Graceful shutdown (Ctrl+C, app close)
+   *    - Unexpected disconnect (power cut, crash, network failure)
+   * 
+   * How it works:
+   *    1. Client configures LWT at connection time
+   *    2. Broker stores LWT in memory
+   *    3. When client disconnects (any reason), broker publishes LWT
+   *    4. Server receives LWT and marks device as inactive
+   * 
    * Payload is minimal: {"type":"un_registration","clientId":"client-XXX"}
    */
   private async handleDeviceLWT(topic: string, message: any): Promise<void> {
@@ -291,18 +303,20 @@ export class StatsMqttLite {
       return;
     }
 
-    logger.info('💀 LWT: Device Disconnected Unexpectedly (Broker-Generated)', {
+    logger.info('💀 LWT: Device Disconnected (Broker-Generated)', {
       deviceId,
       clientId: message.clientId,
       topic: '/lwt',
-      reason: 'Unexpected disconnection detected by broker'
+      reason: 'Client disconnected (all types: graceful, crash, power cut, etc.)',
+      source: 'broker',
+      mechanism: 'Last Will and Testament'
     });
     
     // Mark device as inactive
     await this.deviceStorage.updateDeviceStatus(deviceId, 'inactive');
-    logger.info('✅ Device marked as inactive due to LWT', { deviceId });
+    logger.info('✅ Device marked as inactive due to disconnect (LWT)', { deviceId });
     
-    // Note: No confirmation is sent for LWT since the device is already disconnected
+    // Note: No acknowledgment is sent for LWT since the device is already disconnected
   }
 
   private async handleDeviceStatus(topic: string, message: any): Promise<void> {
@@ -374,6 +388,40 @@ export class StatsMqttLite {
       });
     } catch (error: any) {
       logger.error('Failed to send registration response', {
+        deviceId,
+        error: error.message
+      });
+    }
+  }
+
+  private async sendUnregistrationResponse(
+    deviceId: string, 
+    success: boolean, 
+    message: string
+  ): Promise<void> {
+    try {
+      const response = {
+        success,
+        message,
+        deviceId,
+        timestamp: new Date().toISOString(),
+        serverVersion: '1.0.0',
+        disconnectType: 'graceful'
+      };
+
+      await this.mqttClient.publish({
+        topic: `statsnapp/${deviceId}/unregistration_ack`,
+        payload: JSON.stringify(response),
+        qos: 1,
+        retain: false
+      });
+
+      logger.info('📤 Un-registration response sent', {
+        deviceId,
+        success
+      });
+    } catch (error: any) {
+      logger.error('Failed to send un-registration response', {
         deviceId,
         error: error.message
       });

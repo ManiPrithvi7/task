@@ -172,9 +172,17 @@ export class MqttClientManager extends EventEmitter {
           return;
         }
         
-        // This is a genuine message from an external device/client
-        direction = 'client_to_server';
-        source = 'device';
+        // ✅ FIX: Check if this is a broker-generated LWT message
+        if (topic.endsWith('/lwt')) {
+          // Last Will and Testament messages are broker-generated
+          direction = 'broker_to_server';
+          source = 'broker';
+          logger.info('📨 Broker-generated LWT message detected', { topic });
+        } else {
+          // Regular message from a device/client
+          direction = 'client_to_server';
+          source = 'device';
+        }
         
         // Emit message event for WebSocket broadcast
         const wsMessage: WebSocketMessage = {
