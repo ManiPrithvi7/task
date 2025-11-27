@@ -1,36 +1,36 @@
-import express, { Express, Request, Response } from 'express';
+import express, { Express, Request, Response, NextFunction } from 'express';
 import { createServer, Server } from 'http';
 import { join } from 'path';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
 import { logger } from '../utils/logger';
-import { AppConfig } from '../config';
-import { SessionStorage } from '../storage/sessionStorage';
-import { DeviceStorage } from '../storage/deviceStorage';
-import { UserStorage } from '../storage/userStorage';
+import { SessionService } from '../services/sessionService';
+import { DeviceService } from '../services/deviceService';
 import { MqttClientManager } from './mqttClient';
+
+export interface HttpConfig {
+  port: number;
+  host: string;
+}
 
 export class HttpServer {
   private app: Express;
   private server: Server | null = null;
-  private config: AppConfig['http'];
-  private sessionStorage: SessionStorage;
-  private deviceStorage: DeviceStorage;
-  private userStorage: UserStorage;
+  private config: HttpConfig;
+  private sessionService: SessionService;
+  private deviceService: DeviceService;
   private mqttClient: MqttClientManager;
 
   constructor(
-    config: AppConfig['http'],
-    sessionStorage: SessionStorage,
-    deviceStorage: DeviceStorage,
-    userStorage: UserStorage,
+    config: HttpConfig,
+    sessionService: SessionService,
+    deviceService: DeviceService,
     mqttClient: MqttClientManager
   ) {
     this.config = config;
-    this.sessionStorage = sessionStorage;
-    this.deviceStorage = deviceStorage;
-    this.userStorage = userStorage;
+    this.sessionService = sessionService;
+    this.deviceService = deviceService;
     this.mqttClient = mqttClient;
     this.app = express();
     this.setupMiddleware();
@@ -40,24 +40,21 @@ export class HttpServer {
   private setupMiddleware(): void {
     this.app.use(cors());
     this.app.use(helmet({
-      contentSecurityPolicy: false  // Allow inline scripts for testing interface
+      contentSecurityPolicy: false
     }));
     this.app.use(compression());
     this.app.use(express.json());
     this.app.use(express.urlencoded({ extended: true }));
 
-    // Serve static files from public directory
-    // ✅ FIX: Use process.cwd() for deployment compatibility
     const publicPath = join(process.cwd(), 'public');
     this.app.use(express.static(publicPath));
-    logger.info('Serving static files from', { 
+    logger.info('Serving static files from', {
       path: publicPath,
       __dirname: __dirname,
       cwd: process.cwd()
     });
 
-    // Request logging
-    this.app.use((req, res, next) => {
+    this.app.use((req: Request, res: Response, next: NextFunction) => {
       const start = Date.now();
       res.on('finish', () => {
         const duration = Date.now() - start;
@@ -75,7 +72,7 @@ export class HttpServer {
   private setupRoutes(): void {
     // Health check
     this.app.get('/health', async (req: Request, res: Response) => {
-      const allDevices = await this.deviceStorage.getAllDevices();
+      const allDevices = await this.deviceService.getAllDevices();
       const activeDevices = Array.from(allDevices.values()).filter(d => d.status === 'active');
       const inactiveDevices = allDevices.size - activeDevices.length;
 
@@ -87,15 +84,15 @@ export class HttpServer {
           pendingAcks: this.mqttClient.getPendingAckCount()
         },
         storage: {
-          sessions: await this.sessionStorage.getAllSessions().then(s => s.size),
+          sessions: await this.sessionService.getAllSessions().then(s => s.size),
           devices: {
             total: allDevices.size,
             active: activeDevices.length,
             inactive: inactiveDevices
-          },
-          users: await this.userStorage.getAllUsers().then(u => u.size)
+          }
         }
       };
+
       res.json(health);
     });
 
@@ -109,8 +106,15 @@ export class HttpServer {
           health: '/health',
           sessions: '/api/sessions',
           devices: '/api/devices (supports ?status=active or ?status=inactive)',
-          users: '/api/users',
-          publish: '/api/publish'
+          publish: '/api/publish',
+          provisioning: {
+            onboarding: 'POST /api/v1/onboarding',
+            signCSR: 'POST /api/v1/sign-csr',
+            downloadCert: 'GET /api/v1/certificates/:id/download',
+            certStatus: 'GET /api/v1/certificates/:deviceId/status',
+            revokeCert: 'DELETE /api/v1/certificates/:deviceId'
+          },
+          note: 'User management is handled by Next.js web app'
         }
       });
     });
@@ -119,7 +123,7 @@ export class HttpServer {
     this.app.post('/api/sessions', async (req: Request, res: Response) => {
       try {
         const sessionData = req.body;
-        const sessionId = await this.sessionStorage.createSession(sessionData);
+        const sessionId = await this.sessionService.createSession(sessionData);
         res.status(201).json({ sessionId, success: true });
       } catch (error: any) {
         logger.error('Failed to create session', { error: error.message });
@@ -129,7 +133,7 @@ export class HttpServer {
 
     this.app.get('/api/sessions/:sessionId', async (req: Request, res: Response) => {
       try {
-        const session = await this.sessionStorage.getSession(req.params.sessionId);
+        const session = await this.sessionService.getSession(req.params.sessionId);
         if (session) {
           res.json(session);
         } else {
@@ -142,7 +146,7 @@ export class HttpServer {
 
     this.app.delete('/api/sessions/:sessionId', async (req: Request, res: Response) => {
       try {
-        await this.sessionStorage.deleteSession(req.params.sessionId);
+        await this.sessionService.deleteSession(req.params.sessionId);
         res.json({ success: true });
       } catch (error: any) {
         res.status(500).json({ error: error.message });
@@ -154,10 +158,10 @@ export class HttpServer {
       try {
         const device = {
           ...req.body,
-          status: 'active',
+          status: 'active' as const,
           lastSeen: new Date().toISOString()
         };
-        await this.deviceStorage.registerDevice(device);
+        await this.deviceService.registerDevice(device);
         res.status(201).json({ success: true, deviceId: device.deviceId });
       } catch (error: any) {
         logger.error('Failed to register device', { error: error.message });
@@ -167,16 +171,14 @@ export class HttpServer {
 
     this.app.get('/api/devices', async (req: Request, res: Response) => {
       try {
-        const devices = await this.deviceStorage.getAllDevices();
+        const devices = await this.deviceService.getAllDevices();
         const devicesArray = Array.from(devices.values());
-        
-        // Filter by status if provided (?status=active or ?status=inactive)
         const status = req.query.status as string;
+        
         if (status) {
           const filtered = devicesArray.filter(d => d.status === status);
           return res.json(filtered);
         }
-        
         res.json(devicesArray);
       } catch (error: any) {
         res.status(500).json({ error: error.message });
@@ -185,7 +187,7 @@ export class HttpServer {
 
     this.app.get('/api/devices/:deviceId', async (req: Request, res: Response) => {
       try {
-        const device = await this.deviceStorage.getDevice(req.params.deviceId);
+        const device = await this.deviceService.getDevice(req.params.deviceId);
         if (device) {
           res.json(device);
         } else {
@@ -196,51 +198,28 @@ export class HttpServer {
       }
     });
 
-    // User endpoints
-    this.app.post('/api/users', async (req: Request, res: Response) => {
-      try {
-        const user = {
-          ...req.body,
-          devices: req.body.devices || [],
-          createdAt: new Date().toISOString()
-        };
-        await this.userStorage.createUser(user);
-        res.status(201).json({ success: true, userId: user.userId });
-      } catch (error: any) {
-        logger.error('Failed to create user', { error: error.message });
-        res.status(500).json({ error: error.message });
-      }
-    });
-
-    this.app.get('/api/users', async (req: Request, res: Response) => {
-      try {
-        const users = await this.userStorage.getAllUsers();
-        res.json(Array.from(users.values()));
-      } catch (error: any) {
-        res.status(500).json({ error: error.message });
-      }
-    });
-
     // MQTT publish endpoint
     this.app.post('/api/publish', async (req: Request, res: Response) => {
       try {
         const { topic, payload, qos = 0, retain = false } = req.body;
-        
         if (!topic || !payload) {
           return res.status(400).json({ error: 'topic and payload are required' });
         }
 
-        await this.mqttClient.publish({
-          topic,
-          payload: typeof payload === 'string' ? payload : JSON.stringify(payload),
-          qos: qos as 0 | 1 | 2,
-          retain
-        }, {
-          direction: 'server_to_client',
-          source: 'http_api',
-          timestamp: new Date().toISOString(),
-          initiator: req.ip || 'unknown'
-        });
+        await this.mqttClient.publish(
+          {
+            topic,
+            payload: typeof payload === 'string' ? payload : JSON.stringify(payload),
+            qos: qos as 0 | 1 | 2,
+            retain
+          },
+          {
+            direction: 'server_to_client',
+            source: 'http_api',
+            timestamp: new Date().toISOString(),
+            initiator: req.ip || 'unknown'
+          }
+        );
 
         res.json({ success: true, topic, published: new Date().toISOString() });
       } catch (error: any) {
@@ -249,13 +228,11 @@ export class HttpServer {
       }
     });
 
-    // ===== TESTING API ENDPOINTS =====
-    
-    // Simulate device registration
+    // Testing endpoints
     this.app.post('/api/test/register', async (req: Request, res: Response) => {
       try {
         const { deviceId, userId, deviceType = 'mobile', os = 'iOS 17.0', appVersion = '1.0.0' } = req.body;
-        
+
         if (!deviceId || !userId) {
           return res.status(400).json({ error: 'deviceId and userId are required' });
         }
@@ -278,22 +255,24 @@ export class HttpServer {
         };
 
         const topic = `statsnapp/${deviceId}/active`;
-        
-        await this.mqttClient.publish({
-          topic,
-          payload: JSON.stringify(registrationMessage),
-          qos: 1,
-          retain: false
-        }, {
-          direction: 'server_to_client',
-          source: 'http_api',
-          deviceId,
-          timestamp: new Date().toISOString(),
-          initiator: req.ip || 'unknown'
-        });
+        await this.mqttClient.publish(
+          {
+            topic,
+            payload: JSON.stringify(registrationMessage),
+            qos: 1,
+            retain: false
+          },
+          {
+            direction: 'server_to_client',
+            source: 'http_api',
+            deviceId,
+            timestamp: new Date().toISOString(),
+            initiator: req.ip || 'unknown'
+          }
+        );
 
-        res.json({ 
-          success: true, 
+        res.json({
+          success: true,
           message: 'Device registration message published',
           topic,
           deviceId,
@@ -305,53 +284,49 @@ export class HttpServer {
       }
     });
 
-    // Simulate device unregistration via LWT (Last Will and Testament)
-    // LWT is broker-generated when device disconnects unexpectedly
     this.app.post('/api/test/unregister', async (req: Request, res: Response) => {
       try {
-        const { deviceId, userId } = req.body;
-        
+        const { deviceId } = req.body;
+
         if (!deviceId) {
           return res.status(400).json({ error: 'deviceId is required' });
         }
 
-        // ✅ NEW: Use LWT topic with simplified payload (broker-generated format)
-        // LWT payload is minimal: only type and clientId
         const clientId = `client-${deviceId.replace('STATSNAPP_US-', '')}`;
-        
+
         logger.info('💀 Simulating LWT: Device Disconnect (Test)', {
           deviceId,
           clientId,
           note: 'This simulates what the broker would send automatically'
         });
-        
-        // Update device status to inactive (direct processing)
-        await this.deviceStorage.updateDeviceStatus(deviceId, 'inactive');
+
+        await this.deviceService.updateDeviceStatus(deviceId, 'inactive');
         logger.info('✅ Device marked as inactive (LWT simulation)', { deviceId });
-        
-        // Publish LWT message with simplified payload
+
         const lwtMessage = {
           type: 'un_registration',
           clientId: clientId
         };
 
         const topic = `statsnapp/${deviceId}/lwt`;
-        
-        await this.mqttClient.publish({
-          topic,
-          payload: JSON.stringify(lwtMessage),
-          qos: 1,
-          retain: false
-        }, {
-          direction: 'broker_to_server',  // LWT is broker-generated
-          source: 'broker',               // Source is the MQTT broker
-          deviceId,
-          timestamp: new Date().toISOString(),
-          initiator: 'broker-lwt'
-        });
+        await this.mqttClient.publish(
+          {
+            topic,
+            payload: JSON.stringify(lwtMessage),
+            qos: 1,
+            retain: false
+          },
+          {
+            direction: 'broker_to_server',
+            source: 'broker',
+            deviceId,
+            timestamp: new Date().toISOString(),
+            initiator: 'broker-lwt'
+          }
+        );
 
-        res.json({ 
-          success: true, 
+        res.json({
+          success: true,
           message: 'Device disconnected (LWT simulation)',
           topic,
           deviceId,
@@ -365,65 +340,10 @@ export class HttpServer {
       }
     });
 
-    // Publish custom test message
-    this.app.post('/api/test/publish-custom', async (req: Request, res: Response) => {
-      try {
-        const { deviceId, messageType, payload, qos = 1, retain = false } = req.body;
-        
-        if (!deviceId || !messageType || !payload) {
-          return res.status(400).json({ 
-            error: 'deviceId, messageType, and payload are required' 
-          });
-        }
-
-        // Map message types to topics
-        const topicMap: { [key: string]: string } = {
-          registration: 'active',
-          status: 'status',
-          update: 'update',
-          milestone: 'milestone',
-          alert: 'alert',
-          metrics: 'metrics',
-          events: 'events'
-        };
-
-        const topicSuffix = topicMap[messageType] || messageType;
-        const topic = `statsnapp/${deviceId}/${topicSuffix}`;
-        
-        await this.mqttClient.publish({
-          topic,
-          payload: typeof payload === 'string' ? payload : JSON.stringify(payload),
-          qos: qos as 0 | 1 | 2,
-          retain
-        }, {
-          direction: 'server_to_client',
-          source: 'http_api',
-          deviceId,
-          timestamp: new Date().toISOString(),
-          initiator: req.ip || 'unknown'
-        });
-
-        res.json({ 
-          success: true, 
-          message: 'Custom message published',
-          topic,
-          deviceId,
-          messageType,
-          qos,
-          retain,
-          timestamp: new Date().toISOString()
-        });
-      } catch (error: any) {
-        logger.error('Failed to publish custom test message', { error: error.message });
-        res.status(500).json({ error: error.message });
-      }
-    });
-
-    // DEBUG: Direct device status update (for testing)
     this.app.post('/api/test/set-device-status', async (req: Request, res: Response) => {
       try {
         const { deviceId, status } = req.body;
-        
+
         if (!deviceId || !status) {
           return res.status(400).json({ error: 'deviceId and status are required' });
         }
@@ -432,10 +352,10 @@ export class HttpServer {
           return res.status(400).json({ error: 'status must be active or inactive' });
         }
 
-        await this.deviceStorage.updateDeviceStatus(deviceId, status);
+        await this.deviceService.updateDeviceStatus(deviceId, status);
 
-        res.json({ 
-          success: true, 
+        res.json({
+          success: true,
           message: `Device ${deviceId} status set to ${status}`,
           deviceId,
           status,
@@ -448,7 +368,7 @@ export class HttpServer {
     });
 
     // Error handler
-    this.app.use((error: any, req: Request, res: Response, next: any) => {
+    this.app.use((error: any, req: Request, res: Response, next: NextFunction) => {
       logger.error('Unhandled error', {
         error: error.message,
         path: req.path
@@ -494,3 +414,4 @@ export class HttpServer {
     return this.app;
   }
 }
+

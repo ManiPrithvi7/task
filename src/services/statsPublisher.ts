@@ -1,33 +1,31 @@
 import { logger } from '../utils/logger';
 import { MqttClientManager } from '../servers/mqttClient';
-import { DeviceStorage } from '../storage/deviceStorage';
+import { DeviceService } from './deviceService';
+
+interface DeviceStats {
+  followers: number;
+  following: number;
+  posts: number;
+  engagement: number;
+  lastMilestone: number;
+}
 
 export class StatsPublisher {
   private mqttClient: MqttClientManager;
-  private deviceStorage: DeviceStorage;
+  private deviceService: DeviceService;
   private publishInterval: number;
   private intervalTimer: NodeJS.Timeout | null = null;
   private isRunning: boolean = false;
-  
-  // Device stats tracking
-  private deviceStats: Map<string, {
-    followers: number;
-    following: number;
-    posts: number;
-    engagement: number;
-    lastMilestone: number;
-  }> = new Map();
-  
-  // ✅ FIX #2: Track when to cleanup stats to prevent memory leak
+  private deviceStats: Map<string, DeviceStats> = new Map();
   private lastCleanupTime: number = Date.now();
 
   constructor(
     mqttClient: MqttClientManager,
-    deviceStorage: DeviceStorage,
-    publishInterval: number = 15000  // 15 seconds for testing
+    deviceService: DeviceService,
+    publishInterval: number = 15000
   ) {
     this.mqttClient = mqttClient;
-    this.deviceStorage = deviceStorage;
+    this.deviceService = deviceService;
     this.publishInterval = publishInterval;
   }
 
@@ -38,14 +36,12 @@ export class StatsPublisher {
     }
 
     this.isRunning = true;
-    logger.info('📈 Starting stats publisher', { 
-      interval: `${this.publishInterval/1000}s` 
+    logger.info('📈 Starting stats publisher', {
+      interval: `${this.publishInterval / 1000}s`
     });
 
-    // Publish immediately
     await this.publishStats();
 
-    // Then publish at intervals
     this.intervalTimer = setInterval(async () => {
       await this.publishStats();
     }, this.publishInterval);
@@ -62,13 +58,9 @@ export class StatsPublisher {
 
   private async publishStats(): Promise<void> {
     try {
-      // ✅ FIX #2: Cleanup deviceStats periodically to prevent memory leak
       await this.cleanupInactiveDeviceStats();
-      
-      // Get all devices
-      const allDevices = await this.deviceStorage.getAllDevices();
-      
-      // ✅ ONLY PUBLISH TO ACTIVE DEVICES
+
+      const allDevices = await this.deviceService.getAllDevices();
       const activeDevices = Array.from(allDevices.values()).filter(d => d.status === 'active');
       const inactiveCount = allDevices.size - activeDevices.length;
 
@@ -80,7 +72,7 @@ export class StatsPublisher {
         return;
       }
 
-      logger.info('📊 Publishing stats to active devices', { 
+      logger.info('📊 Publishing stats to active devices', {
         active: activeDevices.length,
         inactive: inactiveCount,
         total: allDevices.size
@@ -91,9 +83,7 @@ export class StatsPublisher {
 
       for (const device of activeDevices) {
         try {
-          // ✅ FIX: Re-check current device status from storage to avoid race conditions
-          // Don't rely on the cached device object - get the latest status
-          const currentDevice = await this.deviceStorage.getDevice(device.deviceId);
+          const currentDevice = await this.deviceService.getDevice(device.deviceId);
           if (currentDevice && currentDevice.status === 'active') {
             await this.publishDeviceStats(device.deviceId);
             publishedCount++;
@@ -114,50 +104,43 @@ export class StatsPublisher {
         skipped: skippedCount,
         inactive: inactiveCount
       });
-
     } catch (error: any) {
       logger.error('Error publishing stats', { error: error.message });
     }
   }
 
   private async publishDeviceStats(deviceId: string): Promise<void> {
-    // Get or initialize device stats
     if (!this.deviceStats.has(deviceId)) {
       this.deviceStats.set(deviceId, {
-        followers: 9950 + Math.floor(Math.random() * 40),  // Start near 10k milestone
+        followers: 9950 + Math.floor(Math.random() * 40),
         following: 500 + Math.floor(Math.random() * 200),
         posts: 100 + Math.floor(Math.random() * 50),
         engagement: 3.5 + Math.random() * 1.5,
-        lastMilestone: 0  // Track last milestone to avoid duplicates
+        lastMilestone: 0
       });
     }
 
     const stats = this.deviceStats.get(deviceId)!;
     const oldFollowers = stats.followers;
 
-    // Simulate follower growth (5-15 followers per update for testing)
     const followerChange = 5 + Math.floor(Math.random() * 10);
     stats.followers += followerChange;
     stats.following += Math.random() < 0.1 ? 1 : 0;
-    stats.engagement = 10.0 + Math.random() * 10.0;  // 10-20% engagement rate
+    stats.engagement = 10.0 + Math.random() * 10.0;
 
-    // Publish individual metric updates (matching v1.1 format)
     await this.publishFollowersMetric(deviceId, stats.followers);
     await this.publishEngagementMetric(deviceId, stats.engagement);
-    
-    // Occasionally publish following metric
+
     if (Math.random() < 0.3) {
       await this.publishFollowingMetric(deviceId, stats.following);
     }
 
-    // Check for milestones (check if we crossed any milestone)
     const milestone = this.checkMilestoneCrossed(oldFollowers, stats.followers);
     if (milestone && milestone !== stats.lastMilestone) {
       await this.publishMilestone(deviceId, milestone);
       stats.lastMilestone = milestone;
     }
 
-    // Random crosspost messages (15% probability for more frequent testing)
     if (Math.random() < 0.15) {
       await this.publishCrosspost(deviceId);
     }
@@ -181,14 +164,11 @@ export class StatsPublisher {
     await this.mqttClient.publish({
       topic: `statsnapp/${deviceId}/update`,
       payload: JSON.stringify(message),
-      qos: 1,  // QoS 1 for reliable delivery
+      qos: 1,
       retain: false
     });
 
-    logger.info('📈 Published followers metric', {
-      deviceId,
-      followers
-    });
+    logger.info('📈 Published followers metric', { deviceId, followers });
   }
 
   private async publishEngagementMetric(deviceId: string, engagement: number): Promise<void> {
@@ -219,25 +199,24 @@ export class StatsPublisher {
     });
   }
 
-  // ✅ FIX #2: Cleanup inactive device stats to prevent memory leak
   private async cleanupInactiveDeviceStats(): Promise<void> {
     const now = Date.now();
-    const CLEANUP_INTERVAL = 60000;  // Cleanup every 60 seconds
-    
+    const CLEANUP_INTERVAL = 60000;
+
     if (now - this.lastCleanupTime < CLEANUP_INTERVAL) {
-      return;  // Skip if cleaned up recently
+      return;
     }
-    
+
     this.lastCleanupTime = now;
-    
+
     try {
-      const allDevices = await this.deviceStorage.getAllDevices();
+      const allDevices = await this.deviceService.getAllDevices();
       const activeDeviceIds = new Set(
         Array.from(allDevices.values())
           .filter(d => d.status === 'active')
           .map(d => d.deviceId)
       );
-      
+
       let cleanedCount = 0;
       for (const deviceId of this.deviceStats.keys()) {
         if (!activeDeviceIds.has(deviceId)) {
@@ -245,7 +224,7 @@ export class StatsPublisher {
           cleanedCount++;
         }
       }
-      
+
       if (cleanedCount > 0) {
         logger.debug('Cleaned up inactive device stats', {
           removed: cleanedCount,
@@ -284,7 +263,7 @@ export class StatsPublisher {
 
   private async publishMilestone(deviceId: string, followers: number): Promise<void> {
     const milestone = this.getMilestone(followers);
-    
+
     const message = {
       version: '1.1',
       id: `ig_${Math.random().toString(16).substr(2, 8)}`,
@@ -309,17 +288,13 @@ export class StatsPublisher {
       retain: false
     });
 
-    logger.info('🎯 Published milestone', {
-      deviceId,
-      milestone,
-      followers
-    });
+    logger.info('🎯 Published milestone', { deviceId, milestone, followers });
   }
 
   private async publishCrosspost(deviceId: string): Promise<void> {
     const destinations = ['TikTok', 'YouTube', 'Twitter', 'Facebook'];
     const destination = destinations[Math.floor(Math.random() * destinations.length)];
-    
+
     const message = {
       version: '1.1',
       id: `ig_${Math.random().toString(16).substr(2, 8)}`,
@@ -343,27 +318,23 @@ export class StatsPublisher {
       retain: false
     });
 
-    logger.info('🔄 Published crosspost', {
-      deviceId,
-      destination
-    });
+    logger.info('🔄 Published crosspost', { deviceId, destination });
   }
 
   private checkMilestoneCrossed(oldFollowers: number, newFollowers: number): number | null {
     const milestones = [10000, 15000, 20000, 25000, 50000, 100000, 250000, 500000, 1000000];
     
-    // Check if we crossed any milestone
     for (const milestone of milestones) {
       if (oldFollowers < milestone && newFollowers >= milestone) {
         return milestone;
       }
     }
-    
     return null;
   }
 
   private getMilestone(followers: number): number {
     const milestones = [10000, 15000, 20000, 25000, 50000, 100000, 250000, 500000, 1000000];
+    
     for (let i = milestones.length - 1; i >= 0; i--) {
       if (followers >= milestones[i]) {
         return milestones[i];
@@ -372,3 +343,4 @@ export class StatsPublisher {
     return 10000;
   }
 }
+

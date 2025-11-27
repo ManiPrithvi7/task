@@ -3,10 +3,15 @@ import { loadConfig, validateConfig, AppConfig } from './config';
 import { HttpServer } from './servers/httpServer';
 import { WebSocketServerManager } from './servers/webSocketServer';
 import { MqttClientManager } from './servers/mqttClient';
-import { SessionStorage } from './storage/sessionStorage';
-import { DeviceStorage } from './storage/deviceStorage';
-import { UserStorage } from './storage/userStorage';
 import { StatsPublisher } from './services/statsPublisher';
+import { ProvisioningService } from './services/provisioningService';
+import { CAService } from './services/caService';
+import { MongoService, createMongoService } from './services/mongoService';
+import { RedisService, createRedisService } from './services/redisService';
+import { DeviceService } from './services/deviceService';
+import { SessionService } from './services/sessionService';
+import { createProvisioningRoutes } from './routes/provisioningRoutes';
+import { getTokenStore } from './storage/tokenStore';
 
 export class StatsMqttLite {
   private config: AppConfig;
@@ -14,13 +19,23 @@ export class StatsMqttLite {
   private webSocketServer!: WebSocketServerManager;
   private mqttClient!: MqttClientManager;
   
-  // Storage services
-  private sessionStorage!: SessionStorage;
-  private deviceStorage!: DeviceStorage;
-  private userStorage!: UserStorage;
+  // MongoDB-based services
+  private sessionService!: SessionService;
+  private deviceService!: DeviceService;
+  // Note: User management handled by Next.js web app (shared database)
   
   // Stats publisher
   private statsPublisher!: StatsPublisher;
+  
+  // Provisioning services
+  private provisioningService?: ProvisioningService;
+  private caService?: CAService;
+  
+  // MongoDB service
+  private mongoService?: MongoService;
+  
+  // Redis service
+  private redisService?: RedisService;
   
   // Startup time for grace period
   private startupTime: number = Date.now();
@@ -36,13 +51,24 @@ export class StatsMqttLite {
       logger.info('🚀 Starting MQTT Publisher Lite...');
       logger.info('━'.repeat(50));
 
-      // Initialize storage
-      await this.initializeStorage();
+      // Initialize MongoDB (REQUIRED)
+      await this.initializeMongoDB();
+
+      // Initialize Redis (for token persistence)
+      if (this.config.redis.enabled) {
+        await this.initializeRedis();
+      }
+
+      // Initialize services
+      await this.initializeServices();
+
+      // Initialize provisioning services (if enabled)
+      await this.initializeProvisioning();
 
       // Initialize MQTT client
       await this.initializeMqttClient();
 
-      // Initialize HTTP server
+      // Initialize HTTP server (includes provisioning routes)
       await this.initializeHttpServer();
 
       // Initialize WebSocket server
@@ -61,6 +87,14 @@ export class StatsMqttLite {
       logger.info('🌐 HTTP API:', `http://${this.config.http.host}:${this.config.http.port}`);
       logger.info('🔌 WebSocket:', `ws://${this.config.http.host}:${this.config.http.port}/ws`);
       logger.info('📂 Data Directory:', this.config.storage.dataDir);
+      logger.info('🗃️  MongoDB:', `Connected (${this.config.mongodb.dbName})`);
+      if (this.config.redis.enabled && this.redisService) {
+        logger.info('💾 Redis:', `Connected (Token Persistence)`);
+      }
+      if (this.config.provisioning.enabled) {
+        const tokenStorage = this.redisService ? 'Redis' : 'In-Memory';
+        logger.info('🔐 Provisioning API:', `http://${this.config.http.host}:${this.config.http.port}/api/v1/onboarding (${tokenStorage})`);
+      }
       logger.info('');
       logger.info('Ready for firmware testing! 🎯');
       logger.info('━'.repeat(50));
@@ -74,21 +108,123 @@ export class StatsMqttLite {
     }
   }
 
-  private async initializeStorage(): Promise<void> {
-    logger.info('📂 Initializing file-based storage...');
-    
-    const dataDir = this.config.storage.dataDir;
+  private async initializeServices(): Promise<void> {
+    logger.info('📦 Initializing services...');
 
-    this.sessionStorage = new SessionStorage(dataDir, this.config.storage.sessionTTL);
-    await this.sessionStorage.initialize();
+    // Session Service (in-memory)
+    this.sessionService = new SessionService(this.config.storage.sessionTTL);
+    await this.sessionService.initialize();
+
+    // Device Service (MongoDB)
+    this.deviceService = new DeviceService(this.config.storage.deviceCleanupInterval);
+    await this.deviceService.initialize();
+
+    // User Service removed - handled by Next.js web app (shared database)
     
-    this.deviceStorage = new DeviceStorage(dataDir, this.config.storage.deviceCleanupInterval);
-    await this.deviceStorage.initialize();
-    
-    this.userStorage = new UserStorage(dataDir);
-    await this.userStorage.initialize();
-    
-    logger.info('✅ Storage initialized');
+    logger.info('✅ Services initialized');
+  }
+
+  private async initializeMongoDB(): Promise<void> {
+    logger.info('🗃️  Initializing MongoDB (REQUIRED)...');
+
+    if (!this.config.mongodb.uri) {
+      throw new Error('MongoDB URI is required. Set MONGODB_URI environment variable.');
+    }
+
+    try {
+      this.mongoService = createMongoService({
+        uri: this.config.mongodb.uri,
+        dbName: this.config.mongodb.dbName
+      });
+
+      await this.mongoService.connect();
+
+      logger.info('✅ MongoDB connected successfully', {
+        dbName: this.config.mongodb.dbName,
+        mode: 'primary-database'
+      });
+    } catch (error: any) {
+      logger.error('❌ Failed to connect to MongoDB', {
+        error: error.message,
+        stack: error.stack
+      });
+      logger.error('💡 MongoDB is REQUIRED for mqtt-publisher-lite');
+      logger.error('   Set MONGODB_URI environment variable');
+      throw error;
+    }
+  }
+
+  private async initializeRedis(): Promise<void> {
+    logger.info('💾 Initializing Redis (Token Persistence)...');
+
+    try {
+      this.redisService = createRedisService({
+        url: this.config.redis.url,
+        username: this.config.redis.username,
+        password: this.config.redis.password,
+        host: this.config.redis.host,
+        port: this.config.redis.port,
+        db: this.config.redis.db,
+        keyPrefix: this.config.redis.keyPrefix
+      });
+
+      await this.redisService.connect();
+
+      logger.info('✅ Redis connected successfully', {
+        keyPrefix: this.config.redis.keyPrefix,
+        mode: 'cloud-persistent'
+      });
+    } catch (error: any) {
+      logger.error('❌ Failed to connect to Redis', {
+        error: error.message,
+        stack: error.stack
+      });
+      logger.warn('⚠️  Provisioning tokens will not be persistent');
+      logger.warn('   Set REDIS_URL (cloud) or REDIS_HOST (self-hosted)');
+      // Don't throw - provisioning can work without Redis (in-memory fallback)
+    }
+  }
+
+  private async initializeProvisioning(): Promise<void> {
+    if (!this.config.provisioning.enabled) {
+      logger.info('🔐 Provisioning disabled (set PROVISIONING_ENABLED=true to enable)');
+      return;
+    }
+
+    logger.info('🔐 Initializing provisioning services...');
+
+    try {
+      // Initialize Provisioning Service
+      this.provisioningService = new ProvisioningService({
+        tokenTTL: this.config.provisioning.tokenTTL,
+        jwtSecret: this.config.provisioning.jwtSecret
+      });
+
+      // Initialize CA Service with MongoDB (always)
+      this.caService = new CAService(
+        {
+          storagePath: this.config.provisioning.caStoragePath,
+          rootCAValidityYears: this.config.provisioning.rootCAValidityYears,
+          deviceCertValidityDays: this.config.provisioning.deviceCertValidityDays
+        }
+      );
+
+      // Initialize Root CA
+      await this.caService.initialize();
+
+      logger.info('✅ Provisioning services initialized', {
+        tokenTTL: this.config.provisioning.tokenTTL,
+        caStoragePath: this.config.provisioning.caStoragePath,
+        deviceCertValidityDays: this.config.provisioning.deviceCertValidityDays,
+        storageMode: 'MongoDB'
+      });
+    } catch (error: any) {
+      logger.error('Failed to initialize provisioning services', {
+        error: error.message,
+        stack: error.stack
+      });
+      throw error;
+    }
   }
 
   private async initializeMqttClient(): Promise<void> {
@@ -101,16 +237,16 @@ export class StatsMqttLite {
       // On device inactive (PUBACK timeout)
       async (deviceId: string) => {
         logger.warn('⚠️ Device marked INACTIVE due to QoS timeout', { deviceId });
-        await this.deviceStorage.updateDeviceStatus(deviceId, 'inactive');
+        await this.deviceService.updateDeviceStatus(deviceId, 'inactive');
       },
       // On device active (PUBACK received)
       // ✅ FIX: Don't automatically set device to active on PUBACK
       // This was interfering with explicit unregistration
       async (deviceId: string) => {
         // Only mark device as active if it's not explicitly inactive
-        const device = await this.deviceStorage.getDevice(deviceId);
+        const device = await this.deviceService.getDevice(deviceId);
         if (device && device.status !== 'inactive') {
-          await this.deviceStorage.updateDeviceStatus(deviceId, 'active');
+          await this.deviceService.updateDeviceStatus(deviceId, 'active');
         }
       }
     );
@@ -205,7 +341,7 @@ export class StatsMqttLite {
           // ✅ FIX: Don't update lastSeen for unregistration to preserve inactive status
           const deviceId = this.extractDeviceId(receivedTopic);
           if (deviceId && message.type !== 'un_registration') {
-            await this.deviceStorage.updateLastSeen(deviceId).catch(err => {
+            await this.deviceService.updateLastSeen(deviceId).catch(err => {
               logger.debug('Device not found in storage', { deviceId });
             });
           }
@@ -239,14 +375,15 @@ export class StatsMqttLite {
     });
 
     // Register device if not exists
-    const existingDevice = await this.deviceStorage.getDevice(deviceId);
+    const existingDevice = await this.deviceService.getDevice(deviceId);
     if (!existingDevice) {
-      await this.deviceStorage.registerDevice({
+      await this.deviceService.registerDevice({
         deviceId,
         clientId: message.clientId || deviceId,
+        macID: deviceId, // Use deviceId as macID
         username: message.userId || message.user_id || 'unknown',
         status: 'active',
-        lastSeen: new Date().toISOString(),
+        lastSeen: new Date(),
         metadata: {
           deviceType: message.deviceType || message.device_type,
           os: message.os,
@@ -259,7 +396,7 @@ export class StatsMqttLite {
       // Send registration confirmation for new device
       await this.sendRegistrationResponse(deviceId, true, 'Device registered successfully', true);
     } else {
-      await this.deviceStorage.updateDeviceStatus(deviceId, 'active');
+      await this.deviceService.updateDeviceStatus(deviceId, 'active');
       logger.info('✅ Existing device reconnected', { deviceId });
       
       // Send registration confirmation for existing device
@@ -313,7 +450,7 @@ export class StatsMqttLite {
     });
     
     // Mark device as inactive
-    await this.deviceStorage.updateDeviceStatus(deviceId, 'inactive');
+    await this.deviceService.updateDeviceStatus(deviceId, 'inactive');
     logger.info('✅ Device marked as inactive due to disconnect (LWT)', { deviceId });
     
     // Note: No acknowledgment is sent for LWT since the device is already disconnected
@@ -439,11 +576,20 @@ export class StatsMqttLite {
     
     this.httpServer = new HttpServer(
       this.config.http,
-      this.sessionStorage,
-      this.deviceStorage,
-      this.userStorage,
+      this.sessionService,
+      this.deviceService,
       this.mqttClient
     );
+    
+    // Add provisioning routes if enabled
+    if (this.config.provisioning.enabled && this.provisioningService && this.caService) {
+      const provisioningRoutes = createProvisioningRoutes({
+        provisioningService: this.provisioningService,
+        caService: this.caService
+      });
+      this.httpServer.getApp().use('/api/v1', provisioningRoutes);
+      logger.info('✅ Provisioning routes registered at /api/v1');
+    }
     
     await this.httpServer.start();
     
@@ -466,7 +612,7 @@ export class StatsMqttLite {
     
     this.statsPublisher = new StatsPublisher(
       this.mqttClient,
-      this.deviceStorage,
+      this.deviceService,
       15000  // Publish every 15 seconds for testing
     );
     
@@ -534,14 +680,29 @@ export class StatsMqttLite {
       }
 
       // Close storage
-      if (this.sessionStorage) {
-        await this.sessionStorage.close();
+      // Close services
+      if (this.sessionService) {
+        await this.sessionService.close();
       }
-      if (this.deviceStorage) {
-        await this.deviceStorage.close();
+      if (this.deviceService) {
+        await this.deviceService.close();
       }
-      if (this.userStorage) {
-        await this.userStorage.close();
+      
+      // Shutdown token store
+      if (this.config.provisioning.enabled) {
+        getTokenStore().shutdown();
+      }
+      
+      // Certificate store is MongoDB (no closing needed)
+      
+      // Disconnect MongoDB
+      if (this.mongoService) {
+        await this.mongoService.disconnect();
+      }
+      
+      // Disconnect Redis
+      if (this.redisService) {
+        await this.redisService.disconnect();
       }
       
       logger.info('✅ Application stopped gracefully');
