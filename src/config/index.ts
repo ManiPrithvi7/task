@@ -55,6 +55,10 @@ export interface AppEnvConfig {
   logLevel: string;
 }
 
+export interface AuthConfig {
+  secret: string;  // AUTH_SECRET from environment
+}
+
 export interface AppConfig {
   mqtt: MqttConfig;
   http: HttpConfig;
@@ -62,6 +66,7 @@ export interface AppConfig {
   provisioning: ProvisioningConfig;
   mongodb: MongoDBConfig;
   redis: RedisConfig;
+  auth: AuthConfig;
   app: AppEnvConfig;
 }
 
@@ -108,6 +113,9 @@ export function loadConfig(): AppConfig {
       port: process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined,
       db: parseInt(process.env.REDIS_DB || '0'),
       keyPrefix: process.env.REDIS_KEY_PREFIX || 'mqtt-lite:'
+    },
+    auth: {
+      secret: process.env.AUTH_SECRET || ''
     },
     app: {
       env: process.env.NODE_ENV || 'development',
@@ -159,6 +167,9 @@ export function validateConfig(config: AppConfig): void {
   }
   if (config.provisioning.enabled && !config.provisioning.jwtSecret) {
     throw new Error('JWT secret is required when provisioning is enabled');
+  }
+  if (config.provisioning.enabled && !config.auth.secret) {
+    throw new Error('AUTH_SECRET is required when provisioning is enabled. Set AUTH_SECRET environment variable.');
   }
   if (!config.mongodb.uri) {
     throw new Error('MongoDB URI is REQUIRED. Set MONGODB_URI environment variable.');

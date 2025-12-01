@@ -15,6 +15,7 @@ export interface ProvisioningConfig {
 
 export interface ProvisioningTokenPayload {
   device_id: string;
+  user_id: string;  // User ID bound to token at issuance
   type: 'provisioning';
   iat: number;
   exp: number;
@@ -23,6 +24,7 @@ export interface ProvisioningTokenPayload {
 export interface TokenValidationResult {
   valid: boolean;
   deviceId?: string;
+  userId?: string;  // User ID extracted from token payload
   error?: string;
 }
 
@@ -36,11 +38,13 @@ export class ProvisioningService {
   }
 
   /**
-   * Issue a provisioning token for a device
+   * Issue a provisioning token for a device and user
+   * Token is single-use, short-lived (5 minutes), and stored in Redis
+   * Token binds both device_id and user_id for security
    */
-  async issueToken(deviceId: string): Promise<string> {
+  async issueToken(deviceId: string, userId: string): Promise<string> {
     try {
-      logger.debug('Token issuance started', { deviceId });
+      logger.debug('Token issuance started', { deviceId, userId });
 
       // Check if device already has an active token
       const existingToken = await this.tokenStore.getTokenByDevice(deviceId);
@@ -59,6 +63,7 @@ export class ProvisioningService {
 
               logger.warn('Active provisioning token already exists', {
                 deviceId,
+                userId,
                 expiresAt: expiresAt.toISOString(),
                 expiresInSeconds: expiresIn
               });
@@ -86,10 +91,11 @@ export class ProvisioningService {
         }
       }
 
-      // Create token payload
+      // Create token payload with both device_id and user_id
       const now = Math.floor(Date.now() / 1000);
       const payload: ProvisioningTokenPayload = {
         device_id: deviceId,
+        user_id: userId,  // Bind user_id to token at issuance
         type: 'provisioning',
         iat: now,
         exp: now + this.config.tokenTTL
@@ -105,6 +111,7 @@ export class ProvisioningService {
 
       logger.info('Provisioning token issued', {
         deviceId,
+        userId,
         tokenTTL: this.config.tokenTTL,
         expiresAt: new Date(payload.exp * 1000).toISOString()
       });
@@ -112,13 +119,14 @@ export class ProvisioningService {
       return token;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('Failed to issue provisioning token', { deviceId, error: errorMessage });
+      logger.error('Failed to issue provisioning token', { deviceId, userId, error: errorMessage });
       throw error;
     }
   }
 
   /**
    * Validate a provisioning token without revoking
+   * Returns both deviceId and userId from token payload
    */
   async validateTokenWithoutRevoke(token: string): Promise<TokenValidationResult> {
     try {
@@ -154,7 +162,17 @@ export class ProvisioningService {
         return { valid: false, error: 'Device ID mismatch' };
       }
 
-      return { valid: true, deviceId };
+      // Extract user_id from token payload
+      const userId = decoded.user_id;
+      if (!userId) {
+        logger.warn('User ID not found in token payload', {
+          deviceId,
+          tokenPreview: token.substring(0, 30) + '...'
+        });
+        return { valid: false, error: 'User ID not found in token payload' };
+      }
+
+      return { valid: true, deviceId, userId };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       return { valid: false, error: errorMessage };
@@ -163,12 +181,16 @@ export class ProvisioningService {
 
   /**
    * Validate a provisioning token
+   * Returns both deviceId and userId from token payload
    */
   async validateToken(token: string): Promise<TokenValidationResult> {
     const validation = await this.validateTokenWithoutRevoke(token);
 
     if (validation.valid) {
-      logger.info('Provisioning token validated', { deviceId: validation.deviceId });
+      logger.info('Provisioning token validated', { 
+        deviceId: validation.deviceId,
+        userId: validation.userId
+      });
     } else {
       logger.warn('Provisioning token validation failed', { error: validation.error });
     }

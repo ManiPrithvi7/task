@@ -1,0 +1,703 @@
+{
+	"info": {
+		"_postman_id": "mqtt-lite-provisioning-2025",
+		"name": "StatsMQTT Lite - Device Provisioning",
+		"description": "Postman collection for testing the StatsMQTT Lite device provisioning flow with authentication:\n\n1. **Onboarding** - Request a provisioning token (requires auth_token)\n2. **Sign CSR** - Sign a Certificate Signing Request to get device certificate\n\n## Setup Instructions:\n1. Set the `base_url` variable to your server URL (default: http://localhost:3002)\n2. Set the `auth_token` variable with a valid JWT token from your authentication system\n3. For CSR signing, you'll need a valid Base64-encoded PEM CSR\n4. The provisioning token from step 1 is automatically saved and used in step 2\n\n## Important Changes from Full Version:\n- Onboarding now requires `auth_token` in Authorization header\n- Sign CSR no longer requires `user_id` in body (extracted from token)\n- Device-user association is validated automatically",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Health Check",
+			"item": [
+				{
+					"name": "Root Endpoint",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								""
+							]
+						},
+						"description": "Get server information and available endpoints"
+					},
+					"response": []
+				}
+			],
+			"description": "Health check endpoints"
+		},
+		{
+			"name": "Device Provisioning",
+			"item": [
+				{
+					"name": "Step 1: Request Provisioning Token",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"exec": [
+									"// Verify auth_token is set before making request",
+									"const authToken = pm.collectionVariables.get('auth_token');",
+									"if (!authToken || authToken.trim() === '') {",
+									"    console.log('⚠️  WARNING: auth_token is not set!');",
+									"    console.log('⚠️  Please set auth_token in collection variables.');",
+									"    console.log('⚠️  You can:');",
+									"    console.log('   1. Use \"Get Auth Token from Session\" utility request');",
+									"    console.log('   2. Manually set auth_token variable with a JWT signed with AUTH_SECRET');",
+									"    console.log('   3. Create a Next.js API route /api/auth/token that returns JWT');",
+									"} else {",
+									"    console.log('✓ Auth token found:', authToken.substring(0, 30) + '...');",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"// Save provisioning token to collection variable",
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    if (response.provisioning_token) {",
+									"        pm.collectionVariables.set('provisioning_token', response.provisioning_token);",
+									"        pm.collectionVariables.set('device_id', pm.request.body.raw ? JSON.parse(pm.request.body.raw).device_id : '');",
+									"        console.log('✓ Provisioning token saved:', response.provisioning_token.substring(0, 20) + '...');",
+									"        console.log('✓ Expires in:', response.expires_in, 'seconds');",
+									"        console.log('✓ Device ID:', pm.collectionVariables.get('device_id'));",
+									"    }",
+									"}",
+									"",
+									"// Test assertions",
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Response has provisioning_token', function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('provisioning_token');",
+									"    pm.expect(jsonData.provisioning_token).to.be.a('string');",
+									"});",
+									"",
+									"pm.test('Response has expires_in', function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('expires_in');",
+									"    pm.expect(jsonData.expires_in).to.be.a('number');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}",
+								"description": "JWT auth_token from your authentication system (Next.js app)"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"device_id\": \"test-device-{{$timestamp}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/onboarding",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"onboarding"
+							]
+						},
+						"description": "**Stage 1: Token Issuance**\n\nRequest a provisioning token for a new device. This token is required for the CSR signing step.\n\n**⚠️ IMPORTANT:** This endpoint now requires authentication!\n\n**Request Headers:**\n- `Authorization: Bearer <auth_token>` (REQUIRED) - JWT token from your authentication system\n\n**Request Body:**\n- `device_id` (string, required): Unique device identifier\n\n**Response:**\n- `provisioning_token`: JWT token valid for 5 minutes (binds device_id + user_id)\n- `expires_in`: Token expiration time in seconds (default: 300)\n\n**Note:** \n- The token is automatically saved to collection variables for use in the next step\n- The auth_token must be a valid JWT signed with AUTH_SECRET\n- User must exist in the database\n- Device must be associated with the authenticated user"
+					},
+					"response": []
+				},
+				{
+					"name": "Step 2: Sign CSR (with Bearer Token)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"// Test assertions",
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Response has certificate', function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('certificate');",
+									"    pm.expect(jsonData.certificate).to.include('BEGIN CERTIFICATE');",
+									"});",
+									"",
+									"pm.test('Response has ca_certificate', function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('ca_certificate');",
+									"    pm.expect(jsonData.ca_certificate).to.include('BEGIN CERTIFICATE');",
+									"});",
+									"",
+									"pm.test('Response has device_id', function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('device_id');",
+									"});",
+									"",
+									"if (pm.response.code === 200) {",
+									"    const jsonData = pm.response.json();",
+									"    console.log('✓ Certificate issued successfully');",
+									"    console.log('✓ Device ID:', jsonData.device_id);",
+									"    console.log('✓ Certificate ID:', jsonData.certificateId);",
+									"    console.log('✓ Expires at:', jsonData.expires_at);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{provisioning_token}}",
+								"description": "Provisioning token from Step 1"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"csr\": \"{{sample_csr}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/sign-csr",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"sign-csr"
+							]
+						},
+						"description": "**Stage 2: CSR Signing**\n\nSign a Certificate Signing Request (CSR) to create a device certificate.\n\n**⚠️ IMPORTANT:** This endpoint no longer requires `user_id` in the body - it's extracted from the provisioning token!\n\n**Request Headers:**\n- `Authorization: Bearer <provisioning_token>` (REQUIRED) - Token from Step 1\n\n**Request Body:**\n- `csr` (string, required): Base64-encoded PEM CSR or direct PEM string\n\n**Note:** `user_id` and `device_id` are automatically extracted from the provisioning token. The device must be associated with the user who initiated the provisioning.\n\n**Response:**\n- `certificate`: Signed device certificate (PEM format) - equivalent to `device.crt`\n- `ca_certificate`: Root CA certificate (PEM format) - equivalent to `root.ca`\n- `device_id`: Device identifier\n- `expires_at`: Certificate expiration timestamp\n- `serial_number`: Certificate fingerprint\n- `certificateId`: MongoDB ObjectId of the certificate\n- `downloadUrl`: URL to download certificate files\n\n**Validation Performed:**\n1. Provisioning token validation (JWT signature, expiration, Redis presence)\n2. User existence verification\n3. Device-user association verification\n4. CSR format validation\n5. CSR signature verification\n6. Device ID validation in CSR (CN or SAN)\n\n**Token Revocation:**\n- Provisioning token is immediately revoked after successful certificate creation\n- Token is also revoked on failure (allows retry)"
+					},
+					"response": []
+				},
+				{
+					"name": "Step 2: Sign CSR (Token in Body)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"provisioning_token\": \"{{provisioning_token}}\",\n    \"csr\": \"{{sample_csr}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/sign-csr",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"sign-csr"
+							]
+						},
+						"description": "**Alternative: CSR Signing with Token in Body**\n\nSame as above but using token in request body instead of Authorization header.\n\n**Request Body:**\n- `provisioning_token` (string, required): Token from Step 1\n- `csr` (string, required): Base64-encoded PEM CSR or direct PEM string\n\n**Note:** `user_id` is still extracted from the token, not from the request body."
+					},
+					"response": []
+				}
+			],
+			"description": "Device provisioning flow endpoints"
+		},
+		{
+			"name": "Certificate Management",
+			"item": [
+				{
+					"name": "Get Certificate Status",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/certificates/{{device_id}}/status",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"certificates",
+								"{{device_id}}",
+								"status"
+							]
+						},
+						"description": "Get certificate status for a device\n\n**Path Parameter:**\n- `device_id`: Device identifier\n\n**Response:**\n- `status`: Certificate status (active, revoked, expired)\n- `expires_at`: Expiration timestamp\n- `fingerprint`: Certificate fingerprint"
+					},
+					"response": []
+				},
+				{
+					"name": "Download Certificate",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/certificates/{{certificate_id}}/download",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"certificates",
+								"{{certificate_id}}",
+								"download"
+							]
+						},
+						"description": "Download certificate files\n\n**Path Parameter:**\n- `certificate_id`: MongoDB ObjectId of the certificate\n\n**Response:**\n- `certificate`: Device certificate (PEM format)\n- `ca_certificate`: Root CA certificate (PEM format)\n- `private_key`: Private key (null for CSR-signed certificates)"
+					},
+					"response": []
+				},
+				{
+					"name": "Revoke Certificate",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/certificates/{{device_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"certificates",
+								"{{device_id}}"
+							]
+						},
+						"description": "Revoke a device certificate\n\n**Path Parameter:**\n- `device_id`: Device identifier\n\n**Response:**\n- `success`: true\n- `message`: Revocation confirmation"
+					},
+					"response": []
+				}
+			],
+			"description": "Certificate management endpoints"
+		},
+		{
+			"name": "Utilities",
+			"item": [
+				{
+					"name": "Get Auth Token from Session",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"// Extract auth_token from Next.js session",
+									"// Note: The session token is encrypted, so we need to decode it or get JWT from Next.js",
+									"",
+									"if (pm.response.code === 200) {",
+									"    const sessionData = pm.response.json();",
+									"    ",
+									"    // If Next.js returns a JWT directly in the response",
+									"    if (sessionData.token || sessionData.auth_token) {",
+									"        const token = sessionData.token || sessionData.auth_token;",
+									"        pm.environment.set('auth_token', token);",
+									"        console.log('✓ Auth token extracted from session');",
+									"        console.log('✓ Token preview:', token.substring(0, 30) + '...');",
+									"    } else if (sessionData.user) {",
+									"        // If we have user data, we might need to generate JWT",
+									"        // This requires AUTH_SECRET to be set",
+									"        const authSecret = pm.environment.get('auth_secret');",
+									"        if (authSecret) {",
+									"            console.log('⚠️  Session data received but no JWT token found.');",
+									"            console.log('⚠️  You may need to generate JWT manually or use Next.js API route.');",
+									"            console.log('User ID:', sessionData.user?.id || sessionData.user?._id);",
+									"        } else {",
+									"            console.log('⚠️  AUTH_SECRET not set. Cannot generate JWT.');",
+									"            console.log('⚠️  Set AUTH_SECRET in environment variables.');",
+									"        }",
+									"    } else {",
+									"        console.log('⚠️  No token or user data found in session response');",
+									"        console.log('Response:', JSON.stringify(sessionData, null, 2));",
+									"    }",
+									"}",
+									"",
+									"pm.test('Session endpoint is accessible', function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Cookie",
+								"value": "{{session_cookie}}",
+								"description": "Session cookie from browser (copy from browser DevTools)"
+							}
+						],
+						"url": {
+							"raw": "{{nextjs_base_url}}/api/auth/session",
+							"host": [
+								"{{nextjs_base_url}}"
+							],
+							"path": [
+								"api",
+								"auth",
+								"session"
+							]
+						},
+						"description": "**Get Auth Token from Next.js Session**\n\nThis request fetches the session from Next.js and attempts to extract or generate the auth_token.\n\n**⚠️ Important:**\n- The session token from Auth.js is encrypted, not a JWT\n- You may need to create a Next.js API route that generates a JWT from the session\n- Or manually set the `auth_token` variable with a JWT signed with AUTH_SECRET\n\n**Alternative:** Create a Next.js API route like `/api/auth/token` that:\n1. Gets the session\n2. Generates a JWT with user ID\n3. Signs it with AUTH_SECRET\n4. Returns the JWT\n\n**Manual Setup:**\n1. Get your AUTH_SECRET from Next.js `.env` file\n2. Set it in Postman environment as `auth_secret`\n3. Generate JWT manually or use a Next.js API endpoint"
+					},
+					"response": []
+				},
+				{
+					"name": "Generate Sample CSR",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"exec": [
+									"// Generate a sample CSR for testing",
+									"// This is a simplified example - in production, device generates this",
+									"",
+									"const deviceId = pm.collectionVariables.get('device_id') || 'test-device-' + Date.now();",
+									"",
+									"// Sample PEM CSR with device_id in Common Name",
+									"// In production, this would be generated by the device using its private key",
+									"const sampleCSR = `-----BEGIN CERTIFICATE REQUEST-----\\n` +",
+									"    `MIICXTCCAUUCAQAwGjEYMBYGA1UEAwwPdGVzdC1kZXZpY2UtMTIzMIIBIjANBgkq\\n` +",
+									"    `hkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAy7X8V9K8Q2J3N4M5P6Q7R8S9T0U1V2W3\\n` +",
+									"    `X4Y5Z6A7B8C9D0E1F2G3H4I5J6K7L8M9N0O1P2Q3R4S5T6U7V8W9X0Y1Z2A3B4C5\\n` +",
+									"    `D6E7F8G9H0I1J2K3L4M5N6O7P8Q9R0S1T2U3V4W5X6Y7Z8A9B0C1D2E3F4G5H6I7\\n` +",
+									"    `J8K9L0M1N2O3P4Q5R6S7T8U9V0W1X2Y3Z4A5B6C7D8E9F0G1H2I3J4K5L6M7N8O9\\n` +",
+									"    `P0Q1R2S3T4U5V6W7X8Y9Z0A1B2C3D4E5F6G7H8I9J0K1L2M3N4O5P6Q7R8S9T0U1\\n` +",
+									"    `V2W3X4Y5Z6A7B8C9D0E1F2G3H4I5J6K7L8M9N0O1P2Q3R4S5T6U7V8W9X0Y1Z2A3\\n` +",
+									"    `B4C5D6E7F8G9H0I1J2K3L4M5N6O7P8Q9R0S1T2U3V4W5X6Y7Z8A9B0C1D2E3F4G5\\n` +",
+									"    `H6I7J8K9L0M1N2O3P4Q5R6S7T8U9V0W1X2Y3Z4A5B6C7D8E9F0G1H2I3J4K5L6M7\\n` +",
+									"    `-----END CERTIFICATE REQUEST-----`;",
+									"",
+									"// Convert to Base64",
+									"const base64CSR = Buffer.from(sampleCSR).toString('base64');",
+									"",
+									"pm.collectionVariables.set('sample_csr', base64CSR);",
+									"console.log('✓ Sample CSR generated and saved to collection variable');",
+									"console.log('⚠️  Note: This is a dummy CSR for testing. In production, use a real CSR from the device.');",
+									"console.log('⚠️  Note: The CSR must contain the device_id in Common Name or Subject Alternative Names.');"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								""
+							]
+						},
+						"description": "**Generate Sample CSR for Testing**\n\nThis request generates a sample Base64-encoded CSR and saves it to the `sample_csr` collection variable.\n\n**⚠️ Important:** This is a dummy CSR for testing purposes only. In production, the device generates its own CSR using its private key.\n\n**Usage:**\n1. Run this request first to generate a sample CSR\n2. The CSR will be automatically saved to `{{sample_csr}}` variable\n3. Use it in the \"Sign CSR\" requests\n\n**Note:** For real testing, you need a valid CSR that:\n- Contains the device_id in Common Name or Subject Alternative Names\n- Has a valid cryptographic signature\n- Is generated by the device using its private key"
+					},
+					"response": []
+				}
+			],
+			"description": "Utility requests for testing"
+		},
+		{
+			"name": "Error Scenarios",
+			"item": [
+				{
+					"name": "Onboarding - Missing auth_token",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"device_id\": \"test-device-123\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/onboarding",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"onboarding"
+							]
+						},
+						"description": "Test error handling for missing auth_token (should return 401)"
+					},
+					"response": []
+				},
+				{
+					"name": "Onboarding - Invalid auth_token",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer invalid-token-12345"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"device_id\": \"test-device-123\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/onboarding",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"onboarding"
+							]
+						},
+						"description": "Test error handling for invalid auth_token (should return 401)"
+					},
+					"response": []
+				},
+				{
+					"name": "Onboarding - Missing device_id",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/onboarding",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"onboarding"
+							]
+						},
+						"description": "Test error handling for missing device_id (should return 400)"
+					},
+					"response": []
+				},
+				{
+					"name": "Sign CSR - Missing Token",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"csr\": \"{{sample_csr}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/sign-csr",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"sign-csr"
+							]
+						},
+						"description": "Test error handling for missing provisioning token (should return 401)"
+					},
+					"response": []
+				},
+				{
+					"name": "Sign CSR - Invalid CSR Format",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{provisioning_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"csr\": \"invalid-csr-format\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/sign-csr",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"sign-csr"
+							]
+						},
+						"description": "Test error handling for invalid CSR format (should return 400)"
+					},
+					"response": []
+				}
+			],
+			"description": "Test error scenarios and validation"
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:3002",
+			"type": "string"
+		},
+		{
+			"key": "auth_token",
+			"value": "",
+			"type": "string",
+			"description": "JWT auth_token from your authentication system (Next.js app). Must be signed with AUTH_SECRET."
+		},
+		{
+			"key": "provisioning_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "device_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "certificate_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "sample_csr",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "nextjs_base_url",
+			"value": "http://localhost:3000",
+			"type": "string",
+			"description": "Base URL for Next.js app"
+		},
+		{
+			"key": "session_cookie",
+			"value": "",
+			"type": "string",
+			"description": "Session cookie from browser (copy from DevTools Network tab)"
+		}
+	]
+}
+

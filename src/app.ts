@@ -6,6 +6,8 @@ import { MqttClientManager } from './servers/mqttClient';
 import { StatsPublisher } from './services/statsPublisher';
 import { ProvisioningService } from './services/provisioningService';
 import { CAService } from './services/caService';
+import { AuthService } from './services/authService';
+import { UserService } from './services/userService';
 import { MongoService, createMongoService } from './services/mongoService';
 import { RedisService, createRedisService } from './services/redisService';
 import { DeviceService } from './services/deviceService';
@@ -30,6 +32,8 @@ export class StatsMqttLite {
   // Provisioning services
   private provisioningService?: ProvisioningService;
   private caService?: CAService;
+  private authService?: AuthService;
+  private userService?: UserService;
   
   // MongoDB service
   private mongoService?: MongoService;
@@ -194,6 +198,21 @@ export class StatsMqttLite {
     logger.info('🔐 Initializing provisioning services...');
 
     try {
+      // Initialize AuthService
+      if (!this.config.auth?.secret) {
+        throw new Error('AUTH_SECRET is required for provisioning');
+      }
+      this.authService = new AuthService(this.config.auth.secret);
+      logger.info('✅ AuthService initialized');
+
+      // Initialize UserService
+      if (!this.mongoService) {
+        throw new Error('MongoDB service required for UserService');
+      }
+      this.userService = new UserService(this.mongoService);
+      await this.userService.initialize();
+      logger.info('✅ UserService initialized');
+
       // Initialize Provisioning Service
       this.provisioningService = new ProvisioningService({
         tokenTTL: this.config.provisioning.tokenTTL,
@@ -211,7 +230,7 @@ export class StatsMqttLite {
 
       // Initialize Root CA
       await this.caService.initialize();
-
+    
       logger.info('✅ Provisioning services initialized', {
         tokenTTL: this.config.provisioning.tokenTTL,
         caStoragePath: this.config.provisioning.caStoragePath,
@@ -582,10 +601,12 @@ export class StatsMqttLite {
     );
     
     // Add provisioning routes if enabled
-    if (this.config.provisioning.enabled && this.provisioningService && this.caService) {
+    if (this.config.provisioning.enabled && this.provisioningService && this.caService && this.authService && this.userService) {
       const provisioningRoutes = createProvisioningRoutes({
         provisioningService: this.provisioningService,
-        caService: this.caService
+        caService: this.caService,
+        authService: this.authService,
+        userService: this.userService
       });
       this.httpServer.getApp().use('/api/v1', provisioningRoutes);
       logger.info('✅ Provisioning routes registered at /api/v1');

@@ -46,7 +46,7 @@ const UserSchema = new Schema<IUser>({
   }
 }, {
   timestamps: true, // Automatically adds createdAt and updatedAt
-  collection: 'users'
+  collection: 'User' // Prisma uses capitalized collection name (matches mqtt-publisher)
 });
 
 // Indexes (only define indexes not already set via 'unique: true' in schema)
