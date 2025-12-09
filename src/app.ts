@@ -17,6 +17,10 @@ import { getTokenStore } from './storage/tokenStore';
 
 export class StatsMqttLite {
   private config: AppConfig;
+
+
+
+
   private httpServer!: HttpServer;
   private webSocketServer!: WebSocketServerManager;
   private mqttClient!: MqttClientManager;
@@ -54,7 +58,7 @@ export class StatsMqttLite {
     try {
       logger.info('🚀 Starting MQTT Publisher Lite...');
       logger.info('━'.repeat(50));
-
+      console.log("hi")
       // Initialize MongoDB (REQUIRED)
       await this.initializeMongoDB();
 
