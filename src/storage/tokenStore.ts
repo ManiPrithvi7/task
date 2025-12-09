@@ -19,20 +19,38 @@ export class TokenStore {
   private redis: RedisClientType | null = null;
   private readonly TOKEN_PREFIX = 'token:';
   private readonly DEVICE_PREFIX = 'device:';
+  
+  // In-memory fallback storage
+  private inMemoryStore: Map<string, { entry: TokenEntry; expiresAt: number }> = new Map();
+  private inMemoryDeviceMap: Map<string, string> = new Map();
+  private cleanupInterval: NodeJS.Timeout | null = null;
+  private useInMemory: boolean = false;
 
   constructor() {
-    // Redis client will be initialized when app starts
-    logger.info('TokenStore initialized (Redis-based)');
+    // Check if Redis is available
+    const redisService = getRedisService();
+    if (redisService && redisService.isRedisConnected()) {
+      logger.info('TokenStore initialized (Redis-based)');
+      this.redis = redisService.getClient();
+    } else {
+      logger.warn('TokenStore initialized (In-Memory fallback - tokens not persistent across restarts)');
+      this.useInMemory = true;
+      this.startInMemoryCleanup();
+    }
   }
 
   /**
    * Initialize Redis connection
    */
-  private getRedis(): RedisClientType {
+  private getRedis(): RedisClientType | null {
+    if (this.useInMemory) {
+      return null;
+    }
+    
     if (!this.redis) {
       const redisService = getRedisService();
       if (!redisService || !redisService.isRedisConnected()) {
-        throw new Error('Redis not connected. Ensure Redis service is initialized.');
+        return null;
       }
       this.redis = redisService.getClient();
     }
@@ -40,41 +58,69 @@ export class TokenStore {
   }
 
   /**
+   * Start in-memory cleanup task
+   */
+  private startInMemoryCleanup(): void {
+    // Clean up expired tokens every minute
+    this.cleanupInterval = setInterval(() => {
+      const now = Date.now();
+      for (const [key, value] of this.inMemoryStore.entries()) {
+        if (now > value.expiresAt) {
+          this.inMemoryStore.delete(key);
+          // Also remove from device map
+          const deviceId = value.entry.deviceId;
+          if (this.inMemoryDeviceMap.get(deviceId) === value.entry.token) {
+            this.inMemoryDeviceMap.delete(deviceId);
+          }
+        }
+      }
+    }, 60000); // Every minute
+  }
+
+  /**
    * Store a token with TTL
    */
   async setToken(token: string, deviceId: string, ttlSeconds: number): Promise<void> {
     try {
-      const redis = this.getRedis();
       const expiresAt = Date.now() + (ttlSeconds * 1000);
-
       const entry: TokenEntry = {
         deviceId,
         token,
         expiresAt
       };
 
-      // Store token -> device mapping with TTL (using setEx)
-      await redis.setEx(
-        `${this.TOKEN_PREFIX}${token}`,
-        ttlSeconds,
-        JSON.stringify(entry)
-      );
-
-      // Store device -> token mapping with TTL (using setEx)
-      await redis.setEx(
-        `${this.DEVICE_PREFIX}${deviceId}`,
-        ttlSeconds,
-        token
-      );
-
-      logger.debug('Token stored in Redis', {
-        deviceId,
-        ttlSeconds,
-        expiresAt: new Date(expiresAt).toISOString()
-      });
+      const redis = this.getRedis();
+      
+      if (redis) {
+        // Use Redis
+        await redis.setEx(
+          `${this.TOKEN_PREFIX}${token}`,
+          ttlSeconds,
+          JSON.stringify(entry)
+        );
+        await redis.setEx(
+          `${this.DEVICE_PREFIX}${deviceId}`,
+          ttlSeconds,
+          token
+        );
+        logger.debug('Token stored in Redis', {
+          deviceId,
+          ttlSeconds,
+          expiresAt: new Date(expiresAt).toISOString()
+        });
+      } else {
+        // Use in-memory storage
+        this.inMemoryStore.set(`${this.TOKEN_PREFIX}${token}`, { entry, expiresAt });
+        this.inMemoryDeviceMap.set(deviceId, token);
+        logger.debug('Token stored in memory', {
+          deviceId,
+          ttlSeconds,
+          expiresAt: new Date(expiresAt).toISOString()
+        });
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('Failed to store token in Redis', { error: errorMessage });
+      logger.error('Failed to store token', { error: errorMessage });
       throw error;
     }
   }
@@ -85,24 +131,36 @@ export class TokenStore {
   async getDeviceByToken(token: string): Promise<string | null> {
     try {
       const redis = this.getRedis();
-      const data = await redis.get(`${this.TOKEN_PREFIX}${token}`);
-
-      if (!data) {
-        return null;
+      
+      if (redis) {
+        // Use Redis
+        const data = await redis.get(`${this.TOKEN_PREFIX}${token}`);
+        if (!data) {
+          return null;
+        }
+        const entry: TokenEntry = JSON.parse(data);
+        if (Date.now() > entry.expiresAt) {
+          await this.deleteToken(token);
+          return null;
+        }
+        return entry.deviceId;
+      } else {
+        // Use in-memory storage
+        const key = `${this.TOKEN_PREFIX}${token}`;
+        const stored = this.inMemoryStore.get(key);
+        if (!stored) {
+          return null;
+        }
+        if (Date.now() > stored.expiresAt) {
+          this.inMemoryStore.delete(key);
+          this.inMemoryDeviceMap.delete(stored.entry.deviceId);
+          return null;
+        }
+        return stored.entry.deviceId;
       }
-
-      const entry: TokenEntry = JSON.parse(data);
-
-      // Check if expired (Redis TTL should handle this, but double-check)
-      if (Date.now() > entry.expiresAt) {
-        await this.deleteToken(token);
-        return null;
-      }
-
-      return entry.deviceId;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('Failed to get device by token from Redis', { error: errorMessage });
+      logger.error('Failed to get device by token', { error: errorMessage });
       return null;
     }
   }
@@ -113,24 +171,36 @@ export class TokenStore {
   async getTokenByDevice(deviceId: string): Promise<string | null> {
     try {
       const redis = this.getRedis();
-      const token = await redis.get(`${this.DEVICE_PREFIX}${deviceId}`);
-
-      if (!token) {
-        return null;
+      
+      if (redis) {
+        // Use Redis
+        const token = await redis.get(`${this.DEVICE_PREFIX}${deviceId}`);
+        if (!token) {
+          return null;
+        }
+        const entry = await redis.get(`${this.TOKEN_PREFIX}${token}`);
+        if (!entry) {
+          await this.deleteTokenByDevice(deviceId);
+          return null;
+        }
+        return token;
+      } else {
+        // Use in-memory storage
+        const token = this.inMemoryDeviceMap.get(deviceId);
+        if (!token) {
+          return null;
+        }
+        const key = `${this.TOKEN_PREFIX}${token}`;
+        const stored = this.inMemoryStore.get(key);
+        if (!stored) {
+          this.inMemoryDeviceMap.delete(deviceId);
+          return null;
+        }
+        return token;
       }
-
-      // Verify token still exists and is valid
-      const entry = await redis.get(`${this.TOKEN_PREFIX}${token}`);
-      if (!entry) {
-        // Token expired, clean up device mapping
-        await this.deleteTokenByDevice(deviceId);
-        return null;
-      }
-
-      return token;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('Failed to get token by device from Redis', { error: errorMessage });
+      logger.error('Failed to get token by device', { error: errorMessage });
       return null;
     }
   }
@@ -141,21 +211,29 @@ export class TokenStore {
   async deleteToken(token: string): Promise<void> {
     try {
       const redis = this.getRedis();
-
-      // Get device ID first
-      const data = await redis.get(`${this.TOKEN_PREFIX}${token}`);
-      if (data) {
-        const entry: TokenEntry = JSON.parse(data);
-
-        // Delete both mappings
-        await redis.del(`${this.TOKEN_PREFIX}${token}`);
-        await redis.del(`${this.DEVICE_PREFIX}${entry.deviceId}`);
-
-        logger.debug('Token deleted from Redis', { token: token.substring(0, 20) + '...' });
+      const key = `${this.TOKEN_PREFIX}${token}`;
+      
+      if (redis) {
+        // Use Redis
+        const data = await redis.get(key);
+        if (data) {
+          const entry: TokenEntry = JSON.parse(data);
+          await redis.del(key);
+          await redis.del(`${this.DEVICE_PREFIX}${entry.deviceId}`);
+          logger.debug('Token deleted from Redis', { token: token.substring(0, 20) + '...' });
+        }
+      } else {
+        // Use in-memory storage
+        const stored = this.inMemoryStore.get(key);
+        if (stored) {
+          this.inMemoryStore.delete(key);
+          this.inMemoryDeviceMap.delete(stored.entry.deviceId);
+          logger.debug('Token deleted from memory', { token: token.substring(0, 20) + '...' });
+        }
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('Failed to delete token from Redis', { error: errorMessage });
+      logger.error('Failed to delete token', { error: errorMessage });
       throw error;
     }
   }
@@ -166,19 +244,27 @@ export class TokenStore {
   async deleteTokenByDevice(deviceId: string): Promise<void> {
     try {
       const redis = this.getRedis();
-
-      // Get token first
-      const token = await redis.get(`${this.DEVICE_PREFIX}${deviceId}`);
-      if (token) {
-        // Delete both mappings
-        await redis.del(`${this.TOKEN_PREFIX}${token}`);
-        await redis.del(`${this.DEVICE_PREFIX}${deviceId}`);
-
-        logger.debug('Token deleted by device from Redis', { deviceId });
+      
+      if (redis) {
+        // Use Redis
+        const token = await redis.get(`${this.DEVICE_PREFIX}${deviceId}`);
+        if (token) {
+          await redis.del(`${this.TOKEN_PREFIX}${token}`);
+          await redis.del(`${this.DEVICE_PREFIX}${deviceId}`);
+          logger.debug('Token deleted by device from Redis', { deviceId });
+        }
+      } else {
+        // Use in-memory storage
+        const token = this.inMemoryDeviceMap.get(deviceId);
+        if (token) {
+          this.inMemoryStore.delete(`${this.TOKEN_PREFIX}${token}`);
+          this.inMemoryDeviceMap.delete(deviceId);
+          logger.debug('Token deleted by device from memory', { deviceId });
+        }
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('Failed to delete token by device from Redis', { error: errorMessage });
+      logger.error('Failed to delete token by device', { error: errorMessage });
       throw error;
     }
   }
@@ -201,16 +287,26 @@ export class TokenStore {
   async getTokenEntry(token: string): Promise<TokenEntry | null> {
     try {
       const redis = this.getRedis();
-      const data = await redis.get(`${this.TOKEN_PREFIX}${token}`);
-
-      if (!data) {
-        return null;
+      const key = `${this.TOKEN_PREFIX}${token}`;
+      
+      if (redis) {
+        // Use Redis
+        const data = await redis.get(key);
+        if (!data) {
+          return null;
+        }
+        return JSON.parse(data);
+      } else {
+        // Use in-memory storage
+        const stored = this.inMemoryStore.get(key);
+        if (!stored) {
+          return null;
+        }
+        return stored.entry;
       }
-
-      return JSON.parse(data);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('Failed to get token entry from Redis', { error: errorMessage });
+      logger.error('Failed to get token entry', { error: errorMessage });
       return null;
     }
   }
@@ -237,25 +333,37 @@ export class TokenStore {
     tokenCount: number;
     deviceCount: number;
     connected: boolean;
+    storage: 'redis' | 'memory';
   }> {
     try {
       const redis = this.getRedis();
-
-      // Count tokens and devices using KEYS
-      const tokenKeys = await redis.keys(`${this.TOKEN_PREFIX}*`);
-      const deviceKeys = await redis.keys(`${this.DEVICE_PREFIX}*`);
-
-      return {
-        tokenCount: tokenKeys.length,
-        deviceCount: deviceKeys.length,
-        connected: true
-      };
+      
+      if (redis) {
+        // Use Redis
+        const tokenKeys = await redis.keys(`${this.TOKEN_PREFIX}*`);
+        const deviceKeys = await redis.keys(`${this.DEVICE_PREFIX}*`);
+        return {
+          tokenCount: tokenKeys.length,
+          deviceCount: deviceKeys.length,
+          connected: true,
+          storage: 'redis'
+        };
+      } else {
+        // Use in-memory storage
+        return {
+          tokenCount: this.inMemoryStore.size,
+          deviceCount: this.inMemoryDeviceMap.size,
+          connected: true,
+          storage: 'memory'
+        };
+      }
     } catch (error) {
       logger.error('Failed to get stats', { error });
       return {
         tokenCount: 0,
         deviceCount: 0,
-        connected: false
+        connected: false,
+        storage: this.useInMemory ? 'memory' : 'redis'
       };
     }
   }
@@ -264,7 +372,13 @@ export class TokenStore {
    * Shutdown (cleanup)
    */
   shutdown(): void {
-    logger.info('TokenStore shutdown (Redis connection managed by RedisService)');
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
+    }
+    this.inMemoryStore.clear();
+    this.inMemoryDeviceMap.clear();
+    logger.info('TokenStore shutdown');
     this.redis = null;
   }
 }

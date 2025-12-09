@@ -58,13 +58,15 @@ export class StatsMqttLite {
     try {
       logger.info('🚀 Starting MQTT Publisher Lite...');
       logger.info('━'.repeat(50));
-      console.log("hi")
+
       // Initialize MongoDB (REQUIRED)
       await this.initializeMongoDB();
 
-      // Initialize Redis (for token persistence)
-      if (this.config.redis.enabled) {
+      // Initialize Redis (for token persistence) - only if configured
+      if (this.config.redis.enabled && (this.config.redis.url || this.config.redis.host)) {
         await this.initializeRedis();
+      } else if (this.config.redis.enabled) {
+        logger.warn('⚠️  Redis enabled but not configured (no REDIS_URL or REDIS_HOST). Provisioning tokens will use in-memory storage.');
       }
 
       // Initialize services
@@ -189,6 +191,18 @@ export class StatsMqttLite {
       });
       logger.warn('⚠️  Provisioning tokens will not be persistent');
       logger.warn('   Set REDIS_URL (cloud) or REDIS_HOST (self-hosted)');
+      logger.warn('   To disable Redis, set REDIS_ENABLED=false');
+      
+      // Clean up failed connection to prevent reconnection attempts
+      if (this.redisService) {
+        try {
+          await this.redisService.disconnect();
+        } catch (disconnectError) {
+          // Ignore disconnect errors
+        }
+        this.redisService = undefined;
+      }
+      
       // Don't throw - provisioning can work without Redis (in-memory fallback)
     }
   }

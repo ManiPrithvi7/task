@@ -177,6 +177,9 @@ export function validateConfig(config: AppConfig): void {
   if (config.redis.enabled && !config.redis.url && !config.redis.host) {
     logger.warn('Redis enabled but no connection details provided. Provisioning tokens will not be persistent.');
     logger.warn('Set REDIS_URL (cloud) or REDIS_HOST (self-hosted) environment variable.');
+    logger.warn('To disable Redis, set REDIS_ENABLED=false');
+    // Auto-disable Redis if not configured to prevent connection attempts
+    config.redis.enabled = false;
   }
 
   logger.info('Configuration validated successfully');

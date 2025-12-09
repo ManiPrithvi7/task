@@ -44,10 +44,18 @@ export class RedisService {
         });
 
         this.client = createClient({
-          url: this.config.url
+          url: this.config.url,
+          socket: {
+            reconnectStrategy: false // Disable automatic reconnection
+          }
         }) as RedisClientType;
       } else {
         // Use individual parameters (matching your example)
+        // Check if Redis is actually configured
+        if (!this.config.host && !this.config.port) {
+          throw new Error('Redis host and port are required when not using URL');
+        }
+
         logger.info('Connecting to Redis', {
           host: this.config.host,
           port: this.config.port,
@@ -59,8 +67,9 @@ export class RedisService {
           username: this.config.username || 'default',
           password: this.config.password,
           socket: {
-            host: this.config.host || 'localhost',
-            port: this.config.port || 6379
+            host: this.config.host!,
+            port: this.config.port!,
+            reconnectStrategy: false // Disable automatic reconnection
           },
           database: this.config.db || 0
         }) as RedisClientType;
@@ -70,6 +79,7 @@ export class RedisService {
       this.client.on('error', (err: Error) => {
         logger.error('Redis Client Error', { error: err.message });
         this.isConnected = false;
+        // Don't attempt to reconnect - fail gracefully
       });
 
       // Setup event handlers
@@ -177,6 +187,14 @@ export class RedisService {
 
     this.client.on('reconnecting', () => {
       logger.info('Redis reconnecting...');
+    });
+
+    // Disable automatic reconnection on connection failure
+    this.client.on('error', () => {
+      // Error handler already set above, but ensure we don't reconnect
+      if (this.client) {
+        this.client.removeAllListeners('reconnecting');
+      }
     });
   }
 
