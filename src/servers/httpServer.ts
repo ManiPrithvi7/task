@@ -58,12 +58,27 @@ export class HttpServer {
       const start = Date.now();
       res.on('finish', () => {
         const duration = Date.now() - start;
-        logger.info('HTTP request', {
-          method: req.method,
-          path: req.path,
-          status: res.statusCode,
-          duration: `${duration}ms`
-        });
+        
+        // Health checks are logged at debug level to reduce log spam
+        // (Render.com and other platforms ping /health every 5-10 seconds)
+        const isHealthCheck = req.path === '/health' || req.path === '/health/';
+        const logLevel = isHealthCheck ? 'debug' : 'info';
+        
+        if (logLevel === 'debug') {
+          logger.debug('HTTP request', {
+            method: req.method,
+            path: req.path,
+            status: res.statusCode,
+            duration: `${duration}ms`
+          });
+        } else {
+          logger.info('HTTP request', {
+            method: req.method,
+            path: req.path,
+            status: res.statusCode,
+            duration: `${duration}ms`
+          });
+        }
       });
       next();
     });
