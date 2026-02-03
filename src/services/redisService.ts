@@ -14,7 +14,10 @@ export interface RedisConfig {
   port?: number;
   db?: number;
   url?: string; // Full Redis URL (alternative to username/password/host/port)
+  // Supports both redis:// and rediss:// (TLS) URLs
+  // Example: rediss://username:password@host:port
   keyPrefix?: string;
+  tls?: boolean; // Enable TLS for non-URL connections (when using host/port)
 }
 
 export class RedisService {
@@ -27,6 +30,13 @@ export class RedisService {
   }
 
   /**
+   * Check if Redis is configured (has connection details)
+   */
+  isRedisConfigured(): boolean {
+    return !!this.config.url || (!!this.config.host && !!this.config.port);
+  }
+
+  /**
    * Connect to Redis
    */
   async connect(): Promise<void> {
@@ -36,23 +46,36 @@ export class RedisService {
         return;
       }
 
+      // Check if Redis is configured before attempting connection
+      if (!this.isRedisConfigured()) {
+        logger.warn('Redis is enabled but no connection details provided. Skipping connection.');
+        this.isConnected = false;
+        return;
+      }
+
       // Create Redis client based on configuration
       if (this.config.url) {
-        // Use URL-based connection
+        // Use URL-based connection (supports both redis:// and rediss://)
+        // rediss:// automatically enables TLS/SSL (Redis Cloud compatible)
+        const isTLS = this.config.url.startsWith('rediss://');
         logger.info('Connecting to Redis using URL', {
-          url: this.sanitizeUrl(this.config.url)
+          url: this.sanitizeUrl(this.config.url),
+          tls: isTLS
         });
 
         this.client = createClient({
           url: this.config.url,
           socket: {
-            reconnectStrategy: false // Disable automatic reconnection
+            reconnectStrategy: false, // Disable automatic reconnection
+            // TLS is automatically enabled for rediss:// URLs by the redis package
+            tls: isTLS ? {} : undefined // Explicit TLS config for rediss://
           }
         }) as RedisClientType;
       } else {
         // Use individual parameters (matching your example)
-        // Check if Redis is actually configured
-        if (!this.config.host && !this.config.port) {
+        // This should not happen due to isRedisConfigured() check above,
+        // but keeping as a safety check
+        if (!this.config.host || !this.config.port) {
           throw new Error('Redis host and port are required when not using URL');
         }
 
@@ -60,7 +83,8 @@ export class RedisService {
           host: this.config.host,
           port: this.config.port,
           username: this.config.username || 'default',
-          db: this.config.db || 0
+          db: this.config.db || 0,
+          tls: this.config.tls || false
         });
 
         this.client = createClient({
@@ -69,7 +93,8 @@ export class RedisService {
           socket: {
             host: this.config.host!,
             port: this.config.port!,
-            reconnectStrategy: false // Disable automatic reconnection
+            reconnectStrategy: false, // Disable automatic reconnection
+            tls: this.config.tls ? {} : undefined // Enable TLS if configured
           },
           database: this.config.db || 0
         }) as RedisClientType;
@@ -113,19 +138,27 @@ export class RedisService {
   async disconnect(): Promise<void> {
     try {
       if (!this.client) {
-        logger.info('Redis already disconnected');
+        logger.debug('Redis already disconnected');
         return;
       }
 
-      await this.client.quit();
+      // Check if client is open before trying to quit
+      if (this.client.isOpen) {
+        await this.client.quit();
+      } else {
+        logger.debug('Redis client already closed, skipping quit');
+      }
+      
       this.client = null;
       this.isConnected = false;
 
       logger.info('Redis disconnected successfully');
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('Failed to disconnect from Redis', { error: errorMessage });
-      throw error;
+      // Don't throw on disconnect errors - client might already be closed
+      logger.debug('Redis disconnect completed (client may have been closed)', { error: errorMessage });
+      this.client = null;
+      this.isConnected = false;
     }
   }
 

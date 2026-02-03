@@ -167,7 +167,6 @@ export class StatsMqttLite {
   private async initializeRedis(): Promise<void> {
     logger.info('💾 Initializing Redis (Token Persistence)...');
 
-    try {
       this.redisService = createRedisService({
         url: this.config.redis.url,
         username: this.config.redis.username,
@@ -175,9 +174,20 @@ export class StatsMqttLite {
         host: this.config.redis.host,
         port: this.config.redis.port,
         db: this.config.redis.db,
-        keyPrefix: this.config.redis.keyPrefix
+        keyPrefix: this.config.redis.keyPrefix,
+        tls: this.config.redis.tls
       });
 
+    // Check if Redis is configured before attempting connection
+    if (!this.redisService.isRedisConfigured()) {
+      logger.warn('⚠️  Redis enabled but no connection details provided. Provisioning tokens will use in-memory storage.');
+      logger.warn('   Set REDIS_URL (cloud) or REDIS_HOST (self-hosted) environment variable.');
+      logger.warn('   To disable Redis, set REDIS_ENABLED=false');
+      this.config.redis.enabled = false; // Explicitly disable Redis in config if not configured
+      return;
+    }
+
+    try {
       await this.redisService.connect();
 
       logger.info('✅ Redis connected successfully', {
@@ -189,16 +199,18 @@ export class StatsMqttLite {
         error: error.message,
         stack: error.stack
       });
-      logger.warn('⚠️  Provisioning tokens will not be persistent');
-      logger.warn('   Set REDIS_URL (cloud) or REDIS_HOST (self-hosted)');
-      logger.warn('   To disable Redis, set REDIS_ENABLED=false');
+      logger.warn('⚠️  Provisioning tokens will use in-memory storage due to Redis connection failure.');
+      this.config.redis.enabled = false; // Ensure Redis is marked as disabled in config
       
       // Clean up failed connection to prevent reconnection attempts
       if (this.redisService) {
         try {
           await this.redisService.disconnect();
         } catch (disconnectError) {
-          // Ignore disconnect errors
+          // Ignore disconnect errors - client may already be closed
+          logger.debug('Redis disconnect error ignored (client may be closed)', {
+            error: disconnectError instanceof Error ? disconnectError.message : 'Unknown error'
+          });
         }
         this.redisService = undefined;
       }

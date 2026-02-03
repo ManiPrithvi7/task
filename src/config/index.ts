@@ -42,12 +42,15 @@ export interface MongoDBConfig {
 export interface RedisConfig {
   enabled: boolean;
   url?: string;        // Full Redis URL (alternative to individual params)
+  // Supports both redis:// and rediss:// (TLS) URLs
+  // Example: rediss://username:password@host:port (Redis Cloud)
   username?: string;   // Redis username (default: 'default')
   password?: string;   // Redis password
   host?: string;       // Redis host
   port?: number;       // Redis port
   db?: number;         // Redis database number
   keyPrefix?: string;  // Key prefix for namespacing
+  tls?: boolean;       // Enable TLS for host/port connections (default: false)
 }
 
 export interface AppEnvConfig {
@@ -107,12 +110,15 @@ export function loadConfig(): AppConfig {
     redis: {
       enabled: process.env.REDIS_ENABLED !== 'false',  // Enabled by default
       url: process.env.REDIS_URL || process.env.REDIS_URI,  // Full Redis URL (optional)
+      // Supports both redis:// and rediss:// (TLS) URLs
+      // Example: rediss://username:password@host:port (Redis Cloud)
       username: process.env.REDIS_USERNAME || 'default',
       password: process.env.REDIS_PASSWORD,
       host: process.env.REDIS_HOST,
       port: process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined,
       db: parseInt(process.env.REDIS_DB || '0'),
-      keyPrefix: process.env.REDIS_KEY_PREFIX || 'mqtt-lite:'
+      keyPrefix: process.env.REDIS_KEY_PREFIX || 'mqtt-lite:',
+      tls: process.env.REDIS_TLS === 'true' || process.env.REDIS_TLS === '1'  // Enable TLS for host/port connections
     },
     auth: {
       secret: process.env.AUTH_SECRET || ''
@@ -174,9 +180,9 @@ export function validateConfig(config: AppConfig): void {
   if (!config.mongodb.uri) {
     throw new Error('MongoDB URI is REQUIRED. Set MONGODB_URI environment variable.');
   }
-  if (config.redis.enabled && !config.redis.url && !config.redis.host) {
+  if (config.redis.enabled && !config.redis.url && (!config.redis.host || !config.redis.port)) {
     logger.warn('Redis enabled but no connection details provided. Provisioning tokens will not be persistent.');
-    logger.warn('Set REDIS_URL (cloud) or REDIS_HOST (self-hosted) environment variable.');
+    logger.warn('Set REDIS_URL (cloud) or REDIS_HOST + REDIS_PORT (self-hosted) environment variables.');
     logger.warn('To disable Redis, set REDIS_ENABLED=false');
     // Auto-disable Redis if not configured to prevent connection attempts
     config.redis.enabled = false;
