@@ -11,7 +11,7 @@
 import { Router, Request, Response } from 'express';
 import { logger } from '../utils/logger';
 import { ProvisioningService } from '../services/provisioningService';
-import { CAService } from '../services/caService';
+import { CAService, UnsupportedCSRKeyTypeError } from '../services/caService';
 import { AuthService } from '../services/authService';
 import { UserService } from '../services/userService';
 import { DeviceCertificateStatus } from '../models/DeviceCertificate';
@@ -584,12 +584,27 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
           timestamp: new Date().toISOString()
         });
       } catch (certError) {
-        // Provisioning failed - revoke token to allow retry
+        // Unsupported key type (e.g. ECDSA): return 400 and do NOT revoke token so client can retry with RSA CSR
+        if (certError instanceof UnsupportedCSRKeyTypeError) {
+          logger.warn('CSR rejected: unsupported key type (RSA required)', {
+            deviceId,
+            error: certError.message
+          });
+          res.status(400).json({
+            success: false,
+            error: certError.message,
+            code: 'UNSUPPORTED_CSR_KEY_TYPE',
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
+
+        // Other provisioning failures - revoke token to allow clean retry with new token
         logger.error('CSR signing failed, revoking provisioning token', {
           deviceId,
           error: certError instanceof Error ? certError.message : 'Unknown error'
         });
-        
+
         try {
           await provisioningService.revokeToken(provisioningToken);
           logger.info('Provisioning token revoked due to failure', { deviceId });
@@ -599,8 +614,7 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
             error: revokeError instanceof Error ? revokeError.message : 'Unknown error'
           });
         }
-        
-        // Re-throw to be handled by outer catch
+
         throw certError;
       }
     } catch (error) {

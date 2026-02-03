@@ -11,6 +11,19 @@ import mongoose from 'mongoose';
 import { logger } from '../utils/logger';
 import { DeviceCertificate, IDeviceCertificate, DeviceCertificateStatus } from '../models/DeviceCertificate';
 
+/**
+ * Thrown when the CSR uses a key type not supported by the current CA implementation.
+ * node-forge only supports RSA; ECDSA/EC CSRs (e.g. from ESP32 with EC key) trigger this.
+ * Client should retry with an RSA 2048-bit key and CSR (do not revoke token).
+ */
+export class UnsupportedCSRKeyTypeError extends Error {
+  constructor(message: string = 'CSR uses a key type that is not supported (only RSA is supported). Please generate an RSA 2048-bit key and CSR on the device.') {
+    super(message);
+    this.name = 'UnsupportedCSRKeyTypeError';
+    Object.setPrototypeOf(this, UnsupportedCSRKeyTypeError.prototype);
+  }
+}
+
 export interface CAConfig {
   storagePath: string;
   rootCAValidityYears: number;
@@ -150,8 +163,19 @@ export class CAService {
         throw new Error('Root CA not initialized');
       }
 
-      // Parse CSR
-      const csr = forge.pki.certificationRequestFromPem(csrPem);
+      // Parse CSR (node-forge only supports RSA; EC/ECDSA CSRs throw "OID is not RSA")
+      let csr: forge.pki.CertificateSigningRequest;
+      try {
+        csr = forge.pki.certificationRequestFromPem(csrPem);
+      } catch (parseError) {
+        const msg = parseError instanceof Error ? parseError.message : String(parseError);
+        if (msg.includes('OID is not RSA') || msg.includes('not RSA')) {
+          throw new UnsupportedCSRKeyTypeError(
+            'CSR uses a non-RSA key (e.g. ECDSA/EC). Only RSA 2048-bit CSRs are supported. Please generate an RSA key pair and CSR on the device.'
+          );
+        }
+        throw parseError;
+      }
 
       // Verify CSR signature
       if (!csr.verify()) {
