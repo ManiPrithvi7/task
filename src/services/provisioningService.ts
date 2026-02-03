@@ -139,9 +139,26 @@ export class ProvisioningService {
         }) as ProvisioningTokenPayload;
       } catch (jwtError) {
         const jwtErrorMessage = jwtError instanceof Error ? jwtError.message : 'Unknown JWT error';
-        
+        const now = Math.floor(Date.now() / 1000);
+
         // Provide specific error messages for common JWT errors
         if (jwtErrorMessage.includes('expired')) {
+          try {
+            const decoded = jwt.decode(token) as ProvisioningTokenPayload | null;
+            if (decoded?.iat != null && decoded?.exp != null) {
+              const issuedAt = new Date(decoded.iat * 1000).toISOString();
+              const expiresAt = new Date(decoded.exp * 1000).toISOString();
+              logger.warn('Token expired (JWT)', {
+                iat: decoded.iat,
+                exp: decoded.exp,
+                now,
+                issuedAt,
+                expiresAt,
+                tokenTTLSeconds: decoded.exp - decoded.iat,
+                expiredBySeconds: now - decoded.exp
+              });
+            }
+          } catch (_) { /* ignore decode errors */ }
           return { valid: false, error: 'Token expired' };
         }
         if (jwtErrorMessage.includes('invalid signature')) {
@@ -162,10 +179,16 @@ export class ProvisioningService {
       // Step 3: Check JWT expiration explicitly (double-check)
       const now = Math.floor(Date.now() / 1000);
       if (decoded.exp && decoded.exp < now) {
+        const issuedAt = decoded.iat != null ? new Date(decoded.iat * 1000).toISOString() : 'unknown';
+        const expiresAt = new Date(decoded.exp * 1000).toISOString();
         logger.warn('Token expired (JWT expiration check)', {
+          iat: decoded.iat,
           exp: decoded.exp,
           now,
-          expiredBy: `${now - decoded.exp} seconds`
+          issuedAt,
+          expiresAt,
+          tokenTTLSeconds: decoded.iat != null ? decoded.exp - decoded.iat : undefined,
+          expiredBySeconds: now - decoded.exp
         });
         return { valid: false, error: 'Token expired' };
       }

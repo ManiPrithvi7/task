@@ -92,7 +92,7 @@ export function loadConfig(): AppConfig {
     },
     provisioning: {
       enabled: process.env.PROVISIONING_ENABLED !== 'false',  // Enabled by default
-      tokenTTL: parseInt(process.env.PROVISIONING_TOKEN_TTL || '300'),  // 5 minutes
+      tokenTTL: parseInt(process.env.PROVISIONING_TOKEN_TTL || '6000'),  // 5 minutes
       jwtSecret: process.env.JWT_SECRET || process.env.PROVISIONING_JWT_SECRET || 'mqtt-publisher-lite-secret-key-change-in-production',
       caStoragePath: process.env.CA_STORAGE_PATH || `${dataDir}/ca`,
       rootCAValidityYears: parseInt(process.env.ROOT_CA_VALIDITY_YEARS || '10'),

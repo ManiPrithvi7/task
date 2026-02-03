@@ -410,11 +410,14 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
       logger.debug('Device ID and User ID extracted from token', { deviceId, userId });
 
       // Validate request body (only CSR needed now, user_id comes from token)
-      const { csr } = req.body;
+      // Accept both "csr" and "CSR" for compatibility; ensure we get a string
+      const rawCsr = req.body?.csr ?? req.body?.CSR;
+      const csr = typeof rawCsr === 'string' ? rawCsr : (rawCsr != null ? String(rawCsr) : undefined);
 
       logger.debug('Validating request body', {
         hasCSR: !!csr,
         csrLength: csr ? csr.length : 0,
+        bodyKeys: req.body ? Object.keys(req.body) : [],
         deviceId,
         userId
       });
@@ -523,9 +526,20 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
 
       // Validate CSR
       if (!csr || typeof csr !== 'string' || csr.trim().length === 0) {
+        const bodyKeys = req.body && typeof req.body === 'object' ? Object.keys(req.body) : [];
+        logger.warn('sign-csr 400: missing or empty csr', {
+          deviceId,
+          hasCsr: !!req.body?.csr,
+          csrType: typeof req.body?.csr,
+          bodyKeys,
+          contentType: req.headers['content-type']
+        });
+        const hint = bodyKeys.length === 0
+          ? ' Ensure Content-Type: application/json and request body is valid JSON with a "csr" field.'
+          : ` Request body keys received: ${bodyKeys.join(', ')}.`;
         res.status(400).json({
           success: false,
-          error: 'csr is required and must be a Base64-encoded PEM string',
+          error: `csr is required in the request body (JSON: { "csr": "<base64 or PEM string>" }) and must be non-empty.${hint}`,
           timestamp: new Date().toISOString()
         });
         return;
@@ -544,13 +558,18 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
 
         if (!csrPem.includes('-----BEGIN CERTIFICATE REQUEST-----') ||
             !csrPem.includes('-----END CERTIFICATE REQUEST-----')) {
-          throw new Error('Invalid CSR format');
+          throw new Error('Decoded value is not a PEM CSR (missing BEGIN/END CERTIFICATE REQUEST)');
         }
       } catch (decodeError) {
         const errorMessage = decodeError instanceof Error ? decodeError.message : 'Unknown error';
+        logger.warn('sign-csr 400: invalid CSR format', {
+          deviceId,
+          error: errorMessage,
+          csrLength: csr?.length
+        });
         res.status(400).json({
           success: false,
-          error: `Invalid CSR format: ${errorMessage}`,
+          error: `Invalid CSR format: ${errorMessage}. Send raw PEM or base64-encoded PEM.`,
           timestamp: new Date().toISOString()
         });
         return;
@@ -587,7 +606,7 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
           ? certificateDoc.expires_at 
           : certificateDoc.expires_at.toISOString();
 
-        // Return certificate and Root CA
+        // Return certificate and Root CA (provisioning token was revoked; do not reuse)
         res.status(200).json({
           success: true,
           device_id: deviceId,
@@ -597,12 +616,13 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
           serial_number: certificateDoc.fingerprint,
           certificateId: certId,
           downloadUrl: `/api/v1/certificates/${certId}/download`,
+          message: 'Certificate issued. Provisioning token has been revoked; request a new token from /onboarding for another device.',
           timestamp: new Date().toISOString()
         });
       } catch (certError) {
         // Unsupported key type (e.g. ECDSA): return 400; token is never revoked on failure so device can retry
         if (certError instanceof UnsupportedCSRKeyTypeError) {
-          logger.warn('CSR rejected: unsupported key type (RSA required)', {
+          logger.warn('sign-csr 400: unsupported CSR key type', {
             deviceId,
             error: certError.message
           });
@@ -615,10 +635,28 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
           return;
         }
 
-        // Any other failure: do NOT revoke token so device can retry with same token
+        // CSR validation errors (device ID not in CSR, invalid signature, etc.): return 400 so client sees real reason
+        const certErrMsg = certError instanceof Error ? certError.message : 'Unknown error';
+        const isCsrValidation =
+          certErrMsg.includes('not found in CSR') ||
+          certErrMsg.includes('Invalid CSR signature') ||
+          certErrMsg.includes('does not contain a public key');
+        if (isCsrValidation) {
+          const code = certErrMsg.includes('not found in CSR') ? 'INVALID_CSR_DEVICE_ID' : 'INVALID_CSR';
+          logger.warn('sign-csr 400: CSR validation failed', { deviceId, error: certErrMsg });
+          res.status(400).json({
+            success: false,
+            error: certErrMsg,
+            code,
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
+
+        // Any other CA failure: do NOT revoke token so device can retry
         logger.warn('CSR signing failed, token NOT revoked so device can retry', {
           deviceId,
-          error: certError instanceof Error ? certError.message : 'Unknown error'
+          error: certErrMsg
         });
         throw certError;
       }
@@ -635,26 +673,34 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
         tokenPreview: provisioningToken ? provisioningToken.substring(0, 30) + '...' : 'none'
       });
 
-      // Provide more specific error messages for common issues
+      // CSR/validation errors → 400 (so client never sees 500 or wrong message for CSR issues)
       let statusCode = 500;
-      let errorResponse = 'Internal server error';
-      
-      if (errorMessage.includes('CSR') || errorMessage.includes('certificate')) {
-        errorResponse = `Certificate signing failed: ${errorMessage}`;
+      let errorResponse: string = 'Internal server error';
+      let code: string | undefined;
+
+      if (errorMessage.includes('not found in CSR')) {
+        statusCode = 400;
+        code = 'INVALID_CSR_DEVICE_ID';
+        errorResponse = errorMessage;
+      } else if (
+        errorMessage.includes('Invalid CSR signature') ||
+        (errorMessage.includes('CSR') && !errorMessage.includes('Root CA'))
+      ) {
+        statusCode = 400;
+        code = 'INVALID_CSR';
+        errorResponse = errorMessage.includes('Certificate signing failed:') ? errorMessage : `Certificate signing failed: ${errorMessage}`;
       } else if (errorMessage.includes('MongoDB') || errorMessage.includes('database')) {
         errorResponse = 'Database error occurred. Please try again.';
         statusCode = 503;
       } else if (errorMessage.includes('Root CA')) {
         errorResponse = 'Certificate Authority error. Please contact support.';
         statusCode = 503;
-      } else {
-        // For unknown errors, log full details but return generic message
-        errorResponse = 'Internal server error';
       }
 
       res.status(statusCode).json({
         success: false,
         error: errorResponse,
+        ...(code && { code }),
         timestamp: new Date().toISOString()
       });
     }

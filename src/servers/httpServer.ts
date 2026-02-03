@@ -43,8 +43,9 @@ export class HttpServer {
       contentSecurityPolicy: false
     }));
     this.app.use(compression());
-    this.app.use(express.json());
-    this.app.use(express.urlencoded({ extended: true }));
+    // Increase limit for sign-csr body (PEM CSR + token can be ~4–8kb)
+    this.app.use(express.json({ limit: '512kb' }));
+    this.app.use(express.urlencoded({ extended: true, limit: '512kb' }));
 
     const publicPath = join(process.cwd(), 'public');
     this.app.use(express.static(publicPath));
