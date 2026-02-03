@@ -8,16 +8,12 @@ import { createClient, RedisClientType } from 'redis';
 import { logger } from '../utils/logger';
 
 export interface RedisConfig {
-  username?: string;
-  password?: string;
   host?: string;
   port?: number;
+  password?: string;
   db?: number;
-  url?: string; // Full Redis URL (alternative to username/password/host/port)
-  // Supports both redis:// and rediss:// (TLS) URLs
-  // Example: rediss://username:password@host:port
   keyPrefix?: string;
-  tls?: boolean; // Enable TLS for non-URL connections (when using host/port)
+  tls?: boolean; // Enable TLS for Redis Cloud (REDIS_TLS=true)
 }
 
 export class RedisService {
@@ -30,29 +26,14 @@ export class RedisService {
   }
 
   /**
-   * Check if Redis is configured (has connection details)
+   * Check if Redis is configured (host + port required).
    */
   isRedisConfigured(): boolean {
-    return !!this.config.url || (!!this.config.host && !!this.config.port);
+    return !!(this.config.host && this.config.port !== undefined && this.config.port !== null);
   }
 
   /**
-   * Returns a valid Redis URL (trimmed, parseable) or undefined if URL is missing/invalid.
-   * Invalid URLs often come from copy-paste (newlines, or password with unencoded special chars).
-   */
-  private getValidRedisUrl(): string | undefined {
-    const raw = this.config.url?.trim();
-    if (!raw) return undefined;
-    try {
-      new URL(raw);
-      return raw;
-    } catch {
-      return undefined;
-    }
-  }
-
-  /**
-   * Connect to Redis
+   * Connect to Redis using host, port, password (same format as node-redis / Redis Cloud).
    */
   async connect(): Promise<void> {
     try {
@@ -61,60 +42,29 @@ export class RedisService {
         return;
       }
 
-      // Check if Redis is configured before attempting connection
       if (!this.isRedisConfigured()) {
         logger.warn('Redis is enabled but no connection details provided. Skipping connection.');
         this.isConnected = false;
         return;
       }
 
-      const useUrl = this.getValidRedisUrl();
-      const useHostPort = this.config.host && this.config.port !== undefined && this.config.port !== null;
+      logger.info('Connecting to Redis', {
+        host: this.config.host,
+        port: this.config.port,
+        db: this.config.db ?? 0,
+        tls: this.config.tls ?? false
+      });
 
-      if (useUrl) {
-        // Use URL-based connection (supports both redis:// and rediss://)
-        // rediss:// automatically enables TLS/SSL (Redis Cloud compatible)
-        const isTLS = useUrl.startsWith('rediss://');
-        logger.info('Connecting to Redis using URL', {
-          url: this.sanitizeUrl(useUrl),
-          tls: isTLS
-        });
-
-        this.client = createClient({
-          url: useUrl,
-          socket: {
-            reconnectStrategy: false,
-            connectTimeout: 10000, // 10s fail-fast; ENOTFOUND/ETIMEDOUT surface quickly
-            tls: isTLS ? undefined : false
-          }
-        }) as RedisClientType;
-      } else if (useHostPort) {
-        // Fallback: host/port (when REDIS_URL is invalid or not set - e.g. password with special chars, or copy-paste newline)
-        logger.info('Connecting to Redis using host/port', {
-          host: this.config.host,
-          port: this.config.port,
-          username: this.config.username || 'default',
-          db: this.config.db ?? 0,
-          tls: this.config.tls ?? false
-        });
-
-        this.client = createClient({
-          username: this.config.username || 'default',
-          password: this.config.password,
-          socket: {
-            host: this.config.host!,
-            port: this.config.port!,
-            reconnectStrategy: false,
-            connectTimeout: 10000,
-            tls: this.config.tls ? undefined : false
-          },
-          database: this.config.db ?? 0
-        }) as RedisClientType;
-      } else {
-        throw new Error(
-          'Invalid Redis URL and no host/port. Fix REDIS_URL (trim newlines/spaces; encode special chars in password) or set REDIS_HOST and REDIS_PORT.'
-        );
-      }
+      this.client = createClient({
+        username: 'default', // Redis 6+ ACL / Redis Cloud
+        password: this.config.password,
+        socket: {
+          host: this.config.host!,
+          port: this.config.port!,
+          ...(this.config.tls && { tls: true })
+        },
+        database: this.config.db ?? 0
+      }) as RedisClientType;
 
       // Setup error handler
       this.client.on('error', (err: Error) => {
@@ -138,15 +88,10 @@ export class RedisService {
       const isENOTFOUND = errorMessage.includes('ENOTFOUND') || (error instanceof Error && (error as NodeJS.ErrnoException).code === 'ENOTFOUND');
       logger.error('❌ Failed to connect to Redis', {
         error: errorMessage,
-        config: {
-          url: this.config.url ? this.sanitizeUrl(this.config.url) : undefined,
-          host: this.config.host,
-          port: this.config.port,
-          username: this.config.username
-        }
+        config: { host: this.config.host, port: this.config.port }
       });
       if (isENOTFOUND) {
-        logger.warn('Redis host could not be resolved (DNS). Check REDIS_HOST/REDIS_URL is correct, your network has internet access, and the Redis Cloud database is active. To run without Redis set REDIS_ENABLED=false.');
+        logger.warn('Redis host could not be resolved (DNS). Check REDIS_HOST and REDIS_PORT, and that Redis is reachable. To run without Redis set REDIS_ENABLED=false.');
       }
       throw new Error(`Redis connection failed: ${errorMessage}`);
     }
@@ -249,21 +194,6 @@ export class RedisService {
         this.client.removeAllListeners('reconnecting');
       }
     });
-  }
-
-  /**
-   * Sanitize URL for logging (remove credentials)
-   */
-  private sanitizeUrl(url: string): string {
-    try {
-      const parsed = new URL(url);
-      if (parsed.password) {
-        return url.replace(`:${parsed.password}@`, ':***@');
-      }
-      return url;
-    } catch {
-      return '[invalid URL]';
-    }
   }
 
   /**

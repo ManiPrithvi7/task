@@ -62,11 +62,11 @@ export class StatsMqttLite {
       // Initialize MongoDB (REQUIRED)
       await this.initializeMongoDB();
 
-      // Initialize Redis (REDIS_URL or REDIS_HOST+PORT) for token persistence in dev and production
-      if (this.config.redis.enabled && this.config.redis.url) {
+      // Initialize Redis (REDIS_HOST + REDIS_PORT + REDIS_PASSWORD) for token persistence
+      if (this.config.redis.enabled && this.config.redis.host && this.config.redis.port !== undefined) {
         await this.initializeRedis();
       } else if (this.config.redis.enabled) {
-        logger.warn('⚠️  Redis enabled but no connection URL. Provisioning tokens will use in-memory storage.');
+        logger.warn('⚠️  Redis enabled but REDIS_HOST or REDIS_PORT not set. Provisioning tokens will use in-memory storage.');
       }
 
       // Initialize services
@@ -164,24 +164,36 @@ export class StatsMqttLite {
     }
   }
 
+  /** Returns the Redis connection host for production localhost check. */
+  private getRedisConnectionHost(): string | null {
+    return this.config.redis.host ?? null;
+  }
+
   private async initializeRedis(): Promise<void> {
     logger.info('💾 Initializing Redis (Token Persistence)...');
 
-      this.redisService = createRedisService({
-        url: this.config.redis.url,
-        username: this.config.redis.username,
-        password: this.config.redis.password,
-        host: this.config.redis.host,
-        port: this.config.redis.port,
-        db: this.config.redis.db,
-        keyPrefix: this.config.redis.keyPrefix,
-        tls: this.config.redis.tls
-      });
+    const redisHost = this.getRedisConnectionHost();
+    const isLocalhost = redisHost === 'localhost' || redisHost === '127.0.0.1' || redisHost === '::1';
+    if (this.config.app.env === 'production' && isLocalhost) {
+      throw new Error(
+        'Redis is configured to use localhost. On Render and other cloud platforms there is no Redis on localhost. ' +
+        'Set REDIS_HOST and REDIS_PORT to your external Redis (e.g. Redis Cloud). To run without Redis, set REDIS_ENABLED=false.'
+      );
+    }
+
+    this.redisService = createRedisService({
+      host: this.config.redis.host,
+      port: this.config.redis.port,
+      password: this.config.redis.password,
+      db: this.config.redis.db,
+      keyPrefix: this.config.redis.keyPrefix,
+      tls: this.config.redis.tls
+    });
 
     // Check if Redis is configured before attempting connection
     if (!this.redisService.isRedisConfigured()) {
       logger.warn('⚠️  Redis enabled but no connection details provided. Provisioning tokens will use in-memory storage.');
-      logger.warn('   Set REDIS_URL (cloud) or REDIS_HOST (self-hosted) environment variable.');
+      logger.warn('   Set REDIS_HOST and REDIS_PORT (and REDIS_PASSWORD if required).');
       logger.warn('   To disable Redis, set REDIS_ENABLED=false');
       this.config.redis.enabled = false; // Explicitly disable Redis in config if not configured
       return;
@@ -212,7 +224,7 @@ export class StatsMqttLite {
       this.config.redis.enabled = false;
       throw new Error(
         `Redis connection failed (${error?.message ?? 'unknown'}). ` +
-        'Set REDIS_URL for token persistence. Fix the connection or set REDIS_ENABLED=false to use in-memory tokens (not persistent).'
+        'Set REDIS_HOST, REDIS_PORT (and REDIS_PASSWORD if required). Fix the connection or set REDIS_ENABLED=false to use in-memory tokens (not persistent).'
       );
     }
   }

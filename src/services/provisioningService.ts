@@ -201,7 +201,7 @@ export class ProvisioningService {
         });
 
         const hint = storeStats.storage === 'memory'
-          ? ' Server is using in-memory token storage; tokens are lost on restart. Call POST /onboarding then POST /sign-csr in the same session without restarting, or set REDIS_URL for persistence.'
+          ? ' Server is using in-memory token storage; tokens are lost on restart. Call POST /onboarding then POST /sign-csr in the same session without restarting, or set REDIS_HOST, REDIS_PORT (and REDIS_PASSWORD) for persistence.'
           : ' Request a new provisioning token (POST /onboarding), then call sign-csr immediately.';
 
         return {

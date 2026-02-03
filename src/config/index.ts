@@ -41,16 +41,12 @@ export interface MongoDBConfig {
 
 export interface RedisConfig {
   enabled: boolean;
-  url?: string;        // Full Redis URL (alternative to individual params)
-  // Supports both redis:// and rediss:// (TLS) URLs
-  // Example: rediss://username:password@host:port (Redis Cloud)
-  username?: string;   // Redis username (default: 'default')
-  password?: string;   // Redis password
-  host?: string;       // Redis host
-  port?: number;       // Redis port
-  db?: number;         // Redis database number
+  host?: string;       // Redis host (REDIS_HOST)
+  port?: number;       // Redis port (REDIS_PORT)
+  password?: string;   // Redis password (REDIS_PASSWORD)
+  db?: number;         // Redis database number (default 0)
   keyPrefix?: string;  // Key prefix for namespacing
-  tls?: boolean;       // Enable TLS for host/port connections (default: false)
+  tls?: boolean;       // Enable TLS for Redis Cloud (REDIS_TLS=true)
 }
 
 export interface AppEnvConfig {
@@ -107,32 +103,15 @@ export function loadConfig(): AppConfig {
       uri: process.env.MONGODB_URI || process.env.MONGO_URI || '',
       dbName: process.env.MONGODB_DB_NAME || 'statsmqtt'
     },
-    redis: (() => {
-      const enabled = process.env.REDIS_ENABLED !== 'false';
-      const username = process.env.REDIS_USERNAME || 'default';
-      const password = process.env.REDIS_PASSWORD;
-      const host = process.env.REDIS_HOST?.trim();
-      const port = process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT, 10) : undefined;
-      const tls = process.env.REDIS_TLS === 'true' || process.env.REDIS_TLS === '1';
-      // Primary: REDIS_URL (dev and production). Trim to avoid "Invalid URL" from copy-paste (newlines/spaces).
-      let url = (process.env.REDIS_URL || process.env.REDIS_URI || '').trim() || undefined;
-      if (!url && host && port !== undefined) {
-        const scheme = tls ? 'rediss' : 'redis';
-        const auth = password ? `${encodeURIComponent(username)}:${encodeURIComponent(password)}` : username;
-        url = `${scheme}://${auth}@${host}:${port}`;
-      }
-      return {
-        enabled,
-        url,
-        username,
-        password,
-        host,
-        port,
-        db: parseInt(process.env.REDIS_DB || '0'),
-        keyPrefix: process.env.REDIS_KEY_PREFIX || 'mqtt-lite:',
-        tls
-      };
-    })(),
+    redis: {
+      enabled: process.env.REDIS_ENABLED !== 'false',
+      host: process.env.REDIS_HOST?.trim(),
+      port: process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT, 10) : undefined,
+      password: process.env.REDIS_PASSWORD,
+      db: parseInt(process.env.REDIS_DB || '0', 10),
+      keyPrefix: process.env.REDIS_KEY_PREFIX || 'mqtt-lite:',
+      tls: process.env.REDIS_TLS === 'true' || process.env.REDIS_TLS === '1'
+    },
     auth: {
       secret: process.env.AUTH_SECRET || ''
     },
@@ -161,11 +140,8 @@ export function loadConfig(): AppConfig {
       dbName: config.mongodb.dbName
     },
     redis: {
-      enabled: config.redis.enabled,
-      url: config.redis.url ? '***' : undefined,
-      username: config.redis.username,
       host: config.redis.host || 'not set',
-      port: config.redis.port || 'not set',
+      port: config.redis.port ?? 'not set',
       keyPrefix: config.redis.keyPrefix
     },
     env: config.app.env
@@ -193,11 +169,10 @@ export function validateConfig(config: AppConfig): void {
   if (!config.mongodb.uri) {
     throw new Error('MongoDB URI is REQUIRED. Set MONGODB_URI environment variable.');
   }
-  // Redis: used for token persistence in both development and production. Set REDIS_URL or REDIS_HOST+REDIS_PORT.
-  if (config.redis.enabled && !config.redis.url) {
-    logger.warn('Redis enabled but no connection URL. Provisioning tokens will use in-memory storage.');
-    logger.warn('Set REDIS_URL (e.g. redis://localhost:6379 for dev, rediss://user:pass@host:port for cloud) or REDIS_HOST+REDIS_PORT.');
-    logger.warn('To disable Redis, set REDIS_ENABLED=false');
+  // Redis: host + port required when enabled (password optional for no-auth Redis).
+  if (config.redis.enabled && (!config.redis.host || config.redis.port === undefined)) {
+    logger.warn('Redis enabled but REDIS_HOST or REDIS_PORT not set. Provisioning tokens will use in-memory storage.');
+    logger.warn('Set REDIS_HOST and REDIS_PORT (and REDIS_PASSWORD if required). To disable Redis, set REDIS_ENABLED=false');
     config.redis.enabled = false;
   }
 
