@@ -130,7 +130,8 @@ export class ProvisioningService {
    */
   async validateTokenWithoutRevoke(token: string): Promise<TokenValidationResult> {
     try {
-      // Verify JWT signature and expiration
+      // Step 1: Verify JWT signature and expiration FIRST
+      // This is the primary validation - JWT library handles expiration
       let decoded: ProvisioningTokenPayload;
       try {
         decoded = jwt.verify(token, this.config.jwtSecret, {
@@ -138,31 +139,83 @@ export class ProvisioningService {
         }) as ProvisioningTokenPayload;
       } catch (jwtError) {
         const jwtErrorMessage = jwtError instanceof Error ? jwtError.message : 'Unknown JWT error';
+        
+        // Provide specific error messages for common JWT errors
+        if (jwtErrorMessage.includes('expired')) {
+          return { valid: false, error: 'Token expired' };
+        }
+        if (jwtErrorMessage.includes('invalid signature')) {
+          return { valid: false, error: 'Invalid token signature' };
+        }
+        if (jwtErrorMessage.includes('malformed')) {
+          return { valid: false, error: 'Invalid token format' };
+        }
+        
         return { valid: false, error: `Token verification failed: ${jwtErrorMessage}` };
       }
 
-      // Validate token type
+      // Step 2: Validate token type
       if (decoded.type !== 'provisioning') {
         return { valid: false, error: 'Invalid token type' };
       }
 
-      // Check if token exists in store
-      const deviceId = await this.tokenStore.getDeviceByToken(token);
-
-      if (!deviceId) {
-        const now = Math.floor(Date.now() / 1000);
-        if (decoded.exp && decoded.exp < now) {
-          return { valid: false, error: 'Token expired' };
-        }
-        return { valid: false, error: 'Token not found in system' };
+      // Step 3: Check JWT expiration explicitly (double-check)
+      const now = Math.floor(Date.now() / 1000);
+      if (decoded.exp && decoded.exp < now) {
+        logger.warn('Token expired (JWT expiration check)', {
+          exp: decoded.exp,
+          now,
+          expiredBy: `${now - decoded.exp} seconds`
+        });
+        return { valid: false, error: 'Token expired' };
       }
 
-      // Validate device_id matches
+      // Step 4: Check if token exists in store (secondary validation)
+      // This helps detect revoked tokens or tokens that were never stored
+      let deviceId: string | null = null;
+      try {
+        deviceId = await this.tokenStore.getDeviceByToken(token);
+      } catch (storeError) {
+        // Token store error (Redis down, etc.) - but JWT is valid
+        // Log warning but allow validation if JWT is valid
+        logger.warn('Token store lookup failed, but JWT is valid', {
+          error: storeError instanceof Error ? storeError.message : 'Unknown error',
+          deviceId: decoded.device_id,
+          note: 'Proceeding with JWT validation only'
+        });
+        // Continue with JWT validation - token store is optional for validation
+      }
+
+      // If token not in store but JWT is valid, check if it's a timing issue
+      if (!deviceId) {
+        // Token might have expired in store but JWT still valid (race condition)
+        // Or token store was cleared (server restart, Redis flush)
+        // Since JWT is valid, we can still proceed but log a warning
+        logger.warn('Token not found in store, but JWT is valid', {
+          deviceId: decoded.device_id,
+          exp: decoded.exp,
+          expiresIn: decoded.exp ? `${decoded.exp - now} seconds` : 'unknown',
+          note: 'Token may have been cleared from store (server restart, Redis flush)'
+        });
+        
+        // For security, we should still require token to be in store
+        // But provide a clearer error message
+        return { 
+          valid: false, 
+          error: 'Token not found in system. Token may have expired or been revoked. Please request a new provisioning token.' 
+        };
+      }
+
+      // Step 5: Validate device_id matches between JWT and store
       if (decoded.device_id !== deviceId) {
+        logger.error('Device ID mismatch between JWT and token store', {
+          jwtDeviceId: decoded.device_id,
+          storeDeviceId: deviceId
+        });
         return { valid: false, error: 'Device ID mismatch' };
       }
 
-      // Extract user_id from token payload
+      // Step 6: Extract user_id from token payload
       const userId = decoded.user_id;
       if (!userId) {
         logger.warn('User ID not found in token payload', {
@@ -175,7 +228,12 @@ export class ProvisioningService {
       return { valid: true, deviceId, userId };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      return { valid: false, error: errorMessage };
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      logger.error('Token validation error', {
+        error: errorMessage,
+        stack: errorStack
+      });
+      return { valid: false, error: `Token validation failed: ${errorMessage}` };
     }
   }
 

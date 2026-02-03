@@ -305,6 +305,10 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
    * Validates provisioning token and signs CSR to create device certificate
    */
   router.post('/sign-csr', async (req: Request, res: Response): Promise<void> => {
+    // Declare variables outside try block for error handling
+    let provisioningToken: string | undefined;
+    let deviceId: string | undefined;
+    
     try {
       logger.debug('CSR signing request received', {
         method: req.method,
@@ -327,7 +331,6 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
 
       // Extract provisioning token from Authorization header or body
       const authHeader = req.headers.authorization;
-      let provisioningToken: string | undefined;
 
       logger.debug('Extracting provisioning token', {
         hasAuthHeader: !!authHeader,
@@ -385,7 +388,7 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
         return;
       }
 
-      const deviceId = tokenValidation.deviceId;
+      deviceId = tokenValidation.deviceId;
       const userId = tokenValidation.userId;  // Extract user_id from token
       
       logger.debug('Device ID and User ID extracted from token', { deviceId, userId });
@@ -602,11 +605,37 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('Failed to sign CSR', { error: errorMessage });
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      
+      logger.error('Failed to sign CSR', {
+        error: errorMessage,
+        stack: errorStack,
+        deviceId: deviceId || req.body?.device_id || 'unknown',
+        hasCSR: !!req.body?.csr,
+        hasToken: !!provisioningToken,
+        tokenPreview: provisioningToken ? provisioningToken.substring(0, 30) + '...' : 'none'
+      });
 
-      res.status(500).json({
+      // Provide more specific error messages for common issues
+      let statusCode = 500;
+      let errorResponse = 'Internal server error';
+      
+      if (errorMessage.includes('CSR') || errorMessage.includes('certificate')) {
+        errorResponse = `Certificate signing failed: ${errorMessage}`;
+      } else if (errorMessage.includes('MongoDB') || errorMessage.includes('database')) {
+        errorResponse = 'Database error occurred. Please try again.';
+        statusCode = 503;
+      } else if (errorMessage.includes('Root CA')) {
+        errorResponse = 'Certificate Authority error. Please contact support.';
+        statusCode = 503;
+      } else {
+        // For unknown errors, log full details but return generic message
+        errorResponse = 'Internal server error';
+      }
+
+      res.status(statusCode).json({
         success: false,
-        error: 'Internal server error',
+        error: errorResponse,
         timestamp: new Date().toISOString()
       });
     }

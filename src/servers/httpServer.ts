@@ -72,12 +72,12 @@ export class HttpServer {
             duration: `${duration}ms`
           });
         } else {
-          logger.info('HTTP request', {
-            method: req.method,
-            path: req.path,
-            status: res.statusCode,
-            duration: `${duration}ms`
-          });
+        logger.info('HTTP request', {
+          method: req.method,
+          path: req.path,
+          status: res.statusCode,
+          duration: `${duration}ms`
+        });
         }
       });
       next();
