@@ -194,42 +194,39 @@ export class ProvisioningService {
       }
 
       // Step 4: Check if token exists in store (secondary validation)
-      // This helps detect revoked tokens or tokens that were never stored
+      // When store is unavailable (Redis down, etc.), fall back to JWT-only so valid tokens still work
       let deviceId: string | null = null;
       try {
         deviceId = await this.tokenStore.getDeviceByToken(token);
       } catch (storeError) {
-        // Token store error (Redis down, etc.) - but JWT is valid
-        // Log warning but allow validation if JWT is valid
-        logger.warn('Token store lookup failed, but JWT is valid', {
+        deviceId = decoded.device_id;
+        logger.warn('Token store lookup failed, proceeding with JWT-only validation', {
           error: storeError instanceof Error ? storeError.message : 'Unknown error',
-          deviceId: decoded.device_id,
-          note: 'Proceeding with JWT validation only'
+          deviceId: decoded.device_id
         });
-        // Continue with JWT validation - token store is optional for validation
       }
 
-      // If token not in store but JWT is valid, check if it's a timing issue
+      // If token not in store but JWT is valid (and store did not throw): already used or store cleared
       if (!deviceId) {
         const storeStats = await this.tokenStore.getStats();
-        // Token might have expired in store but JWT still valid (race condition)
-        // Or token store was cleared (server restart, Redis flush)
-        logger.warn('Token not found in store, but JWT is valid', {
+        logger.warn('Token not found in store, but JWT is valid (one-time use or store cleared)', {
           deviceId: decoded.device_id,
           exp: decoded.exp,
           expiresIn: decoded.exp ? `${decoded.exp - now} seconds` : 'unknown',
           storage: storeStats.storage,
-          tokenCount: storeStats.tokenCount,
-          note: 'Token may have been cleared from store (server restart, or in-memory store was reset). Configure Redis for persistence.'
+          tokenCount: storeStats.tokenCount
         });
 
-        const hint = storeStats.storage === 'memory'
-          ? ' Server is using in-memory token storage; tokens are lost on restart. Call POST /onboarding then POST /sign-csr in the same session without restarting, or set REDIS_HOST, REDIS_PORT (and REDIS_PASSWORD) for persistence.'
-          : ' Request a new provisioning token (POST /onboarding), then call sign-csr immediately.';
+        const oneTimeUseMessage =
+          'Provisioning tokens are one-time use. This token was already used (e.g. after a successful sign-csr) or is no longer in the system. Request a new token from POST /onboarding, then call POST /sign-csr once.';
+        const hint =
+          storeStats.storage === 'memory'
+            ? ` ${oneTimeUseMessage} If you did not call sign-csr yet, the server may have restarted (in-memory store was reset). Configure Redis for persistence.`
+            : ` ${oneTimeUseMessage}`;
 
         return {
           valid: false,
-          error: `Token not found in system. Token may have expired or been revoked.${hint}`
+          error: `Token not found in system.${hint}`
         };
       }
 

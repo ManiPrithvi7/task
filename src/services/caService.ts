@@ -24,6 +24,18 @@ export class UnsupportedCSRKeyTypeError extends Error {
   }
 }
 
+/**
+ * Thrown when the device already has an active certificate and replace is not allowed.
+ * Route should return 409 with code DEVICE_HAS_ACTIVE_CERTIFICATE.
+ */
+export class DeviceAlreadyHasCertificateError extends Error {
+  constructor(message: string = 'Device already has an active certificate') {
+    super(message);
+    this.name = 'DeviceAlreadyHasCertificateError';
+    Object.setPrototypeOf(this, DeviceAlreadyHasCertificateError.prototype);
+  }
+}
+
 export interface CAConfig {
   storagePath: string;
   rootCAValidityYears: number;
@@ -238,7 +250,41 @@ export class CAService {
 
       const fingerprint = this.generateCertificateFingerprint(certificatePem);
 
-      // Store certificate in MongoDB
+      // If device already has an active cert: either return 409 or replace (dev/replace mode)
+      const allowReplace =
+        process.env.ALLOW_ONBOARDING_WITH_ACTIVE_CERT === 'true' || process.env.NODE_ENV === 'development';
+      const existingCert = await this.findActiveCertificateByDeviceId(deviceId);
+      if (existingCert) {
+        if (!allowReplace) {
+          throw new DeviceAlreadyHasCertificateError('Device already has an active certificate');
+        }
+        const updated = await DeviceCertificate.findOneAndUpdate(
+          { device_id: deviceId },
+          {
+            $set: {
+              certificate: certificatePem,
+              fingerprint,
+              cn,
+              ca_certificate: this.rootCA!.certificate,
+              expires_at: notAfter,
+              status: DeviceCertificateStatus.active,
+              user_id: new mongoose.Types.ObjectId(userId)
+            }
+          },
+          { new: true }
+        );
+        if (!updated) {
+          throw new Error('Failed to update existing certificate');
+        }
+        logger.info('Replaced existing device certificate (dev/replace mode)', {
+          deviceId,
+          userId,
+          certificateId: updated._id
+        });
+        return updated as IDeviceCertificate;
+      }
+
+      // Store new certificate in MongoDB
       // Note: private_key is required in schema but we use empty string
       // because device keeps its private key during CSR signing
       const certDoc = new DeviceCertificate({

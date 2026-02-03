@@ -11,7 +11,7 @@
 import { Router, Request, Response } from 'express';
 import { logger } from '../utils/logger';
 import { ProvisioningService } from '../services/provisioningService';
-import { CAService, UnsupportedCSRKeyTypeError } from '../services/caService';
+import { CAService, UnsupportedCSRKeyTypeError, DeviceAlreadyHasCertificateError } from '../services/caService';
 import { AuthService } from '../services/authService';
 import { UserService } from '../services/userService';
 import { DeviceCertificateStatus } from '../models/DeviceCertificate';
@@ -27,6 +27,7 @@ export interface ProvisioningDependencies {
 /** Map token validation error message to a stable code for firmware/client handling. */
 function getTokenErrorCode(errorMessage: string): string {
   if (errorMessage.includes('Token expired')) return 'TOKEN_EXPIRED';
+  if (errorMessage.includes('already used') || errorMessage.includes('one-time use')) return 'TOKEN_ALREADY_USED';
   if (errorMessage.includes('Token not found') || errorMessage.includes('revoked')) return 'TOKEN_NOT_FOUND';
   if (errorMessage.includes('invalid signature')) return 'TOKEN_INVALID_SIGNATURE';
   if (errorMessage.includes('Invalid token format') || errorMessage.includes('malformed')) return 'TOKEN_INVALID_FORMAT';
@@ -62,10 +63,11 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
       });
 
       if (!provisioningService) {
-        logger.error('ProvisioningService not available');
+        logger.error('Onboarding: ProvisioningService not available');
         res.status(503).json({
           success: false,
-          error: 'Provisioning service unavailable',
+          error: 'Provisioning service is temporarily unavailable. Please try again later.',
+          code: 'SERVICE_UNAVAILABLE',
           timestamp: new Date().toISOString()
         });
         return;
@@ -80,12 +82,11 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
       }
 
       if (!authToken || typeof authToken !== 'string' || authToken.trim().length === 0) {
-        logger.warn('No auth_token provided in Authorization header', {
-          hasAuthHeader: !!authHeader
-        });
+        logger.warn('Onboarding: no auth_token provided', { hasAuthHeader: !!authHeader });
         res.status(401).json({
           success: false,
-          error: 'auth_token is required in Authorization header (Bearer token)',
+          error: 'Authentication required. Send a valid auth token in the Authorization header as: Bearer <auth_token>.',
+          code: 'AUTH_TOKEN_MISSING',
           timestamp: new Date().toISOString()
         });
         return;
@@ -93,10 +94,11 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
 
       // Verify auth_token using AuthService
       if (!authService) {
-        logger.error('AuthService not available');
+        logger.error('Onboarding: AuthService not available');
         res.status(503).json({
           success: false,
-          error: 'Authentication service unavailable',
+          error: 'Authentication service is temporarily unavailable. Please try again later.',
+          code: 'SERVICE_UNAVAILABLE',
           timestamp: new Date().toISOString()
         });
         return;
@@ -116,13 +118,11 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
       });
 
       if (!authTokenVerification.valid || !authTokenVerification.userId) {
-        logger.warn('Auth token validation failed', {
-          error: authTokenVerification.error,
-          authTokenPreview: authToken.substring(0, 30) + '...'
-        });
+        logger.warn('Onboarding: auth token validation failed', { error: authTokenVerification.error });
         res.status(401).json({
           success: false,
-          error: authTokenVerification.error || 'Invalid or expired auth_token',
+          error: authTokenVerification.error || 'The auth token is invalid or expired. Sign in again to get a new token.',
+          code: 'AUTH_TOKEN_INVALID',
           timestamp: new Date().toISOString()
         });
         return;
@@ -132,10 +132,11 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
 
       // Verify user exists in database
       if (!userService) {
-        logger.error('UserService not available');
+        logger.error('Onboarding: UserService not available');
         res.status(503).json({
           success: false,
-          error: 'User verification service unavailable',
+          error: 'User verification service is temporarily unavailable. Please try again later.',
+          code: 'SERVICE_UNAVAILABLE',
           timestamp: new Date().toISOString()
         });
         return;
@@ -145,29 +146,25 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
       const userVerification = await userService.verifyUserExists(userIdObjectId);
 
       if (!userVerification.found || !userVerification.user) {
-        // Check if error is a MongoDB connection issue (should be 503, not 404)
-        const isConnectionError = userVerification.error?.includes('MongoDB connection') || 
+        const isConnectionError = userVerification.error?.includes('MongoDB connection') ||
                                   userVerification.error?.includes('connection');
-        
+
         if (isConnectionError) {
-          logger.error('MongoDB connection error during user verification', {
-            userId: userId,
-            error: userVerification.error
-          });
+          logger.error('Onboarding: database error during user verification', { userId, error: userVerification.error });
           res.status(503).json({
             success: false,
-            error: userVerification.error || 'Database service unavailable',
+            error: 'Database is temporarily unavailable. Please try again later.',
+            code: 'DATABASE_UNAVAILABLE',
             timestamp: new Date().toISOString()
           });
           return;
         }
 
-        logger.warn('User not found in database', {
-          userId: userId
-        });
+        logger.warn('Onboarding: user not found', { userId });
         res.status(404).json({
           success: false,
-          error: userVerification.error || 'User not found in database',
+          error: 'User account not found. The authenticated user does not exist in the system.',
+          code: 'USER_NOT_FOUND',
           timestamp: new Date().toISOString()
         });
         return;
@@ -189,13 +186,11 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
       });
 
       if (!device_id || typeof device_id !== 'string' || device_id.trim().length === 0) {
-        logger.warn('Invalid device_id in request', {
-          device_id,
-          type: typeof device_id
-        });
+        logger.warn('Onboarding: invalid or missing device_id', { device_id, type: typeof device_id });
         res.status(400).json({
           success: false,
-          error: 'device_id is required and must be a non-empty string',
+          error: 'Request body must include a non-empty device_id (string). Example: { "device_id": "my-device-001" }.',
+          code: 'DEVICE_ID_REQUIRED',
           timestamp: new Date().toISOString()
         });
         return;
@@ -217,14 +212,14 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
         if (existingCert.expires_at > now) {
           // Original strict check: return 409 to frontend (code DEVICE_HAS_ACTIVE_CERTIFICATE). Skipped when allowReissueWithActiveCert.
           if (!allowReissueWithActiveCert) {
-            logger.warn('Device already has active certificate', {
+            logger.warn('Onboarding: device already has active certificate', {
               device_id: trimmedDeviceId,
               certificateId: existingCert._id,
               expiresAt: existingCert.expires_at
             });
             res.status(409).json({
               success: false,
-              error: 'Device already has an active certificate',
+              error: 'This device already has an active certificate. Revoke the existing certificate first if you need to re-provision.',
               code: 'DEVICE_HAS_ACTIVE_CERTIFICATE',
               timestamp: new Date().toISOString()
             });
@@ -259,62 +254,65 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
       // Get token TTL from config
       const tokenTTL = provisioningService.getTokenTTL();
 
-      // Prepare response
-      const response = {
-        success: true,
-        provisioning_token: token,
-        expires_in: tokenTTL,
-        timestamp: new Date().toISOString()
-      };
-
-      logger.debug('Sending provisioning token response', { 
+      logger.debug('Onboarding: sending success response', {
         device_id: trimmedDeviceId,
         hasToken: !!token,
-        tokenLength: token?.length,
         expiresIn: tokenTTL
       });
 
-      // Send response
-      res.status(200).json(response);
-      
+      // Success: return provisioning token only (no error field)
+      res.status(200).json({
+        success: true,
+        message: 'Provisioning token issued. Use this token in the next step (POST /api/v1/sign-csr) within the validity period. Token is one-time use per sign-csr.',
+        provisioning_token: token,
+        expires_in: tokenTTL,
+        device_id: trimmedDeviceId,
+        timestamp: new Date().toISOString()
+      });
       return;
-    } catch (error: any) {
+    } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      const statusCode = error.statusCode || 500;
-      const details = error.details;
-      
-      // Handle case where token already exists - return success with existing token
-      if (statusCode === 409) {
+      const err = error as { statusCode?: number; details?: { token?: string; expiresAt?: unknown; expiresInSeconds?: number } };
+      let statusCode = typeof err.statusCode === 'number' ? err.statusCode : 500;
+
+      // Never send 2xx for an error body: if statusCode is success range, treat as 500
+      if (statusCode >= 200 && statusCode < 300) {
+        statusCode = 500;
+      }
+
+      const details = err.details;
+
+      // Handle case where provisioning service threw "token already exists" (409) with details
+      if (statusCode === 409 && details?.token) {
         const deviceId = req.body?.device_id || 'unknown';
-        const existingToken = details?.token;
-        const expiresAt = details?.expiresAt;
-        const expiresInSeconds = details?.expiresInSeconds;
-        
-        logger.info('Returning existing provisioning token', { 
-          device_id: deviceId,
-          expiresAt,
-          expiresInSeconds
-        });
-        
-        // Get token TTL from config
-        const tokenTTL = provisioningService.getTokenTTL();
-        
-        // Return success with existing token
+        const existingToken = details.token;
+        const expiresInSeconds = details.expiresInSeconds;
+        const tokenTTL = provisioningService?.getTokenTTL() ?? 300;
+
+        logger.info('Onboarding: returning existing provisioning token', { device_id: deviceId });
+
         res.status(200).json({
           success: true,
+          message: 'Existing provisioning token is still valid. Use it for POST /api/v1/sign-csr. Token is one-time use per sign-csr.',
           provisioning_token: existingToken,
-          expires_in: expiresInSeconds || tokenTTL,
-          message: 'Using existing active provisioning token',
+          expires_in: expiresInSeconds ?? tokenTTL,
+          device_id: deviceId,
           timestamp: new Date().toISOString()
         });
         return;
       }
-      
-      logger.error('Failed to issue provisioning token', { error: errorMessage });
-      
+
+      logger.error('Onboarding: failed to issue token', { error: errorMessage });
+
+      const clientMessage =
+        statusCode === 500
+          ? 'An unexpected error occurred while issuing the provisioning token. Please try again later.'
+          : errorMessage;
+
       res.status(statusCode).json({
         success: false,
-        error: statusCode === 500 ? 'Internal server error' : errorMessage,
+        error: clientMessage,
+        ...(statusCode === 500 && { code: 'INTERNAL_ERROR' }),
         timestamp: new Date().toISOString()
       });
     }
@@ -366,13 +364,16 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
       }
 
       if (!provisioningToken) {
-        logger.warn('No provisioning token provided', {
+        logger.warn('sign-csr 401: no provisioning token provided', {
           hasAuthHeader: !!authHeader,
           hasBodyToken: !!req.body?.provisioning_token
         });
-        res.status(401).json({
+        res.set('X-Error-Code', 'TOKEN_MISSING');
+        res.status(401);
+        res.json({
           success: false,
-          error: 'provisioning_token is required in Authorization header (Bearer token) or request body',
+          error: 'provisioning_token is required. Use Authorization: Bearer <token> or body.provisioning_token. This response must be HTTP 401.',
+          code: 'TOKEN_MISSING',
           timestamp: new Date().toISOString()
         });
         return;
@@ -397,14 +398,16 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
       if (!tokenValidation.valid || !tokenValidation.deviceId || !tokenValidation.userId) {
         const errMsg = tokenValidation.error || 'Invalid or expired provisioning token';
         const errorCode = getTokenErrorCode(errMsg);
-        logger.warn('Token validation failed', {
-          error: errMsg,
+        logger.warn('sign-csr 401: token validation failed', {
           errorCode,
+          error: errMsg,
           hasDeviceId: !!tokenValidation.deviceId,
           hasUserId: !!tokenValidation.userId,
           tokenPreview: provisioningToken.substring(0, 30) + '...'
         });
-        res.status(401).json({
+        res.set('X-Error-Code', errorCode);
+        res.status(401);
+        res.json({
           success: false,
           error: errMsg,
           code: errorCode,
@@ -606,17 +609,24 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
           certificateId: certificateDoc._id
         });
 
-        // Revoke provisioning token after successful certificate creation
+        // Revoke provisioning token after successful certificate creation (one-time use)
         await provisioningService.revokeToken(provisioningToken);
 
         // Get certificate ID
         const certId = certificateDoc._id.toString();
-        const expiresAt = typeof certificateDoc.expires_at === 'string' 
-          ? certificateDoc.expires_at 
+        const expiresAt = typeof certificateDoc.expires_at === 'string'
+          ? certificateDoc.expires_at
           : certificateDoc.expires_at.toISOString();
 
+        logger.info('sign-csr 200: certificate issued, token revoked (one-time use)', {
+          deviceId,
+          certificateId: certId
+        });
+
         // Return certificate and Root CA (provisioning token was revoked; do not reuse)
-        res.status(200).json({
+        res.set('X-Response-Type', 'certificate-issued');
+        res.status(200);
+        res.json({
           success: true,
           device_id: deviceId,
           certificate: certificateDoc.certificate,
@@ -628,7 +638,20 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
           message: 'Certificate issued. Provisioning token has been revoked; request a new token from /onboarding for another device.',
           timestamp: new Date().toISOString()
         });
+        return;
       } catch (certError) {
+        // Device already has active cert (replace not allowed): return 409; token not revoked so client can retry with new token after revoke
+        if (certError instanceof DeviceAlreadyHasCertificateError) {
+          logger.warn('sign-csr 409: device already has active certificate', { deviceId });
+          res.status(409).json({
+            success: false,
+            error: certError.message,
+            code: 'DEVICE_HAS_ACTIVE_CERTIFICATE',
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
+
         // Unsupported key type (e.g. ECDSA): return 400; token is never revoked on failure so device can retry
         if (certError instanceof UnsupportedCSRKeyTypeError) {
           logger.warn('sign-csr 400: unsupported CSR key type', {
@@ -670,9 +693,16 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
         throw certError;
       }
     } catch (error) {
+      if (res.headersSent) {
+        logger.error('sign-csr: response already sent, cannot send error response', {
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+        return;
+      }
+
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       const errorStack = error instanceof Error ? error.stack : undefined;
-      
+
       logger.error('Failed to sign CSR', {
         error: errorMessage,
         stack: errorStack,
@@ -687,7 +717,14 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
       let errorResponse: string = 'Internal server error';
       let code: string | undefined;
 
-      if (errorMessage.includes('not found in CSR')) {
+      if (
+        errorMessage.includes('E11000') &&
+        (errorMessage.includes('device_id') || errorMessage.includes('device_certificates'))
+      ) {
+        statusCode = 409;
+        code = 'DEVICE_HAS_ACTIVE_CERTIFICATE';
+        errorResponse = 'Device already has an active certificate';
+      } else if (errorMessage.includes('not found in CSR')) {
         statusCode = 400;
         code = 'INVALID_CSR_DEVICE_ID';
         errorResponse = errorMessage;
