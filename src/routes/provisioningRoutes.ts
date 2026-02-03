@@ -623,6 +623,12 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
           certificateId: certId
         });
 
+        // Absolute download URL so clients can use it directly (avoids wrong path when client appends to sign-csr path)
+        const pathOnly = `/api/v1/certificates/${certId}/download`;
+        const host = req.get('host') || '';
+        const protocol = req.protocol || (req.get('x-forwarded-proto') ?? 'http');
+        const downloadUrl = host ? `${protocol}://${host}${pathOnly}` : pathOnly;
+
         // Return certificate and Root CA (provisioning token was revoked; do not reuse)
         res.set('X-Response-Type', 'certificate-issued');
         res.status(200);
@@ -634,7 +640,7 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
           expires_at: expiresAt,
           serial_number: certificateDoc.fingerprint,
           certificateId: certId,
-          downloadUrl: `/api/v1/certificates/${certId}/download`,
+          downloadUrl,
           message: 'Certificate issued. Provisioning token has been revoked; request a new token from /onboarding for another device.',
           timestamp: new Date().toISOString()
         });
