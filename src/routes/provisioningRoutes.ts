@@ -207,22 +207,31 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
         deviceId: trimmedDeviceId
       });
 
-      // Check if device already has a certificate
+      // Certificate + active-state check: block onboarding when device already has valid cert.
+      // Flexibility: in development we allow re-issuing token (set ALLOW_ONBOARDING_WITH_ACTIVE_CERT=true or use NODE_ENV=development).
+      const allowReissueWithActiveCert =
+        process.env.ALLOW_ONBOARDING_WITH_ACTIVE_CERT === 'true' || process.env.NODE_ENV === 'development';
       const existingCert = await caService.findActiveCertificateByDeviceId(trimmedDeviceId);
       if (existingCert && existingCert.status === 'active') {
         const now = new Date();
         if (existingCert.expires_at > now) {
-          logger.warn('Device already has active certificate', { 
-            device_id: trimmedDeviceId,
-            certificateId: existingCert._id,
-            expiresAt: existingCert.expires_at
-          });
-          res.status(409).json({
-            success: false,
-            error: 'Device already has an active certificate',
-            timestamp: new Date().toISOString()
-          });
-          return;
+          // Original strict check: return 409 to frontend (code DEVICE_HAS_ACTIVE_CERTIFICATE). Skipped when allowReissueWithActiveCert.
+          if (!allowReissueWithActiveCert) {
+            logger.warn('Device already has active certificate', {
+              device_id: trimmedDeviceId,
+              certificateId: existingCert._id,
+              expiresAt: existingCert.expires_at
+            });
+            res.status(409).json({
+              success: false,
+              error: 'Device already has an active certificate',
+              code: 'DEVICE_HAS_ACTIVE_CERTIFICATE',
+              timestamp: new Date().toISOString()
+            });
+            return;
+          }
+          // Development: allow re-issuing token (ALLOW_ONBOARDING_WITH_ACTIVE_CERT=true or NODE_ENV=development)
+          logger.info('Dev mode: re-issuing token despite active certificate', { device_id: trimmedDeviceId });
         }
       }
 
