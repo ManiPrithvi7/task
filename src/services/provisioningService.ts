@@ -188,21 +188,25 @@ export class ProvisioningService {
 
       // If token not in store but JWT is valid, check if it's a timing issue
       if (!deviceId) {
+        const storeStats = await this.tokenStore.getStats();
         // Token might have expired in store but JWT still valid (race condition)
         // Or token store was cleared (server restart, Redis flush)
-        // Since JWT is valid, we can still proceed but log a warning
         logger.warn('Token not found in store, but JWT is valid', {
           deviceId: decoded.device_id,
           exp: decoded.exp,
           expiresIn: decoded.exp ? `${decoded.exp - now} seconds` : 'unknown',
-          note: 'Token may have been cleared from store (server restart, Redis flush)'
+          storage: storeStats.storage,
+          tokenCount: storeStats.tokenCount,
+          note: 'Token may have been cleared from store (server restart, or in-memory store was reset). Configure Redis for persistence.'
         });
-        
-        // For security, we should still require token to be in store
-        // But provide a clearer error message
-        return { 
-          valid: false, 
-          error: 'Token not found in system. Token may have expired or been revoked. Please request a new provisioning token.' 
+
+        const hint = storeStats.storage === 'memory'
+          ? ' Server is using in-memory token storage; tokens are lost on restart. Call POST /onboarding then POST /sign-csr in the same session without restarting, or set REDIS_URL for persistence.'
+          : ' Request a new provisioning token (POST /onboarding), then call sign-csr immediately.';
+
+        return {
+          valid: false,
+          error: `Token not found in system. Token may have expired or been revoked.${hint}`
         };
       }
 

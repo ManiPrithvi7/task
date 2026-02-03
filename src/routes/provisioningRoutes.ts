@@ -24,6 +24,18 @@ export interface ProvisioningDependencies {
   userService: UserService;
 }
 
+/** Map token validation error message to a stable code for firmware/client handling. */
+function getTokenErrorCode(errorMessage: string): string {
+  if (errorMessage.includes('Token expired')) return 'TOKEN_EXPIRED';
+  if (errorMessage.includes('Token not found') || errorMessage.includes('revoked')) return 'TOKEN_NOT_FOUND';
+  if (errorMessage.includes('invalid signature')) return 'TOKEN_INVALID_SIGNATURE';
+  if (errorMessage.includes('Invalid token format') || errorMessage.includes('malformed')) return 'TOKEN_INVALID_FORMAT';
+  if (errorMessage.includes('Invalid token type')) return 'TOKEN_INVALID_TYPE';
+  if (errorMessage.includes('Device ID mismatch')) return 'TOKEN_DEVICE_MISMATCH';
+  if (errorMessage.includes('User ID not found')) return 'TOKEN_USER_MISSING';
+  return 'TOKEN_INVALID';
+}
+
 export function createProvisioningRoutes(dependencies: ProvisioningDependencies): Router {
   const router = Router();
   const { provisioningService, caService, authService, userService } = dependencies;
@@ -374,15 +386,19 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
       });
       
       if (!tokenValidation.valid || !tokenValidation.deviceId || !tokenValidation.userId) {
+        const errMsg = tokenValidation.error || 'Invalid or expired provisioning token';
+        const errorCode = getTokenErrorCode(errMsg);
         logger.warn('Token validation failed', {
-          error: tokenValidation.error,
+          error: errMsg,
+          errorCode,
           hasDeviceId: !!tokenValidation.deviceId,
           hasUserId: !!tokenValidation.userId,
           tokenPreview: provisioningToken.substring(0, 30) + '...'
         });
         res.status(401).json({
           success: false,
-          error: tokenValidation.error || 'Invalid or expired provisioning token',
+          error: errMsg,
+          code: errorCode,
           timestamp: new Date().toISOString()
         });
         return;

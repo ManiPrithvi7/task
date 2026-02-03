@@ -79,16 +79,24 @@ async function testRedis() {
   console.log(`\n${colors.blue}${colors.bold}💾 Testing Redis Connection...${colors.reset}`);
   console.log('━'.repeat(60));
   
-  const redisUrl = process.env.REDIS_URL;
+  let redisUrl = process.env.REDIS_URL || process.env.REDIS_URI;
   const redisHost = process.env.REDIS_HOST;
   const redisPort = process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined;
   const redisUsername = process.env.REDIS_USERNAME || 'default';
   const redisPassword = process.env.REDIS_PASSWORD;
+  const redisTls = process.env.REDIS_TLS === 'true' || process.env.REDIS_TLS === '1';
   
-  if (!redisUrl && !redisHost) {
+  if (!redisUrl && (!redisHost || redisPort === undefined)) {
     console.log(`${colors.yellow}⚠️  Redis not configured${colors.reset}`);
-    console.log(`${colors.yellow}   Set REDIS_URL or REDIS_HOST environment variable${colors.reset}`);
+    console.log(`${colors.yellow}   Set REDIS_URL or REDIS_HOST + REDIS_PORT${colors.reset}`);
     return false;
+  }
+  
+  if (!redisUrl && redisHost && redisPort !== undefined && redisHost !== 'localhost' && redisHost !== '127.0.0.1') {
+    // Use rediss only when REDIS_TLS=true; some Redis Cloud endpoints use redis:// (non-TLS)
+    const scheme = redisTls ? 'rediss' : 'redis';
+    const auth = redisPassword ? `${encodeURIComponent(redisUsername)}:${encodeURIComponent(redisPassword)}` : redisUsername;
+    redisUrl = `${scheme}://${auth}@${redisHost}:${redisPort}`;
   }
   
   let client;
@@ -98,7 +106,14 @@ async function testRedis() {
     
     if (redisUrl) {
       console.log(`📍 URL: ${sanitizeUri(redisUrl)}`);
-      client = createClient({ url: redisUrl });
+      const isTls = redisUrl.startsWith('rediss://');
+      client = createClient({
+        url: redisUrl,
+        socket: {
+          connectTimeout: 10000,
+          tls: isTls ? undefined : false
+        }
+      });
     } else {
       console.log(`📍 Host: ${redisHost}`);
       console.log(`🔢 Port: ${redisPort}`);
@@ -109,7 +124,9 @@ async function testRedis() {
         password: redisPassword,
         socket: {
           host: redisHost,
-          port: redisPort
+          port: redisPort,
+          connectTimeout: 10000,
+          tls: redisTls ? undefined : false
         }
       });
     }

@@ -62,11 +62,11 @@ export class StatsMqttLite {
       // Initialize MongoDB (REQUIRED)
       await this.initializeMongoDB();
 
-      // Initialize Redis (for token persistence) - only if configured
-      if (this.config.redis.enabled && (this.config.redis.url || this.config.redis.host)) {
+      // Initialize Redis (REDIS_URL or REDIS_HOST+PORT) for token persistence in dev and production
+      if (this.config.redis.enabled && this.config.redis.url) {
         await this.initializeRedis();
       } else if (this.config.redis.enabled) {
-        logger.warn('⚠️  Redis enabled but not configured (no REDIS_URL or REDIS_HOST). Provisioning tokens will use in-memory storage.');
+        logger.warn('⚠️  Redis enabled but no connection URL. Provisioning tokens will use in-memory storage.');
       }
 
       // Initialize services
@@ -199,23 +199,21 @@ export class StatsMqttLite {
         error: error.message,
         stack: error.stack
       });
-      logger.warn('⚠️  Provisioning tokens will use in-memory storage due to Redis connection failure.');
-      this.config.redis.enabled = false; // Ensure Redis is marked as disabled in config
-      
-      // Clean up failed connection to prevent reconnection attempts
       if (this.redisService) {
         try {
           await this.redisService.disconnect();
         } catch (disconnectError) {
-          // Ignore disconnect errors - client may already be closed
-          logger.debug('Redis disconnect error ignored (client may be closed)', {
+          logger.debug('Redis disconnect error ignored', {
             error: disconnectError instanceof Error ? disconnectError.message : 'Unknown error'
           });
         }
         this.redisService = undefined;
       }
-      
-      // Don't throw - provisioning can work without Redis (in-memory fallback)
+      this.config.redis.enabled = false;
+      throw new Error(
+        `Redis connection failed (${error?.message ?? 'unknown'}). ` +
+        'Set REDIS_URL for token persistence. Fix the connection or set REDIS_ENABLED=false to use in-memory tokens (not persistent).'
+      );
     }
   }
 

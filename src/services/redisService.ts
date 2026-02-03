@@ -37,6 +37,21 @@ export class RedisService {
   }
 
   /**
+   * Returns a valid Redis URL (trimmed, parseable) or undefined if URL is missing/invalid.
+   * Invalid URLs often come from copy-paste (newlines, or password with unencoded special chars).
+   */
+  private getValidRedisUrl(): string | undefined {
+    const raw = this.config.url?.trim();
+    if (!raw) return undefined;
+    try {
+      new URL(raw);
+      return raw;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
    * Connect to Redis
    */
   async connect(): Promise<void> {
@@ -53,38 +68,34 @@ export class RedisService {
         return;
       }
 
-      // Create Redis client based on configuration
-      if (this.config.url) {
+      const useUrl = this.getValidRedisUrl();
+      const useHostPort = this.config.host && this.config.port !== undefined && this.config.port !== null;
+
+      if (useUrl) {
         // Use URL-based connection (supports both redis:// and rediss://)
         // rediss:// automatically enables TLS/SSL (Redis Cloud compatible)
-        const isTLS = this.config.url.startsWith('rediss://');
+        const isTLS = useUrl.startsWith('rediss://');
         logger.info('Connecting to Redis using URL', {
-          url: this.sanitizeUrl(this.config.url),
+          url: this.sanitizeUrl(useUrl),
           tls: isTLS
         });
 
         this.client = createClient({
-          url: this.config.url,
+          url: useUrl,
           socket: {
-            reconnectStrategy: false, // Disable automatic reconnection
-            // TLS is automatically enabled for rediss:// URLs by the redis package; omit when TLS, false for redis://
+            reconnectStrategy: false,
+            connectTimeout: 10000, // 10s fail-fast; ENOTFOUND/ETIMEDOUT surface quickly
             tls: isTLS ? undefined : false
           }
         }) as RedisClientType;
-      } else {
-        // Use individual parameters (matching your example)
-        // This should not happen due to isRedisConfigured() check above,
-        // but keeping as a safety check
-        if (!this.config.host || !this.config.port) {
-          throw new Error('Redis host and port are required when not using URL');
-        }
-
-        logger.info('Connecting to Redis', {
+      } else if (useHostPort) {
+        // Fallback: host/port (when REDIS_URL is invalid or not set - e.g. password with special chars, or copy-paste newline)
+        logger.info('Connecting to Redis using host/port', {
           host: this.config.host,
           port: this.config.port,
           username: this.config.username || 'default',
-          db: this.config.db || 0,
-          tls: this.config.tls || false
+          db: this.config.db ?? 0,
+          tls: this.config.tls ?? false
         });
 
         this.client = createClient({
@@ -93,11 +104,16 @@ export class RedisService {
           socket: {
             host: this.config.host!,
             port: this.config.port!,
-            reconnectStrategy: false, // Disable automatic reconnection
-            tls: this.config.tls ? undefined : false // TLS enabled when undefined (socket option type: false | undefined)
+            reconnectStrategy: false,
+            connectTimeout: 10000,
+            tls: this.config.tls ? undefined : false
           },
-          database: this.config.db || 0
+          database: this.config.db ?? 0
         }) as RedisClientType;
+      } else {
+        throw new Error(
+          'Invalid Redis URL and no host/port. Fix REDIS_URL (trim newlines/spaces; encode special chars in password) or set REDIS_HOST and REDIS_PORT.'
+        );
       }
 
       // Setup error handler
@@ -119,6 +135,7 @@ export class RedisService {
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const isENOTFOUND = errorMessage.includes('ENOTFOUND') || (error instanceof Error && (error as NodeJS.ErrnoException).code === 'ENOTFOUND');
       logger.error('❌ Failed to connect to Redis', {
         error: errorMessage,
         config: {
@@ -128,6 +145,9 @@ export class RedisService {
           username: this.config.username
         }
       });
+      if (isENOTFOUND) {
+        logger.warn('Redis host could not be resolved (DNS). Check REDIS_HOST/REDIS_URL is correct, your network has internet access, and the Redis Cloud database is active. To run without Redis set REDIS_ENABLED=false.');
+      }
       throw new Error(`Redis connection failed: ${errorMessage}`);
     }
   }
