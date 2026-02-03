@@ -67,8 +67,8 @@ export class RedisService {
           url: this.config.url,
           socket: {
             reconnectStrategy: false, // Disable automatic reconnection
-            // TLS is automatically enabled for rediss:// URLs by the redis package
-            tls: isTLS ? {} : undefined // Explicit TLS config for rediss://
+            // TLS is automatically enabled for rediss:// URLs by the redis package; omit when TLS, false for redis://
+            tls: isTLS ? undefined : false
           }
         }) as RedisClientType;
       } else {
@@ -94,7 +94,7 @@ export class RedisService {
             host: this.config.host!,
             port: this.config.port!,
             reconnectStrategy: false, // Disable automatic reconnection
-            tls: this.config.tls ? {} : undefined // Enable TLS if configured
+            tls: this.config.tls ? undefined : false // TLS enabled when undefined (socket option type: false | undefined)
           },
           database: this.config.db || 0
         }) as RedisClientType;
