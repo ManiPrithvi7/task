@@ -17,7 +17,7 @@ export interface IDeviceCertificate extends Document {
   device_id: string;
   user_id: mongoose.Types.ObjectId;
   certificate: string;
-  private_key: string; // Required in Prisma schema
+  private_key: string; // Optional at issuance (device keeps key during CSR flow); may be empty
   ca_certificate: string;
   cn: string; // Common Name from certificate
   fingerprint: string; // Certificate fingerprint
@@ -47,7 +47,8 @@ const DeviceCertificateSchema = new Schema<IDeviceCertificate>({
   },
   private_key: {
     type: String,
-    required: true // Required in Prisma schema
+    required: false, // Optional: device keeps private key during CSR signing; server stores '' when not available
+    default: ''
   },
   ca_certificate: {
     type: String,

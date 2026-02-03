@@ -584,7 +584,7 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
           timestamp: new Date().toISOString()
         });
       } catch (certError) {
-        // Unsupported key type (e.g. ECDSA): return 400 and do NOT revoke token so client can retry with RSA CSR
+        // Unsupported key type (e.g. ECDSA): return 400; token is never revoked on failure so device can retry
         if (certError instanceof UnsupportedCSRKeyTypeError) {
           logger.warn('CSR rejected: unsupported key type (RSA required)', {
             deviceId,
@@ -599,22 +599,11 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
           return;
         }
 
-        // Other provisioning failures - revoke token to allow clean retry with new token
-        logger.error('CSR signing failed, revoking provisioning token', {
+        // Any other failure: do NOT revoke token so device can retry with same token
+        logger.warn('CSR signing failed, token NOT revoked so device can retry', {
           deviceId,
           error: certError instanceof Error ? certError.message : 'Unknown error'
         });
-
-        try {
-          await provisioningService.revokeToken(provisioningToken);
-          logger.info('Provisioning token revoked due to failure', { deviceId });
-        } catch (revokeError) {
-          logger.error('Failed to revoke token after provisioning failure', {
-            deviceId,
-            error: revokeError instanceof Error ? revokeError.message : 'Unknown error'
-          });
-        }
-
         throw certError;
       }
     } catch (error) {
