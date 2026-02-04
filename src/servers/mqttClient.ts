@@ -9,6 +9,7 @@ export interface MqttConfig {
   username?: string;
   password?: string;
   topicPrefix: string;
+  topicRoot: string;
 }
 
 export interface MqttMessage {
@@ -352,6 +353,10 @@ export class MqttClientManager extends EventEmitter {
     return this.client?.connected || false;
   }
 
+  getTopicRoot(): string {
+    return this.config.topicRoot;
+  }
+
   async disconnect(): Promise<void> {
     return new Promise((resolve) => {
       for (const pending of this.pendingAcks.values()) {
@@ -428,7 +433,8 @@ export class MqttClientManager extends EventEmitter {
   }
 
   private extractDeviceIdFromTopic(topic: string): string | null {
-    const match = topic.match(/statsnapp\/([^\/]+)\//);
+    const root = this.config.topicRoot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const match = topic.match(new RegExp(`^${root}/([^/]+)/`));
     return match ? match[1] : null;
   }
 

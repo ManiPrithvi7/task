@@ -43,8 +43,16 @@ export class DeviceService {
    */
   async registerDevice(data: DeviceData): Promise<IDevice> {
     try {
-      // Check if device exists
-      const existing = await Device.findOne({ clientId: data.clientId });
+      // Prefer lookup by clientId (topic-derived deviceId), then by macID for legacy records
+      let existing = await Device.findOne({ clientId: data.clientId });
+      if (!existing && data.macID) {
+        existing = await Device.findOne({ macID: data.macID });
+        if (existing && existing.clientId !== data.clientId) {
+          const oldClientId = existing.clientId;
+          existing.clientId = data.clientId;
+          logger.debug('Device normalized to topic id', { oldClientId, newClientId: data.clientId });
+        }
+      }
 
       if (existing) {
         // Update existing device
@@ -68,14 +76,15 @@ export class DeviceService {
         return existing;
       }
 
-      // Create new device
+      // Create new device (honor data.status so MQTT-registered devices get ACTIVE and receive screen updates)
+      const initialStatus = data.status === 'active' ? DeviceStatus.ACTIVE : DeviceStatus.UNALLOCATED;
       const device = new Device({
         userId: undefined, // Will be set when allocated to user
         macID: data.macID,
         crt: undefined, // Will be filled during provisioning
         ca_certificate: undefined, // Will be filled during provisioning
         clientId: data.clientId,
-        status: DeviceStatus.UNALLOCATED, // Start as unallocated
+        status: initialStatus,
         tokenUsed: false,
         lastSeenAt: new Date()
       });

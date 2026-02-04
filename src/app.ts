@@ -319,19 +319,15 @@ export class StatsMqttLite {
   }
 
   private async subscribeToTopics(): Promise<void> {
-    // Subscribe to statsnapp topics (matching original mqtt-publisher)
+    const root = this.config.mqtt.topicRoot;
+    // proof.mqtt: device lifecycle + screen topics (Instagram, GMB, POS)
     const topics = [
-      'statsnapp/+/active',      // Device registration messages
-      'statsnapp/+/lwt',         // Last Will and Testament (broker-generated disconnect)
-      'statsnapp/+/status',      // Device status messages
-      'statsnapp/+/update',      // Live metrics updates
-      'statsnapp/+/milestone',   // Milestone notifications
-      'statsnapp/+/alert',       // Alert messages
-      'statsnapp/+/metrics',     // Device metrics
-      'statsnapp/+/events',      // Device events
-      'statsnapp/system/+',      // System messages
-      'statsnapp/alerts/+',      // Alert messages
-      'statsnapp/commands/+'     // Command messages
+      `${root}/+/active`,   // Device registration (connect)
+      `${root}/+/lwt`,      // Last Will (broker when device disconnects)
+      `${root}/+/status`,   // Device status (e.g. uptime)
+      `${root}/+/instagram`, // Instagram screen (device → server if needed)
+      `${root}/+/gmb`,      // Google My Business screen
+      `${root}/+/pos`       // POS screen
     ];
 
     for (const topic of topics) {
@@ -382,18 +378,10 @@ export class StatsMqttLite {
             await this.handleDeviceLWT(receivedTopic, message);
           } else if (receivedTopic.endsWith('/status')) {
             await this.handleDeviceStatus(receivedTopic, message);
-          } else if (receivedTopic.endsWith('/update')) {
-            await this.handleLiveUpdate(receivedTopic, message);
-          } else if (receivedTopic.endsWith('/milestone')) {
-            await this.handleMilestone(receivedTopic, message);
-          } else if (receivedTopic.endsWith('/alert')) {
-            await this.handleAlert(receivedTopic, message);
+          } else if (receivedTopic.endsWith('/instagram') || receivedTopic.endsWith('/gmb') || receivedTopic.endsWith('/pos')) {
+            logger.debug('Screen message received', { topic: receivedTopic, screen: message.screen });
           } else {
-            logger.debug('MQTT message received', {
-              topic: receivedTopic,
-              type: message.type || 'unknown',
-              size: payload.length
-            });
+            logger.debug('MQTT message received', { topic: receivedTopic, type: message.type || 'unknown', size: payload.length });
           }
           
           // Update device last seen (but skip for unregistration messages)
@@ -413,7 +401,7 @@ export class StatsMqttLite {
       });
     }
 
-    logger.info('Subscribed to statsnapp topics', { count: topics.length });
+    logger.info('Subscribed to proof.mqtt topics', { count: topics.length, root });
   }
 
   private async handleDeviceRegistration(topic: string, message: any): Promise<void> {
@@ -433,17 +421,19 @@ export class StatsMqttLite {
       type: message.type
     });
 
-    // Register device if not exists
+    // Register device if not exists. Use topic-derived deviceId as canonical id so
+    // DeviceService lookups and StatsPublisher topics match subscriber topics (e.g. proof.mqtt/<deviceId>/instagram).
     const existingDevice = await this.deviceService.getDevice(deviceId);
     if (!existingDevice) {
       await this.deviceService.registerDevice({
         deviceId,
-        clientId: message.clientId || deviceId,
-        macID: deviceId, // Use deviceId as macID
+        clientId: deviceId, // Must match topic segment so we publish to proof.mqtt/<deviceId>/...
+        macID: deviceId,
         username: message.userId || message.user_id || 'unknown',
         status: 'active',
         lastSeen: new Date(),
         metadata: {
+          mqttClientId: message.clientId, // Optional: actual MQTT client id for debugging
           deviceType: message.deviceType || message.device_type,
           os: message.os,
           appVersion: message.appVersion || message.app_version,
@@ -526,33 +516,6 @@ export class StatsMqttLite {
     });
   }
 
-  private async handleLiveUpdate(topic: string, message: any): Promise<void> {
-    const deviceId = this.extractDeviceId(topic);
-    logger.info('📈 Live Metrics Update', {
-      deviceId,
-      type: message.type || message.subtype,
-      followers: message.payload?.stats?.followers,
-      following: message.payload?.stats?.following
-    });
-  }
-
-  private async handleMilestone(topic: string, message: any): Promise<void> {
-    const deviceId = this.extractDeviceId(topic);
-    logger.info('🎯 Milestone Achieved', {
-      deviceId,
-      milestone: message.payload?.milestone,
-      value: message.payload?.current_value
-    });
-  }
-
-  private async handleAlert(topic: string, message: any): Promise<void> {
-    const deviceId = this.extractDeviceId(topic);
-    logger.info('🚨 Alert Received', {
-      deviceId,
-      alert: message.payload?.alert_type,
-      message: message.payload?.message
-    });
-  }
 
   private async sendRegistrationResponse(
     deviceId: string, 
@@ -571,7 +534,7 @@ export class StatsMqttLite {
       };
 
       await this.mqttClient.publish({
-        topic: `statsnapp/${deviceId}/registration_ack`,
+        topic: `${this.config.mqtt.topicRoot}/${deviceId}/registration_ack`,
         payload: JSON.stringify(response),
         qos: 1,
         retain: false
@@ -606,7 +569,7 @@ export class StatsMqttLite {
       };
 
       await this.mqttClient.publish({
-        topic: `statsnapp/${deviceId}/unregistration_ack`,
+        topic: `${this.config.mqtt.topicRoot}/${deviceId}/unregistration_ack`,
         payload: JSON.stringify(response),
         qos: 1,
         retain: false
@@ -625,8 +588,8 @@ export class StatsMqttLite {
   }
 
   private extractDeviceId(topic: string): string | null {
-    // Extract from pattern: statsnapp/DEVICE_ID/suffix
-    const match = topic.match(/^statsnapp\/([^\/]+)\//);
+    const root = this.config.mqtt.topicRoot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const match = topic.match(new RegExp(`^${root}/([^/]+)/`));
     return match ? match[1] : null;
   }
 
@@ -674,12 +637,12 @@ export class StatsMqttLite {
     this.statsPublisher = new StatsPublisher(
       this.mqttClient,
       this.deviceService,
-      15000  // Publish every 15 seconds for testing
+      60 * 1000  // Publish every minute to /instagram, /gmb, /pos
     );
     
     await this.statsPublisher.start();
     
-    logger.info('✅ Stats publisher initialized - publishing every 15s');
+    logger.info('✅ Stats publisher initialized - publishing every 60s to /instagram, /gmb, /pos');
   }
 
   private initializeKeepAlive(): void {

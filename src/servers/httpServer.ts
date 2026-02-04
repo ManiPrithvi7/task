@@ -270,7 +270,7 @@ export class HttpServer {
           }
         };
 
-        const topic = `statsnapp/${deviceId}/active`;
+        const topic = `${this.mqttClient.getTopicRoot()}/${deviceId}/active`;
         await this.mqttClient.publish(
           {
             topic,
@@ -324,7 +324,7 @@ export class HttpServer {
           clientId: clientId
         };
 
-        const topic = `statsnapp/${deviceId}/lwt`;
+        const topic = `${this.mqttClient.getTopicRoot()}/${deviceId}/lwt`;
         await this.mqttClient.publish(
           {
             topic,

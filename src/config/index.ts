@@ -10,7 +10,10 @@ export interface MqttConfig {
   clientId: string;
   username?: string;
   password?: string;
+  /** Optional prefix prepended to all topics (e.g. '' or 'proof.mqtt'). */
   topicPrefix: string;
+  /** Topic root for device topics (e.g. proof.mqtt). Used for proof.mqtt/device_123/active, instagram, gmb, pos. */
+  topicRoot: string;
 }
 
 export interface HttpConfig {
@@ -79,7 +82,8 @@ export function loadConfig(): AppConfig {
       clientId: process.env.MQTT_CLIENT_ID || `firmware-test-1234`,
       username: process.env.MQTT_USERNAME || undefined,
       password: process.env.MQTT_PASSWORD || undefined,
-      topicPrefix: process.env.MQTT_TOPIC_PREFIX || ''  // No prefix for statsnapp topics
+      topicPrefix: process.env.MQTT_TOPIC_PREFIX || '',
+      topicRoot: process.env.MQTT_TOPIC_ROOT || 'proof.mqtt'
     },
     http: {
       port: parseInt(process.env.PORT || process.env.HTTP_PORT || '3002'),  // Render uses PORT
@@ -92,7 +96,7 @@ export function loadConfig(): AppConfig {
     },
     provisioning: {
       enabled: process.env.PROVISIONING_ENABLED !== 'false',  // Enabled by default
-      tokenTTL: parseInt(process.env.PROVISIONING_TOKEN_TTL || '6000'),  // 5 minutes
+      tokenTTL: parseInt(process.env.PROVISIONING_TOKEN_TTL || '6000'),  // 1 hour
       jwtSecret: process.env.JWT_SECRET || process.env.PROVISIONING_JWT_SECRET || 'mqtt-publisher-lite-secret-key-change-in-production',
       caStoragePath: process.env.CA_STORAGE_PATH || `${dataDir}/ca`,
       rootCAValidityYears: parseInt(process.env.ROOT_CA_VALIDITY_YEARS || '10'),
