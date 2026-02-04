@@ -275,7 +275,8 @@ export class StatsMqttLite {
         tokenTTL: this.config.provisioning.tokenTTL,
         caStoragePath: this.config.provisioning.caStoragePath,
         deviceCertValidityDays: this.config.provisioning.deviceCertValidityDays,
-        storageMode: 'MongoDB'
+        storageMode: 'MongoDB',
+        requireMtlsForRegistration: this.config.provisioning.requireMtlsForRegistration
       });
     } catch (error: any) {
       logger.error('Failed to initialize provisioning services', {
@@ -404,9 +405,38 @@ export class StatsMqttLite {
     logger.info('Subscribed to proof.mqtt topics', { count: topics.length, root });
   }
 
+  /**
+   * Validates that the device is allowed for mTLS-aligned registration (has active provisioned certificate).
+   * When requireMtlsForRegistration is true and caService is available, only devices with an active cert can register.
+   * @returns true if registration/request is allowed, false if device must be rejected
+   */
+  private async ensureDeviceProvisioned(deviceId: string): Promise<boolean> {
+    if (!this.config.provisioning.requireMtlsForRegistration) {
+      return true;
+    }
+    if (!this.caService) {
+      return true; // No CA service: cannot enforce; allow (e.g. provisioning disabled)
+    }
+    const cert = await this.caService.findActiveCertificateByDeviceId(deviceId);
+    return cert !== null;
+  }
+
   private async handleDeviceRegistration(topic: string, message: any): Promise<void> {
     const deviceId = this.extractDeviceId(topic);
     if (!deviceId) return;
+
+    // ✅ mTLS: validate device has been provisioned (active certificate) before accepting registration
+    const allowed = await this.ensureDeviceProvisioned(deviceId);
+    if (!allowed) {
+      logger.warn('🔒 Registration rejected: no active certificate for this device_id', { deviceId });
+      await this.sendRegistrationResponse(
+        deviceId,
+        false,
+        'Device not provisioned. Use the same device_id as in provisioning (e.g. set DEVICE_ID=ESP32-ABC123), or complete onboarding + sign-csr for this device_id.',
+        false
+      );
+      return;
+    }
 
     // ✅ /active topic ONLY handles device registration (client connects)
     // ✅ /lwt topic handles ALL disconnections (both graceful and unexpected)
@@ -508,6 +538,13 @@ export class StatsMqttLite {
   private async handleDeviceStatus(topic: string, message: any): Promise<void> {
     const deviceId = this.extractDeviceId(topic);
     if (!deviceId) return;
+
+    // ✅ mTLS: validate device is provisioned on every device request (connection initiation validation)
+    const allowed = await this.ensureDeviceProvisioned(deviceId);
+    if (!allowed) {
+      logger.warn('🔒 Status update ignored: device not provisioned', { deviceId });
+      return;
+    }
 
     logger.info('📊 Device Status Update', {
       deviceId,

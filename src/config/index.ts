@@ -35,6 +35,8 @@ export interface ProvisioningConfig {
   rootCAValidityYears: number;
   deviceCertValidityDays: number;
   certificateDbPath: string;
+  /** Require device to have an active (provisioned) certificate before accepting registration (mTLS alignment). */
+  requireMtlsForRegistration: boolean;
 }
 
 export interface MongoDBConfig {
@@ -101,7 +103,8 @@ export function loadConfig(): AppConfig {
       caStoragePath: process.env.CA_STORAGE_PATH || `${dataDir}/ca`,
       rootCAValidityYears: parseInt(process.env.ROOT_CA_VALIDITY_YEARS || '10'),
       deviceCertValidityDays: parseInt(process.env.DEVICE_CERT_VALIDITY_DAYS || '90'),
-      certificateDbPath: process.env.CERTIFICATE_DB_PATH || `${dataDir}/certificates.db`
+      certificateDbPath: process.env.CERTIFICATE_DB_PATH || `${dataDir}/certificates.db`,
+      requireMtlsForRegistration: process.env.REQUIRE_MTLS_FOR_REGISTRATION !== 'false'  // Default true: only provisioned devices can register
     },
     mongodb: {
       uri: process.env.MONGODB_URI || process.env.MONGO_URI || '',
