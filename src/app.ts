@@ -334,7 +334,36 @@ export class StatsMqttLite {
           }
         }
         const caPem = fs.readFileSync(resolved, 'utf8');
+        // Also ensure client cert/key files exist if configured; allow base64 env fallback
+        const clientCertPath = tlsCfg?.clientCertPath;
+        const clientKeyPath = tlsCfg?.clientKeyPath;
+        if (clientCertPath && !fs.existsSync(path.resolve(clientCertPath))) {
+          const certB64 = process.env.MQTT_TLS_CLIENT_CERT_BASE64;
+          if (certB64) {
+            try {
+              const pem = Buffer.from(certB64, 'base64').toString('utf8');
+              fs.mkdirSync(path.dirname(path.resolve(clientCertPath)), { recursive: true });
+              fs.writeFileSync(path.resolve(clientCertPath), pem, { encoding: 'utf8', mode: 0o644 });
+              logger.info('Wrote client cert PEM from MQTT_TLS_CLIENT_CERT_BASE64 to path', { path: clientCertPath });
+            } catch (err: any) {
+              throw new Error(`Failed to write client cert from MQTT_TLS_CLIENT_CERT_BASE64: ${err?.message ?? err}`);
+            }
+          }
+        }
 
+        if (clientKeyPath && !fs.existsSync(path.resolve(clientKeyPath))) {
+          const keyB64 = process.env.MQTT_TLS_CLIENT_KEY_BASE64;
+          if (keyB64) {
+            try {
+              const keyPem = Buffer.from(keyB64, 'base64');
+              fs.mkdirSync(path.dirname(path.resolve(clientKeyPath)), { recursive: true });
+              fs.writeFileSync(path.resolve(clientKeyPath), keyPem, { mode: 0o600 });
+              logger.info('Wrote client key from MQTT_TLS_CLIENT_KEY_BASE64 to path', { path: clientKeyPath });
+            } catch (err: any) {
+              throw new Error(`Failed to write client key from MQTT_TLS_CLIENT_KEY_BASE64: ${err?.message ?? err}`);
+            }
+          }
+        }
         await new Promise<void>((resolve, reject) => {
           const socket = tls.connect({
             host: broker,
