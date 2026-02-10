@@ -315,8 +315,23 @@ export class StatsMqttLite {
     if (caPath) {
       try {
         const resolved = path.resolve(caPath);
+        // If CA file is missing in the image/container, allow injecting it via
+        // MQTT_TLS_CA_BASE64 env var (useful for platforms that don't allow file mounts).
         if (!fs.existsSync(resolved)) {
-          throw new Error(`CA file not found at ${resolved}`);
+          const b64 = process.env.MQTT_TLS_CA_BASE64;
+          if (b64) {
+            try {
+              const pem = Buffer.from(b64, 'base64').toString('utf8');
+              // Ensure directory exists
+              fs.mkdirSync(path.dirname(resolved), { recursive: true });
+              fs.writeFileSync(resolved, pem, { encoding: 'utf8', mode: 0o644 });
+              logger.info('Wrote CA PEM from MQTT_TLS_CA_BASE64 to path', { path: resolved });
+            } catch (writeErr: any) {
+              throw new Error(`Failed to write CA file from MQTT_TLS_CA_BASE64: ${writeErr?.message ?? writeErr}`);
+            }
+          } else {
+            throw new Error(`CA file not found at ${resolved}`);
+          }
         }
         const caPem = fs.readFileSync(resolved, 'utf8');
 
