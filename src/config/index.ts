@@ -1,5 +1,7 @@
 import dotenv from 'dotenv';
 import { logger } from '../utils/logger';
+import * as fs from 'fs';
+import * as path from 'path';
 
 // Load environment variables
 dotenv.config();
@@ -168,6 +170,42 @@ export function loadConfig(): AppConfig {
     },
     env: config.app.env
   });
+  /**
+   * Helper: write PEM file from base64 env var into a desired path if file missing.
+   * - envVarName: name of env var containing base64-encoded PEM
+   * - filePath: where to write the decoded PEM
+   * - mode: file mode (e.g. 0o644 for cert, 0o600 for key)
+   */
+  const writePemFromBase64 = (envVarName: string | undefined, filePath: string | undefined, mode: number) => {
+    if (!envVarName || !filePath) return;
+    const b64 = process.env[envVarName];
+    if (!b64) return;
+    const resolved = path.resolve(filePath);
+    try {
+      if (fs.existsSync(resolved)) {
+        logger.debug('PEM file already exists, skipping write', { path: resolved });
+        return;
+      }
+      // Ensure directory exists
+      fs.mkdirSync(path.dirname(resolved), { recursive: true });
+      const buf = Buffer.from(b64, 'base64');
+      fs.writeFileSync(resolved, buf, { mode });
+      logger.info('Wrote PEM from env to filesystem', { envVarName, path: resolved });
+    } catch (err: any) {
+      logger.warn('Failed to write PEM from env', { envVarName, path: resolved, error: err?.message ?? String(err) });
+    }
+  };
+
+  // If TLS config present, allow writing CA / client cert / key from base64 env vars.
+  const tlsCfg = config.mqtt.tls;
+  if (tlsCfg) {
+    // CA
+    writePemFromBase64('MQTT_TLS_CA_BASE64', tlsCfg.caPath, 0o644);
+    // Client cert
+    writePemFromBase64('MQTT_TLS_CLIENT_CERT_BASE64', tlsCfg.clientCertPath, 0o644);
+    // Client key (private) — secure mode
+    writePemFromBase64('MQTT_TLS_CLIENT_KEY_BASE64', tlsCfg.clientKeyPath, 0o600);
+  }
 
   return config;
 }
