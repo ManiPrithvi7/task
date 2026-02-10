@@ -1,4 +1,5 @@
 import mqtt, { MqttClient, IClientOptions, IPublishPacket } from 'mqtt';
+import * as fs from 'fs';
 import { EventEmitter } from 'events';
 import { logger } from '../utils/logger';
 
@@ -10,6 +11,13 @@ export interface MqttConfig {
   password?: string;
   topicPrefix: string;
   topicRoot: string;
+  tls?: {
+    enabled?: boolean;
+    caPath?: string;
+    clientCertPath?: string;
+    clientKeyPath?: string;
+    rejectUnauthorized?: boolean;
+  };
 }
 
 export interface MqttMessage {
@@ -79,8 +87,39 @@ export class MqttClientManager extends EventEmitter {
       if (this.config.password) {
         options.password = this.config.password;
       }
+      // TLS / mTLS support: read cert/key/ca files if provided in config
+      let brokerUrl = `mqtt://${this.config.broker}:${this.config.port}`;
+      const tlsCfg = (this.config as any).tls as
+        | {
+            enabled?: boolean;
+            caPath?: string;
+            clientCertPath?: string;
+            clientKeyPath?: string;
+            rejectUnauthorized?: boolean;
+          }
+        | undefined;
 
-      const brokerUrl = `mqtt://${this.config.broker}:${this.config.port}`;
+      if (tlsCfg && (tlsCfg.enabled || tlsCfg.caPath || tlsCfg.clientCertPath || tlsCfg.clientKeyPath)) {
+        // load files if paths provided
+        try {
+          if (tlsCfg.caPath && fs.existsSync(tlsCfg.caPath)) {
+            options.ca = fs.readFileSync(tlsCfg.caPath);
+          }
+          if (tlsCfg.clientCertPath && fs.existsSync(tlsCfg.clientCertPath)) {
+            options.cert = fs.readFileSync(tlsCfg.clientCertPath);
+          }
+          if (tlsCfg.clientKeyPath && fs.existsSync(tlsCfg.clientKeyPath)) {
+            options.key = fs.readFileSync(tlsCfg.clientKeyPath);
+          }
+          options.rejectUnauthorized = tlsCfg.rejectUnauthorized !== false;
+          brokerUrl = `mqtts://${this.config.broker}:${this.config.port}`;
+        } catch (err: any) {
+          logger.warn('Failed to load TLS credentials for MQTT client; falling back to plain MQTT if allowed', {
+            error: err instanceof Error ? err.message : String(err)
+          });
+        }
+      }
+
       logger.info('Connecting to MQTT broker...', {
         broker: this.config.broker,
         port: this.config.port,

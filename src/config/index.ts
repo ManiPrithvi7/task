@@ -14,6 +14,14 @@ export interface MqttConfig {
   topicPrefix: string;
   /** Topic root for device topics (e.g. proof.mqtt). Used for proof.mqtt/device_123/active, instagram, gmb, pos. */
   topicRoot: string;
+  /** TLS / mTLS configuration for connecting to MQTT broker (optional) */
+  tls?: {
+    enabled?: boolean;
+    caPath?: string;         // Path to CA cert (PEM)
+    clientCertPath?: string; // Path to client cert (PEM) for mTLS (optional)
+    clientKeyPath?: string;  // Path to client private key (PEM) for mTLS (optional)
+    rejectUnauthorized?: boolean;
+  };
 }
 
 export interface HttpConfig {
@@ -85,7 +93,14 @@ export function loadConfig(): AppConfig {
       username: process.env.MQTT_USERNAME || undefined,
       password: process.env.MQTT_PASSWORD || undefined,
       topicPrefix: process.env.MQTT_TOPIC_PREFIX || '',
-      topicRoot: process.env.MQTT_TOPIC_ROOT || 'proof.mqtt'
+      topicRoot: process.env.MQTT_TOPIC_ROOT || 'proof.mqtt',
+      tls: {
+        enabled: process.env.MQTT_TLS_ENABLED === 'true' || process.env.MQTT_TLS === 'true',
+        caPath: process.env.MQTT_TLS_CA_PATH || process.env.MQTT_CA_PATH || undefined,
+        clientCertPath: process.env.MQTT_TLS_CLIENT_CERT_PATH || process.env.MQTT_CLIENT_CERT_PATH || undefined,
+        clientKeyPath: process.env.MQTT_TLS_CLIENT_KEY_PATH || process.env.MQTT_CLIENT_KEY_PATH || undefined,
+        rejectUnauthorized: process.env.MQTT_TLS_REJECT_UNAUTHORIZED !== 'false'
+      }
     },
     http: {
       port: parseInt(process.env.PORT || process.env.HTTP_PORT || '3002'),  // Render uses PORT

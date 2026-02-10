@@ -13,7 +13,12 @@ import { RedisService, createRedisService } from './services/redisService';
 import { DeviceService } from './services/deviceService';
 import { SessionService } from './services/sessionService';
 import { createProvisioningRoutes } from './routes/provisioningRoutes';
+import { createConfigRoutes } from './routes/configRoutes';
 import { getTokenStore } from './storage/tokenStore';
+import * as dns from 'dns';
+import * as tls from 'tls';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export class StatsMqttLite {
   private config: AppConfig;
@@ -287,9 +292,83 @@ export class StatsMqttLite {
     }
   }
 
+  /**
+   * Verify broker DNS resolution and (if TLS configured) perform a TLS handshake
+   * to validate server certificate and CA. Throws on failure.
+   */
+  private async verifyBrokerConnectivity(): Promise<void> {
+    const broker = this.config.mqtt.broker;
+    const port = this.config.mqtt.port;
+
+    // DNS lookup
+    try {
+      const lookup = await dns.promises.lookup(broker);
+      logger.info('Broker DNS resolved', { broker, address: lookup.address });
+    } catch (err: any) {
+      logger.error('Broker DNS lookup failed', { broker, error: err.message });
+      throw new Error(`DNS resolution failed for broker: ${broker}`);
+    }
+
+    // TLS handshake if TLS config present
+    const tlsCfg = (this.config.mqtt as any).tls;
+    const caPath = tlsCfg?.caPath;
+    if (caPath) {
+      try {
+        const resolved = path.resolve(caPath);
+        if (!fs.existsSync(resolved)) {
+          throw new Error(`CA file not found at ${resolved}`);
+        }
+        const caPem = fs.readFileSync(resolved, 'utf8');
+
+        await new Promise<void>((resolve, reject) => {
+          const socket = tls.connect({
+            host: broker,
+            port,
+            ca: [caPem],
+            servername: broker,
+            rejectUnauthorized: tlsCfg?.rejectUnauthorized !== false,
+            timeout: 5000
+          }, () => {
+            if (!socket.authorized) {
+              const errMsg = socket.authorizationError || 'TLS authorization failed';
+              socket.end();
+              reject(errMsg);
+              return;
+            }
+            const peer = socket.getPeerCertificate(true) as any;
+            logger.info('TLS handshake succeeded', { broker, subject: peer?.subject || null });
+            socket.end();
+            resolve();
+          });
+
+          socket.on('error', (e) => {
+            const msg = e instanceof Error ? e.message : String(e);
+            reject(msg);
+          });
+
+          setTimeout(() => {
+            socket.destroy();
+            reject('TLS handshake timeout');
+          }, 5000);
+        });
+      } catch (err: any) {
+        logger.error('TLS handshake/check failed', { broker, error: err.message });
+        throw new Error(`TLS validation failed for broker ${broker}: ${err.message}`);
+      }
+    } else {
+      logger.debug('No MQTT TLS CA configured; skipping TLS handshake validation');
+    }
+  }
+
   private async initializeMqttClient(): Promise<void> {
     logger.info('📡 Initializing MQTT client...');
     
+    // Pre-check: DNS (and TLS handshake if TLS configured) to fail fast with actionable logs
+    await this.verifyBrokerConnectivity().catch((err) => {
+      logger.error('Broker connectivity pre-check failed', { error: err instanceof Error ? err.message : String(err) });
+      throw err;
+    });
+
     this.mqttClient = new MqttClientManager(this.config.mqtt);
     
     // Set up QoS 1 tracking callbacks for device liveness
@@ -650,6 +729,18 @@ export class StatsMqttLite {
       });
       this.httpServer.getApp().use('/api/v1', provisioningRoutes);
       logger.info('✅ Provisioning routes registered at /api/v1');
+    }
+    
+    // Device configuration endpoint for devices to fetch broker settings
+    try {
+      const configRoutes = createConfigRoutes({
+        config: this.config,
+        caService: this.caService
+      });
+      this.httpServer.getApp().use('/api/v1', configRoutes);
+      logger.info('✅ Device configuration route registered at /api/v1/mqtt-config');
+    } catch (err: any) {
+      logger.warn('⚠️ Failed to register device configuration route', { error: err instanceof Error ? err.message : String(err) });
     }
     
     await this.httpServer.start();
