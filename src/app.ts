@@ -430,8 +430,9 @@ export class StatsMqttLite {
           }, 5000);
         });
       } catch (err: any) {
-        logger.error('TLS handshake/check failed', { broker, error: err.message });
-        throw new Error(`TLS validation failed for broker ${broker}: ${err.message}`);
+        const errMsg = err instanceof Error ? err.message : String(err);
+        logger.error('TLS handshake/check failed', { broker, error: errMsg });
+        throw new Error(`TLS validation failed for broker ${broker}: ${errMsg}`);
       }
     } else {
       logger.debug('No MQTT TLS CA configured; skipping TLS handshake validation');

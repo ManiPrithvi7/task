@@ -213,7 +213,10 @@ export function loadConfig(): AppConfig {
   const tlsCfg = config.mqtt.tls;
   if (tlsCfg) {
     // Provide defaults if paths not set
-    const defaultCa = path.join(dataDir, 'ca', 'root-ca.crt');
+    // IMPORTANT: broker CA must NOT collide with the provisioning Root CA filename (root-ca.crt / root-ca.key)
+    // because CAService.initialize() will overwrite root-ca.crt if root-ca.key is missing.
+    // Use 'broker-ca.crt' as the default so the two CAs stay separate.
+    const defaultCa = path.join(dataDir, 'ca', 'broker-ca.crt');
     const defaultClientCert = path.join(dataDir, 'ca', 'client.crt');
     const defaultClientKey = path.join(dataDir, 'ca', 'client.key');
 
