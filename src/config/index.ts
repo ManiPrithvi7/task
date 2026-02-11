@@ -171,40 +171,84 @@ export function loadConfig(): AppConfig {
     env: config.app.env
   });
   /**
-   * Helper: write PEM file from base64 env var into a desired path if file missing.
-   * - envVarName: name of env var containing base64-encoded PEM
+   * Helper: write PEM file from environment vars into a desired path if file missing.
+   * Supports either a raw PEM env var (MQTT_TLS_*_PEM) or a base64-encoded env var (MQTT_TLS_*_BASE64).
+   * - envB64Name: name of env var containing base64-encoded PEM
+   * - envPemName: name of env var containing raw PEM
    * - filePath: where to write the decoded PEM
    * - mode: file mode (e.g. 0o644 for cert, 0o600 for key)
    */
-  const writePemFromBase64 = (envVarName: string | undefined, filePath: string | undefined, mode: number) => {
-    if (!envVarName || !filePath) return;
-    const b64 = process.env[envVarName];
-    if (!b64) return;
+  const writePemFromEnv = (envB64Name: string | undefined, envPemName: string | undefined, filePath: string | undefined, mode: number) => {
+    if (!filePath) return;
     const resolved = path.resolve(filePath);
     try {
       if (fs.existsSync(resolved)) {
         logger.debug('PEM file already exists, skipping write', { path: resolved });
         return;
       }
+      // Prefer raw PEM env over base64
+      const rawPem = envPemName ? process.env[envPemName] : undefined;
+      const b64 = envB64Name ? process.env[envB64Name] : undefined;
+      if (!rawPem && !b64) {
+        // Nothing to write
+        return;
+      }
       // Ensure directory exists
       fs.mkdirSync(path.dirname(resolved), { recursive: true });
-      const buf = Buffer.from(b64, 'base64');
+      if (rawPem) {
+        fs.writeFileSync(resolved, rawPem, { encoding: 'utf8', mode });
+        logger.info('Wrote PEM from raw env to filesystem', { envPemName, path: resolved });
+        return;
+      }
+      // Base64 fallback
+      const buf = Buffer.from(b64 as string, 'base64');
       fs.writeFileSync(resolved, buf, { mode });
-      logger.info('Wrote PEM from env to filesystem', { envVarName, path: resolved });
+      logger.info('Wrote PEM from base64 env to filesystem', { envB64Name, path: resolved });
     } catch (err: any) {
-      logger.warn('Failed to write PEM from env', { envVarName, path: resolved, error: err?.message ?? String(err) });
+      logger.warn('Failed to write PEM from env', { envB64Name, envPemName, path: resolved, error: err?.message ?? String(err) });
     }
   };
 
-  // If TLS config present, allow writing CA / client cert / key from base64 env vars.
+  // If TLS config present, ensure TLS paths exist (use sensible defaults under dataDir)
   const tlsCfg = config.mqtt.tls;
   if (tlsCfg) {
-    // CA
-    writePemFromBase64('MQTT_TLS_CA_BASE64', tlsCfg.caPath, 0o644);
-    // Client cert
-    writePemFromBase64('MQTT_TLS_CLIENT_CERT_BASE64', tlsCfg.clientCertPath, 0o644);
-    // Client key (private) — secure mode
-    writePemFromBase64('MQTT_TLS_CLIENT_KEY_BASE64', tlsCfg.clientKeyPath, 0o600);
+    // Provide defaults if paths not set
+    const defaultCa = path.join(dataDir, 'ca', 'root-ca.crt');
+    const defaultClientCert = path.join(dataDir, 'ca', 'client.crt');
+    const defaultClientKey = path.join(dataDir, 'ca', 'client.key');
+
+    tlsCfg.caPath = tlsCfg.caPath || process.env.MQTT_TLS_CA_PATH || defaultCa;
+    tlsCfg.clientCertPath = tlsCfg.clientCertPath || process.env.MQTT_TLS_CLIENT_CERT_PATH || defaultClientCert;
+    tlsCfg.clientKeyPath = tlsCfg.clientKeyPath || process.env.MQTT_TLS_CLIENT_KEY_PATH || defaultClientKey;
+
+    // Try to write from env (raw PEM preferred, base64 fallback)
+    writePemFromEnv('MQTT_TLS_CA_BASE64', 'MQTT_TLS_CA_PEM', tlsCfg.caPath, 0o644);
+    writePemFromEnv('MQTT_TLS_CLIENT_CERT_BASE64', 'MQTT_TLS_CLIENT_CERT_PEM', tlsCfg.clientCertPath, 0o644);
+    writePemFromEnv('MQTT_TLS_CLIENT_KEY_BASE64', 'MQTT_TLS_CLIENT_KEY_PEM', tlsCfg.clientKeyPath, 0o600);
+
+    // Resolve absolute paths for downstream modules
+    try {
+      tlsCfg.caPath = path.resolve(tlsCfg.caPath);
+      tlsCfg.clientCertPath = path.resolve(tlsCfg.clientCertPath);
+      tlsCfg.clientKeyPath = path.resolve(tlsCfg.clientKeyPath);
+    } catch (err) {
+      logger.debug('Failed to resolve TLS paths', { error: err instanceof Error ? err.message : String(err) });
+    }
+    // Guard: avoid accidentally using the Root CA key as the client key.
+    // If clientKeyPath points to a file named root-ca.key, replace it with a sensible client key default.
+    try {
+      const caKeyCandidate = path.join(path.dirname(tlsCfg.caPath), 'root-ca.key');
+      if (tlsCfg.clientKeyPath && path.resolve(tlsCfg.clientKeyPath) === path.resolve(caKeyCandidate)) {
+        const fallbackClientKey = path.resolve(path.join(dataDir, 'ca', 'client.key'));
+        logger.warn('Client key path pointed to root CA key; switching to fallback client key path to avoid PEM confusion', {
+          old: tlsCfg.clientKeyPath,
+          new: fallbackClientKey
+        });
+        tlsCfg.clientKeyPath = fallbackClientKey;
+      }
+    } catch (err) {
+      // ignore resolution errors here
+    }
   }
 
   return config;
@@ -239,3 +283,10 @@ export function validateConfig(config: AppConfig): void {
   logger.info('Configuration validated successfully');
 }
 
+// # Replace AUTH_TOKEN with your admin JWT and PUBLISHER_URL with your server URL
+// PROV=$(curl -s -X POST "http://localhost:3002/api/v1/onboarding" \
+//   -H "Authorization: Bearer eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2Q0JDLUhTNTEyIiwia2lkIjoic2JSbkJueXR2VDBzN1VkTXE2VGhMUmxhU2ljcU1reHFERi1FRGRoV2NJNldTaUtwT0tORkY2eFllMm1YaGwtbFVXVlh2VXJKakFienpLY0hDRTlOYXcifQ..vCOb0KfIkeYbSpYvm2zmmw.Ne7vrHllldHCfCXo0n5o6zlLPS7dsAuGV2NjQWtX0kioTDdfwIclJBp9vkObjiWfZq3zIfWbXl9edB4TgHneAxlASo5QglL_JrnEyqgnz8eLIHpQsrHM5fkBeLGLf3hyHe_0HQrElwqSF61EE4SWX2-8bq0jgWEkElcmyYHgo32V2SjEUHxA3ParFhDz0Bx9ICouCzxvXTSsui61XcC3CAIMJGN4WYxZu5Ug157hmkPVsIhuFYuSDt4dQwkiotF0cjLi_F9A0L7u3gsPbUInlpJ2dQyqtz2cJ3XY6ceJMC60adFqECMjnro7LMH62_Kifm6o-hc6KtuALuc_7hqPGzp_Sxyn6pLMgSbDMOne7F5Cr446ujPWByGVaaWq_1v48GAraozlfxRfjKkm2CMhj6-O4dEFzMhXrUE3R-r9AfE25vd_DROo3zY50h_lpD6P.DeVYKY5KqNgHXULXboDy-5UTsQQLm6a7xiD5U30pgjE" \
+//   -H "Content-Type: application/json" \
+//   -d '{"device_id":"unified-server-dev"}' | jq -r '.provisioning_token')
+
+// echo "Provisioning token: $PROV"

@@ -19,6 +19,8 @@ import * as dns from 'dns';
 import * as tls from 'tls';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as forge from 'node-forge';
+import mongoose from 'mongoose';
 
 export class StatsMqttLite {
   private config: AppConfig;
@@ -275,6 +277,14 @@ export class StatsMqttLite {
 
       // Initialize Root CA
       await this.caService.initialize();
+
+      // Optionally generate a server/client certificate for this service (used for mTLS by the app itself)
+      // Controlled via CREATE_MQTT_CLIENT_CERT=true and device id via MQTT_CLIENT_CERT_DEVICE_ID
+      try {
+        await this.ensureServerClientCertificate();
+      } catch (err: any) {
+        logger.warn('Server client certificate generation skipped or failed', { error: err instanceof Error ? err.message : String(err) });
+      }
     
       logger.info('✅ Provisioning services initialized', {
         tokenTTL: this.config.provisioning.tokenTTL,
@@ -314,6 +324,30 @@ export class StatsMqttLite {
     const caPath = tlsCfg?.caPath;
     if (caPath) {
       try {
+        // Basic PEM sanity checks for client certificate/key if present
+        if (tlsCfg.clientCertPath) {
+          try {
+            const certContent = fs.readFileSync(path.resolve(tlsCfg.clientCertPath), 'utf8');
+            if (!certContent.includes('-----BEGIN')) {
+              throw new Error('Client certificate does not appear to be a valid PEM');
+            }
+          } catch (readErr: any) {
+            logger.error('Failed to read client certificate for PEM validation', { error: readErr?.message ?? String(readErr) });
+            throw new Error(`Invalid client certificate at ${tlsCfg.clientCertPath}`);
+          }
+        }
+        if (tlsCfg.clientKeyPath) {
+          try {
+            const keyContent = fs.readFileSync(path.resolve(tlsCfg.clientKeyPath), 'utf8');
+            if (!keyContent.includes('-----BEGIN')) {
+              throw new Error('Client key does not appear to be a valid PEM');
+            }
+          } catch (readErr: any) {
+            logger.error('Failed to read client key for PEM validation', { error: readErr?.message ?? String(readErr) });
+            throw new Error(`Invalid client key at ${tlsCfg.clientKeyPath}`);
+          }
+        }
+
         const resolved = path.resolve(caPath);
         // If CA file is missing in the image/container, allow injecting it via
         // MQTT_TLS_CA_BASE64 env var (useful for platforms that don't allow file mounts).
@@ -401,6 +435,91 @@ export class StatsMqttLite {
       }
     } else {
       logger.debug('No MQTT TLS CA configured; skipping TLS handshake validation');
+    }
+  }
+
+  /**
+   * Ensure the service has a client certificate/key pair written locally for mTLS.
+   * Controlled via CREATE_MQTT_CLIENT_CERT=true and device id via MQTT_CLIENT_CERT_DEVICE_ID.
+   *
+   * Idempotent: will not overwrite existing files.
+   */
+  private async ensureServerClientCertificate(): Promise<void> {
+    const createFlag = process.env.CREATE_MQTT_CLIENT_CERT === 'true' || process.env.MQTT_CREATE_CLIENT_CERT === 'true';
+    if (!createFlag) return;
+
+    if (!this.config.mqtt.tls) {
+      logger.warn('CREATE_MQTT_CLIENT_CERT requested but MQTT TLS config not enabled');
+      return;
+    }
+
+    const tlsCfg = this.config.mqtt.tls;
+    const certPath = tlsCfg.clientCertPath ? path.resolve(tlsCfg.clientCertPath) : path.resolve(this.config.storage.dataDir, 'ca', 'client.crt');
+    const keyPath = tlsCfg.clientKeyPath ? path.resolve(tlsCfg.clientKeyPath) : path.resolve(this.config.storage.dataDir, 'ca', 'client.key');
+
+    // If both files exist, validate PEM structure; regenerate if invalid.
+    let certExists = fs.existsSync(certPath);
+    let keyExists = fs.existsSync(keyPath);
+    const isPemLike = (p: string) => {
+      try {
+        const c = fs.readFileSync(p, 'utf8');
+        return c.includes('-----BEGIN') && c.includes('-----END');
+      } catch {
+        return false;
+      }
+    };
+    if (certExists && keyExists) {
+      const certValid = isPemLike(certPath);
+      const keyValid = isPemLike(keyPath);
+      if (certValid && keyValid) {
+        logger.info('Client certificate and key already exist and look valid; skipping generation', { certPath, keyPath });
+        return;
+      }
+      logger.warn('Existing client cert/key found but not valid PEM; regenerating and overwriting', { certPath, keyPath, certValid, keyValid });
+      // allow regeneration by flipping flags
+      certExists = false;
+      keyExists = false;
+    }
+
+    if (!this.caService || !this.caService.isInitialized()) {
+      logger.warn('CA service not initialized; cannot generate client certificate now');
+      return;
+    }
+
+    const deviceId = process.env.MQTT_CLIENT_CERT_DEVICE_ID || process.env.MQTT_CLIENT_DEVICE_ID || 'server-client';
+    const userId = process.env.MQTT_CLIENT_CERT_USER_ID || new mongoose.Types.ObjectId().toHexString();
+
+    try {
+      logger.info('Generating keypair and CSR for service client certificate', { deviceId });
+      const keys = forge.pki.rsa.generateKeyPair(2048);
+
+      const csr = forge.pki.createCertificationRequest();
+      csr.publicKey = keys.publicKey;
+      csr.setSubject([{ name: 'commonName', value: deviceId }]);
+      csr.sign(keys.privateKey, forge.md.sha256.create());
+      const csrPem = forge.pki.certificationRequestToPem(csr);
+
+      // Sign CSR with CAService (will persist certificate in DB if available)
+      const certDoc = await this.caService.signCSR(csrPem, deviceId, userId);
+      const certificatePem = (certDoc as any).certificate as string;
+      if (!certificatePem) {
+        throw new Error('CAService.signCSR did not return certificate PEM');
+      }
+
+      // Ensure directories
+      fs.mkdirSync(path.dirname(certPath), { recursive: true });
+      fs.mkdirSync(path.dirname(keyPath), { recursive: true });
+
+      // Write certificate and private key (private key is generated here; never stored in DB).
+      // Overwrite existing files to ensure cert/key pair match.
+      const privateKeyPem = forge.pki.privateKeyToPem(keys.privateKey);
+      fs.writeFileSync(certPath, certificatePem, { encoding: 'utf8', mode: 0o644 });
+      logger.info('Wrote generated client certificate', { certPath });
+      fs.writeFileSync(keyPath, privateKeyPem, { encoding: 'utf8', mode: 0o600 });
+      logger.info('Wrote generated client private key', { keyPath });
+    } catch (err: any) {
+      logger.error('Failed to generate client certificate', { error: err instanceof Error ? err.message : String(err) });
+      throw err;
     }
   }
 
