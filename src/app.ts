@@ -324,28 +324,27 @@ export class StatsMqttLite {
     const caPath = tlsCfg?.caPath;
     if (caPath) {
       try {
-        // Basic PEM sanity checks for client certificate/key if present
-        if (tlsCfg.clientCertPath) {
-          try {
-            const certContent = fs.readFileSync(path.resolve(tlsCfg.clientCertPath), 'utf8');
-            if (!certContent.includes('-----BEGIN')) {
-              throw new Error('Client certificate does not appear to be a valid PEM');
-            }
-          } catch (readErr: any) {
-            logger.error('Failed to read client certificate for PEM validation', { error: readErr?.message ?? String(readErr) });
+        // Basic PEM sanity checks for client certificate/key — only if files exist.
+        // Client cert/key are OPTIONAL (broker may authenticate via username/password over TLS).
+        if (tlsCfg.clientCertPath && fs.existsSync(path.resolve(tlsCfg.clientCertPath))) {
+          const certContent = fs.readFileSync(path.resolve(tlsCfg.clientCertPath), 'utf8');
+          if (!certContent.includes('-----BEGIN')) {
+            logger.error('Client certificate file exists but is not valid PEM', { path: tlsCfg.clientCertPath });
             throw new Error(`Invalid client certificate at ${tlsCfg.clientCertPath}`);
           }
+          logger.debug('Client certificate PEM validated', { path: tlsCfg.clientCertPath });
+        } else if (tlsCfg.clientCertPath) {
+          logger.info('Client certificate file not found; skipping mTLS client auth (username/password will be used)', { path: tlsCfg.clientCertPath });
         }
-        if (tlsCfg.clientKeyPath) {
-          try {
-            const keyContent = fs.readFileSync(path.resolve(tlsCfg.clientKeyPath), 'utf8');
-            if (!keyContent.includes('-----BEGIN')) {
-              throw new Error('Client key does not appear to be a valid PEM');
-            }
-          } catch (readErr: any) {
-            logger.error('Failed to read client key for PEM validation', { error: readErr?.message ?? String(readErr) });
+        if (tlsCfg.clientKeyPath && fs.existsSync(path.resolve(tlsCfg.clientKeyPath))) {
+          const keyContent = fs.readFileSync(path.resolve(tlsCfg.clientKeyPath), 'utf8');
+          if (!keyContent.includes('-----BEGIN')) {
+            logger.error('Client key file exists but is not valid PEM', { path: tlsCfg.clientKeyPath });
             throw new Error(`Invalid client key at ${tlsCfg.clientKeyPath}`);
           }
+          logger.debug('Client key PEM validated', { path: tlsCfg.clientKeyPath });
+        } else if (tlsCfg.clientKeyPath) {
+          logger.info('Client key file not found; skipping mTLS client auth', { path: tlsCfg.clientKeyPath });
         }
 
         const resolved = path.resolve(caPath);
