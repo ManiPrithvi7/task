@@ -40,6 +40,13 @@ export interface CAConfig {
   storagePath: string;
   rootCAValidityYears: number;
   deviceCertValidityDays: number;
+  certProfile?: {
+    validityDays?: number;
+    keyUsage?: string[];
+    extendedKeyUsage?: string[];
+    requireSanDeviceId?: boolean;
+    minKeyBits?: number;
+  };
 }
 
 export interface RootCA {
@@ -57,6 +64,25 @@ export class CAService {
   constructor(config: CAConfig, _dbPath?: string) {
     this.config = config;
     // Always use MongoDB - parameters kept for backward compatibility
+  }
+
+  /**
+   * Format expected CN for a device.
+   * Normalizes configured prefix and avoids double-prefixing when deviceId already includes the prefix.
+   *
+   * Examples:
+   *  - prefix 'PROOF' + deviceId 'ADMIN-123' => 'PROOF-ADMIN-123'
+   *  - prefix 'PROOF' + deviceId 'PROOF-ADMIN-123' => 'PROOF-ADMIN-123'
+   */
+  public formatExpectedCN(deviceId: string): string {
+    const rawPrefix = process.env.CERT_CN_PREFIX || 'PROOF';
+    // Normalize prefix: remove trailing separators like '-' or '_' and whitespace
+    const prefix = String(rawPrefix).trim().replace(/[-_]+$/g, '');
+
+    // If deviceId already starts with prefix (with optional separators), strip it
+    const device = String(deviceId).replace(new RegExp(`^${prefix}[-_]*`), '');
+
+    return `${prefix}-${device}`;
   }
 
   /**
@@ -194,10 +220,36 @@ export class CAService {
         throw new Error('Invalid CSR signature');
       }
 
-      // Validate device_id in CSR
+      // Certificate profile from config or defaults
+      const profile = this.config.certProfile || {};
+      const minKeyBits = profile.minKeyBits || 2048;
+      const validityDays = profile.validityDays || this.config.deviceCertValidityDays || 90;
+
+      // Validate key strength (only RSA supported reliably by node-forge)
+      try {
+        const pub: any = csr.publicKey;
+        if (!pub || !pub.n || typeof pub.n.bitLength !== 'function') {
+          // Not RSA
+          throw new UnsupportedCSRKeyTypeError(
+            'CSR uses a non-RSA key (only RSA is supported in this CA implementation). Please generate an RSA 2048-bit key and CSR on the device.'
+          );
+        }
+        const bits = pub.n.bitLength();
+        if (bits < minKeyBits) {
+          throw new Error(`RSA key too small (${bits} bits). Minimum required is ${minKeyBits} bits.`);
+        }
+      } catch (err) {
+        if (err instanceof UnsupportedCSRKeyTypeError) throw err;
+        // rethrow other errors
+        if (err instanceof Error && err.message && err.message.includes('RSA')) {
+          throw err;
+        }
+      }
+
+      // Validate device_id and CN/SAN format against expected profile rules
       const deviceIdValid = this.validateDeviceIdInCSR(csr, deviceId);
       if (!deviceIdValid) {
-        throw new Error(`Device ID ${deviceId} not found in CSR`);
+        throw new Error(`CSR CN/SAN did not match expected format for device ${deviceId}`);
       }
 
       // Create certificate
@@ -210,7 +262,7 @@ export class CAService {
 
       const notBefore = new Date();
       const notAfter = new Date();
-      notAfter.setDate(notAfter.getDate() + this.config.deviceCertValidityDays);
+      notAfter.setDate(notAfter.getDate() + validityDays);
 
       cert.validity.notBefore = notBefore;
       cert.validity.notAfter = notAfter;
@@ -220,23 +272,54 @@ export class CAService {
       const rootCert = forge.pki.certificateFromPem(this.rootCA.certificate);
       cert.setIssuer(rootCert.subject.attributes);
 
-      cert.setExtensions([
+      // Build extensions based on profile
+      const keyUsageFlags: any = {};
+      const ku = profile.keyUsage || ['digitalSignature', 'keyEncipherment'];
+      for (const usage of ku) {
+        if (usage === 'digitalSignature') keyUsageFlags.digitalSignature = true;
+        if (usage === 'keyEncipherment') keyUsageFlags.keyEncipherment = true;
+        if (usage === 'keyCertSign') keyUsageFlags.keyCertSign = true;
+        if (usage === 'cRLSign') keyUsageFlags.cRLSign = true;
+      }
+
+      const extKeyUsageFlags: any = {};
+      const eku = profile.extendedKeyUsage || ['clientAuth'];
+      for (const e of eku) {
+        if (e === 'clientAuth') extKeyUsageFlags.clientAuth = true;
+        if (e === 'serverAuth') extKeyUsageFlags.serverAuth = true;
+        if (e === 'emailProtection') extKeyUsageFlags.emailProtection = true;
+      }
+
+      const extensions: any[] = [
         { name: 'basicConstraints', cA: false, critical: true },
-        { name: 'keyUsage', digitalSignature: true, keyEncipherment: true, critical: true },
-        { name: 'extKeyUsage', serverAuth: false, clientAuth: true, critical: true },
+        { name: 'keyUsage', ...keyUsageFlags, critical: true },
+        { name: 'extKeyUsage', ...extKeyUsageFlags, critical: true },
         { name: 'subjectKeyIdentifier', subjectKeyIdentifier: true },
         { name: 'authorityKeyIdentifier', authorityKeyIdentifier: true, authorityCertIssuer: true, serialNumber: this.rootCA.serialNumber }
-      ]);
+      ];
 
-      // Copy SAN from CSR if present
+      // Add SAN if required by profile or if CSR provided SAN (preserve existing SANs)
+      const sanRequired = profile.requireSanDeviceId !== undefined ? profile.requireSanDeviceId : true;
+      const expectedCN = this.extractCNFromSubject(csr.subject) || this.formatExpectedCN(deviceId);
       const sanExtension = csr.getAttribute({ name: 'extensionRequest' });
       if (sanExtension && (sanExtension as any).extensions) {
-        const extensions = (sanExtension as any).extensions;
-        const sanExt = extensions.find((ext: any) => ext.name === 'subjectAltName');
+        // Reuse SAN from CSR if present
+        const extensionsFromCSR = (sanExtension as any).extensions;
+        const sanExt = extensionsFromCSR.find((ext: any) => ext.name === 'subjectAltName');
         if (sanExt) {
-          cert.setExtensions([...cert.extensions, sanExt]);
+          extensions.push(sanExt);
         }
+      } else if (sanRequired) {
+        // Add SAN with expected CN as DNS alt name
+        extensions.push({
+          name: 'subjectAltName',
+          altNames: [
+            { type: 2, value: expectedCN } // type 2 = DNS name
+          ]
+        });
       }
+
+      cert.setExtensions(extensions);
 
       // Sign certificate
       const rootCAKey = forge.pki.privateKeyFromPem(this.rootCA.privateKey);
@@ -249,6 +332,58 @@ export class CAService {
       }
 
       const fingerprint = this.generateCertificateFingerprint(certificatePem);
+
+      // Audit helper: record certificate events to DB collection or append to audit log file
+      const audit = async (event: string, details: any) => {
+        try {
+          const mongooseConnected = mongoose.connection && (mongoose.connection.readyState === 1);
+          const entry = {
+            event,
+            deviceId,
+            userId,
+            details,
+            timestamp: new Date()
+          };
+          if (mongooseConnected && mongoose.connection.db) {
+            await mongoose.connection.db.collection('certificate_audit').insertOne(entry);
+          } else {
+            const logPath = path.join(this.config.storagePath, 'audit.log');
+            fs.mkdirSync(path.dirname(logPath), { recursive: true });
+            fs.appendFileSync(logPath, JSON.stringify(entry) + '\n', { encoding: 'utf8' });
+          }
+        } catch (err: any) {
+          logger.warn('Failed to write audit log', { error: err?.message ?? String(err) });
+        }
+      };
+      
+      // If MongoDB is not connected, skip DB persistence and return a lightweight certificate object.
+      const mongooseConnected = mongoose.connection && (mongoose.connection.readyState === 1);
+      if (!mongooseConnected) {
+        logger.warn('MongoDB not connected - skipping certificate persistence. Returning in-memory certificate object.', { deviceId });
+        const mockDoc: any = {
+          _id: new mongoose.Types.ObjectId(),
+          device_id: deviceId,
+          user_id: new mongoose.Types.ObjectId(userId),
+          certificate: certificatePem,
+          private_key: '',
+          ca_certificate: this.rootCA.certificate,
+          cn,
+          fingerprint,
+          status: DeviceCertificateStatus.active,
+          expires_at: notAfter,
+          created_at: notBefore,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        };
+        logger.info('CSR signed (in-memory)', {
+          deviceId,
+          cn,
+          serialNumber: cert.serialNumber,
+          expiresAt: notAfter.toISOString()
+        });
+        await audit('CERT_ISSUED_IN_MEMORY', { serialNumber: cert.serialNumber, cn, expiresAt: notAfter.toISOString() });
+        return mockDoc as IDeviceCertificate;
+      }
 
       // If device already has an active cert: either return 409 or replace (dev/replace mode)
       const allowReplace =
@@ -281,6 +416,7 @@ export class CAService {
           userId,
           certificateId: updated._id
         });
+        await audit('CERT_REPLACED', { certificateId: updated._id, serialNumber: cert.serialNumber, cn, expiresAt: notAfter.toISOString() });
         return updated as IDeviceCertificate;
       }
 
@@ -301,6 +437,7 @@ export class CAService {
       });
 
       await certDoc.save();
+      await audit('CERT_ISSUED', { certificateId: certDoc._id, serialNumber: cert.serialNumber, cn, expiresAt: notAfter.toISOString() });
 
       logger.info('CSR signed and certificate stored in MongoDB', {
         deviceId,
@@ -322,8 +459,10 @@ export class CAService {
    * Validate device_id in CSR
    */
   private validateDeviceIdInCSR(csr: any, deviceId: string): boolean {
+    const expectedCN = this.formatExpectedCN(deviceId);
+
     const cn = this.extractCNFromSubject(csr.subject);
-    if (cn && cn.includes(deviceId)) {
+    if (cn && cn === expectedCN) {
       return true;
     }
 
@@ -334,13 +473,14 @@ export class CAService {
       if (sanExt) {
         const altNames = sanExt.altNames || [];
         for (const altName of altNames) {
-          if (altName.value && altName.value.includes(deviceId)) {
+          if (altName.value && altName.value === expectedCN) {
             return true;
           }
         }
       }
     }
 
+    logger.warn('CSR CN/SAN did not match expected format', { expectedCN, foundCN: cn });
     return false;
   }
 

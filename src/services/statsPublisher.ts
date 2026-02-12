@@ -1,6 +1,7 @@
 import { logger } from '../utils/logger';
 import { MqttClientManager } from '../servers/mqttClient';
 import { DeviceService } from './deviceService';
+import { CAService } from './caService';
 
 /** Per-device state for Instagram, GMB, POS (for progress/celebratory rotation). */
 interface DeviceScreenState {
@@ -21,11 +22,13 @@ export class StatsPublisher {
   constructor(
     mqttClient: MqttClientManager,
     deviceService: DeviceService,
-    publishInterval: number = 60000  // Default: every minute
+    publishInterval: number = 60000, // Default: every minute
+    caService?: CAService
   ) {
     this.mqttClient = mqttClient;
     this.deviceService = deviceService;
     this.publishInterval = publishInterval;
+    this.caService = caService;
   }
 
   async start(): Promise<void> {
@@ -80,6 +83,21 @@ export class StatsPublisher {
         try {
           const current = await this.deviceService.getDevice(device.deviceId);
           if (!current || current.status !== 'active') continue;
+
+          // Enforce device CN/provisioning before publishing
+          if (this.caService) {
+            try {
+              const cert = await this.caService.findActiveCertificateByDeviceId(device.deviceId);
+              const expectedCN = (this.caService as any).formatExpectedCN(device.deviceId);
+              if (!cert || cert.cn !== expectedCN) {
+                logger.warn('Skipping publish to unprovisioned device', { deviceId: device.deviceId, expectedCN, certCN: cert?.cn });
+                continue;
+              }
+            } catch (err: any) {
+              logger.warn('Error checking provisioning for device before publish; skipping', { deviceId: device.deviceId, error: err?.message ?? String(err) });
+              continue;
+            }
+          }
 
           await this.publishInstagram(device.deviceId, root);
           await this.publishGmb(device.deviceId, root);

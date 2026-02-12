@@ -278,6 +278,12 @@ export class StatsMqttLite {
       // Initialize Root CA
       await this.caService.initialize();
 
+      // Log effective CN prefix and certificate profile for auditing/ops
+      logger.info('Certificate profile in effect', {
+        cnPrefix: this.config.provisioning.cnPrefix,
+        certProfile: this.config.provisioning.certProfile
+      });
+
       // Optionally generate a server/client certificate for this service (used for mTLS by the app itself)
       // Controlled via CREATE_MQTT_CLIENT_CERT=true and device id via MQTT_CLIENT_CERT_DEVICE_ID
       try {
@@ -612,6 +618,23 @@ export class StatsMqttLite {
             }
           }
           
+          // ✅ ENFORCE: Ensure device is provisioned for every device message (development mode)
+          // Extract deviceId from topic and reject messages from unprovisioned devices.
+          const incomingDeviceId = this.extractDeviceId(receivedTopic);
+          if (incomingDeviceId) {
+            try {
+              const allowedMsg = await this.ensureDeviceProvisioned(incomingDeviceId);
+              if (!allowedMsg) {
+                logger.warn('Dropping message from unprovisioned device', { topic: receivedTopic, deviceId: incomingDeviceId });
+                return;
+              }
+            } catch (err: any) {
+              logger.error('Error checking device provisioning for incoming message', { topic: receivedTopic, deviceId: incomingDeviceId, error: err?.message ?? String(err) });
+              // Fail-safe: drop message on validation error
+              return;
+            }
+          }
+          
           // ✅ NOW SAFE TO PROCESS - Only fresh, real-time messages
           
           // Log based on topic type
@@ -660,7 +683,31 @@ export class StatsMqttLite {
       return true; // No CA service: cannot enforce; allow (e.g. provisioning disabled)
     }
     const cert = await this.caService.findActiveCertificateByDeviceId(deviceId);
-    return cert !== null;
+    if (!cert) return false;
+
+    // Validate certificate CN matches expected prefix + deviceId
+    let expectedCN: string;
+    try {
+      expectedCN = this.caService ? (this.caService as any).formatExpectedCN(deviceId) : (() => {
+        const prefix = this.config.provisioning.cnPrefix || process.env.CERT_CN_PREFIX || 'PROOF';
+        const normalizedPrefix = String(prefix).trim().replace(/[-_]+$/g, '');
+        const device = String(deviceId).replace(new RegExp(`^${normalizedPrefix}[-_]*`), '');
+        return `${normalizedPrefix}-${device}`;
+      })();
+    } catch {
+      const prefix = this.config.provisioning.cnPrefix || process.env.CERT_CN_PREFIX || 'PROOF';
+      expectedCN = `${String(prefix).trim()}-${deviceId}`;
+    }
+    if (cert.cn !== expectedCN) {
+      logger.warn('Certificate CN mismatch for device - provisioning rejected', {
+        deviceId,
+        expectedCN,
+        certCN: cert.cn
+      });
+      return false;
+    }
+
+    return true;
   }
 
   private async handleDeviceRegistration(topic: string, message: any): Promise<void> {
@@ -928,7 +975,8 @@ export class StatsMqttLite {
     this.statsPublisher = new StatsPublisher(
       this.mqttClient,
       this.deviceService,
-      60 * 1000  // Publish every minute to /instagram, /gmb, /pos
+      60 * 1000, // Publish every minute to /instagram, /gmb, /pos
+      this.caService
     );
     
     await this.statsPublisher.start();

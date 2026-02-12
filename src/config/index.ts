@@ -47,6 +47,16 @@ export interface ProvisioningConfig {
   certificateDbPath: string;
   /** Require device to have an active (provisioned) certificate before accepting registration (mTLS alignment). */
   requireMtlsForRegistration: boolean;
+  /** Certificate Common Name (CN) prefix for devices (e.g. 'PROOF_') */
+  cnPrefix: string;
+  /** Certificate profile for signing and validation */
+  certProfile?: {
+    validityDays: number;
+    keyUsage: string[]; // e.g. ['digitalSignature','keyEncipherment']
+    extendedKeyUsage: string[]; // e.g. ['clientAuth']
+    requireSanDeviceId: boolean;
+    minKeyBits: number;
+  };
 }
 
 export interface MongoDBConfig {
@@ -121,7 +131,16 @@ export function loadConfig(): AppConfig {
       rootCAValidityYears: parseInt(process.env.ROOT_CA_VALIDITY_YEARS || '10'),
       deviceCertValidityDays: parseInt(process.env.DEVICE_CERT_VALIDITY_DAYS || '90'),
       certificateDbPath: process.env.CERTIFICATE_DB_PATH || `${dataDir}/certificates.db`,
-      requireMtlsForRegistration: process.env.REQUIRE_MTLS_FOR_REGISTRATION !== 'false'  // Default true: only provisioned devices can register
+      requireMtlsForRegistration: process.env.REQUIRE_MTLS_FOR_REGISTRATION !== 'false',  // Default true: only provisioned devices can register
+      cnPrefix: process.env.CERT_CN_PREFIX || 'PROOF_'
+      ,
+      certProfile: {
+        validityDays: parseInt(process.env.CERT_VALIDITY_DAYS || String(process.env.DEVICE_CERT_VALIDITY_DAYS || '90'), 10),
+        keyUsage: (process.env.CERT_KEY_USAGE || 'digitalSignature,keyEncipherment').split(',').map(s => s.trim()).filter(Boolean),
+        extendedKeyUsage: (process.env.CERT_EXTENDED_KEY_USAGE || 'clientAuth').split(',').map(s => s.trim()).filter(Boolean),
+        requireSanDeviceId: process.env.CERT_SAN_REQUIRE_DEVICE_ID !== 'false',
+        minKeyBits: parseInt(process.env.CERT_MIN_KEY_BITS || '2048', 10)
+      }
     },
     mongodb: {
       uri: process.env.MONGODB_URI || process.env.MONGO_URI || '',
