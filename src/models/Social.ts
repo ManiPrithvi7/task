@@ -1,12 +1,18 @@
 /**
  * Social Model - Mongoose schema for Social collection
- * Based on Prisma schema provided
+ * Matches Prisma schema from Next.js web app
+ *
+ * NOTE: This is a READ-ONLY model for mqtt-publisher-lite.
+ * Social account management is handled by the Next.js web app.
  */
 
 import mongoose, { Document, Schema } from 'mongoose';
 
 export enum Provider {
-  INSTAGRAM = 'INSTAGRAM'
+  INSTAGRAM = 'INSTAGRAM',
+  GOOGLE_BUSINESS = 'GOOGLE_BUSINESS',
+  SQUARE = 'SQUARE',
+  SHOPIFY = 'SHOPIFY'
 }
 
 export interface ISocial extends Document {
@@ -14,13 +20,13 @@ export interface ISocial extends Document {
   userId: mongoose.Types.ObjectId;
   socialAccountId: string;
   provider: Provider;
-  primary: boolean;
+  url?: string;
   accessToken: string;
   refreshToken: string;
   tokenExp: string;
   tokenCreatedAt?: Date;
-  createdAt?: Date;
   updatedAt?: Date;
+  createdAt?: Date;
 }
 
 const SocialSchema = new Schema<ISocial>({
@@ -31,7 +37,8 @@ const SocialSchema = new Schema<ISocial>({
   },
   socialAccountId: {
     type: String,
-    required: true
+    required: true,
+    unique: true
   },
   provider: {
     type: String,
@@ -39,10 +46,9 @@ const SocialSchema = new Schema<ISocial>({
     default: Provider.INSTAGRAM,
     required: true
   },
-  primary: {
-    type: Boolean,
-    default: false,
-    required: true
+  url: {
+    type: String,
+    required: false
   },
   accessToken: {
     type: String,
@@ -65,10 +71,9 @@ const SocialSchema = new Schema<ISocial>({
   collection: 'socials'
 });
 
-// Indexes (only define indexes not already set via 'unique: true' in schema)
-// Note: socialAccountId already has unique: true in schema definition
+// Indexes (matching Prisma schema)
+// Note: socialAccountId already has unique: true (auto-indexed)
 SocialSchema.index({ userId: 1 });
-SocialSchema.index({ userId: 1, primary: 1 }); // Compound index for primary social lookup
 SocialSchema.index({ provider: 1 });
 
 export const Social = mongoose.model<ISocial>('Social', SocialSchema);

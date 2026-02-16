@@ -576,7 +576,8 @@ export class StatsMqttLite {
       `${root}/+/status`,   // Device status (e.g. uptime)
       `${root}/+/instagram`, // Instagram screen (device → server if needed)
       `${root}/+/gmb`,      // Google My Business screen
-      `${root}/+/pos`       // POS screen
+      `${root}/+/pos`,      // POS screen
+      `${root}/+/promotion` // Canvas / Promotion screen
     ];
 
     for (const topic of topics) {
@@ -981,7 +982,7 @@ export class StatsMqttLite {
     
     await this.statsPublisher.start();
     
-    logger.info('✅ Stats publisher initialized - publishing every 60s to /instagram, /gmb, /pos');
+    logger.info('✅ Stats publisher initialized - publishing every 60s to /instagram, /gmb, /pos, /promotion');
   }
 
   private initializeKeepAlive(): void {

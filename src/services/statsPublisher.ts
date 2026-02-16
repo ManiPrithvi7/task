@@ -2,6 +2,10 @@ import { logger } from '../utils/logger';
 import { MqttClientManager } from '../servers/mqttClient';
 import { DeviceService } from './deviceService';
 import { CAService } from './caService';
+import { Device } from '../models/Device';
+import { User } from '../models/User';
+import { Ad, AdStatus, AdType } from '../models/Ad';
+import mongoose from 'mongoose';
 
 /** Per-device state for Instagram, GMB, POS (for progress/celebratory rotation). */
 interface DeviceScreenState {
@@ -39,7 +43,7 @@ export class StatsPublisher {
 
     this.isRunning = true;
     const root = this.mqttClient.getTopicRoot();
-    logger.info('📈 Starting screen publisher (Instagram, GMB, POS)', {
+    logger.info('📈 Starting screen publisher (Instagram, GMB, POS, Promotion)', {
       interval: `${this.publishInterval / 1000}s`,
       topicRoot: root
     });
@@ -77,7 +81,7 @@ export class StatsPublisher {
       }
 
       const root = this.getTopicRoot();
-      logger.info('📤 Publishing screens (instagram, gmb, pos)', { deviceCount: activeDevices.length });
+      logger.info('📤 Publishing screens (instagram, gmb, pos, promotion)', { deviceCount: activeDevices.length });
 
       for (const device of activeDevices) {
         try {
@@ -102,6 +106,7 @@ export class StatsPublisher {
           await this.publishInstagram(device.deviceId, root);
           await this.publishGmb(device.deviceId, root);
           await this.publishPos(device.deviceId, root);
+          await this.publishPromotion(device.deviceId, root);
         } catch (err: unknown) {
           logger.error('Failed to publish screens for device', {
             deviceId: device.deviceId,
@@ -238,6 +243,198 @@ export class StatsPublisher {
       retain: false
     });
     logger.debug('Published POS screen', { deviceId, provider, customersToday: state.pos.customersToday });
+  }
+
+  /**
+   * Canvas/Promotion screen: payload varies based on device owner's User preferences.
+   *
+   * - adManagementEnabled = true  → Promotion canvas (with provider, url, campaign data from Ad model)
+   * - brandCanvasEnabled  = true  → Brand canvas (image/text template only, no provider/url)
+   * - Both false                  → Default empty payload (device shows its own default screen)
+   *
+   * Ad selection: device-specific ad first, then any user-level ad, most recent RUNNING ad wins.
+   */
+  private async publishPromotion(deviceId: string, root: string): Promise<void> {
+    try {
+      // Step 1: Look up the raw Device document to get userId
+      const deviceDoc = await Device.findOne({ clientId: deviceId });
+      if (!deviceDoc || !deviceDoc.userId) {
+        // No owner assigned — publish default empty canvas
+        await this.publishDefaultCanvas(deviceId, root);
+        return;
+      }
+
+      // Step 2: Look up User preferences
+      const user = await User.findById(deviceDoc.userId);
+      if (!user) {
+        await this.publishDefaultCanvas(deviceId, root);
+        return;
+      }
+
+      const { adManagementEnabled, brandCanvasEnabled } = user;
+
+      // Step 3: Determine which canvas type to publish
+      if (adManagementEnabled) {
+        await this.publishPromotionCanvas(deviceId, root, deviceDoc.userId, deviceDoc._id);
+      } else if (brandCanvasEnabled) {
+        await this.publishBrandCanvas(deviceId, root, deviceDoc.userId, deviceDoc._id);
+      } else {
+        await this.publishDefaultCanvas(deviceId, root);
+      }
+    } catch (err: unknown) {
+      logger.error('Failed to publish promotion screen', {
+        deviceId,
+        error: err instanceof Error ? err.message : String(err)
+      });
+      // On error, still publish default so device gets something
+      try {
+        await this.publishDefaultCanvas(deviceId, root);
+      } catch (_) { /* swallow nested error */ }
+    }
+  }
+
+  /** 4.1 Promotion canvas — adManagementEnabled = true */
+  private async publishPromotionCanvas(
+    deviceId: string,
+    root: string,
+    userId: mongoose.Types.ObjectId,
+    deviceObjectId: mongoose.Types.ObjectId
+  ): Promise<void> {
+    // Find RUNNING promotion ad: device-specific first, then any user-level ad
+    let ad = await Ad.findOne({
+      userId,
+      deviceId: deviceObjectId,
+      type: AdType.PROMOTION,
+      status: AdStatus.RUNNING
+    }).sort({ createdAt: -1 });
+
+    if (!ad) {
+      ad = await Ad.findOne({
+        userId,
+        type: AdType.PROMOTION,
+        status: AdStatus.RUNNING
+      }).sort({ createdAt: -1 });
+    }
+
+    if (!ad) {
+      // No running promotion ad — send default
+      await this.publishDefaultCanvas(deviceId, root);
+      return;
+    }
+
+    // Extract template data from ad
+    const tplData = (ad.templateData || {}) as Record<string, any>;
+
+    const innerPayload: Record<string, any> = {
+      ...(tplData.imageTemplateId && { imageTemplateId: tplData.imageTemplateId }),
+      ...(tplData.textTemplateId && { textTemplateId: tplData.textTemplateId }),
+      ...(tplData.textContent && { textContent: tplData.textContent }),
+      ...(tplData.textColors && { textColors: tplData.textColors }),
+      ...(tplData.provider && { provider: tplData.provider })
+    };
+
+    // Build claim URL from campaign or ad data
+    if (ad.campaignId) {
+      innerPayload.url = `https://statsnapp.vercel.app/claim/${ad.campaignId.toString()}`;
+    } else if (tplData.url) {
+      innerPayload.url = tplData.url;
+    }
+
+    const payload = {
+      version: '1.1',
+      id: `msg_promo_${Date.now()}`,
+      type: 'screen_update',
+      muted: 'true',
+      screen: 'canvas',
+      timestamp: new Date().toISOString(),
+      payload: innerPayload
+    };
+
+    await this.mqttClient.publish({
+      topic: `${root}/${deviceId}/promotion`,
+      payload: JSON.stringify(payload),
+      qos: 1,
+      retain: false
+    });
+    logger.debug('Published promotion canvas', { deviceId, adId: ad._id.toString(), hasCampaign: !!ad.campaignId });
+  }
+
+  /** 4.2 Brand canvas — brandCanvasEnabled = true */
+  private async publishBrandCanvas(
+    deviceId: string,
+    root: string,
+    userId: mongoose.Types.ObjectId,
+    deviceObjectId: mongoose.Types.ObjectId
+  ): Promise<void> {
+    // Find RUNNING brand canvas ad: device-specific first, then user-level
+    let ad = await Ad.findOne({
+      userId,
+      deviceId: deviceObjectId,
+      type: AdType.BRAND_CANVAS,
+      status: AdStatus.RUNNING
+    }).sort({ createdAt: -1 });
+
+    if (!ad) {
+      ad = await Ad.findOne({
+        userId,
+        type: AdType.BRAND_CANVAS,
+        status: AdStatus.RUNNING
+      }).sort({ createdAt: -1 });
+    }
+
+    if (!ad) {
+      await this.publishDefaultCanvas(deviceId, root);
+      return;
+    }
+
+    const tplData = (ad.templateData || {}) as Record<string, any>;
+
+    const innerPayload: Record<string, any> = {
+      ...(tplData.imageTemplateId && { imageTemplateId: tplData.imageTemplateId }),
+      ...(tplData.textTemplateId && { textTemplateId: tplData.textTemplateId }),
+      ...(tplData.textContent && { textContent: tplData.textContent }),
+      ...(tplData.textColors && { textColors: tplData.textColors })
+    };
+    // Brand canvas: no provider, no url
+
+    const payload = {
+      version: '1.1',
+      id: `msg_promo_${Date.now()}`,
+      type: 'screen_update',
+      muted: 'true',
+      screen: 'canvas',
+      timestamp: new Date().toISOString(),
+      payload: innerPayload
+    };
+
+    await this.mqttClient.publish({
+      topic: `${root}/${deviceId}/promotion`,
+      payload: JSON.stringify(payload),
+      qos: 1,
+      retain: false
+    });
+    logger.debug('Published brand canvas', { deviceId, adId: ad._id.toString() });
+  }
+
+  /** 4.3 Default canvas — both prefs disabled or no ad found */
+  private async publishDefaultCanvas(deviceId: string, root: string): Promise<void> {
+    const payload = {
+      version: '1.1',
+      id: `msg_promo_${Date.now()}`,
+      type: 'screen_update',
+      muted: 'true',
+      screen: 'canvas',
+      timestamp: new Date().toISOString(),
+      payload: {}
+    };
+
+    await this.mqttClient.publish({
+      topic: `${root}/${deviceId}/promotion`,
+      payload: JSON.stringify(payload),
+      qos: 1,
+      retain: false
+    });
+    logger.debug('Published default canvas (empty)', { deviceId });
   }
 
   private async cleanupInactiveDeviceState(): Promise<void> {
