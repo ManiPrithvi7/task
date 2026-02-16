@@ -18,6 +18,7 @@ export class StatsPublisher {
   private mqttClient: MqttClientManager;
   private deviceService: DeviceService;
   private publishInterval: number;
+  private caService?: CAService;
   private intervalTimer: NodeJS.Timeout | null = null;
   private isRunning: boolean = false;
   private deviceState: Map<string, DeviceScreenState> = new Map();
