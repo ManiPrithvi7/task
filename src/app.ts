@@ -11,7 +11,12 @@ import { UserService } from './services/userService';
 import { MongoService, createMongoService } from './services/mongoService';
 import { RedisService, createRedisService } from './services/redisService';
 import { DeviceService, getActiveDeviceCache, ActiveDeviceCache } from './services/deviceService';
+import { InfluxService, createInfluxService } from './services/influxService';
 import { SessionService } from './services/sessionService';
+import { AuditService, createAuditService, getAuditService, AuditEventType } from './services/auditService';
+import { TransparencyLog, createTransparencyLog, getTransparencyLog } from './services/transparencyLog';
+import { validateKeyUsageAndEKU, getCertificateInfo } from './utils/certValidator';
+import { validateCertificateChain } from './services/chainValidator';
 import { Device } from './models/Device';
 import { User } from './models/User';
 import { createProvisioningRoutes } from './routes/provisioningRoutes';
@@ -54,6 +59,13 @@ export class StatsMqttLite {
   // Redis service
   private redisService?: RedisService;
   
+  // InfluxDB service (time-series metrics)
+  private influxService?: InfluxService;
+  
+  // PKI services (Industrial Grade — Improvements #3 and #7)
+  private auditService?: AuditService;
+  private transparencyLog?: TransparencyLog;
+  
   // Active device cache (Redis-backed)
   private activeDeviceCache!: ActiveDeviceCache;
   
@@ -80,6 +92,9 @@ export class StatsMqttLite {
       } else if (this.config.redis.enabled) {
         logger.warn('⚠️  Redis enabled but REDIS_HOST or REDIS_PORT not set. Provisioning tokens will use in-memory storage.');
       }
+
+      // Initialize InfluxDB (optional — for time-series metrics)
+      await this.initializeInfluxDB();
 
       // Initialize services
       await this.initializeServices();
@@ -112,6 +127,9 @@ export class StatsMqttLite {
       logger.info('🗃️  MongoDB:', `Connected (${this.config.mongodb.dbName})`);
       if (this.config.redis.enabled && this.redisService) {
         logger.info('💾 Redis:', `Connected (Token Persistence)`);
+      }
+      if (this.influxService) {
+        logger.info('📈 InfluxDB:', `Connected (${this.config.influxdb.url})`);
       }
       if (this.config.provisioning.enabled) {
         const tokenStorage = this.redisService ? 'Redis' : 'In-Memory';
@@ -246,6 +264,39 @@ export class StatsMqttLite {
     }
   }
 
+  private async initializeInfluxDB(): Promise<void> {
+    if (!this.config.influxdb.enabled) {
+      logger.info('📈 InfluxDB disabled (set INFLUXDB_ENABLED=true to enable)');
+      return;
+    }
+
+    logger.info('📈 Initializing InfluxDB (Time-Series Metrics)...');
+
+    try {
+      this.influxService = createInfluxService(this.config.influxdb);
+
+      const healthy = await this.influxService.healthCheck();
+      if (healthy) {
+        logger.info('✅ InfluxDB connected successfully', {
+          url: this.config.influxdb.url,
+          org: this.config.influxdb.org,
+          bucket: this.config.influxdb.bucket
+        });
+      } else {
+        logger.warn('⚠️  InfluxDB health check failed — service created but may not be reachable', {
+          url: this.config.influxdb.url
+        });
+      }
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.warn('⚠️  InfluxDB initialization failed — metrics will not be recorded', {
+        error: errorMessage,
+        url: this.config.influxdb.url
+      });
+      this.influxService = undefined;
+    }
+  }
+
   private async initializeProvisioning(): Promise<void> {
     if (!this.config.provisioning.enabled) {
       logger.info('🔐 Provisioning disabled (set PROVISIONING_ENABLED=true to enable)');
@@ -288,10 +339,42 @@ export class StatsMqttLite {
       // Initialize Root CA
       await this.caService.initialize();
 
+      // Initialize PKI Industrial Grade services
+
+      // PKI #3: Hash-chained audit service
+      this.auditService = createAuditService({
+        fallbackLogPath: path.join(this.config.provisioning.caStoragePath, 'audit.log'),
+        hashChainEnabled: this.config.provisioning.auditHashChainEnabled,
+        hsmSigningEnabled: this.config.provisioning.auditHsmSigningEnabled
+      });
+      await this.auditService.initialize();
+      logger.info('✅ AuditService initialized (hash-chain)', {
+        hashChainEnabled: this.config.provisioning.auditHashChainEnabled,
+        chainState: this.auditService.getChainState()
+      });
+
+      // PKI #7: Certificate transparency log
+      if (this.config.provisioning.transparencyLogEnabled) {
+        this.transparencyLog = createTransparencyLog({ enabled: true });
+        await this.transparencyLog.initialize();
+        logger.info('✅ Transparency Log initialized (Merkle tree)', {
+          entryCount: this.transparencyLog.getEntryCount()
+        });
+      }
+
       // Log effective CN prefix and certificate profile for auditing/ops
       logger.info('Certificate profile in effect', {
         cnPrefix: this.config.provisioning.cnPrefix,
-        certProfile: this.config.provisioning.certProfile
+        cnFormat: this.config.provisioning.cnFormat,
+        certProfile: this.config.provisioning.certProfile,
+        pki: {
+          enforceRuntimeKuEku: this.config.provisioning.enforceRuntimeKuEku,
+          certRenewalWindowDays: this.config.provisioning.certRenewalWindowDays,
+          certGracePeriodDays: this.config.provisioning.certGracePeriodDays,
+          intermediateCAEnabled: this.config.provisioning.intermediateCAEnabled,
+          transparencyLogEnabled: this.config.provisioning.transparencyLogEnabled,
+          auditHashChainEnabled: this.config.provisioning.auditHashChainEnabled
+        }
       });
 
       // Optionally generate a server/client certificate for this service (used for mTLS by the app itself)
@@ -677,8 +760,14 @@ export class StatsMqttLite {
   }
 
   /**
-   * Validates that the device is allowed for mTLS-aligned registration (has active provisioned certificate).
-   * When requireMtlsForRegistration is true and caService is available, only devices with an active cert can register.
+   * Validates that the device is allowed for mTLS-aligned registration.
+   * 
+   * Enhanced with PKI Industrial Grade checks:
+   * - PKI #1: CN validation (legacy + structured formats)
+   * - PKI #2: Certificate chain validation (if intermediate CA enabled)
+   * - PKI #4: Runtime KU/EKU enforcement
+   * - PKI #5: Grace period awareness (renewal_window, grace_period, hard_expired)
+   * 
    * @returns true if registration/request is allowed, false if device must be rejected
    */
   private async ensureDeviceProvisioned(deviceId: string): Promise<boolean> {
@@ -688,29 +777,136 @@ export class StatsMqttLite {
     if (!this.caService) {
       return true; // No CA service: cannot enforce; allow (e.g. provisioning disabled)
     }
+
     const cert = await this.caService.findActiveCertificateByDeviceId(deviceId);
     if (!cert) return false;
 
-    // Validate certificate CN matches expected prefix + deviceId
+    // PKI #5: Log expiry status (grace period awareness)
+    const expiryStatus = (cert as any).expiryStatus || 'valid';
+    const daysUntilExpiry = (cert as any).daysUntilExpiry;
+
+    if (expiryStatus === 'grace_period') {
+      logger.warn('🔶 [PKI:GRACE] Accepting expired certificate within grace period', {
+        deviceId,
+        expiryStatus,
+        daysUntilExpiry
+      });
+      // Log to audit
+      const auditSvc = getAuditService();
+      if (auditSvc) {
+        await auditSvc.logEvent({
+          event: AuditEventType.CERTIFICATE_GRACE_ACCEPTED,
+          deviceId,
+          certificateFingerprint: cert.fingerprint,
+          details: { expiryStatus, daysUntilExpiry }
+        }).catch(() => {});
+      }
+    } else if (expiryStatus === 'renewal_window') {
+      logger.info('🔵 [PKI:RENEWAL] Certificate in renewal window', {
+        deviceId,
+        daysUntilExpiry
+      });
+    }
+
+    // PKI #1: Validate certificate CN matches expected format (legacy or structured)
     let expectedCN: string;
     try {
-      expectedCN = this.caService ? (this.caService as any).formatExpectedCN(deviceId) : (() => {
-        const prefix = this.config.provisioning.cnPrefix || process.env.CERT_CN_PREFIX || 'PROOF';
-        const normalizedPrefix = String(prefix).trim().replace(/[-_]+$/g, '');
-        const device = String(deviceId).replace(new RegExp(`^${normalizedPrefix}[-_]*`), '');
-        return `${normalizedPrefix}-${device}`;
-      })();
+      // Parse CN to extract potential orderId/batchId
+      const parsed = this.caService.parseCN(cert.cn);
+      if (parsed) {
+        expectedCN = this.caService.formatExpectedCN(deviceId, parsed.orderId, parsed.batchId);
+      } else {
+        expectedCN = this.caService.formatExpectedCN(deviceId);
+      }
     } catch {
       const prefix = this.config.provisioning.cnPrefix || process.env.CERT_CN_PREFIX || 'PROOF';
       expectedCN = `${String(prefix).trim()}-${deviceId}`;
     }
+
     if (cert.cn !== expectedCN) {
       logger.warn('Certificate CN mismatch for device - provisioning rejected', {
         deviceId,
         expectedCN,
         certCN: cert.cn
       });
+      const auditSvc = getAuditService();
+      if (auditSvc) {
+        await auditSvc.logEvent({
+          event: AuditEventType.DEVICE_AUTH_FAILED,
+          deviceId,
+          details: { reason: 'CN_MISMATCH', expectedCN, certCN: cert.cn }
+        }).catch(() => {});
+      }
       return false;
+    }
+
+    // PKI #4: Runtime KU/EKU enforcement
+    if (this.config.provisioning.enforceRuntimeKuEku && cert.certificate) {
+      const kuResult = validateKeyUsageAndEKU(cert.certificate);
+      if (!kuResult.valid) {
+        logger.warn('🔴 [PKI:KU_EKU] Certificate KU/EKU validation failed — rejecting', {
+          deviceId,
+          errors: kuResult.errors,
+          hasDigitalSignature: kuResult.hasDigitalSignature,
+          hasClientAuth: kuResult.hasClientAuth,
+          hasProhibitedKeyCertSign: kuResult.hasProhibitedKeyCertSign
+        });
+        const auditSvc = getAuditService();
+        if (auditSvc) {
+          await auditSvc.logEvent({
+            event: AuditEventType.KU_EKU_VALIDATION_FAILED,
+            deviceId,
+            certificateFingerprint: cert.fingerprint,
+            details: { errors: kuResult.errors }
+          }).catch(() => {});
+        }
+        return false;
+      }
+      logger.debug('✅ [PKI:KU_EKU] Certificate KU/EKU valid', { deviceId });
+    }
+
+    // PKI #2: Certificate chain validation (when intermediate CA enabled)
+    if (this.config.provisioning.intermediateCAEnabled && cert.certificate && cert.ca_certificate) {
+      try {
+        const rootCAPem = this.caService.getRootCACertificate();
+        // For now, chain is: leaf → root (no intermediate yet)
+        // When intermediate CA is added, pass intermediate cert in the array
+        const chainResult = validateCertificateChain(cert.certificate, [], rootCAPem);
+        if (!chainResult.valid) {
+          logger.warn('🔴 [PKI:CHAIN] Certificate chain validation failed — rejecting', {
+            deviceId,
+            errors: chainResult.errors,
+            chainLength: chainResult.chainLength
+          });
+          const auditSvc = getAuditService();
+          if (auditSvc) {
+            await auditSvc.logEvent({
+              event: AuditEventType.CHAIN_VALIDATION_FAILED,
+              deviceId,
+              certificateFingerprint: cert.fingerprint,
+              details: { errors: chainResult.errors, chainSubjects: chainResult.chainSubjects }
+            }).catch(() => {});
+          }
+          return false;
+        }
+        logger.debug('✅ [PKI:CHAIN] Certificate chain valid', { deviceId, chainLength: chainResult.chainLength });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.error('PKI chain validation error', { deviceId, error: msg });
+        // Fail-closed: reject on chain validation error
+        return false;
+      }
+    }
+
+    // All checks passed — log success to audit
+    const auditSvc = getAuditService();
+    if (auditSvc) {
+      await auditSvc.logEvent({
+        event: AuditEventType.DEVICE_AUTH_SUCCESS,
+        deviceId,
+        certificateFingerprint: cert.fingerprint,
+        details: { expiryStatus, daysUntilExpiry }
+      }).catch(() => {});
     }
 
     return true;
@@ -1150,6 +1346,11 @@ export class StatsMqttLite {
       // Disconnect Redis
       if (this.redisService) {
         await this.redisService.disconnect();
+      }
+      
+      // Close InfluxDB
+      if (this.influxService) {
+        await this.influxService.close();
       }
       
       logger.info('✅ Application stopped gracefully');

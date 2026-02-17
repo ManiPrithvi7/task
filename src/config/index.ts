@@ -49,6 +49,8 @@ export interface ProvisioningConfig {
   requireMtlsForRegistration: boolean;
   /** Certificate Common Name (CN) prefix for devices (e.g. 'PROOF_') */
   cnPrefix: string;
+  /** CN format: 'legacy' (PROOF-deviceId) or 'structured' (PROOF-ORDER-BATCH-DEVICE) — PKI #1 */
+  cnFormat: 'legacy' | 'structured';
   /** Certificate profile for signing and validation */
   certProfile?: {
     validityDays: number;
@@ -57,6 +59,30 @@ export interface ProvisioningConfig {
     requireSanDeviceId: boolean;
     minKeyBits: number;
   };
+  /** PKI #2: Enable certificate chain validation (intermediate CA) */
+  intermediateCAEnabled: boolean;
+  /** PKI #3: Enable hash-chained audit logging */
+  auditHashChainEnabled: boolean;
+  /** PKI #3: Enable HSM signing of audit chain roots (Phase 2) */
+  auditHsmSigningEnabled: boolean;
+  /** PKI #4: Enforce KU/EKU at runtime (every device auth check) */
+  enforceRuntimeKuEku: boolean;
+  /** PKI #5: Days before expiry to start renewal window */
+  certRenewalWindowDays: number;
+  /** PKI #5: Days after expiry to accept cert with warning (grace period) */
+  certGracePeriodDays: number;
+  /** PKI #5: Minutes between emergency renewal attempts in grace period */
+  certEmergencyRenewalInterval: number;
+  /** PKI #6: CSR rate limits */
+  csrRateLimits: {
+    provisionedLimit: number;
+    unprovisionedLimit: number;
+    globalLimit: number;
+    perIpLimit: number;
+    windowSeconds: number;
+  };
+  /** PKI #7: Enable certificate transparency log (Merkle tree) */
+  transparencyLogEnabled: boolean;
 }
 
 export interface MongoDBConfig {
@@ -79,6 +105,14 @@ export interface AppEnvConfig {
   logLevel: string;
 }
 
+export interface InfluxDBConfig {
+  enabled: boolean;
+  url: string;
+  token: string;
+  org: string;
+  bucket: string;
+}
+
 export interface AuthConfig {
   secret: string;  // AUTH_SECRET from environment
 }
@@ -90,6 +124,7 @@ export interface AppConfig {
   provisioning: ProvisioningConfig;
   mongodb: MongoDBConfig;
   redis: RedisConfig;
+  influxdb: InfluxDBConfig;
   auth: AuthConfig;
   app: AppEnvConfig;
 }
@@ -132,15 +167,36 @@ export function loadConfig(): AppConfig {
       deviceCertValidityDays: parseInt(process.env.DEVICE_CERT_VALIDITY_DAYS || '90'),
       certificateDbPath: process.env.CERTIFICATE_DB_PATH || `${dataDir}/certificates.db`,
       requireMtlsForRegistration: process.env.REQUIRE_MTLS_FOR_REGISTRATION !== 'false',  // Default true: only provisioned devices can register
-      cnPrefix: process.env.CERT_CN_PREFIX || 'PROOF_'
-      ,
+      cnPrefix: process.env.CERT_CN_PREFIX || 'PROOF_',
+      cnFormat: (process.env.CERT_CN_FORMAT === 'structured' ? 'structured' : 'legacy') as 'legacy' | 'structured',
       certProfile: {
         validityDays: parseInt(process.env.CERT_VALIDITY_DAYS || String(process.env.DEVICE_CERT_VALIDITY_DAYS || '90'), 10),
         keyUsage: (process.env.CERT_KEY_USAGE || 'digitalSignature,keyEncipherment').split(',').map(s => s.trim()).filter(Boolean),
         extendedKeyUsage: (process.env.CERT_EXTENDED_KEY_USAGE || 'clientAuth').split(',').map(s => s.trim()).filter(Boolean),
         requireSanDeviceId: process.env.CERT_SAN_REQUIRE_DEVICE_ID !== 'false',
         minKeyBits: parseInt(process.env.CERT_MIN_KEY_BITS || '2048', 10)
-      }
+      },
+      // PKI #2: Intermediate CA
+      intermediateCAEnabled: process.env.INTERMEDIATE_CA_ENABLED === 'true',
+      // PKI #3: Audit hash chain
+      auditHashChainEnabled: process.env.AUDIT_HASH_CHAIN_ENABLED !== 'false',  // Default: true
+      auditHsmSigningEnabled: process.env.AUDIT_HSM_SIGNING_ENABLED === 'true',
+      // PKI #4: Runtime KU/EKU enforcement
+      enforceRuntimeKuEku: process.env.ENFORCE_RUNTIME_KU_EKU !== 'false',  // Default: true
+      // PKI #5: Grace period
+      certRenewalWindowDays: parseInt(process.env.CERT_RENEWAL_WINDOW_DAYS || '45', 10),
+      certGracePeriodDays: parseInt(process.env.CERT_GRACE_PERIOD_DAYS || '20', 10),
+      certEmergencyRenewalInterval: parseInt(process.env.CERT_EMERGENCY_RENEWAL_INTERVAL || '5', 10),
+      // PKI #6: CSR rate limits
+      csrRateLimits: {
+        provisionedLimit: parseInt(process.env.CSR_RATE_LIMIT_PROVISIONED || '10', 10),
+        unprovisionedLimit: parseInt(process.env.CSR_RATE_LIMIT_UNPROVISIONED || '3', 10),
+        globalLimit: parseInt(process.env.CSR_RATE_LIMIT_GLOBAL || '100', 10),
+        perIpLimit: parseInt(process.env.CSR_RATE_LIMIT_PER_IP || '5', 10),
+        windowSeconds: parseInt(process.env.CSR_RATE_LIMIT_WINDOW || '900', 10)
+      },
+      // PKI #7: Transparency log
+      transparencyLogEnabled: process.env.TRANSPARENCY_LOG_ENABLED === 'true'
     },
     mongodb: {
       uri: process.env.MONGODB_URI || process.env.MONGO_URI || '',
@@ -154,6 +210,13 @@ export function loadConfig(): AppConfig {
       db: parseInt(process.env.REDIS_DB || '0', 10),
       keyPrefix: process.env.REDIS_KEY_PREFIX || 'mqtt-lite:',
       tls: process.env.REDIS_TLS === 'true' || process.env.REDIS_TLS === '1'
+    },
+    influxdb: {
+      enabled: process.env.INFLUXDB_ENABLED !== 'false',
+      url: process.env.INFLUXDB_URL || `http://${process.env.INFLUXDB_HOST || 'localhost'}:${process.env.INFLUXDB_PORT || '8086'}`,
+      token: process.env.INFLUXDB_TOKEN || 'statsmqtt-admin-token-2024',
+      org: process.env.INFLUXDB_ORG || 'statsmqtt',
+      bucket: process.env.INFLUXDB_BUCKET || 'metrics'
     },
     auth: {
       secret: process.env.AUTH_SECRET || ''
@@ -186,6 +249,12 @@ export function loadConfig(): AppConfig {
       host: config.redis.host || 'not set',
       port: config.redis.port ?? 'not set',
       keyPrefix: config.redis.keyPrefix
+    },
+    influxdb: {
+      enabled: config.influxdb.enabled,
+      url: config.influxdb.url,
+      org: config.influxdb.org,
+      bucket: config.influxdb.bucket
     },
     env: config.app.env
   });
@@ -277,6 +346,7 @@ export function loadConfig(): AppConfig {
 }
 
 export function validateConfig(config: AppConfig): void {
+  console.log("mongo", config.mongodb.uri)
   if (!config.mqtt.broker) {
     throw new Error('MQTT broker is required');
   }

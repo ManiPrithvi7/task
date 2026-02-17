@@ -5,6 +5,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
 import { logger } from '../utils/logger';
+import { globalRateLimiter } from '../middleware/rateLimiter';
 import { SessionService } from '../services/sessionService';
 import { DeviceService } from '../services/deviceService';
 import { MqttClientManager } from './mqttClient';
@@ -46,6 +47,9 @@ export class HttpServer {
     // Increase limit for sign-csr body (PEM CSR + token can be ~4–8kb)
     this.app.use(express.json({ limit: '512kb' }));
     this.app.use(express.urlencoded({ extended: true, limit: '512kb' }));
+
+    // Global rate limiter — all endpoints (skips /health automatically)
+    this.app.use(globalRateLimiter());
 
     const publicPath = join(process.cwd(), 'public');
     this.app.use(express.static(publicPath));

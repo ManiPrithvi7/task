@@ -1,228 +1,185 @@
 /**
- * Device Service - MongoDB-based device management + Redis active device cache
- *
- * MongoDB: Permanent device records (register, status, cleanup)
- * Redis:   Real-time active device cache (proof.mqtt:active:{deviceId})
- *          Stores userId + user preferences for zero-MongoDB publish cycles
+ * Device Service - MongoDB-based device management
+ * Replaces file-based DeviceStorage
+ * Updated to match Prisma schema
+ * 
+ * Also includes Redis-backed ActiveDeviceCache for zero-latency
+ * active device lookups during publish cycles.
  */
 
 import { Device, IDevice, DeviceStatus } from '../models/Device';
-import { RedisClientType } from 'redis';
-import { getRedisService } from './redisService';
 import { logger } from '../utils/logger';
+import { getRedisService } from './redisService';
 import mongoose from 'mongoose';
 
-// ─── Redis Active Device Cache ───────────────────────────────────────────────
+// ─── Active Device Cache (Redis-backed) ─────────────────────────────────────
 
-const ACTIVE_PREFIX = 'proof.mqtt:active:';
+const REDIS_ACTIVE_PREFIX = 'proof.mqtt:active:';
 
+/**
+ * Represents a device in the Redis active cache.
+ * Cached at registration time to avoid per-cycle MongoDB reads.
+ */
 export interface ActiveDevice {
   deviceId: string;
   userId: string;
   adManagementEnabled: boolean;
   brandCanvasEnabled: boolean;
-  lastSeen: number;
+  lastSeen: number;  // epoch ms
 }
 
+/**
+ * Redis-backed cache of currently-active devices.
+ * Used by StatsPublisher for zero-latency device enumeration during publish cycles.
+ * Written once at registration; removed on LWT / PUBACK timeout.
+ */
 export class ActiveDeviceCache {
-  private getRedis(): RedisClientType | null {
-    const svc = getRedisService();
-    if (!svc || !svc.isRedisConnected()) return null;
-    return svc.getClient();
-  }
-
   /**
-   * Register a device as active with user preferences.
-   * Called once when device publishes to /active topic.
+   * Cache a device as active with its user preferences.
    */
-  async setActive(device: ActiveDevice): Promise<boolean> {
-    const redis = this.getRedis();
-    if (!redis) {
-      logger.warn('ActiveDeviceCache: Redis unavailable, cannot cache active device', { deviceId: device.deviceId });
-      return false;
-    }
+  async setActive(device: ActiveDevice): Promise<void> {
+    const redis = getRedisService();
+    if (!redis || !redis.isRedisConnected()) return;
 
     try {
-      const key = `${ACTIVE_PREFIX}${device.deviceId}`;
-      const value = JSON.stringify(device);
-      await redis.set(key, value);
-      logger.info('🟢 [REDIS:SET] Active device cached', {
-        key,
+      const client = redis.getClient();
+      const key = `${REDIS_ACTIVE_PREFIX}${device.deviceId}`;
+      const value = JSON.stringify({
         deviceId: device.deviceId,
-        userId: device.userId || '(no user)',
+        userId: device.userId,
         adManagementEnabled: device.adManagementEnabled,
         brandCanvasEnabled: device.brandCanvasEnabled,
         lastSeen: new Date(device.lastSeen).toISOString()
       });
-      return true;
-    } catch (err: unknown) {
-      logger.error('ActiveDeviceCache: failed to set active device', {
+
+      await client.set(key, value, { EX: 86400 }); // 24h TTL
+
+      logger.info('\uD83D\uDFE2 [REDIS:SET] Active device cached', {
+        key,
         deviceId: device.deviceId,
-        error: err instanceof Error ? err.message : String(err)
+        userId: device.userId,
+        adManagementEnabled: device.adManagementEnabled,
+        brandCanvasEnabled: device.brandCanvasEnabled,
+        lastSeen: new Date(device.lastSeen).toISOString()
       });
-      return false;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error('Failed to cache active device', { deviceId: device.deviceId, error: msg });
     }
   }
 
   /**
-   * Remove a device from the active cache.
-   * Called on LWT, PUBACK timeout, or explicit unregistration.
+   * Remove a device from the active cache (LWT / disconnect / timeout).
    */
   async removeActive(deviceId: string): Promise<boolean> {
-    const redis = this.getRedis();
-    if (!redis) return false;
+    const redis = getRedisService();
+    if (!redis || !redis.isRedisConnected()) return false;
 
     try {
-      const key = `${ACTIVE_PREFIX}${deviceId}`;
-      const deleted = await redis.del(key);
-      if (deleted > 0) {
-        logger.info('🔴 [REDIS:DEL] Active device removed', { key, deviceId });
-      } else {
-        logger.debug('🔴 [REDIS:DEL] Key not found (device was not cached)', { key, deviceId });
-      }
+      const client = redis.getClient();
+      const key = `${REDIS_ACTIVE_PREFIX}${deviceId}`;
+      const deleted = await client.del(key);
       return deleted > 0;
     } catch (err: unknown) {
-      logger.error('ActiveDeviceCache: failed to remove active device', {
-        deviceId,
-        error: err instanceof Error ? err.message : String(err)
-      });
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error('Failed to remove active device from cache', { deviceId, error: msg });
       return false;
     }
   }
 
   /**
-   * Update lastSeen timestamp for an active device (on PUBACK received).
+   * Update the lastSeen timestamp for an active device (PUBACK confirmation).
    */
   async updateLastSeen(deviceId: string): Promise<void> {
-    const redis = this.getRedis();
-    if (!redis) return;
+    const redis = getRedisService();
+    if (!redis || !redis.isRedisConnected()) return;
 
     try {
-      const key = `${ACTIVE_PREFIX}${deviceId}`;
-      const raw = await redis.get(key);
-      if (!raw) {
-        logger.debug('🕐 [REDIS:LASTSEEN] Skip — device not in active cache', { deviceId });
-        return;
-      }
+      const client = redis.getClient();
+      const key = `${REDIS_ACTIVE_PREFIX}${deviceId}`;
+      const raw = await client.get(key);
+      if (!raw) return;
 
-      const entry: ActiveDevice = JSON.parse(raw);
-      const previousSeen = entry.lastSeen;
-      entry.lastSeen = Date.now();
-      await redis.set(key, JSON.stringify(entry));
-      logger.debug('🕐 [REDIS:LASTSEEN] Updated', {
-        deviceId,
-        previousSeen: new Date(previousSeen).toISOString(),
-        newSeen: new Date(entry.lastSeen).toISOString()
-      });
+      const device = JSON.parse(raw);
+      device.lastSeen = new Date().toISOString();
+      await client.set(key, JSON.stringify(device), { EX: 86400 });
     } catch (err: unknown) {
-      logger.error('ActiveDeviceCache: failed to update lastSeen', {
-        deviceId,
-        error: err instanceof Error ? err.message : String(err)
-      });
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.debug('Failed to update lastSeen in Redis', { deviceId, error: msg });
     }
   }
 
   /**
-   * Get a single active device entry.
-   */
-  async getActive(deviceId: string): Promise<ActiveDevice | null> {
-    const redis = this.getRedis();
-    if (!redis) return null;
-
-    try {
-      const raw = await redis.get(`${ACTIVE_PREFIX}${deviceId}`);
-      if (!raw) return null;
-      return JSON.parse(raw) as ActiveDevice;
-    } catch (err: unknown) {
-      logger.error('ActiveDeviceCache: failed to get active device', {
-        deviceId,
-        error: err instanceof Error ? err.message : String(err)
-      });
-      return null;
-    }
-  }
-
-  /**
-   * Get ALL active devices from Redis using SCAN (non-blocking).
-   * This is the hot-path method called every publish cycle.
+   * Get all active devices from Redis (SCAN-based, no blocking).
    */
   async getAllActive(): Promise<ActiveDevice[]> {
-    const redis = this.getRedis();
-    if (!redis) return [];
+    const redis = getRedisService();
+    if (!redis || !redis.isRedisConnected()) return [];
 
     try {
+      const client = redis.getClient();
       const devices: ActiveDevice[] = [];
-      let cursor = 0;
 
-      do {
-        const result = await redis.scan(cursor, { MATCH: `${ACTIVE_PREFIX}*`, COUNT: 100 });
-        cursor = result.cursor;
+      // SCAN for all active device keys
+      const keys: string[] = [];
+      for await (const key of client.scanIterator({ MATCH: `${REDIS_ACTIVE_PREFIX}*`, COUNT: 100 })) {
+        keys.push(key);
+      }
 
-        if (result.keys.length > 0) {
-          const values = await redis.mGet(result.keys);
-          for (const val of values) {
-            if (val) {
-              try {
-                devices.push(JSON.parse(val) as ActiveDevice);
-              } catch { /* skip malformed entries */ }
-            }
-          }
-        }
-      } while (cursor !== 0);
-
-      logger.debug('📋 [REDIS:SCAN] Active devices retrieved', {
-        count: devices.length,
-        deviceIds: devices.map(d => d.deviceId)
+      logger.debug('\uD83D\uDCCB [REDIS:SCAN] Active devices retrieved', {
+        count: keys.length,
+        deviceIds: keys.map(k => k.replace(REDIS_ACTIVE_PREFIX, ''))
       });
+
+      if (keys.length === 0) return [];
+
+      // MGET all values in one round-trip
+      const values = await client.mGet(keys);
+      for (const val of values) {
+        if (!val) continue;
+        try {
+          const parsed = JSON.parse(val);
+          devices.push({
+            deviceId: parsed.deviceId || '',
+            userId: parsed.userId || '',
+            adManagementEnabled: parsed.adManagementEnabled ?? true,
+            brandCanvasEnabled: parsed.brandCanvasEnabled ?? false,
+            lastSeen: parsed.lastSeen ? new Date(parsed.lastSeen).getTime() : Date.now()
+          });
+        } catch {
+          // Skip malformed entries
+        }
+      }
+
       return devices;
     } catch (err: unknown) {
-      logger.error('ActiveDeviceCache: failed to scan active devices', {
-        error: err instanceof Error ? err.message : String(err)
-      });
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error('Failed to get active devices from Redis', { error: msg });
       return [];
     }
   }
 
   /**
-   * Flush all active device keys on server startup (stale from previous session).
+   * Flush all active device keys (used on startup to clear stale sessions).
    */
-  async flushAll(): Promise<number> {
-    const redis = this.getRedis();
-    if (!redis) return 0;
+  async flushAll(): Promise<void> {
+    const redis = getRedisService();
+    if (!redis || !redis.isRedisConnected()) return;
 
     try {
-      let deleted = 0;
-      let cursor = 0;
-
-      do {
-        const result = await redis.scan(cursor, { MATCH: `${ACTIVE_PREFIX}*`, COUNT: 100 });
-        cursor = result.cursor;
-
-        if (result.keys.length > 0) {
-          await redis.del(result.keys);
-          deleted += result.keys.length;
-        }
-      } while (cursor !== 0);
-
-      logger.info('🧹 [REDIS:FLUSH] Startup flush completed', {
-        deletedKeys: deleted,
-        pattern: `${ACTIVE_PREFIX}*`
-      });
-      return deleted;
+      const client = redis.getClient();
+      const keys: string[] = [];
+      for await (const key of client.scanIterator({ MATCH: `${REDIS_ACTIVE_PREFIX}*`, COUNT: 100 })) {
+        keys.push(key);
+      }
+      if (keys.length > 0) {
+        await client.del(keys);
+        logger.info('\uD83D\uDDD1\uFE0F [REDIS:FLUSH] Cleared stale active device keys', { count: keys.length });
+      }
     } catch (err: unknown) {
-      logger.error('ActiveDeviceCache: failed to flush active keys', {
-        error: err instanceof Error ? err.message : String(err)
-      });
-      return 0;
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn('Failed to flush active device cache', { error: msg });
     }
-  }
-
-  /**
-   * Get count of active devices.
-   */
-  async count(): Promise<number> {
-    const devices = await this.getAllActive();
-    return devices.length;
   }
 }
 
@@ -236,7 +193,7 @@ export function getActiveDeviceCache(): ActiveDeviceCache {
   return activeDeviceCacheInstance;
 }
 
-// ─── MongoDB Device Service ──────────────────────────────────────────────────
+// ─── Device Service (MongoDB-based) ─────────────────────────────────────────
 
 export interface DeviceData {
   deviceId: string;

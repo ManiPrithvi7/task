@@ -15,6 +15,7 @@ import { CAService, UnsupportedCSRKeyTypeError, DeviceAlreadyHasCertificateError
 import { AuthService } from '../services/authService';
 import { UserService } from '../services/userService';
 import { DeviceCertificateStatus } from '../models/DeviceCertificate';
+import { provisioningRateLimiter, csrRateLimiter } from '../middleware/rateLimiter';
 import mongoose from 'mongoose';
 
 export interface ProvisioningDependencies {
@@ -40,6 +41,9 @@ function getTokenErrorCode(errorMessage: string): string {
 export function createProvisioningRoutes(dependencies: ProvisioningDependencies): Router {
   const router = Router();
   const { provisioningService, caService, authService, userService } = dependencies;
+
+  // Tier 2: Provisioning rate limiter — applies to ALL routes in this router
+  router.use(provisioningRateLimiter());
 
   /**
    * POST /api/v1/onboarding
@@ -322,8 +326,10 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
    * POST /api/v1/sign-csr
    * Stage 2: CSR Signing
    * Validates provisioning token and signs CSR to create device certificate
+   * 
+   * PKI Improvement #6: Rate limiting middleware applied (Redis-backed counters)
    */
-  router.post('/sign-csr', async (req: Request, res: Response): Promise<void> => {
+  router.post('/sign-csr', csrRateLimiter(), async (req: Request, res: Response): Promise<void> => {
     // Declare variables outside try block for error handling
     let provisioningToken: string | undefined;
     let deviceId: string | undefined;

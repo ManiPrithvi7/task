@@ -1,6 +1,10 @@
 /**
  * Models index file
  * Exports all Mongoose models with enums
+ * 
+ * NOTE: AuditEntry and TransparencyEntry have been migrated to InfluxDB.
+ * Their Mongoose models are no longer used. AuditEventType is now exported
+ * from src/services/auditService.ts.
  */
 
 export { User, IUser } from './User';

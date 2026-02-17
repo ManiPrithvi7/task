@@ -1,0 +1,401 @@
+# PKI Industrial Grade Transition Plan
+## Mapping 7 Improvements to Existing Codebase
+
+---
+
+## Branch: `PKI_improvements`
+## Status: PLANNING — Review before implementation
+
+---
+
+## Current Codebase Inventory (PKI Surface)
+
+| File | Role | Lines |
+|---|---|---|
+| `src/services/caService.ts` | Root CA, CSR signing, CN validation, audit | 633 |
+| `src/models/DeviceCertificate.ts` | Certificate schema (device_id, cn, fingerprint, status, expires_at) | 114 |
+| `src/routes/provisioningRoutes.ts` | HTTP: /onboarding, /sign-csr, cert management | ~300 |
+| `src/services/provisioningService.ts` | Token-based provisioning flow | ~200 |
+| `src/config/index.ts` | cnPrefix='PROOF_', certProfile, env vars | ~180 |
+| `src/app.ts` | ensureDeviceProvisioned() — CN match check | ~1162 |
+| `src/models/DeviceACL.ts` | ACL tier model | ~80 |
+
+---
+
+## Improvement 1: Structured CN Format
+
+### Current
+- `caService.ts:formatExpectedCN()` → `PROOF-{deviceId}`
+- `config/index.ts` → `cnPrefix: process.env.CERT_CN_PREFIX || 'PROOF_'`
+- `app.ts:ensureDeviceProvisioned()` → calls `formatExpectedCN()` then string-matches cert CN
+
+### Target
+- `PROOF-[ORDER_ID]-[BATCH]-[DEVICE_ID]`
+- Example: `PROOF-ORD7890-B03-PRESS_0042`
+
+### Implementation Plan
+1. **`src/config/index.ts`** — Add new env vars:
+   - `CERT_CN_FORMAT` = `structured` | `legacy` (default `legacy` for backward compat)
+   - Format is derived at runtime; no breaking change to existing devices
+
+2. **`src/services/caService.ts`** — Modify:
+   - `formatExpectedCN(deviceId, orderId?, batchId?)` — accept optional order/batch
+   - `validateDeviceIdInCSR()` — accept both legacy `PROOF-{deviceId}` and structured `PROOF-{ORDER}-{BATCH}-{DEVICE}` based on `CERT_CN_FORMAT`
+   - Add `parseCN(cn: string)` utility → returns `{ prefix, orderId?, batchId?, deviceId }`
+
+3. **`src/routes/provisioningRoutes.ts`** — Modify `/sign-csr`:
+   - Accept optional `orderId` and `batchId` in request body
+   - Pass through to `caService.signCSR()`
+
+4. **`src/models/DeviceCertificate.ts`** — Add optional fields:
+   - `order_id?: string`
+   - `batch_id?: string`
+   - Add compound index `{ order_id: 1, batch_id: 1 }`
+
+5. **`src/app.ts`** — `ensureDeviceProvisioned()`:
+   - Update CN matching to support both formats
+
+### Consumers Affected
+- `provisioningRoutes.ts` (CSR submission)
+- `app.ts` (device provisioning check)
+- `caService.ts` (CN formatting + validation)
+
+### Dependencies
+- None (standalone improvement)
+
+---
+
+## Improvement 2: Certificate Chain Validation
+
+### Current
+- `caService.ts:signCSR()` signs directly with root CA private key
+- No intermediate CA exists
+- `findActiveCertificateByDeviceId()` checks only leaf cert status + expiry
+
+### Target
+- Intermediate CA signs device certs; Root CA offline
+- RFC 5280 path validation on every device auth check
+
+### Implementation Plan (3 Tiers)
+
+**Tier 1: Path Validation Logic**
+1. **NEW `src/services/chainValidator.ts`** — Create:
+   - `validateCertificateChain(leafPem, intermediatePems, rootPem)` → boolean
+   - Uses `node-forge` to verify issuer→subject chain, signature, validity dates
+   - Validates `basicConstraints.pathLenConstraint`
+   - Validates name constraints
+
+2. **`src/app.ts`** — `ensureDeviceProvisioned()`:
+   - After CN match, call `chainValidator.validateCertificateChain()`
+   - Fail-closed: reject if chain is invalid
+
+**Tier 2: Intermediate CA**
+3. **`src/services/caService.ts`** — Add:
+   - `generateIntermediateCA()` — Root signs Intermediate (3-year validity)
+   - Modify `signCSR()` to use Intermediate CA key (not root)
+   - Store intermediate CA cert+key alongside root
+   - `config/index.ts` → `INTERMEDIATE_CA_ENABLED=true|false`
+
+**Tier 3: Root Offline** (Operational — not code)
+- Root CA key removed from filesystem after Intermediate CA is generated
+- Document procedure for offline Root CA re-signing
+
+### Consumers Affected
+- `caService.ts` (signing flow)
+- `app.ts` (validation)
+- `config/index.ts` (new env vars)
+
+### Dependencies
+- Improvement 1 (CN format) should be done first so chain validation uses structured CNs
+
+---
+
+## Improvement 3: Tamper-Proof Audit Log
+
+### Current
+- `caService.ts` line 337-357: inline `audit()` helper
+- Writes to MongoDB `certificate_audit` collection or fallback file
+- Fields: `event`, `deviceId`, `userId`, `details`, `timestamp`
+- No hash chaining, no signatures, no integrity verification
+
+### Target
+- SHA-256 hash-chained entries
+- HSM signing of chain roots at intervals
+- Daily integrity verification job
+- WORM export
+
+### Implementation Plan (4 Phases)
+
+**Phase 1: Hash Chain**
+1. **NEW `src/services/auditService.ts`** — Create:
+   - `AuditService` class with `logEvent(event, data)` method
+   - Each entry gets `sequence`, `hash` (SHA-256 of content), `previousHash`
+   - Store in MongoDB `certificate_audit_v2` collection
+   - Schema: `{ sequence, timestamp, event, deviceId, orderId?, batchId?, serialNumber, previousHash, hash }`
+
+2. **`src/services/caService.ts`** — Replace inline `audit()`:
+   - Inject `AuditService` instance
+   - All certificate events route through `auditService.logEvent()`
+
+3. **`src/models/AuditEntry.ts`** — New model:
+   - Indexes: `{ sequence: 1 }` unique, `{ deviceId: 1 }`, `{ event: 1 }`
+
+**Phase 2: HSM Signing** (config-gated, deferred to production)
+4. Add `signature` field signed by HSM key at intervals (every 100 entries or 1 hour)
+
+**Phase 3: Daily Verification Job**
+5. **NEW `src/jobs/auditVerifier.ts`** — Scheduled job:
+   - Walks chain from sequence 0 → N, verifies each hash matches `previousHash`
+   - Alerts on any gap or mismatch
+
+**Phase 4: WORM Export** (operational — external storage integration)
+
+### Consumers Affected
+- `caService.ts` (audit calls)
+- Any future route that issues/revokes/renews certs
+
+### Dependencies
+- Improvement 1 (orderId/batchId available for audit entries)
+
+---
+
+## Improvement 4: Runtime KU/EKU Enforcement
+
+### Current
+- `caService.ts:signCSR()` sets KU/EKU extensions at issuance (line 276-291)
+- `app.ts:ensureDeviceProvisioned()` only checks CN match + cert status
+- No runtime validation of certificate extensions
+
+### Target
+- Every `ensureDeviceProvisioned()` call validates KU contains `digitalSignature`
+- Every call validates EKU contains `clientAuth`
+- Rejects `keyCertSign` on device certs (only CA should have this)
+
+### Implementation Plan
+1. **NEW `src/utils/certValidator.ts`** — Create:
+   - `validateKeyUsage(certPem: string)` → checks digitalSignature present, keyCertSign absent
+   - `validateExtendedKeyUsage(certPem: string)` → checks clientAuth present
+   - Uses `node-forge` to parse cert and inspect extensions
+
+2. **`src/app.ts`** — `ensureDeviceProvisioned()`:
+   - After CN match + status check, call `validateKeyUsage()` + `validateExtendedKeyUsage()`
+   - Log KU/EKU validation result to audit
+
+3. **`src/config/index.ts`** — Add:
+   - `ENFORCE_RUNTIME_KU_EKU=true|false` (default `true`)
+   - Allows disabling during migration period for legacy certs
+
+### Consumers Affected
+- `app.ts` (ensureDeviceProvisioned)
+- `caService.ts` (audit logging of validation results)
+
+### Dependencies
+- Improvement 3 (audit service for logging validation results)
+
+---
+
+## Improvement 5: Certificate Grace Period
+
+### Current
+- `caService.ts:findActiveCertificateByDeviceId()` line 544-547:
+  ```typescript
+  if (cert.expires_at < now) {
+    return null;  // Hard failure — expired cert treated as non-existent
+  }
+  ```
+- No renewal window, no grace period
+
+### Target
+- 45-day renewal window, 20-day grace period, 5-min emergency renewal interval
+
+### Implementation Plan
+1. **`src/config/index.ts`** — Add env vars:
+   - `CERT_RENEWAL_WINDOW_DAYS=45`
+   - `CERT_GRACE_PERIOD_DAYS=20`
+   - `CERT_EMERGENCY_RENEWAL_INTERVAL=5` (minutes)
+
+2. **`src/services/caService.ts`** — Modify `findActiveCertificateByDeviceId()`:
+   - Instead of hard null on expiry, calculate days until/past expiry
+   - Return cert with `expiryStatus: 'valid' | 'renewal_window' | 'grace_period' | 'hard_expired'`
+   - Only return null when `hard_expired` (past grace period)
+
+3. **`src/app.ts`** — `ensureDeviceProvisioned()`:
+   - Accept `renewal_window` and `grace_period` certs with warning logs
+   - Log escalation: INFO → WARNING → CRITICAL → ALERT
+   - Reject only `hard_expired`
+
+4. **`src/models/DeviceCertificate.ts`** — No schema change needed
+   - Existing `expires_at` field sufficient
+
+5. **NEW `src/jobs/renewalNotifier.ts`** (optional Phase 2):
+   - Periodic scan for certs entering renewal window
+   - Publish MQTT notification to device: `proof.mqtt/{deviceId}/cert_renewal`
+
+### Consumers Affected
+- `caService.ts` (expiry logic)
+- `app.ts` (provisioning check)
+- `config/index.ts` (new env vars)
+
+### Dependencies
+- Improvement 3 (audit logging of grace period acceptance)
+- Improvement 4 (KU/EKU check happens alongside expiry check)
+
+---
+
+## Improvement 6: CSR Rate Limiting
+
+### Current
+- `provisioningRoutes.ts` — `/sign-csr` endpoint has zero rate limiting
+- No per-device, per-IP, or global limits
+
+### Target
+- Per-device: 3 CSRs/15min (unprovisioned), 10 CSRs/15min (provisioned)
+- Global CA: 100 CSRs/1min
+- Per-IP: 5 CSRs/15min
+- Redis-backed counters (persist across restarts)
+
+### Implementation Plan
+1. **NEW `src/middleware/csrRateLimiter.ts`** — Create:
+   - Express middleware using Redis for counters
+   - Key strategy:
+     - `csr:provisioned:{deviceId}` → 10/15min
+     - `csr:ip:{clientIp}` → 5/15min
+     - `csr:global:{minuteBucket}` → 100/1min
+   - Returns 429 with `Retry-After`, `X-RateLimit-*` headers
+   - Logs rate limit events to audit service
+
+2. **`src/routes/provisioningRoutes.ts`** — Apply middleware:
+   - `router.post('/sign-csr', csrRateLimiter, ...)`
+
+3. **`src/config/index.ts`** — Add env vars:
+   - `CSR_RATE_LIMIT_PROVISIONED=10`
+   - `CSR_RATE_LIMIT_UNPROVISIONED=3`
+   - `CSR_RATE_LIMIT_GLOBAL=100`
+   - `CSR_RATE_LIMIT_PER_IP=5`
+   - `CSR_RATE_LIMIT_WINDOW=900` (seconds = 15min)
+
+### Consumers Affected
+- `provisioningRoutes.ts` (middleware applied)
+- `redisService.ts` (reuse existing Redis connection)
+
+### Dependencies
+- Redis must be connected (already required for active device cache)
+- Improvement 3 (audit logging of rate limit events)
+
+---
+
+## Improvement 7: Internal Certificate Transparency Log
+
+### Current
+- No transparency mechanism
+- Certificates exist only in MongoDB `device_certificates` collection
+- No verifiable proof of issuance
+
+### Target
+- Append-only Merkle tree of all certificate issuances
+- Inclusion proof provided to device at issuance
+- Monitors verify consistency
+
+### Implementation Plan (4 Phases)
+
+**Phase 1: Merkle Tree**
+1. **NEW `src/services/transparencyLog.ts`** — Create:
+   - `TransparencyLog` class
+   - `addEntry(certFingerprint, serialNumber, cn, timestamp)` → returns `{ index, inclusionProof, rootHash }`
+   - Merkle tree stored in MongoDB `transparency_log` collection
+   - Each leaf: SHA-256 of `(certFingerprint + serialNumber + cn + timestamp)`
+
+2. **`src/models/TransparencyEntry.ts`** — New model:
+   - `{ index, leafHash, rootHash, inclusionProof, certFingerprint, serialNumber, timestamp }`
+
+**Phase 2: Integration with CA**
+3. **`src/services/caService.ts`** — Modify `signCSR()`:
+   - After cert creation, call `transparencyLog.addEntry()`
+   - Include `inclusionProof` and `rootHash` in response to device
+
+4. **`src/routes/provisioningRoutes.ts`** — `/sign-csr` response:
+   - Include `transparencyProof: { index, inclusionProof, rootHash }` in response body
+
+**Phase 3: Root Hash Distribution**
+5. Periodic MQTT publish of current root hash to `proof.mqtt/system/transparency_root`
+
+**Phase 4: Consistency Monitor**
+6. **NEW `src/jobs/transparencyMonitor.ts`**:
+   - Verifies Merkle tree integrity periodically
+   - Alerts on any inconsistency
+
+### Consumers Affected
+- `caService.ts` (issuance flow)
+- `provisioningRoutes.ts` (response payload)
+
+### Dependencies
+- Improvement 3 (audit log references transparency log entry)
+
+---
+
+## Recommended Implementation Order
+
+```
+Phase 1 (Foundation):
+  1. Improvement 3 — Audit Service (hash chain)     ← All others depend on audit
+  2. Improvement 1 — Structured CN Format            ← Audit entries need orderId/batchId
+
+Phase 2 (Runtime Security):
+  3. Improvement 4 — Runtime KU/EKU Enforcement      ← Uses audit service
+  4. Improvement 5 — Grace Period                     ← Uses audit + KU/EKU
+
+Phase 3 (Defense):
+  5. Improvement 6 — CSR Rate Limiting               ← Uses Redis + audit
+  6. Improvement 2 — Certificate Chain Validation     ← Most complex, needs stable foundation
+
+Phase 4 (Advanced):
+  7. Improvement 7 — Transparency Log                ← Requires all above to be stable
+```
+
+---
+
+## New Files to Create
+
+| File | Purpose |
+|---|---|
+| `src/services/auditService.ts` | Hash-chained audit logging |
+| `src/models/AuditEntry.ts` | Mongoose schema for audit_v2 |
+| `src/services/chainValidator.ts` | RFC 5280 certificate chain validation |
+| `src/utils/certValidator.ts` | Runtime KU/EKU checking |
+| `src/middleware/csrRateLimiter.ts` | Redis-backed CSR rate limiting |
+| `src/services/transparencyLog.ts` | Merkle tree transparency log |
+| `src/models/TransparencyEntry.ts` | Mongoose schema for transparency entries |
+| `src/jobs/auditVerifier.ts` | Daily audit chain integrity check |
+| `src/jobs/transparencyMonitor.ts` | Merkle tree consistency monitor |
+| `src/jobs/renewalNotifier.ts` | Certificate renewal MQTT notifications |
+
+## Existing Files to Modify
+
+| File | Changes |
+|---|---|
+| `src/services/caService.ts` | CN format, intermediate CA, audit delegation, grace period, transparency hook |
+| `src/config/index.ts` | 15+ new env vars for all improvements |
+| `src/app.ts` | ensureDeviceProvisioned() — chain validation, KU/EKU, grace period |
+| `src/models/DeviceCertificate.ts` | Add order_id, batch_id fields |
+| `src/routes/provisioningRoutes.ts` | Rate limiter middleware, orderId/batchId params, transparency proof in response |
+
+---
+
+## New Environment Variables
+
+| Variable | Default | Improvement |
+|---|---|---|
+| `CERT_CN_FORMAT` | `legacy` | #1 |
+| `INTERMEDIATE_CA_ENABLED` | `false` | #2 |
+| `ENFORCE_RUNTIME_KU_EKU` | `true` | #4 |
+| `CERT_RENEWAL_WINDOW_DAYS` | `45` | #5 |
+| `CERT_GRACE_PERIOD_DAYS` | `20` | #5 |
+| `CERT_EMERGENCY_RENEWAL_INTERVAL` | `5` | #5 |
+| `CSR_RATE_LIMIT_PROVISIONED` | `10` | #6 |
+| `CSR_RATE_LIMIT_UNPROVISIONED` | `3` | #6 |
+| `CSR_RATE_LIMIT_GLOBAL` | `100` | #6 |
+| `CSR_RATE_LIMIT_PER_IP` | `5` | #6 |
+| `CSR_RATE_LIMIT_WINDOW` | `900` | #6 |
+| `TRANSPARENCY_LOG_ENABLED` | `false` | #7 |
+| `AUDIT_HASH_CHAIN_ENABLED` | `true` | #3 |
+| `AUDIT_HSM_SIGNING_ENABLED` | `false` | #3 |

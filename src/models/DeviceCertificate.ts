@@ -16,6 +16,10 @@ export interface IDeviceCertificate extends Document {
   _id: mongoose.Types.ObjectId;
   device_id: string;
   user_id: mongoose.Types.ObjectId;
+  /** PKI Improvement #1: Order ID for supply chain traceability (structured CN) */
+  order_id?: string;
+  /** PKI Improvement #1: Batch ID for granular revocation (structured CN) */
+  batch_id?: string;
   certificate: string;
   private_key: string; // Optional at issuance (device keeps key during CSR flow); may be empty
   ca_certificate: string;
@@ -40,6 +44,14 @@ const DeviceCertificateSchema = new Schema<IDeviceCertificate>({
     type: Schema.Types.ObjectId,
     ref: 'User',
     required: true
+  },
+  order_id: {
+    type: String,
+    default: null
+  },
+  batch_id: {
+    type: String,
+    default: null
   },
   certificate: {
     type: String,
@@ -98,6 +110,8 @@ DeviceCertificateSchema.index({ cn: 1 });
 DeviceCertificateSchema.index({ status: 1 });
 DeviceCertificateSchema.index({ expires_at: 1 });
 DeviceCertificateSchema.index({ created_at: 1 });
+// PKI Improvement #1: Compound index for order/batch revocation queries
+DeviceCertificateSchema.index({ order_id: 1, batch_id: 1 });
 
 // Pre-save middleware to update status based on expiration
 DeviceCertificateSchema.pre('save', function(next) {

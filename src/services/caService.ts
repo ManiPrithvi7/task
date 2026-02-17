@@ -68,21 +68,68 @@ export class CAService {
 
   /**
    * Format expected CN for a device.
-   * Normalizes configured prefix and avoids double-prefixing when deviceId already includes the prefix.
-   *
-   * Examples:
-   *  - prefix 'PROOF' + deviceId 'ADMIN-123' => 'PROOF-ADMIN-123'
-   *  - prefix 'PROOF' + deviceId 'PROOF-ADMIN-123' => 'PROOF-ADMIN-123'
+   * 
+   * Supports two modes (controlled by CERT_CN_FORMAT env var):
+   * 
+   * **Legacy (default):** `PROOF-{deviceId}`
+   *   - prefix 'PROOF' + deviceId 'ADMIN-123' => 'PROOF-ADMIN-123'
+   *   - prefix 'PROOF' + deviceId 'PROOF-ADMIN-123' => 'PROOF-ADMIN-123'
+   * 
+   * **Structured (production):** `PROOF-{ORDER_ID}-{BATCH}-{DEVICE_ID}`
+   *   - Example: PROOF-ORD7890-B03-PRESS_0042
+   *   - Enables revocation by order/batch and supply chain traceability
+   * 
+   * PKI Improvement #1: CN Format Lacks Operational Context
    */
-  public formatExpectedCN(deviceId: string): string {
+  public formatExpectedCN(deviceId: string, orderId?: string, batchId?: string): string {
     const rawPrefix = process.env.CERT_CN_PREFIX || 'PROOF';
-    // Normalize prefix: remove trailing separators like '-' or '_' and whitespace
+    const prefix = String(rawPrefix).trim().replace(/[-_]+$/g, '');
+    const cnFormat = process.env.CERT_CN_FORMAT || 'legacy';
+
+    if (cnFormat === 'structured' && orderId && batchId) {
+      // Structured: PROOF-ORDER_ID-BATCH-DEVICE_ID
+      const device = String(deviceId).replace(new RegExp(`^${prefix}[-_]*`), '');
+      return `${prefix}-${orderId}-${batchId}-${device}`;
+    }
+
+    // Legacy: PROOF-deviceId
+    const device = String(deviceId).replace(new RegExp(`^${prefix}[-_]*`), '');
+    return `${prefix}-${device}`;
+  }
+
+  /**
+   * Parse a structured CN into its components.
+   * Works for both legacy and structured formats.
+   * 
+   * @returns parsed components or null if CN doesn't match expected format
+   */
+  public parseCN(cn: string): { prefix: string; orderId?: string; batchId?: string; deviceId: string } | null {
+    if (!cn) return null;
+
+    const rawPrefix = process.env.CERT_CN_PREFIX || 'PROOF';
     const prefix = String(rawPrefix).trim().replace(/[-_]+$/g, '');
 
-    // If deviceId already starts with prefix (with optional separators), strip it
-    const device = String(deviceId).replace(new RegExp(`^${prefix}[-_]*`), '');
+    // Try structured format first: PROOF-ORDER-BATCH-DEVICE
+    const structuredMatch = cn.match(new RegExp(`^${prefix}-([A-Z0-9]+)-([A-Z0-9]+)-(.+)$`));
+    if (structuredMatch) {
+      return {
+        prefix,
+        orderId: structuredMatch[1],
+        batchId: structuredMatch[2],
+        deviceId: structuredMatch[3]
+      };
+    }
 
-    return `${prefix}-${device}`;
+    // Legacy format: PROOF-DEVICE
+    const legacyMatch = cn.match(new RegExp(`^${prefix}-(.+)$`));
+    if (legacyMatch) {
+      return {
+        prefix,
+        deviceId: legacyMatch[1]
+      };
+    }
+
+    return null;
   }
 
   /**
@@ -188,13 +235,17 @@ export class CAService {
   }
 
   /**
-   * Sign a CSR and create device certificate
-   * Supports both SQLite and MongoDB storage
+   * Sign a CSR and create device certificate.
+   * 
+   * PKI Improvement #1: Accepts optional orderId/batchId for structured CN.
+   * PKI Improvement #3: Delegates audit logging to AuditService (hash-chained).
    */
   async signCSR(
     csrPem: string,
     deviceId: string,
-    userId: string
+    userId: string,
+    orderId?: string,
+    batchId?: string
   ): Promise<IDeviceCertificate> {
     try {
       if (!this.rootCA) {
@@ -247,7 +298,7 @@ export class CAService {
       }
 
       // Validate device_id and CN/SAN format against expected profile rules
-      const deviceIdValid = this.validateDeviceIdInCSR(csr, deviceId);
+      const deviceIdValid = this.validateDeviceIdInCSR(csr, deviceId, orderId, batchId);
       if (!deviceIdValid) {
         throw new Error(`CSR CN/SAN did not match expected format for device ${deviceId}`);
       }
@@ -333,14 +384,37 @@ export class CAService {
 
       const fingerprint = this.generateCertificateFingerprint(certificatePem);
 
-      // Audit helper: record certificate events to DB collection or append to audit log file
+      // Audit helper: delegates to AuditService (hash-chained) if available,
+      // falls back to legacy MongoDB collection or file.
       const audit = async (event: string, details: any) => {
         try {
+          // Try AuditService first (hash-chained — PKI Improvement #3)
+          const { getAuditService } = await import('./auditService');
+          const auditService = getAuditService();
+          if (auditService) {
+            const { AuditEventType } = await import('./auditService');
+            const eventType = (AuditEventType as any)[event] || AuditEventType.CERTIFICATE_ISSUED;
+            await auditService.logEvent({
+              event: eventType,
+              deviceId,
+              userId,
+              orderId,
+              batchId,
+              serialNumber: details?.serialNumber,
+              certificateFingerprint: details?.fingerprint,
+              details
+            });
+            return;
+          }
+
+          // Fallback: legacy append-only (MongoDB or file)
           const mongooseConnected = mongoose.connection && (mongoose.connection.readyState === 1);
           const entry = {
             event,
             deviceId,
             userId,
+            orderId,
+            batchId,
             details,
             timestamp: new Date()
           };
@@ -456,16 +530,26 @@ export class CAService {
   }
 
   /**
-   * Validate device_id in CSR
+   * Validate device_id in CSR.
+   * Supports both legacy (PROOF-deviceId) and structured (PROOF-ORDER-BATCH-DEVICE) CN formats.
+   * 
+   * PKI Improvement #1: Accepts orderId/batchId for structured CN validation.
    */
-  private validateDeviceIdInCSR(csr: any, deviceId: string): boolean {
-    const expectedCN = this.formatExpectedCN(deviceId);
-
+  private validateDeviceIdInCSR(csr: any, deviceId: string, orderId?: string, batchId?: string): boolean {
     const cn = this.extractCNFromSubject(csr.subject);
-    if (cn && cn === expectedCN) {
+
+    // Build list of acceptable CNs (structured if params provided, always legacy as fallback)
+    const acceptableCNs: string[] = [];
+    if (orderId && batchId) {
+      acceptableCNs.push(this.formatExpectedCN(deviceId, orderId, batchId));
+    }
+    acceptableCNs.push(this.formatExpectedCN(deviceId)); // Legacy always accepted
+
+    if (cn && acceptableCNs.includes(cn)) {
       return true;
     }
 
+    // Check SAN extensions
     const extensionRequest = csr.getAttribute({ name: 'extensionRequest' });
     if (extensionRequest && (extensionRequest as any).extensions) {
       const extensions = (extensionRequest as any).extensions;
@@ -473,14 +557,14 @@ export class CAService {
       if (sanExt) {
         const altNames = sanExt.altNames || [];
         for (const altName of altNames) {
-          if (altName.value && altName.value === expectedCN) {
+          if (altName.value && acceptableCNs.includes(altName.value)) {
             return true;
           }
         }
       }
     }
 
-    logger.warn('CSR CN/SAN did not match expected format', { expectedCN, foundCN: cn });
+    logger.warn('CSR CN/SAN did not match expected format', { acceptableCNs, foundCN: cn });
     return false;
   }
 
@@ -529,9 +613,28 @@ export class CAService {
   }
 
   /**
-   * Find active certificate by device ID
+   * Certificate expiry status for grace period handling.
+   * PKI Improvement #5: Grace Period for Certificate Renewal
    */
-  async findActiveCertificateByDeviceId(deviceId: string): Promise<IDeviceCertificate | null> {
+  public static readonly ExpiryStatus = {
+    VALID: 'valid',
+    RENEWAL_WINDOW: 'renewal_window',
+    GRACE_PERIOD: 'grace_period',
+    HARD_EXPIRED: 'hard_expired'
+  } as const;
+
+  /**
+   * Find active certificate by device ID with grace period awareness.
+   * 
+   * PKI Improvement #5: Instead of hard failure at expiry, calculates:
+   * - valid: Certificate is within validity period (> renewal window)
+   * - renewal_window: Certificate is approaching expiry (within CERT_RENEWAL_WINDOW_DAYS)
+   * - grace_period: Certificate is expired but within CERT_GRACE_PERIOD_DAYS
+   * - hard_expired: Certificate is past grace period (rejected)
+   * 
+   * @returns Certificate with expiryStatus property, or null if not found / hard expired
+   */
+  async findActiveCertificateByDeviceId(deviceId: string): Promise<(IDeviceCertificate & { expiryStatus?: string; daysUntilExpiry?: number }) | null> {
     try {
       const cert = await DeviceCertificate.findOne({
         device_id: deviceId,
@@ -540,13 +643,54 @@ export class CAService {
       
       if (!cert) return null;
       
-      // Check if expired
       const now = new Date();
-      if (cert.expires_at < now) {
-        return null;
+      const expiresAt = cert.expires_at;
+      const msUntilExpiry = expiresAt.getTime() - now.getTime();
+      const daysUntilExpiry = msUntilExpiry / (1000 * 60 * 60 * 24);
+
+      // Grace period configuration from env
+      const renewalWindowDays = parseInt(process.env.CERT_RENEWAL_WINDOW_DAYS || '0', 10);
+      const gracePeriodDays = parseInt(process.env.CERT_GRACE_PERIOD_DAYS || '0', 10);
+
+      const certWithStatus = cert as IDeviceCertificate & { expiryStatus?: string; daysUntilExpiry?: number };
+      certWithStatus.daysUntilExpiry = Math.round(daysUntilExpiry * 10) / 10;
+
+      if (daysUntilExpiry > renewalWindowDays) {
+        // Certificate is well within validity
+        certWithStatus.expiryStatus = CAService.ExpiryStatus.VALID;
+        return certWithStatus;
       }
-      
-      return cert;
+
+      if (daysUntilExpiry > 0) {
+        // Within renewal window but not yet expired
+        certWithStatus.expiryStatus = CAService.ExpiryStatus.RENEWAL_WINDOW;
+        logger.info('Certificate entering renewal window', {
+          deviceId,
+          daysUntilExpiry: certWithStatus.daysUntilExpiry,
+          renewalWindowDays
+        });
+        return certWithStatus;
+      }
+
+      // Certificate is expired — check grace period
+      const daysPastExpiry = Math.abs(daysUntilExpiry);
+      if (daysPastExpiry <= gracePeriodDays) {
+        certWithStatus.expiryStatus = CAService.ExpiryStatus.GRACE_PERIOD;
+        logger.warn('Certificate expired but within grace period — accepting with warning', {
+          deviceId,
+          daysPastExpiry: Math.round(daysPastExpiry * 10) / 10,
+          gracePeriodDays
+        });
+        return certWithStatus;
+      }
+
+      // Hard expired — past grace period
+      logger.error('Certificate hard expired (past grace period) — rejecting', {
+        deviceId,
+        daysPastExpiry: Math.round(daysPastExpiry * 10) / 10,
+        gracePeriodDays
+      });
+      return null;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logger.error('Failed to find active certificate', { deviceId, error: errorMessage });
