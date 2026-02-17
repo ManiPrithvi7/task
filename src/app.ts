@@ -10,8 +10,10 @@ import { AuthService } from './services/authService';
 import { UserService } from './services/userService';
 import { MongoService, createMongoService } from './services/mongoService';
 import { RedisService, createRedisService } from './services/redisService';
-import { DeviceService } from './services/deviceService';
+import { DeviceService, getActiveDeviceCache, ActiveDeviceCache } from './services/deviceService';
 import { SessionService } from './services/sessionService';
+import { Device } from './models/Device';
+import { User } from './models/User';
 import { createProvisioningRoutes } from './routes/provisioningRoutes';
 import { createConfigRoutes } from './routes/configRoutes';
 import { getTokenStore } from './storage/tokenStore';
@@ -51,6 +53,9 @@ export class StatsMqttLite {
   
   // Redis service
   private redisService?: RedisService;
+  
+  // Active device cache (Redis-backed)
+  private activeDeviceCache!: ActiveDeviceCache;
   
   // Startup time for grace period
   private startupTime: number = Date.now();
@@ -137,6 +142,11 @@ export class StatsMqttLite {
     await this.deviceService.initialize();
 
     // User Service removed - handled by Next.js web app (shared database)
+
+    // Active Device Cache (Redis-backed)
+    this.activeDeviceCache = getActiveDeviceCache();
+    await this.activeDeviceCache.flushAll(); // Clear stale keys from previous session
+    logger.info('✅ Active device cache initialized (Redis)');
     
     logger.info('✅ Services initialized');
   }
@@ -544,18 +554,15 @@ export class StatsMqttLite {
     this.mqttClient.setDeviceCallbacks(
       // On device inactive (PUBACK timeout)
       async (deviceId: string) => {
-        logger.warn('⚠️ Device marked INACTIVE due to QoS timeout', { deviceId });
+        logger.warn('⚠️ [LIFECYCLE:PUBACK_TIMEOUT] Device unresponsive — removing from Redis + marking inactive', { deviceId });
+        const removed = await this.activeDeviceCache.removeActive(deviceId);
         await this.deviceService.updateDeviceStatus(deviceId, 'inactive');
+        logger.info('⚠️ [LIFECYCLE:PUBACK_TIMEOUT] Complete', { deviceId, removedFromRedis: removed });
       },
-      // On device active (PUBACK received)
-      // ✅ FIX: Don't automatically set device to active on PUBACK
-      // This was interfering with explicit unregistration
+      // On device active (PUBACK received) — update lastSeen in Redis
       async (deviceId: string) => {
-        // Only mark device as active if it's not explicitly inactive
-        const device = await this.deviceService.getDevice(deviceId);
-        if (device && device.status !== 'inactive') {
-          await this.deviceService.updateDeviceStatus(deviceId, 'active');
-        }
+        logger.debug('✅ [LIFECYCLE:PUBACK_OK] Device confirmed message receipt', { deviceId });
+        await this.activeDeviceCache.updateLastSeen(deviceId);
       }
     );
     
@@ -620,7 +627,6 @@ export class StatsMqttLite {
           }
           
           // ✅ ENFORCE: Ensure device is provisioned for every device message (development mode)
-          // Extract deviceId from topic and reject messages from unprovisioned devices.
           const incomingDeviceId = this.extractDeviceId(receivedTopic);
           if (incomingDeviceId) {
             try {
@@ -631,7 +637,6 @@ export class StatsMqttLite {
               }
             } catch (err: any) {
               logger.error('Error checking device provisioning for incoming message', { topic: receivedTopic, deviceId: incomingDeviceId, error: err?.message ?? String(err) });
-              // Fail-safe: drop message on validation error
               return;
             }
           }
@@ -719,12 +724,7 @@ export class StatsMqttLite {
     const allowed = await this.ensureDeviceProvisioned(deviceId);
     if (!allowed) {
       logger.warn('🔒 Registration rejected: no active certificate for this device_id', { deviceId });
-      await this.sendRegistrationResponse(
-        deviceId,
-        false,
-        'Device not provisioned. Use the same device_id as in provisioning (e.g. set DEVICE_ID=ESP32-ABC123), or complete onboarding + sign-csr for this device_id.',
-        false
-      );
+      await this.sendRegistrationResponse(deviceId, false, 'Device not provisioned.', false);
       return;
     }
 
@@ -770,6 +770,83 @@ export class StatsMqttLite {
       
       // Send registration confirmation for existing device
       await this.sendRegistrationResponse(deviceId, true, 'Device reconnected successfully', false);
+    }
+
+    // Cache active device in Redis with userId + user preferences (one-time MongoDB read)
+    logger.info('📋 [LIFECYCLE:REGISTER] Caching device in Redis active list', { deviceId });
+    await this.cacheActiveDevice(deviceId);
+    logger.info('📋 [LIFECYCLE:REGISTER] Device registration complete', { deviceId });
+  }
+
+  /**
+   * Cache a device as active in Redis with userId + user preferences.
+   * Called once at registration time — avoids per-cycle MongoDB reads.
+   */
+  private async cacheActiveDevice(deviceId: string): Promise<void> {
+    try {
+      logger.info('📋 [LIFECYCLE:CACHE] Step 1/3 — Looking up Device in MongoDB', { deviceId });
+      const deviceDoc = await Device.findOne({ clientId: deviceId });
+      if (!deviceDoc) {
+        logger.warn('📋 [LIFECYCLE:CACHE] Device not found in MongoDB — caching with defaults (no userId)', { deviceId });
+        await this.activeDeviceCache.setActive({
+          deviceId,
+          userId: '',
+          adManagementEnabled: true,
+          brandCanvasEnabled: false,
+          lastSeen: Date.now()
+        });
+        return;
+      }
+
+      logger.info('📋 [LIFECYCLE:CACHE] Step 2/3 — Device found, looking up User preferences', {
+        deviceId,
+        userId: deviceDoc.userId?.toString() || 'none',
+        deviceStatus: deviceDoc.status
+      });
+
+      let adManagementEnabled = true;
+      let brandCanvasEnabled = false;
+
+      if (deviceDoc.userId) {
+        const user = await User.findById(deviceDoc.userId);
+        if (user) {
+          adManagementEnabled = user.adManagementEnabled;
+          brandCanvasEnabled = user.brandCanvasEnabled;
+          logger.info('📋 [LIFECYCLE:CACHE] User preferences loaded from MongoDB', {
+            deviceId,
+            userId: deviceDoc.userId.toString(),
+            adManagementEnabled,
+            brandCanvasEnabled
+          });
+        } else {
+          logger.warn('📋 [LIFECYCLE:CACHE] User document not found — using defaults', {
+            deviceId,
+            userId: deviceDoc.userId.toString()
+          });
+        }
+      } else {
+        logger.info('📋 [LIFECYCLE:CACHE] Device has no userId assigned — using default preferences', { deviceId });
+      }
+
+      logger.info('📋 [LIFECYCLE:CACHE] Step 3/3 — Writing to Redis', {
+        deviceId,
+        userId: deviceDoc.userId?.toString() || '',
+        adManagementEnabled,
+        brandCanvasEnabled
+      });
+
+      await this.activeDeviceCache.setActive({
+        deviceId,
+        userId: deviceDoc.userId?.toString() || '',
+        adManagementEnabled,
+        brandCanvasEnabled,
+        lastSeen: Date.now()
+      });
+    } catch (err: unknown) {
+      logger.error('❌ [LIFECYCLE:CACHE] Failed to cache active device in Redis', {
+        deviceId,
+        error: err instanceof Error ? err.message : String(err)
+      });
     }
   }
 
@@ -818,9 +895,15 @@ export class StatsMqttLite {
       mechanism: 'Last Will and Testament'
     });
     
-    // Mark device as inactive
+    // Remove from Redis active cache + mark inactive in MongoDB
+    logger.info('💀 [LIFECYCLE:LWT] Removing device from Redis active cache', { deviceId });
+    const removed = await this.activeDeviceCache.removeActive(deviceId);
     await this.deviceService.updateDeviceStatus(deviceId, 'inactive');
-    logger.info('✅ Device marked as inactive due to disconnect (LWT)', { deviceId });
+    logger.info('💀 [LIFECYCLE:LWT] Device disconnect processed', {
+      deviceId,
+      removedFromRedis: removed,
+      mongoStatus: 'inactive'
+    });
     
     // Note: No acknowledgment is sent for LWT since the device is already disconnected
   }
@@ -829,7 +912,7 @@ export class StatsMqttLite {
     const deviceId = this.extractDeviceId(topic);
     if (!deviceId) return;
 
-    // ✅ mTLS: validate device is provisioned on every device request (connection initiation validation)
+    // ✅ mTLS: validate device is provisioned on every device request
     const allowed = await this.ensureDeviceProvisioned(deviceId);
     if (!allowed) {
       logger.warn('🔒 Status update ignored: device not provisioned', { deviceId });

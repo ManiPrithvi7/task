@@ -1,0 +1,53 @@
+[1 tool called]
+
+Now let me check everywhere Redis is actually used in the app (beyond the service itself).
+
+[3 tools called]
+
+Now let me check if there's any active device list/cache stored in Redis.
+
+[1 tool called]
+
+Here's the honest answer:
+
+**Redis is used for ONE thing only in your app: provisioning token persistence.** There is **no active device list in Redis**.
+
+---
+
+### What Redis Actually Does
+
+| Redis Key Pattern | Purpose | TTL |
+|---|---|---|
+| `mqtt-lite:token:<jwt_string>` | Stores the provisioning token entry `{ deviceId, token, expiresAt }` | Same as `tokenTTL` (default 6000s) |
+| `mqtt-lite:device:<deviceId>` | Reverse lookup: deviceId → active provisioning token | Same as `tokenTTL` |
+
+That's it. Two key patterns, both related to **short-lived provisioning tokens** during the onboarding + CSR-signing flow.
+
+### What Redis Does NOT Do (currently)
+
+- **No active device tracking** — active/inactive device status lives in **MongoDB** (`devices` collection, `status` field)
+- **No device session cache** — `SessionService` is **in-memory only** (`Map<string, SessionData>`)
+- **No user preference cache** — `User` preferences are queried directly from **MongoDB** every publish cycle
+- **No pub/sub** — MQTT messages go through the EMQX broker, not Redis
+
+### Where Device State Actually Lives
+
+| Data | Storage | Persistent? |
+|---|---|---|
+| Device status (active/inactive) | MongoDB `devices.status` | Yes |
+| Device `userId` link | MongoDB `devices.userId` | Yes |
+| Device `lastSeenAt` | MongoDB `devices.lastSeenAt` | Yes |
+| Provisioning tokens | Redis (TTL keys) | Yes (across restarts) |
+| MQTT sessions | In-memory `SessionService` | No (lost on restart) |
+| Screen rotation state (followers count, etc.) | In-memory `DeviceScreenState` Map | No (lost on restart) |
+
+### The Gap
+
+You mentioned "active device management along with userid on Redis" — that doesn't exist yet. If you want to cache the active device list + userId in Redis (to avoid hitting MongoDB every 60s publish cycle), that would be a new feature. Right now the `StatsPublisher` queries MongoDB directly every cycle:
+
+1. `DeviceService.getAllDevices()` → MongoDB query
+2. `Device.findOne({ clientId })` → MongoDB query (for promotion)
+3. `User.findById(userId)` → MongoDB query (for preferences)
+4. `Ad.findOne({ userId, status: RUNNING })` → MongoDB query (for ad content)
+
+That's **4 MongoDB queries per device per publish cycle**. A Redis cache layer for active devices + user preferences would cut that significantly. Want me to plan that?
