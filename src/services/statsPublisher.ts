@@ -283,10 +283,12 @@ export class StatsPublisher {
         return;
       }
 
-      // Phase 1: Fetch the latest RUNNING ad for this user (any type)
+      // Fetch the latest RUNNING ad matching the canvas mode
       const userOid = new mongoose.Types.ObjectId(userId);
+      const adType = canvasMode === 'PROMOTION' ? AdType.PROMOTION : AdType.BRAND_CANVAS;
       const ad = await Ad.findOne({
         userId: userOid,
+        type: adType,
         status: AdStatus.RUNNING
       }).sort({ createdAt: -1 });
 
