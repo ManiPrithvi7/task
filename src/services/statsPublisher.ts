@@ -99,7 +99,7 @@ export class StatsPublisher {
           await this.publishInstagram(device.deviceId, root);
           await this.publishGmb(device.deviceId, root);
           await this.publishPos(device.deviceId, root);
-          await this.publishPromotionFromCache(device, root);
+          await this.publishPromotion(device, root);
         } catch (err: unknown) {
           logger.error('Failed to publish screens for device', {
             deviceId: device.deviceId,
@@ -249,7 +249,7 @@ export class StatsPublisher {
    *
    * Phase 1: Always fetch latest RUNNING ad. Type-specific filtering deferred to future phase.
    */
-  private async publishPromotionFromCache(device: ActiveDevice, root: string): Promise<void> {
+  private async publishPromotion(device: ActiveDevice, root: string): Promise<void> {
     const { deviceId, userId, adManagementEnabled, brandCanvasEnabled } = device;
 
     try {
@@ -259,14 +259,16 @@ export class StatsPublisher {
         return;
       }
 
-      // Neither preference enabled → default empty
-      if (!adManagementEnabled && !brandCanvasEnabled) {
-        logger.info('🎨 [PROMOTION] Both prefs disabled — sending default canvas', { deviceId, userId });
-        await this.publishDefaultCanvas(deviceId, root);
-        return;
+      // Determine canvas mode: only one pref enabled at a time, or both disabled
+      let canvasMode: 'PROMOTION' | 'BRAND' | 'DEFAULT';
+      if (adManagementEnabled) {
+        canvasMode = 'PROMOTION';
+      } else if (brandCanvasEnabled) {
+        canvasMode = 'BRAND';
+      } else {
+        canvasMode = 'DEFAULT';
       }
 
-      const canvasMode = adManagementEnabled ? 'PROMOTION' : 'BRAND';
       logger.info('🎨 [PROMOTION] Resolving canvas', {
         deviceId,
         userId,
@@ -274,6 +276,12 @@ export class StatsPublisher {
         brandCanvasEnabled,
         canvasMode
       });
+
+      // Both prefs disabled → default empty canvas
+      if (canvasMode === 'DEFAULT') {
+        await this.publishDefaultCanvas(deviceId, root);
+        return;
+      }
 
       // Phase 1: Fetch the latest RUNNING ad for this user (any type)
       const userOid = new mongoose.Types.ObjectId(userId);
@@ -313,8 +321,9 @@ export class StatsPublisher {
         ...(tplData.textColors && { textColors: tplData.textColors })
       };
 
-      // Promotion canvas: include provider + claim URL
-      if (adManagementEnabled) {
+      // PROMOTION: include provider + claim URL
+      // BRAND: template data only — no provider, no url
+      if (canvasMode === 'PROMOTION') {
         if (tplData.provider) {
           innerPayload.provider = tplData.provider;
         }
@@ -324,7 +333,6 @@ export class StatsPublisher {
           innerPayload.url = tplData.url;
         }
       }
-      // Brand canvas: no provider, no url (inner payload already has template data only)
 
       const payload = {
         version: '1.1',
