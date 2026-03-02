@@ -113,6 +113,19 @@ export interface InfluxDBConfig {
   bucket: string;
 }
 
+export interface KafkaConfig {
+  enabled: boolean;
+  brokers: string[];
+  clientId: string;
+  defaultTopic: string;
+  ssl: boolean;
+  sasl?: {
+    mechanism: 'plain' | 'scram-sha-256' | 'scram-sha-512';
+    username: string;
+    password: string;
+  };
+}
+
 export interface AuthConfig {
   secret: string;  // AUTH_SECRET from environment
 }
@@ -125,6 +138,7 @@ export interface AppConfig {
   mongodb: MongoDBConfig;
   redis: RedisConfig;
   influxdb: InfluxDBConfig;
+  kafka: KafkaConfig;
   auth: AuthConfig;
   app: AppEnvConfig;
 }
@@ -218,6 +232,23 @@ export function loadConfig(): AppConfig {
       org: process.env.INFLUXDB_ORG || 'statsmqtt',
       bucket: process.env.INFLUXDB_BUCKET || 'metrics'
     },
+    kafka: {
+      enabled: process.env.KAFKA_ENABLED === 'true',
+      brokers: (process.env.KAFKA_BROKERS || '')
+        .split(',')
+        .map(b => b.trim())
+        .filter(Boolean),
+      clientId: process.env.KAFKA_CLIENT_ID || 'mqtt-publisher-lite',
+      defaultTopic: process.env.KAFKA_DEFAULT_TOPIC || 'social-webhook-events',
+      ssl: process.env.KAFKA_SSL === 'true',
+      sasl: process.env.KAFKA_SASL_MECHANISM
+        ? {
+            mechanism: process.env.KAFKA_SASL_MECHANISM as 'plain' | 'scram-sha-256' | 'scram-sha-512',
+            username: process.env.KAFKA_SASL_USERNAME || '',
+            password: process.env.KAFKA_SASL_PASSWORD || ''
+          }
+        : undefined
+    },
     auth: {
       secret: process.env.AUTH_SECRET || ''
     },
@@ -255,6 +286,11 @@ export function loadConfig(): AppConfig {
       url: config.influxdb.url,
       org: config.influxdb.org,
       bucket: config.influxdb.bucket
+    },
+    kafka: {
+      enabled: config.kafka.enabled,
+      brokers: config.kafka.brokers,
+      defaultTopic: config.kafka.defaultTopic
     },
     env: config.app.env
   });

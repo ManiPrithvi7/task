@@ -9,6 +9,7 @@ import { globalRateLimiter } from '../middleware/rateLimiter';
 import { SessionService } from '../services/sessionService';
 import { DeviceService } from '../services/deviceService';
 import { MqttClientManager } from './mqttClient';
+import { KafkaService } from '../services/kafkaService';
 
 export interface HttpConfig {
   port: number;
@@ -22,17 +23,20 @@ export class HttpServer {
   private sessionService: SessionService;
   private deviceService: DeviceService;
   private mqttClient: MqttClientManager;
+  private kafkaService?: KafkaService;
 
   constructor(
     config: HttpConfig,
     sessionService: SessionService,
     deviceService: DeviceService,
-    mqttClient: MqttClientManager
+    mqttClient: MqttClientManager,
+    kafkaService?: KafkaService
   ) {
     this.config = config;
     this.sessionService = sessionService;
     this.deviceService = deviceService;
     this.mqttClient = mqttClient;
+    this.kafkaService = kafkaService;
     this.app = express();
     this.setupMiddleware();
     this.setupRoutes();
@@ -245,6 +249,31 @@ export class HttpServer {
       } catch (error: any) {
         logger.error('Failed to publish message', { error: error.message });
         res.status(500).json({ error: error.message });
+      }
+    });
+
+    // Kafka publish endpoint for external web applications
+    this.app.post('/api/kafka/publish', async (req: Request, res: Response) => {
+      try {
+        if (!this.kafkaService) {
+          return res.status(503).json({ error: 'Kafka not configured on server' });
+        }
+
+        const { topic, key, payload } = req.body;
+        if (!payload) {
+          return res.status(400).json({ error: 'payload is required' });
+        }
+
+        await this.kafkaService.produce(topic, payload, key);
+
+        return res.json({
+          success: true,
+          topic: topic || 'default',
+          published: new Date().toISOString()
+        });
+      } catch (error: any) {
+        logger.error('Failed to publish message to Kafka', { error: error.message });
+        return res.status(500).json({ error: 'Kafka publish failed' });
       }
     });
 

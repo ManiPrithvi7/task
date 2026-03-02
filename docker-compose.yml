@@ -5,7 +5,7 @@
 services:
   app:
     build: .
-    container_name: mqtt-publisher-lite
+    container_name: proof-mqtt
     restart: unless-stopped
     env_file:
       - .env
@@ -13,6 +13,11 @@ services:
       # In Docker, the InfluxDB service is reachable via the service name, not localhost.
       # This overrides any INFLUXDB_URL in .env so the app talks to the dockerized Influx.
       - INFLUXDB_URL=http://influxdb:8086
+      # Kafka brokers for in-app KafkaService (internal & external access)
+      - KAFKA_ENABLED=true
+      - KAFKA_BROKERS=kafka:9092
+      - KAFKA_CLIENT_ID=mqtt-publisher-lite
+      - KAFKA_DEFAULT_TOPIC=social-webhook-events
     ports:
       - "3002:3002"
     volumes:
@@ -21,6 +26,8 @@ services:
     depends_on:
       influxdb:
         condition: service_healthy
+      kafka:
+        condition: service_started
 
   influxdb:
     image: influxdb:2.7.4
@@ -45,5 +52,31 @@ services:
       retries: 3
       start_period: 30s
 
+  kafka:
+    # Modern Bitnami Kafka using KRaft (no Zookeeper)
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: mqtt-lite-kafka
+    restart: unless-stopped
+    ports:
+      # Single listener/port exposed; internal containers use `kafka:9092`,
+      # external clients use `<host>:9092`
+      - "9092:9092"
+    environment:
+      # Enable KRaft mode (no Zookeeper)
+      - KAFKA_ENABLE_KRAFT=yes
+      - KAFKA_CFG_NODE_ID=1
+      - KAFKA_CFG_PROCESS_ROLES=broker,controller
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka:9093
+      - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=false
+      - KAFKA_CFG_NUM_PARTITIONS=3
+      - ALLOW_PLAINTEXT_LISTENER=yes
+    volumes:
+      - kafka-data:/bitnami/kafka
+
 volumes:
   influxdb-data:
+  kafka-data:

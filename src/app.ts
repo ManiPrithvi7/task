@@ -12,6 +12,7 @@ import { MongoService, createMongoService } from './services/mongoService';
 import { RedisService, createRedisService } from './services/redisService';
 import { DeviceService, getActiveDeviceCache, ActiveDeviceCache } from './services/deviceService';
 import { InfluxService, createInfluxService } from './services/influxService';
+import { KafkaService } from './services/kafkaService';
 import { SessionService } from './services/sessionService';
 import { AuditService, createAuditService, getAuditService, AuditEventType } from './services/auditService';
 import { TransparencyLog, createTransparencyLog, getTransparencyLog } from './services/transparencyLog';
@@ -61,6 +62,8 @@ export class StatsMqttLite {
   
   // InfluxDB service (time-series metrics)
   private influxService?: InfluxService;
+  // Kafka service (external events)
+  private kafkaService?: KafkaService;
   
   // PKI services (Industrial Grade — Improvements #3 and #7)
   private auditService?: AuditService;
@@ -95,6 +98,9 @@ export class StatsMqttLite {
 
       // Initialize InfluxDB (optional — for time-series metrics)
       await this.initializeInfluxDB();
+
+      // Initialize Kafka (optional — for external event streaming)
+      await this.initializeKafka();
 
       // Initialize services
       await this.initializeServices();
@@ -294,6 +300,27 @@ export class StatsMqttLite {
         url: this.config.influxdb.url
       });
       this.influxService = undefined;
+    }
+  }
+
+  private async initializeKafka(): Promise<void> {
+    if (!this.config.kafka?.enabled) {
+      logger.info('📦 Kafka disabled (set KAFKA_ENABLED=true to enable)');
+      return;
+    }
+
+    if (!this.config.kafka.brokers.length) {
+      logger.warn('📦 Kafka enabled but KAFKA_BROKERS not set – skipping Kafka initialization');
+      return;
+    }
+
+    try {
+      this.kafkaService = new KafkaService(this.config.kafka);
+      await this.kafkaService.connect();
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error('❌ Failed to initialize Kafka producer', { error: errorMessage });
+      // For development, we log and continue. For production, you may want to throw here.
     }
   }
 
@@ -1206,7 +1233,8 @@ export class StatsMqttLite {
       this.config.http,
       this.sessionService,
       this.deviceService,
-      this.mqttClient
+      this.mqttClient,
+      this.kafkaService
     );
     
     // Add provisioning routes if enabled
@@ -1351,6 +1379,11 @@ export class StatsMqttLite {
       // Close InfluxDB
       if (this.influxService) {
         await this.influxService.close();
+      }
+
+      // Disconnect Kafka
+      if (this.kafkaService) {
+        await this.kafkaService.disconnect();
       }
       
       logger.info('✅ Application stopped gracefully');
