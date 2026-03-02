@@ -3,6 +3,25 @@
 # Dashboard: http://localhost:8086 (admin / admin123456)
 
 services:
+  app:
+    build: .
+    container_name: mqtt-publisher-lite
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # In Docker, the InfluxDB service is reachable via the service name, not localhost.
+      # This overrides any INFLUXDB_URL in .env so the app talks to the dockerized Influx.
+      - INFLUXDB_URL=http://influxdb:8086
+    ports:
+      - "3002:3002"
+    volumes:
+      # Persist application data (CA, certificates, etc.) on the host
+      - ./data:/app/data
+    depends_on:
+      influxdb:
+        condition: service_healthy
+
   influxdb:
     image: influxdb:2.7.4
     container_name: mqtt-lite-influxdb
@@ -17,6 +36,7 @@ services:
       - DOCKER_INFLUXDB_INIT_BUCKET=metrics
       - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=statsmqtt-admin-token-2024
     volumes:
+      # Persist all InfluxDB data so metrics/audit history survive app/container crashes
       - influxdb-data:/var/lib/influxdb2
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8086/health"]
