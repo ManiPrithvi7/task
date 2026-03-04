@@ -14,6 +14,7 @@ A production-ready MQTT publisher server for IoT device fleet management. Handle
 - **Tiered Rate Limiting** — Global, provisioning, and CSR-specific rate limits with Redis persistence
 - **Certificate Transparency Log** — Internal Merkle tree with inclusion proofs for every issued certificate
 - **WebSocket Support** — Real-time MQTT message streaming to web clients
+- **Kafka Event Streaming** — Cross-domain event publishing via HTTP bridge; external apps can push events to Kafka topics over port 3003
 - **Cloud-Ready** — Deployed on Render.com with EMQX Cloud broker
 
 ---
@@ -42,6 +43,7 @@ A production-ready MQTT publisher server for IoT device fleet management. Handle
 │  │  ├─ TransparencyLog   (Merkle tree → InfluxDB)         │ │
 │  │  ├─ StatsPublisher    (Instagram/GMB/POS/Promotion)    │ │
 │  │  ├─ DeviceService     (MongoDB CRUD + Redis cache)     │ │
+│  │  ├─ KafkaService      (Event producer → Kafka broker)  │ │
 │  │  └─ ChainValidator    (RFC 5280 cert chain validation) │ │
 │  └────────────────────────────────────────────────────────┘ │
 │                                                              │
@@ -50,8 +52,55 @@ A production-ready MQTT publisher server for IoT device fleet management. Handle
 │  │  (primary) │  │  (cache +  │  │  (audit + transparency ││
 │  │            │  │   tokens)  │  │   + metrics)           ││
 │  └────────────┘  └────────────┘  └────────────────────────┘│
+│                                                              │
+│  ┌────────────────────────────────────────────────────────┐ │
+│  │  Kafka Broker (Docker - Apache Kafka 4.1.0 / KRaft)    │ │
+│  │  ├─ EXTERNAL listener → host port 3003                 │ │
+│  │  └─ Topics: social-webhook-events, post-fix-test, ...  │ │
+│  └────────────────────────────────────────────────────────┘ │
 └──────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## 🔄 Cross-Service Synchronization
+
+### Shared Database Pattern
+The MQTT server **reads** from MongoDB collections written by the web app:
+
+| Collection | Written By | Read By | Purpose |
+|------------|------------|---------|---------|
+| `users` | Web App | MQTT Server | User identification |
+| `devices` | Both | Both | Device metadata |
+| `social_accounts` | Web App | MQTT Server | OAuth tokens for API calls |
+| `ad_campaigns` | Web App | MQTT Server | Content to display |
+
+### Kafka Event Bridge (Cross-Domain Publishing)
+External apps (e.g., the Next.js web app) can push events into Kafka without a direct Kafka client by using this server as a bridge:
+
+```javascript
+// From the web app
+await fetch('http://your-server:3002/api/kafka/publish', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    topic: 'social-webhook-events',
+    payload: { type: 'instagram_update', userId: 'abc123' }
+  })
+});
+```
+
+The MQTT server receives the request, validates it, and publishes the event to Kafka on `localhost:3003`. Kafka is accessible on port `3003` and can be reached from any service that has network access to the host.
+
+### Cache Invalidation via Redis Pub/Sub
+When the web app updates device-related data, it publishes invalidation events:
+
+```javascript
+// Web app after disconnecting Instagram
+await redis.publish('config:invalidate', deviceId);
+```
+
+The MQTT server subscribes and clears its Redis cache, ensuring the next stats cycle uses fresh data.
 
 ---
 
@@ -213,6 +262,28 @@ GET /api/devices
 GET /api/devices?status=active
 ```
 
+### Kafka Publish (Cross-Domain / External Apps)
+
+Allows external web applications (e.g., Next.js frontend) to publish events to Kafka topics via this server's HTTP API without needing a direct Kafka client connection.
+
+```bash
+POST /api/kafka/publish
+Content-Type: application/json
+
+{
+  "topic": "social-webhook-events",
+  "key": "optional-key",
+  "payload": { "type": "user_signup", "userId": "abc123" }
+}
+```
+
+**Response:**
+```json
+{ "success": true, "topic": "social-webhook-events", "published": "2026-03-04T08:42:31.256Z" }
+```
+
+> **Note:** If `topic` is omitted, the message is sent to the `KAFKA_DEFAULT_TOPIC` (defaults to `social-webhook-events`).
+
 ---
 
 ## MQTT Topics
@@ -309,6 +380,20 @@ ws.send(JSON.stringify({
 | `CSR_RATE_LIMIT_PER_IP` | `5` | CSR: max per IP / 15min |
 | `CSR_RATE_LIMIT_GLOBAL` | `100` | CSR: max global CA operations / 1min |
 
+### Kafka
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `KAFKA_ENABLED` | `false` | Enable Kafka integration |
+| `KAFKA_BROKERS` | — | Comma-separated broker list (e.g., `localhost:3003`) |
+| `KAFKA_CLIENT_ID` | `mqtt-publisher-lite` | Kafka client identifier |
+| `KAFKA_DEFAULT_TOPIC` | `social-webhook-events` | Default topic when none is specified in the publish request |
+| `KAFKA_PUBLIC_IP` | `localhost` | Public IP or domain used in advertised listener; set to your server's IP for remote access |
+| `KAFKA_SSL` | `false` | Enable SSL/TLS for Kafka connection |
+| `KAFKA_SASL_MECHANISM` | — | SASL mechanism (`plain`, `scram-sha-256`, `scram-sha-512`) |
+| `KAFKA_SASL_USERNAME` | — | SASL username (required if `KAFKA_SASL_MECHANISM` is set) |
+| `KAFKA_SASL_PASSWORD` | — | SASL password (required if `KAFKA_SASL_MECHANISM` is set) |
+
 ### InfluxDB
 
 | Variable | Default | Description |
@@ -347,6 +432,7 @@ mqtt-publisher-lite/
 │   │   ├── chainValidator.ts     # RFC 5280 certificate chain validation
 │   │   ├── deviceService.ts      # Device CRUD + Redis ActiveDeviceCache
 │   │   ├── influxService.ts      # InfluxDB: metrics, audit, CT log, rate limits
+│   │   ├── kafkaService.ts       # Kafka producer (KafkaJS; publishes to broker)
 │   │   ├── mongoService.ts       # MongoDB connection management
 │   │   ├── provisioningService.ts # Token-based device provisioning
 │   │   ├── redisService.ts       # Redis connection management
@@ -371,11 +457,30 @@ mqtt-publisher-lite/
 
 ## Docker
 
-### Development (with InfluxDB)
+### Development (with InfluxDB + Kafka)
+The `docker-compose.yml` starts both **InfluxDB** and **Kafka** locally.
+
 ```bash
-docker compose up -d    # Starts InfluxDB
-npm run dev             # Starts the app
+# Start all infrastructure services
+docker compose up -d kafka influxdb
+
+# Start the app
+npm run dev
 ```
+
+#### Kafka Docker Details
+- **Image**: `apache/kafka:4.1.0` (native KRaft mode — no ZooKeeper required)
+- **Listeners**:
+  - `EXTERNAL://0.0.0.0:3003` → host port `3003` (for app and cross-domain access)
+  - `INTERNAL://0.0.0.0:29092` → inter-broker communication
+  - `CONTROLLER://0.0.0.0:29093` → KRaft controller
+- **Advertised Listener**: `localhost:3003` (configurable via `KAFKA_PUBLIC_IP`)
+
+#### Cross-Domain / Remote Kafka Access
+To allow an external server or domain to publish to Kafka:
+1. Set `KAFKA_PUBLIC_IP=your.server.ip` in `.env`
+2. Restart Kafka: `docker compose up -d kafka`
+3. External clients can now connect to `your.server.ip:3003`
 
 ### Production Build
 ```bash
@@ -388,6 +493,8 @@ docker run -p 3002:3002 \
   -e MQTT_BROKER=<broker> \
   -e MQTT_USERNAME=<user> \
   -e MQTT_PASSWORD=<pass> \
+  -e KAFKA_ENABLED=true \
+  -e KAFKA_BROKERS=<broker:port> \
   mqtt-publisher-lite
 ```
 
@@ -400,6 +507,7 @@ docker run -p 3002:3002 \
 | **MongoDB** (primary) | Persistent data | Devices, Users, Ads, Certificates, ACLs |
 | **Redis** (cache) | Low-latency cache + tokens | Active device cache, provisioning tokens, rate limit counters |
 | **InfluxDB** (time-series) | Audit + metrics | PKI audit chain, certificate transparency log, rate limit events, device/social metrics |
+| **Kafka** (event streaming) | Cross-domain event bus | Social webhook events, external app events (e.g. `social-webhook-events`) |
 
 ---
 
@@ -429,8 +537,33 @@ lsof -ti:3002 | xargs kill -9
 - For local dev: `docker compose up -d` starts InfluxDB on port 8086
 - InfluxDB failures are non-fatal — the app continues without it
 
+### Kafka not connecting / publish fails
+- Ensure Kafka is running: `docker compose up -d kafka`
+- Verify port 3003 is listening: `ss -tlnp | grep 3003`
+- Ensure `KAFKA_ENABLED=true` and `KAFKA_BROKERS=localhost:3003` in `.env`
+- Check Kafka container logs: `docker logs mqtt-lite-kafka --tail 50`
+- **Port mapping mismatch**: Kafka's EXTERNAL listener uses port `3003` inside the container. The Docker port mapping **must** be `3003:3003`, not `3003:9092`.
+- **Multiple app instances**: If you see MQTT `clientId` conflicts or Kafka rebalances, kill duplicate `ts-node-dev` processes:
+  ```bash
+  pkill -f ts-node-dev
+  ```
+- **Topic not found**: Kafka uses `allowAutoTopicCreation: true` — topics are created on first publish automatically.
+- **Test connectivity**:
+  ```bash
+  docker exec mqtt-lite-kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:3003 --list
+  ```
+
 ---
 
 ## License
 
 MIT License
+
+---
+
+## 📄 Additional Documentation
+
+| Document | Description |
+|----------|-------------|
+| [INSTAGRAM_FETCH_SERVICE.md](./docs/INSTAGRAM_FETCH_SERVICE.md) | Architecture plan for the Kafka-based Instagram metrics fetch pipeline: consumer groups, batch processing, rate limiting, InfluxDB schema, and edge case handling |
+

@@ -1,13 +1,12 @@
-import { Kafka, Producer, Consumer, logLevel, SASLOptions, Partitioners, EachMessagePayload } from 'kafkajs';
+import { Kafka, Producer, logLevel, SASLOptions, Partitioners } from 'kafkajs';
 import { logger } from '../utils/logger';
 import { KafkaConfig } from '../config';
+import { FETCH_REQUESTS_TOPIC, FetchRequest } from './instagramFetchConsumer';
 
 export class KafkaService {
   private kafka: Kafka;
   private producer: Producer;
-  private consumer: Consumer;
   public connected = false;
-  private consumerConnected = false;
   private config: KafkaConfig;
 
   constructor(config: KafkaConfig) {
@@ -27,34 +26,16 @@ export class KafkaService {
       maxInFlightRequests: 5,
       createPartitioner: Partitioners.LegacyPartitioner
     });
-
-    this.consumer = this.kafka.consumer({
-      groupId: `${config.clientId}-group`
-    });
   }
 
   async connect(): Promise<void> {
     if (this.connected) return;
-
-    // Connect Producer
     await this.producer.connect();
     this.connected = true;
     logger.info('✅ Kafka producer connected', {
       brokers: this.config.brokers,
       clientId: this.config.clientId
     });
-
-    // Connect Consumer
-    try {
-      await this.consumer.connect();
-      this.consumerConnected = true;
-      logger.info('✅ Kafka consumer connected', {
-        groupId: `${this.config.clientId}-group`
-      });
-    } catch (error: any) {
-      logger.error('❌ Failed to connect Kafka consumer', { error: error.message });
-      // We don't throw here to allow the producer to function even if consumer fails
-    }
   }
 
   async produce(topic: string | undefined, value: unknown, key?: string): Promise<void> {
@@ -73,12 +54,7 @@ export class KafkaService {
 
     await this.producer.send({
       topic: targetTopic,
-      messages: [
-        {
-          key,
-          value: payload
-        }
-      ]
+      messages: [{ key, value: payload }]
     });
 
     logger.info('✅ [KAFKA:PUBLISH] Event published successfully', {
@@ -89,58 +65,37 @@ export class KafkaService {
   }
 
   /**
-   * Subscribe to topics and start consuming messages
+   * Publish an Instagram fetch request for a device.
+   * Uses deviceId as the partition key for ordered, per-device processing.
    */
-  async consume(topics: string[], onMessage: (topic: string, partition: number, message: any) => Promise<void>): Promise<void> {
-    if (!this.consumerConnected) {
-      await this.connect();
-    }
+  async publishInstagramFetchRequest(
+    deviceId: string,
+    trigger: FetchRequest['trigger'],
+    userId?: string
+  ): Promise<void> {
+    if (!this.connected) await this.connect();
 
-    if (!this.consumerConnected) {
-      logger.error('Cannot subscribe: Kafka consumer not connected');
-      return;
-    }
+    const request: FetchRequest = {
+      deviceId,
+      trigger,
+      priority: trigger === 'new_connection' ? 'high' : 'normal',
+      requested_at: new Date().toISOString(),
+      force_refresh: false,
+      ...(userId ? { userId } : {})
+    };
 
-    await this.consumer.subscribe({ topics, fromBeginning: false });
-
-    await this.consumer.run({
-      eachMessage: async ({ topic, partition, message }: EachMessagePayload) => {
-        try {
-          const payload = message.value?.toString();
-          const parsedValue = payload ? JSON.parse(payload) : null;
-
-          logger.info('📥 [KAFKA:CONSUMER] Message received', {
-            topic,
-            partition,
-            offset: message.offset,
-            key: message.key?.toString() || '(none)'
-          });
-
-          await onMessage(topic, partition, parsedValue);
-        } catch (error: any) {
-          logger.error('Error processing Kafka consumer message', {
-            topic,
-            error: error.message,
-            payload: message.value?.toString()
-          });
-        }
-      }
+    await this.producer.send({
+      topic: FETCH_REQUESTS_TOPIC,
+      messages: [{ key: deviceId, value: JSON.stringify(request) }]
     });
 
-    logger.info('📢 Kafka consumer subscribed to topics', { topics });
+    logger.info('📤 [KAFKA] Instagram fetch request published', { deviceId, trigger });
   }
 
   async disconnect(): Promise<void> {
-    if (this.connected) {
-      await this.producer.disconnect();
-      this.connected = false;
-      logger.info('Kafka producer disconnected');
-    }
-    if (this.consumerConnected) {
-      await this.consumer.disconnect();
-      this.consumerConnected = false;
-      logger.info('Kafka consumer disconnected');
-    }
+    if (!this.connected) return;
+    await this.producer.disconnect();
+    this.connected = false;
+    logger.info('Kafka producer disconnected');
   }
 }
-

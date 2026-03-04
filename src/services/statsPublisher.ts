@@ -2,6 +2,7 @@ import { logger } from '../utils/logger';
 import { MqttClientManager } from '../servers/mqttClient';
 import { DeviceService, getActiveDeviceCache, ActiveDevice } from './deviceService';
 import { CAService } from './caService';
+import { KafkaService } from './kafkaService';
 import { Ad, AdStatus, AdType } from '../models/Ad';
 import mongoose from 'mongoose';
 
@@ -17,6 +18,7 @@ export class StatsPublisher {
   private deviceService: DeviceService;
   private publishInterval: number;
   private caService?: CAService;
+  private kafkaService?: KafkaService;
   private intervalTimer: NodeJS.Timeout | null = null;
   private isRunning: boolean = false;
   private deviceState: Map<string, DeviceScreenState> = new Map();
@@ -25,13 +27,22 @@ export class StatsPublisher {
   constructor(
     mqttClient: MqttClientManager,
     deviceService: DeviceService,
-    publishInterval: number = 60000, // Default: every minute
-    caService?: CAService
+    publishInterval: number = 60000,
+    caService?: CAService,
+    kafkaService?: KafkaService
   ) {
     this.mqttClient = mqttClient;
     this.deviceService = deviceService;
     this.publishInterval = publishInterval;
     this.caService = caService;
+    this.kafkaService = kafkaService;
+  }
+
+  /**
+   * Set KafkaService after construction (useful when Kafka initialises after StatsPublisher).
+   */
+  setKafkaService(kafka: KafkaService): void {
+    this.kafkaService = kafka;
   }
 
   async start(): Promise<void> {
@@ -96,7 +107,7 @@ export class StatsPublisher {
       for (const device of activeDevices) {
         try {
           logger.debug('📤 [PUBLISH_CYCLE] Publishing all screens to device', { deviceId: device.deviceId });
-          await this.publishInstagram(device.deviceId, root);
+          await this.publishInstagram(device.deviceId, root, device.userId || undefined);
           await this.publishGmb(device.deviceId, root);
           await this.publishPos(device.deviceId, root);
           await this.publishPromotion(device, root);
@@ -123,8 +134,28 @@ export class StatsPublisher {
     return this.deviceState.get(deviceId)!;
   }
 
-  /** Instagram: progress (progress < 100) or celebratory (progress 100). */
-  private async publishInstagram(deviceId: string, root: string): Promise<void> {
+  /**
+   * Instagram: Publish a fetch request to Kafka so the real Instagram Graph API
+   * is called and the result is routed back to the device via InstagramResultConsumer.
+   *
+   * Falls back to mock data if Kafka is not configured (development mode).
+   */
+  private async publishInstagram(deviceId: string, root: string, userId?: string): Promise<void> {
+    // ── Kafka path (production): trigger a real API fetch ──────────────────
+    if (this.kafkaService?.connected) {
+      try {
+        await this.kafkaService.publishInstagramFetchRequest(deviceId, 'scheduled', userId);
+        logger.debug('📸 [STATS] Instagram fetch request sent via Kafka', { deviceId });
+        return;
+      } catch (err: unknown) {
+        logger.warn('[STATS] Kafka publish failed, falling back to mock Instagram data', {
+          deviceId,
+          error: err instanceof Error ? err.message : String(err)
+        });
+      }
+    }
+
+    // ── Fallback path (dev / Kafka unavailable): send mock data directly ───
     const state = this.ensureDeviceState(deviceId);
     state.instagram.followers += 50 + Math.floor(Math.random() * 100);
     const target = state.instagram.target;
@@ -141,26 +172,26 @@ export class StatsPublisher {
       timestamp: new Date().toISOString(),
       payload: isCelebratory
         ? {
-            followers_count: target,
-            duration: 20,
-            target,
-            progress: 100,
-            color_palette: 'instagram',
-            message: "yey!, you made it!",
-            animation: 'pulse_grow',
-            sound: 'celebration.wav',
-            url: 'https://instagram.com/businessprofile'
-          }
+          followers_count: target,
+          duration: 20,
+          target,
+          progress: 100,
+          color_palette: 'instagram',
+          message: 'yey!, you made it!',
+          animation: 'pulse_grow',
+          sound: 'celebration.wav',
+          url: 'https://instagram.com/businessprofile'
+        }
         : {
-            followers_count: followers,
-            duration: 15,
-            target,
-            progress,
-            color_palette: 'instagram',
-            message: `Almost at ${Math.round(followers / 1000)}k followers!`,
-            animation: 'pulse_grow',
-            url: 'https://instagram.com/businessprofile'
-          }
+          followers_count: followers,
+          duration: 15,
+          target,
+          progress,
+          color_palette: 'instagram',
+          message: `Almost at ${Math.round(followers / 1000)}k followers!`,
+          animation: 'pulse_grow',
+          url: 'https://instagram.com/businessprofile'
+        }
     };
 
     await this.mqttClient.publish({
@@ -169,7 +200,7 @@ export class StatsPublisher {
       qos: 1,
       retain: false
     });
-    logger.debug('Published Instagram screen', { deviceId, progress, celebratory: isCelebratory });
+    logger.debug('Published mock Instagram screen (Kafka unavailable)', { deviceId, progress, celebratory: isCelebratory });
   }
 
   /** Google My Business: reviews progress or celebratory milestone. */

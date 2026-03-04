@@ -13,6 +13,8 @@ import { RedisService, createRedisService } from './services/redisService';
 import { DeviceService, getActiveDeviceCache, ActiveDeviceCache } from './services/deviceService';
 import { InfluxService, createInfluxService } from './services/influxService';
 import { KafkaService } from './services/kafkaService';
+import { InstagramFetchConsumer, createInstagramFetchConsumer } from './services/instagramFetchConsumer';
+import { InstagramResultConsumer, createInstagramResultConsumer } from './services/instagramResultConsumer';
 import { SessionService } from './services/sessionService';
 import { AuditService, createAuditService, getAuditService, AuditEventType } from './services/auditService';
 import { TransparencyLog, createTransparencyLog, getTransparencyLog } from './services/transparencyLog';
@@ -64,6 +66,9 @@ export class StatsMqttLite {
   private influxService?: InfluxService;
   // Kafka service (external events)
   private kafkaService?: KafkaService;
+  // Instagram Kafka consumers
+  private instagramFetchConsumer?: InstagramFetchConsumer;
+  private instagramResultConsumer?: InstagramResultConsumer;
 
   // PKI services (Industrial Grade — Improvements #3 and #7)
   private auditService?: AuditService;
@@ -315,32 +320,32 @@ export class StatsMqttLite {
     }
 
     try {
+      // ── Producer (KafkaService) ─────────────────────────────────────
       this.kafkaService = new KafkaService(this.config.kafka);
       await this.kafkaService.connect();
 
-      // Start consuming messages from configured topics
-      const topicsToConsume = [
-        this.config.kafka.defaultTopic, // usually social-webhook-events
-        'post-fix-test'
-      ];
+      // Give StatsPublisher access so it can emit fetch requests via Kafka
+      if (this.statsPublisher) {
+        this.statsPublisher.setKafkaService(this.kafkaService);
+      }
 
-      await this.kafkaService.consume(topicsToConsume, async (topic, partition, payload) => {
-        // Business logic for received Kafka messages
-        logger.info('🔔 [KAFKA:APP] Processing received message', {
-          topic,
-          payload: typeof payload === 'object' ? JSON.stringify(payload) : payload
-        });
+      // ── Instagram Fetch Consumer (instagram-fetch-requests) ─────────
+      this.instagramFetchConsumer = createInstagramFetchConsumer(this.config.kafka);
+      await this.instagramFetchConsumer.start();
+      logger.info('✅ Instagram fetch consumer started');
 
-        // Here you can add more specific logic based on topic
-        if (topic === 'social-webhook-events') {
-          // Task: Log specific webhook events or trigger downstream actions
-          logger.debug('Handling social webhook event', { topic });
-        }
-      });
+      // ── Instagram Result Consumer (instagram-fetch-results → MQTT) ───
+      this.instagramResultConsumer = createInstagramResultConsumer(
+        this.config.kafka,
+        this.mqttClient
+      );
+      await this.instagramResultConsumer.start();
+      logger.info('✅ Instagram result consumer started');
 
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('❌ Failed to initialize Kafka service', { error: errorMessage });
+      logger.error('❌ Failed to initialize Kafka / Instagram consumers', { error: errorMessage });
+      // Non-fatal: app continues without Kafka
     }
   }
 
