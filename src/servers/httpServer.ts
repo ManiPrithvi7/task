@@ -67,12 +67,12 @@ export class HttpServer {
       const start = Date.now();
       res.on('finish', () => {
         const duration = Date.now() - start;
-        
+
         // Health checks are logged at debug level to reduce log spam
         // (Render.com and other platforms ping /health every 5-10 seconds)
         const isHealthCheck = req.path === '/health' || req.path === '/health/';
         const logLevel = isHealthCheck ? 'debug' : 'info';
-        
+
         if (logLevel === 'debug') {
           logger.debug('HTTP request', {
             method: req.method,
@@ -81,12 +81,12 @@ export class HttpServer {
             duration: `${duration}ms`
           });
         } else {
-        logger.info('HTTP request', {
-          method: req.method,
-          path: req.path,
-          status: res.statusCode,
-          duration: `${duration}ms`
-        });
+          logger.info('HTTP request', {
+            method: req.method,
+            path: req.path,
+            status: res.statusCode,
+            duration: `${duration}ms`
+          });
         }
       });
       next();
@@ -106,6 +106,9 @@ export class HttpServer {
         mqtt: {
           connected: this.mqttClient.isConnected(),
           pendingAcks: this.mqttClient.getPendingAckCount()
+        },
+        kafka: {
+          connected: this.kafkaService?.connected || false
         },
         storage: {
           sessions: await this.sessionService.getAllSessions().then(s => s.size),
@@ -198,7 +201,7 @@ export class HttpServer {
         const devices = await this.deviceService.getAllDevices();
         const devicesArray = Array.from(devices.values());
         const status = req.query.status as string;
-        
+
         if (status) {
           const filtered = devicesArray.filter(d => d.status === status);
           return res.json(filtered);
@@ -265,6 +268,13 @@ export class HttpServer {
         }
 
         await this.kafkaService.produce(topic, payload, key);
+
+        logger.info('📨 [KAFKA:HTTP] Event published via HTTP API', {
+          topic: topic || 'default',
+          key: key || '(none)',
+          payloadType: typeof payload,
+          source: req.ip || 'unknown'
+        });
 
         return res.json({
           success: true,

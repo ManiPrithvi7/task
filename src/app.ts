@@ -39,39 +39,39 @@ export class StatsMqttLite {
   private httpServer!: HttpServer;
   private webSocketServer!: WebSocketServerManager;
   private mqttClient!: MqttClientManager;
-  
+
   // MongoDB-based services
   private sessionService!: SessionService;
   private deviceService!: DeviceService;
   // Note: User management handled by Next.js web app (shared database)
-  
+
   // Stats publisher
   private statsPublisher!: StatsPublisher;
-  
+
   // Provisioning services
   private provisioningService?: ProvisioningService;
   private caService?: CAService;
   private authService?: AuthService;
   private userService?: UserService;
-  
+
   // MongoDB service
   private mongoService?: MongoService;
-  
+
   // Redis service
   private redisService?: RedisService;
-  
+
   // InfluxDB service (time-series metrics)
   private influxService?: InfluxService;
   // Kafka service (external events)
   private kafkaService?: KafkaService;
-  
+
   // PKI services (Industrial Grade — Improvements #3 and #7)
   private auditService?: AuditService;
   private transparencyLog?: TransparencyLog;
-  
+
   // Active device cache (Redis-backed)
   private activeDeviceCache!: ActiveDeviceCache;
-  
+
   // Startup time for grace period
   private startupTime: number = Date.now();
   private keepAliveTimer: NodeJS.Timeout | null = null;
@@ -146,9 +146,9 @@ export class StatsMqttLite {
       logger.info('━'.repeat(50));
 
     } catch (error: any) {
-      logger.error('Failed to start application', { 
+      logger.error('Failed to start application', {
         error: error.message,
-        stack: error.stack 
+        stack: error.stack
       });
       throw error;
     }
@@ -171,7 +171,7 @@ export class StatsMqttLite {
     this.activeDeviceCache = getActiveDeviceCache();
     await this.activeDeviceCache.flushAll(); // Clear stale keys from previous session
     logger.info('✅ Active device cache initialized (Redis)');
-    
+
     logger.info('✅ Services initialized');
   }
 
@@ -317,10 +317,30 @@ export class StatsMqttLite {
     try {
       this.kafkaService = new KafkaService(this.config.kafka);
       await this.kafkaService.connect();
+
+      // Start consuming messages from configured topics
+      const topicsToConsume = [
+        this.config.kafka.defaultTopic, // usually social-webhook-events
+        'post-fix-test'
+      ];
+
+      await this.kafkaService.consume(topicsToConsume, async (topic, partition, payload) => {
+        // Business logic for received Kafka messages
+        logger.info('🔔 [KAFKA:APP] Processing received message', {
+          topic,
+          payload: typeof payload === 'object' ? JSON.stringify(payload) : payload
+        });
+
+        // Here you can add more specific logic based on topic
+        if (topic === 'social-webhook-events') {
+          // Task: Log specific webhook events or trigger downstream actions
+          logger.debug('Handling social webhook event', { topic });
+        }
+      });
+
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('❌ Failed to initialize Kafka producer', { error: errorMessage });
-      // For development, we log and continue. For production, you may want to throw here.
+      logger.error('❌ Failed to initialize Kafka service', { error: errorMessage });
     }
   }
 
@@ -411,7 +431,7 @@ export class StatsMqttLite {
       } catch (err: any) {
         logger.warn('Server client certificate generation skipped or failed', { error: err instanceof Error ? err.message : String(err) });
       }
-    
+
       logger.info('✅ Provisioning services initialized', {
         tokenTTL: this.config.provisioning.tokenTTL,
         caStoragePath: this.config.provisioning.caStoragePath,
@@ -651,7 +671,7 @@ export class StatsMqttLite {
 
   private async initializeMqttClient(): Promise<void> {
     logger.info('📡 Initializing MQTT client...');
-    
+
     // Pre-check: DNS (and TLS handshake if TLS configured) to fail fast with actionable logs
     await this.verifyBrokerConnectivity().catch((err) => {
       logger.error('Broker connectivity pre-check failed', { error: err instanceof Error ? err.message : String(err) });
@@ -659,7 +679,7 @@ export class StatsMqttLite {
     });
 
     this.mqttClient = new MqttClientManager(this.config.mqtt);
-    
+
     // Set up QoS 1 tracking callbacks for device liveness
     this.mqttClient.setDeviceCallbacks(
       // On device inactive (PUBACK timeout)
@@ -675,12 +695,12 @@ export class StatsMqttLite {
         await this.activeDeviceCache.updateLastSeen(deviceId);
       }
     );
-    
+
     await this.mqttClient.connect();
-    
+
     // Subscribe to test topics for firmware testing
     await this.subscribeToTopics();
-    
+
     logger.info('✅ MQTT client initialized with QoS 1 tracking');
   }
 
@@ -702,7 +722,7 @@ export class StatsMqttLite {
         try {
           // ✅ FILTER 1: Skip retained messages (old broker cache)
           if (packet?.retain) {
-            logger.debug('Ignoring retained message', { 
+            logger.debug('Ignoring retained message', {
               topic: receivedTopic,
               reason: 'retained flag set'
             });
@@ -735,7 +755,7 @@ export class StatsMqttLite {
               return;
             }
           }
-          
+
           // ✅ ENFORCE: Ensure device is provisioned for every device message (development mode)
           const incomingDeviceId = this.extractDeviceId(receivedTopic);
           if (incomingDeviceId) {
@@ -750,9 +770,9 @@ export class StatsMqttLite {
               return;
             }
           }
-          
+
           // ✅ NOW SAFE TO PROCESS - Only fresh, real-time messages
-          
+
           // Log based on topic type
           if (receivedTopic.endsWith('/active')) {
             await this.handleDeviceRegistration(receivedTopic, message);
@@ -765,7 +785,7 @@ export class StatsMqttLite {
           } else {
             logger.debug('MQTT message received', { topic: receivedTopic, type: message.type || 'unknown', size: payload.length });
           }
-          
+
           // Update device last seen (but skip for unregistration messages)
           // ✅ FIX: Don't update lastSeen for unregistration to preserve inactive status
           const deviceId = this.extractDeviceId(receivedTopic);
@@ -826,7 +846,7 @@ export class StatsMqttLite {
           deviceId,
           certificateFingerprint: cert.fingerprint,
           details: { expiryStatus, daysUntilExpiry }
-        }).catch(() => {});
+        }).catch(() => { });
       }
     } else if (expiryStatus === 'renewal_window') {
       logger.info('🔵 [PKI:RENEWAL] Certificate in renewal window', {
@@ -862,7 +882,7 @@ export class StatsMqttLite {
           event: AuditEventType.DEVICE_AUTH_FAILED,
           deviceId,
           details: { reason: 'CN_MISMATCH', expectedCN, certCN: cert.cn }
-        }).catch(() => {});
+        }).catch(() => { });
       }
       return false;
     }
@@ -885,7 +905,7 @@ export class StatsMqttLite {
             deviceId,
             certificateFingerprint: cert.fingerprint,
             details: { errors: kuResult.errors }
-          }).catch(() => {});
+          }).catch(() => { });
         }
         return false;
       }
@@ -912,7 +932,7 @@ export class StatsMqttLite {
               deviceId,
               certificateFingerprint: cert.fingerprint,
               details: { errors: chainResult.errors, chainSubjects: chainResult.chainSubjects }
-            }).catch(() => {});
+            }).catch(() => { });
           }
           return false;
         }
@@ -933,7 +953,7 @@ export class StatsMqttLite {
         deviceId,
         certificateFingerprint: cert.fingerprint,
         details: { expiryStatus, daysUntilExpiry }
-      }).catch(() => {});
+      }).catch(() => { });
     }
 
     return true;
@@ -955,7 +975,7 @@ export class StatsMqttLite {
     // ✅ /lwt topic handles ALL disconnections (both graceful and unexpected)
     //    - Broker publishes LWT automatically when client disconnects
     //    - Works for: Ctrl+C, power cut, crash, network failure, force close
-    
+
     logger.info('📱 Device Registration Received', {
       deviceId,
       userId: message.userId || message.user_id,
@@ -984,13 +1004,13 @@ export class StatsMqttLite {
         }
       });
       logger.info('✅ New device registered', { deviceId });
-      
+
       // Send registration confirmation for new device
       await this.sendRegistrationResponse(deviceId, true, 'Device registered successfully', true);
     } else {
       await this.deviceService.updateDeviceStatus(deviceId, 'active');
       logger.info('✅ Existing device reconnected', { deviceId });
-      
+
       // Send registration confirmation for existing device
       await this.sendRegistrationResponse(deviceId, true, 'Device reconnected successfully', false);
     }
@@ -1096,8 +1116,8 @@ export class StatsMqttLite {
 
     // Validate LWT message format (minimal payload expected)
     if (message.type !== 'un_registration') {
-      logger.warn('⚠️ Invalid LWT message type', { 
-        deviceId, 
+      logger.warn('⚠️ Invalid LWT message type', {
+        deviceId,
         type: message.type,
         expected: 'un_registration'
       });
@@ -1117,7 +1137,7 @@ export class StatsMqttLite {
       source: 'broker',
       mechanism: 'Last Will and Testament'
     });
-    
+
     // Remove from Redis active cache + mark inactive in MongoDB
     logger.info('💀 [LIFECYCLE:LWT] Removing device from Redis active cache', { deviceId });
     const removed = await this.activeDeviceCache.removeActive(deviceId);
@@ -1127,7 +1147,7 @@ export class StatsMqttLite {
       removedFromRedis: removed,
       mongoStatus: 'inactive'
     });
-    
+
     // Note: No acknowledgment is sent for LWT since the device is already disconnected
   }
 
@@ -1151,8 +1171,8 @@ export class StatsMqttLite {
 
 
   private async sendRegistrationResponse(
-    deviceId: string, 
-    success: boolean, 
+    deviceId: string,
+    success: boolean,
     message: string,
     isNewDevice: boolean = false
   ): Promise<void> {
@@ -1187,8 +1207,8 @@ export class StatsMqttLite {
   }
 
   private async sendUnregistrationResponse(
-    deviceId: string, 
-    success: boolean, 
+    deviceId: string,
+    success: boolean,
     message: string
   ): Promise<void> {
     try {
@@ -1228,7 +1248,7 @@ export class StatsMqttLite {
 
   private async initializeHttpServer(): Promise<void> {
     logger.info('🌐 Initializing HTTP server...');
-    
+
     this.httpServer = new HttpServer(
       this.config.http,
       this.sessionService,
@@ -1236,7 +1256,7 @@ export class StatsMqttLite {
       this.mqttClient,
       this.kafkaService
     );
-    
+
     // Add provisioning routes if enabled
     if (this.config.provisioning.enabled && this.provisioningService && this.caService && this.authService && this.userService) {
       const provisioningRoutes = createProvisioningRoutes({
@@ -1248,7 +1268,7 @@ export class StatsMqttLite {
       this.httpServer.getApp().use('/api/v1', provisioningRoutes);
       logger.info('✅ Provisioning routes registered at /api/v1');
     }
-    
+
     // Device configuration endpoint for devices to fetch broker settings
     try {
       const configRoutes = createConfigRoutes({
@@ -1260,35 +1280,35 @@ export class StatsMqttLite {
     } catch (err: any) {
       logger.warn('⚠️ Failed to register device configuration route', { error: err instanceof Error ? err.message : String(err) });
     }
-    
+
     await this.httpServer.start();
-    
+
     logger.info('✅ HTTP server initialized');
   }
 
   private async initializeWebSocketServer(): Promise<void> {
     logger.info('🔌 Initializing WebSocket server...');
-    
+
     this.webSocketServer = new WebSocketServerManager(
       this.httpServer.getServer(),
       this.mqttClient
     );
-    
+
     logger.info('✅ WebSocket server initialized');
   }
 
   private async initializeStatsPublisher(): Promise<void> {
     logger.info('📊 Initializing stats publisher...');
-    
+
     this.statsPublisher = new StatsPublisher(
       this.mqttClient,
       this.deviceService,
       60 * 1000, // Publish every minute to /instagram, /gmb, /pos
       this.caService
     );
-    
+
     await this.statsPublisher.start();
-    
+
     logger.info('✅ Stats publisher initialized - publishing every 60s to /instagram, /gmb, /pos, /promotion');
   }
 
@@ -1296,25 +1316,25 @@ export class StatsMqttLite {
     // Keep-alive for Render.com free tier (prevents spin-down)
     // Pings self every 10 minutes to keep service awake (5-minute safety margin)
     const keepAliveInterval = 10 * 60 * 1000;  // 10 minutes
-    
+
     this.keepAliveTimer = setInterval(() => {
       const url = `http://localhost:${this.config.http.port}/health`;
-      
+
       // Use native fetch (Node 18+) or http module
       const http = require('http');
       http.get(url, (res: any) => {
-        logger.debug('Keep-alive ping sent', { 
+        logger.debug('Keep-alive ping sent', {
           status: res.statusCode,
           interval: '10min'
         });
       }).on('error', (err: any) => {
-        logger.debug('Keep-alive ping failed (normal if external monitoring exists)', { 
-          error: err.message 
+        logger.debug('Keep-alive ping failed (normal if external monitoring exists)', {
+          error: err.message
         });
       });
     }, keepAliveInterval);
-    
-    logger.info('🔄 Keep-alive enabled for free tier', { 
+
+    logger.info('🔄 Keep-alive enabled for free tier', {
       interval: '10 minutes',
       note: 'Prevents Render.com spin-down (5min safety margin)'
     });
@@ -1322,7 +1342,7 @@ export class StatsMqttLite {
 
   async stop(): Promise<void> {
     logger.info('🛑 Stopping MQTT Publisher Lite...');
-    
+
     try {
       // Stop keep-alive timer
       if (this.keepAliveTimer) {
@@ -1358,24 +1378,24 @@ export class StatsMqttLite {
       if (this.deviceService) {
         await this.deviceService.close();
       }
-      
+
       // Shutdown token store
       if (this.config.provisioning.enabled) {
         getTokenStore().shutdown();
       }
-      
+
       // Certificate store is MongoDB (no closing needed)
-      
+
       // Disconnect MongoDB
       if (this.mongoService) {
         await this.mongoService.disconnect();
       }
-      
+
       // Disconnect Redis
       if (this.redisService) {
         await this.redisService.disconnect();
       }
-      
+
       // Close InfluxDB
       if (this.influxService) {
         await this.influxService.close();
@@ -1385,7 +1405,7 @@ export class StatsMqttLite {
       if (this.kafkaService) {
         await this.kafkaService.disconnect();
       }
-      
+
       logger.info('✅ Application stopped gracefully');
     } catch (error: any) {
       logger.error('Error during shutdown', { error: error.message });
