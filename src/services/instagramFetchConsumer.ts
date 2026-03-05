@@ -22,6 +22,7 @@ import { KafkaConfig } from '../config';
 import { Social, Provider } from '../models/Social';
 import { fetchInstagramMetrics, InstagramFetchResult } from './instagramApiClient';
 import { getInfluxService } from './influxService';
+import { getMongoService } from './mongoService';
 import { Point } from '@influxdata/influxdb-client';
 
 export const FETCH_REQUESTS_TOPIC = 'instagram-fetch-requests';
@@ -43,14 +44,15 @@ export interface FetchResult {
     fetched_at: string;
     data?: {
         followers_count: number;
-        followers_delta_24h: number;
-        impressions_day: number;
-        impressions_week: number;
-        reach_day: number;
-        reach_week: number;
-        profile_views: number;
-        media_count: number;
-        engagement_rate: number;
+        // NOTE: Insight fields commented out — not needed right now
+        // followers_delta_24h: number;
+        // impressions_day: number;
+        // impressions_week: number;
+        // reach_day: number;
+        // reach_week: number;
+        // profile_views: number;
+        // media_count: number;
+        // engagement_rate: number;
     };
     error?: string;
     metadata: {
@@ -127,12 +129,33 @@ export class InstagramFetchConsumer {
         // ── Lookup Instagram social account from MongoDB ──────────────────────
         let socialAccount: { accessToken: string; socialAccountId: string; userId: string } | null = null;
         try {
-            const query: Record<string, unknown> = { provider: Provider.INSTAGRAM };
-            if (userId) {
-                const mongoose = await import('mongoose');
-                query.userId = new mongoose.Types.ObjectId(userId);
+            const mongoService = getMongoService();
+            const db = mongoService?.getDatabase();
+            if (!db) throw new Error('Native MongoDB connection not available via MongoService');
+
+            const mongoose = await import('mongoose');
+
+            // Bypass Mongoose strict schema bug, try with ObjectId first
+            let social = await db.collection('socials').findOne({
+                provider: 'INSTAGRAM',
+                ...(userId ? { userId: new mongoose.Types.ObjectId(userId) } : {})
+            });
+            // console.log({ social })
+            // Fallback: try with the raw string
+            if (!social && userId) {
+                social = await db.collection('socials').findOne({
+                    provider: 'INSTAGRAM',
+                    userId: userId
+                });
             }
-            const social = await Social.findOne({ userId, provider: "INSTAGRAM" });   // need to get the social account with provider enum
+
+            // Fallback: try different collection casing
+            if (!social) {
+                social = await db.collection('Social').findOne({
+                    provider: 'INSTAGRAM',
+                    ...(userId ? { userId: new mongoose.Types.ObjectId(userId) } : {})
+                });
+            }
 
             if (!social) {
                 logger.warn('[INSTAGRAM_CONSUMER] No Instagram social account found', { deviceId, userId });
@@ -156,6 +179,7 @@ export class InstagramFetchConsumer {
                 socialAccountId: social.socialAccountId,
                 userId: social.userId.toString()
             };
+            console.log({ socialAccount })
         } catch (err: unknown) {
             logger.error('[INSTAGRAM_CONSUMER] MongoDB lookup failed', {
                 deviceId,
@@ -181,15 +205,17 @@ export class InstagramFetchConsumer {
                     .tag('device_id', deviceId)
                     .tag('user_id', socialAccount.userId)
                     .tag('instagram_account_id', result.instagramAccountId)
+                    // Only writing followers_count for now
                     .intField('followers', result.metrics.followers_count)
-                    .intField('followers_delta_24h', result.metrics.followers_delta_24h)
-                    .intField('impressions_day', result.metrics.impressions_day)
-                    .intField('impressions_week', result.metrics.impressions_week)
-                    .intField('reach_day', result.metrics.reach_day)
-                    .intField('reach_week', result.metrics.reach_week)
-                    .intField('profile_views', result.metrics.profile_views)
-                    .intField('media_count', result.metrics.media_count)
-                    .floatField('engagement_rate', result.metrics.engagement_rate)
+                    // NOTE: Insight fields commented out — not needed right now
+                    // .intField('followers_delta_24h', result.metrics.followers_delta_24h)
+                    // .intField('impressions_day', result.metrics.impressions_day)
+                    // .intField('impressions_week', result.metrics.impressions_week)
+                    // .intField('reach_day', result.metrics.reach_day)
+                    // .intField('reach_week', result.metrics.reach_week)
+                    // .intField('profile_views', result.metrics.profile_views)
+                    // .intField('media_count', result.metrics.media_count)
+                    // .floatField('engagement_rate', result.metrics.engagement_rate)
                     .timestamp(new Date());
 
                 const auditPoint = new Point('instagram_fetch_audit')
@@ -235,7 +261,9 @@ export class InstagramFetchConsumer {
             deviceId,
             success: result.success,
             fetched_at: new Date().toISOString(),
-            ...(result.success && result.metrics ? { data: result.metrics } : { error: result.error }),
+            ...(result.success && result.metrics
+                ? { data: { followers_count: result.metrics.followers_count } }
+                : { error: result.error }),
             metadata: {
                 api_response_time_ms: result.apiResponseTimeMs,
                 instagram_account_id: result.instagramAccountId,

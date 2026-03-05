@@ -12,7 +12,7 @@ import https from 'https';
 import { logger } from '../utils/logger';
 import { getInstagramRateLimiter } from './instagramRateLimiter';
 
-const GRAPH_BASE = 'graph.facebook.com';
+const GRAPH_BASE = 'graph.instagram.com';
 const API_VERSION = 'v22.0';
 
 export interface InstagramAccountInfo {
@@ -73,13 +73,16 @@ function httpsGet(url: string): Promise<Record<string, unknown>> {
 async function fetchAccountFields(accountId: string, accessToken: string): Promise<{ followers_count: number; media_count: number }> {
     const url = `https://${GRAPH_BASE}/${API_VERSION}/${accountId}?fields=followers_count,media_count&access_token=${accessToken}`;
     const data = await httpsGet(url) as { followers_count?: number; media_count?: number };
+    console.log({ data })
     return {
         followers_count: typeof data.followers_count === 'number' ? data.followers_count : 0,
         media_count: typeof data.media_count === 'number' ? data.media_count : 0
     };
 }
 
-/** Fetch insights metrics (impressions, reach, profile_views) for a given period */
+// NOTE: fetchInsights (day/week impressions, reach, profile_views) commented out — not needed right now.
+// Only fetching followers_count for the moment.
+/*
 async function fetchInsights(
     accountId: string,
     accessToken: string,
@@ -92,7 +95,7 @@ async function fetchInsights(
 
     const data = await httpsGet(url) as { data?: Array<{ name: string; values: Array<{ value: number }> }> };
     const result = { impressions: 0, reach: 0, profile_views: 0 };
-
+    console.log({ data, result })
     if (Array.isArray(data.data)) {
         for (const metric of data.data) {
             const latestValue = metric.values?.[metric.values.length - 1]?.value ?? 0;
@@ -104,6 +107,7 @@ async function fetchInsights(
 
     return result;
 }
+*/
 
 /** Exponential back-off sleep */
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -125,36 +129,44 @@ export async function fetchInstagramMetrics(
         logger.info('📸 [INSTAGRAM] Fetching metrics', {
             deviceId,
             accountId: account.instagramAccountId,
+
             attempt: retryCount + 1
         });
 
-        // Parallel: account fields + day insights + week insights
-        const [fields, dayInsights, weekInsights] = await Promise.all([
-            fetchAccountFields(account.instagramAccountId, account.accessToken),
-            fetchInsights(account.instagramAccountId, account.accessToken, 'day'),
-            fetchInsights(account.instagramAccountId, account.accessToken, 'week')
-        ]);
+        // Fetch account fields only (followers_count, media_count)
+        const fields = await fetchAccountFields(account.instagramAccountId, account.accessToken);
+
+        // NOTE: Day/week insights commented out — not needed right now.
+        // const [dayInsights, weekInsights] = await Promise.all([
+        //     fetchInsights(account.instagramAccountId, account.accessToken, 'day'),
+        //     fetchInsights(account.instagramAccountId, account.accessToken, 'week')
+        // ]);
 
         const apiResponseTimeMs = Date.now() - startTime;
 
         const metrics: InstagramMetrics = {
             followers_count: fields.followers_count,
             followers_delta_24h: 0,       // Would need prev value from InfluxDB; defaulting to 0
-            impressions_day: dayInsights.impressions,
-            impressions_week: weekInsights.impressions,
-            reach_day: dayInsights.reach,
-            reach_week: weekInsights.reach,
-            profile_views: dayInsights.profile_views,
+            // impressions_day: dayInsights.impressions,
+            impressions_day: 0,
+            // impressions_week: weekInsights.impressions,
+            impressions_week: 0,
+            // reach_day: dayInsights.reach,
+            reach_day: 0,
+            // reach_week: weekInsights.reach,
+            reach_week: 0,
+            // profile_views: dayInsights.profile_views,
+            profile_views: 0,
             media_count: fields.media_count,
-            engagement_rate: fields.followers_count > 0
-                ? parseFloat(((dayInsights.impressions / fields.followers_count) * 100).toFixed(2))
-                : 0
+            // engagement_rate: fields.followers_count > 0
+            //     ? parseFloat(((dayInsights.impressions / fields.followers_count) * 100).toFixed(2))
+            //     : 0
+            engagement_rate: 0
         };
 
         logger.info('✅ [INSTAGRAM] Metrics fetched successfully', {
             deviceId,
             followers: metrics.followers_count,
-            impressions_day: metrics.impressions_day,
             apiResponseTimeMs
         });
 

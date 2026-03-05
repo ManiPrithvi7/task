@@ -104,8 +104,7 @@ export class StatsMqttLite {
       // Initialize InfluxDB (optional — for time-series metrics)
       await this.initializeInfluxDB();
 
-      // Initialize Kafka (optional — for external event streaming)
-      await this.initializeKafka();
+
 
       // Initialize services
       await this.initializeServices();
@@ -115,6 +114,9 @@ export class StatsMqttLite {
 
       // Initialize MQTT client
       await this.initializeMqttClient();
+
+      // Initialize Kafka (requires MQTT client for consumers)
+      await this.initializeKafka();
 
       // Initialize HTTP server (includes provisioning routes)
       await this.initializeHttpServer();
