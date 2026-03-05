@@ -197,6 +197,12 @@ export class InstagramFetchConsumer {
 
         // ── Write to InfluxDB ─────────────────────────────────────────────────
         const influx = getInfluxService();
+        logger.info('[INSTAGRAM_CONSUMER] Attempting InfluxDB write', {
+            hasInfluxInstance: !!influx,
+            isSuccess: result.success,
+            hasMetrics: !!result.metrics
+        });
+
         if (influx && result.success && result.metrics) {
             try {
                 const writeApi = (influx as unknown as { writeApi: { writePoint: (p: Point) => void; flush: () => Promise<void> } }).writeApi;
@@ -230,9 +236,9 @@ export class InstagramFetchConsumer {
                 writeApi.writePoint(auditPoint);
                 await writeApi.flush();
 
-                logger.debug('[INSTAGRAM_CONSUMER] Metrics written to InfluxDB', { deviceId });
+                logger.info('[INSTAGRAM_CONSUMER] 🟢 Metrics written to InfluxDB successfully', { deviceId });
             } catch (err: unknown) {
-                logger.warn('[INSTAGRAM_CONSUMER] InfluxDB write failed (non-fatal)', {
+                logger.error('[INSTAGRAM_CONSUMER] 🔴 InfluxDB write failed', {
                     deviceId,
                     error: err instanceof Error ? err.message : String(err)
                 });
