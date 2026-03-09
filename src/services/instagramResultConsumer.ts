@@ -16,6 +16,7 @@ import {
     SASLOptions, EachMessagePayload
 } from 'kafkajs';
 import { logger } from '../utils/logger';
+import { connectWithRetry } from '../utils/kafkaRetry';
 import { KafkaConfig } from '../config';
 import { MqttClientManager } from '../servers/mqttClient';
 import { getActiveDeviceCache } from './deviceService';
@@ -105,7 +106,9 @@ export class InstagramResultConsumer {
             brokers: config.brokers,
             ssl: config.ssl || undefined,
             sasl: config.sasl as SASLOptions | undefined,
-            logLevel: logLevel.WARN
+            logLevel: logLevel.WARN,
+            connectionTimeout: 10000,
+            requestTimeout: 10000
         });
 
         this.consumer = this.kafka.consumer({ groupId: RESULT_CONSUMER_GROUP });
@@ -114,7 +117,7 @@ export class InstagramResultConsumer {
     async start(): Promise<void> {
         if (this.running) return;
 
-        await this.consumer.connect();
+        await connectWithRetry(() => this.consumer.connect(), 'Instagram result consumer');
         await this.consumer.subscribe({ topics: [FETCH_RESULTS_TOPIC], fromBeginning: false });
 
         this.running = true;

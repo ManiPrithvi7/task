@@ -234,10 +234,17 @@ export function loadConfig(): AppConfig {
     },
     kafka: {
       enabled: process.env.KAFKA_ENABLED === 'true',
-      brokers: (process.env.KAFKA_BROKERS || '')
-        .split(',')
-        .map(b => b.trim())
-        .filter(Boolean),
+      brokers: (() => {
+        const raw = (process.env.KAFKA_BROKERS || 'localhost:9092')
+          .split(',')
+          .map(b => b.trim())
+          .filter(Boolean);
+        const normalized = raw.map(b => b.replace(/:3003$/, ':9092'));
+        if (normalized.some((n, i) => n !== raw[i])) {
+          logger.warn('KAFKA_BROKERS contained port 3003; Kafka uses 9092. Using 9092.');
+        }
+        return normalized;
+      })(),
       clientId: process.env.KAFKA_CLIENT_ID || 'mqtt-publisher-lite',
       defaultTopic: process.env.KAFKA_DEFAULT_TOPIC || 'social-webhook-events',
       ssl: process.env.KAFKA_SSL === 'true',

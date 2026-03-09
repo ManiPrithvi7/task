@@ -6,41 +6,54 @@ import { KafkaService } from './kafkaService';
 import { Ad, AdStatus, AdType } from '../models/Ad';
 import mongoose from 'mongoose';
 
-/** Per-device state for Instagram, GMB, POS (for progress/celebratory rotation). */
 interface DeviceScreenState {
   instagram: { followers: number; target: number };
   gmb: { reviews: number; rating: number };
   pos: { customersToday: number };
 }
 
+interface ScheduledPublish {
+  deviceId: string;
+  screenType: 'instagram' | 'gmb' | 'pos' | 'promotion';
+  scheduledTime: number;
+  priority: 'normal' | 'high';
+}
+
 export class StatsPublisher {
   private mqttClient: MqttClientManager;
   private deviceService: DeviceService;
-  private publishInterval: number;
   private caService?: CAService;
   private kafkaService?: KafkaService;
-  private intervalTimer: NodeJS.Timeout | null = null;
-  private isRunning: boolean = false;
+
+  // Scheduling configuration
+  private readonly baseInterval: number = 60000; // 60 seconds base
+  private readonly maxDelay: number = 30000; // 30 seconds max delay
+  private readonly minDelay: number = 5000; // 5 seconds min delay
+  private readonly batchSize: number = 50; // Max devices per batch
+
+  // State management
   private deviceState: Map<string, DeviceScreenState> = new Map();
+  private publishQueue: ScheduledPublish[] = [];
+  private processingTimer: NodeJS.Timeout | null = null;
+  private isRunning: boolean = false;
   private lastCleanupTime: number = Date.now();
+
+  // New device tracking
+  private knownDevices: Set<string> = new Set();
+  private highPriorityDevices: Set<string> = new Set();
 
   constructor(
     mqttClient: MqttClientManager,
     deviceService: DeviceService,
-    publishInterval: number = 60000,
     caService?: CAService,
     kafkaService?: KafkaService
   ) {
     this.mqttClient = mqttClient;
     this.deviceService = deviceService;
-    this.publishInterval = publishInterval;
     this.caService = caService;
     this.kafkaService = kafkaService;
   }
 
-  /**
-   * Set KafkaService after construction (useful when Kafka initialises after StatsPublisher).
-   */
   setKafkaService(kafka: KafkaService): void {
     this.kafkaService = kafka;
   }
@@ -53,93 +66,379 @@ export class StatsPublisher {
 
     this.isRunning = true;
     const root = this.mqttClient.getTopicRoot();
-    logger.info('📈 Starting screen publisher (Instagram, GMB, POS, Promotion)', {
-      interval: `${this.publishInterval / 1000}s`,
+    logger.info('📈 Starting scheduled screen publisher', {
+      baseInterval: `${this.baseInterval / 1000}s`,
+      maxDelay: `${this.maxDelay / 1000}s`,
+      batchSize: this.batchSize,
       topicRoot: root
     });
 
-    await this.publishAllScreens();
+    // Initial sync of known devices
+    await this.syncKnownDevices();
 
-    this.intervalTimer = setInterval(async () => {
-      await this.publishAllScreens();
-    }, this.publishInterval);
+    // Start the processing loop
+    this.startProcessingLoop();
   }
 
   async stop(): Promise<void> {
-    if (this.intervalTimer) {
-      clearInterval(this.intervalTimer);
-      this.intervalTimer = null;
+    if (this.processingTimer) {
+      clearTimeout(this.processingTimer);
+      this.processingTimer = null;
     }
     this.isRunning = false;
-    logger.info('Screen publisher stopped');
+    this.publishQueue = [];
+    logger.info('Scheduled screen publisher stopped');
   }
 
-  private getTopicRoot(): string {
-    return this.mqttClient.getTopicRoot();
+  private async startProcessingLoop(): Promise<void> {
+    const processBatch = async () => {
+      try {
+        if (!this.isRunning) return;
+
+        // Sync known devices periodically (every 30 seconds)
+        if (Date.now() - this.lastCleanupTime > 30000) {
+          await this.syncKnownDevices();
+        }
+
+        // Process next batch of scheduled publications
+        await this.processScheduledPublishes();
+
+        // Schedule next processing cycle
+        this.scheduleNextProcessing();
+      } catch (error) {
+        logger.error('Error in processing loop', { error });
+        this.scheduleNextProcessing(); // Continue even on error
+      }
+    };
+
+    // Start first batch
+    await processBatch();
   }
 
-  private async publishAllScreens(): Promise<void> {
+  private scheduleNextProcessing(): void {
+    if (this.processingTimer) {
+      clearTimeout(this.processingTimer);
+    }
+
+    // Calculate next processing time based on queue
+    const nextProcessingDelay = this.calculateNextProcessingDelay();
+
+    this.processingTimer = setTimeout(async () => {
+      await this.processScheduledPublishes();
+      this.scheduleNextProcessing();
+    }, nextProcessingDelay);
+  }
+
+  private calculateNextProcessingDelay(): number {
+    if (this.publishQueue.length === 0) {
+      return this.baseInterval; // No items, check again in 60 seconds
+    }
+
+    const now = Date.now();
+    const nextScheduledTime = Math.min(...this.publishQueue.map(p => p.scheduledTime));
+    const delay = Math.max(0, nextScheduledTime - now);
+
+    // Cap the delay between min and max
+    return Math.min(this.maxDelay, Math.max(this.minDelay, delay));
+  }
+
+  private async syncKnownDevices(): Promise<void> {
     try {
-      await this.cleanupInactiveDeviceState();
-
-      // Read active devices from Redis (zero MongoDB queries)
       const cache = getActiveDeviceCache();
       const activeDevices = await cache.getAllActive();
 
-      if (activeDevices.length === 0) {
-        logger.debug('📤 [PUBLISH_CYCLE] No active devices in Redis cache — skipping publish');
+      const currentDevices = new Set(activeDevices.map(d => d.deviceId));
+
+      // Identify new devices
+      const newDevices = [...currentDevices].filter(id => !this.knownDevices.has(id));
+
+      if (newDevices.length > 0) {
+        logger.info('📱 New devices detected', {
+          count: newDevices.length,
+          devices: newDevices
+        });
+
+        // Mark as high priority
+        newDevices.forEach(id => this.highPriorityDevices.add(id));
+
+        // Schedule immediate high-priority publishes for new devices
+        await this.scheduleHighPriorityPublishes(newDevices);
+      }
+
+      // Update known devices
+      this.knownDevices = currentDevices;
+      this.lastCleanupTime = Date.now();
+
+      // Clean up state for inactive devices
+      await this.cleanupInactiveDeviceState(currentDevices);
+
+    } catch (error) {
+      logger.error('Failed to sync known devices', { error });
+    }
+  }
+
+  private async scheduleHighPriorityDevices(devices: string[]): Promise<void> {
+    const now = Date.now();
+
+    for (const deviceId of devices) {
+      // Schedule all screen types with minimal delay
+      const screens: Array<'instagram' | 'gmb' | 'pos' | 'promotion'> =
+        ['instagram', 'gmb', 'pos', 'promotion'];
+
+      for (const screenType of screens) {
+        this.publishQueue.push({
+          deviceId,
+          screenType,
+          scheduledTime: now + Math.random() * 5000, // Spread within 5 seconds
+          priority: 'high'
+        });
+      }
+    }
+
+    logger.info('🚀 Scheduled high priority publishes', {
+      deviceCount: devices.length,
+      totalJobs: devices.length * 4
+    });
+  }
+
+  private async scheduleHighPriorityPublishes(deviceIds: string[]): Promise<void> {
+    const now = Date.now();
+
+    for (const deviceId of deviceIds) {
+      // Schedule all screen types for immediate publishing
+      const screens: Array<'instagram' | 'gmb' | 'pos' | 'promotion'> =
+        ['instagram', 'gmb', 'pos', 'promotion'];
+
+      for (const screenType of screens) {
+        // Add slight randomization to avoid thundering herd
+        this.publishQueue.push({
+          deviceId,
+          screenType,
+          scheduledTime: now + Math.floor(Math.random() * 2000), // 0-2 second spread
+          priority: 'high'
+        });
+      }
+    }
+
+    logger.debug('Scheduled high priority publishes', {
+      deviceCount: deviceIds.length,
+      jobs: deviceIds.length * 4
+    });
+  }
+
+  private async processScheduledPublishes(): Promise<void> {
+    const now = Date.now();
+
+    // Sort queue by priority and scheduled time
+    this.publishQueue.sort((a, b) => {
+      if (a.priority !== b.priority) {
+        return a.priority === 'high' ? -1 : 1;
+      }
+      return a.scheduledTime - b.scheduledTime;
+    });
+
+    // Get due items (including high priority regardless of time)
+    const dueItems = this.publishQueue.filter(p =>
+      p.priority === 'high' || p.scheduledTime <= now
+    );
+
+    if (dueItems.length === 0) {
+      return;
+    }
+
+    // Take only up to batch size
+    const batchToProcess = dueItems.slice(0, this.batchSize);
+
+    // Remove processed items from queue
+    this.publishQueue = this.publishQueue.filter(p => !batchToProcess.includes(p));
+
+    logger.info('📤 Processing scheduled batch', {
+      batchSize: batchToProcess.length,
+      remainingInQueue: this.publishQueue.length,
+      highPriorityCount: batchToProcess.filter(p => p.priority === 'high').length
+    });
+
+    // Process batch with concurrency control
+    await this.processBatchWithConcurrency(batchToProcess);
+
+    // Remove high priority flag for processed devices
+    const processedDevices = new Set(batchToProcess.map(p => p.deviceId));
+    for (const deviceId of processedDevices) {
+      this.highPriorityDevices.delete(deviceId);
+    }
+  }
+
+  private async processBatchWithConcurrency(batch: ScheduledPublish[]): Promise<void> {
+    const concurrencyLimit = 10; // Process 10 devices concurrently
+    const results = [];
+
+    for (let i = 0; i < batch.length; i += concurrencyLimit) {
+      const chunk = batch.slice(i, i + concurrencyLimit);
+      const chunkPromises = chunk.map(async (item) => {
+        try {
+          await this.publishScreenForDevice(item.deviceId, item.screenType);
+        } catch (error) {
+          logger.error('Failed to publish screen', {
+            deviceId: item.deviceId,
+            screenType: item.screenType,
+            error
+          });
+        }
+      });
+
+      results.push(...await Promise.all(chunkPromises));
+
+      // Small delay between chunks to prevent overwhelming
+      if (i + concurrencyLimit < batch.length) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
+  }
+
+  private async publishScreenForDevice(
+    deviceId: string,
+    screenType: 'instagram' | 'gmb' | 'pos' | 'promotion'
+  ): Promise<void> {
+    const root = this.mqttClient.getTopicRoot();
+
+    // Get device details from cache
+    const cache = getActiveDeviceCache();
+    const device = await cache.getDevice(deviceId);
+
+    if (!device) {
+      logger.debug('Device no longer active, skipping', { deviceId });
+      return;
+    }
+
+    switch (screenType) {
+      case 'instagram':
+        await this.publishInstagram(deviceId, root, device.userId || undefined);
+        break;
+      case 'gmb':
+        await this.publishGmb(deviceId, root);
+        break;
+      case 'pos':
+        await this.publishPos(deviceId, root);
+        break;
+      case 'promotion':
+        await this.publishPromotion(device, root);
+        break;
+    }
+
+    // Schedule next publication for this device/screen
+    this.scheduleNextPublication(deviceId, screenType);
+  }
+
+  private scheduleNextPublication(
+    deviceId: string,
+    screenType: 'instagram' | 'gmb' | 'pos' | 'promotion'
+  ): void {
+    const now = Date.now();
+
+    // Calculate next publish time with some randomization
+    // Base interval of 60 seconds + random offset up to 30 seconds
+    // This spreads out the load naturally
+    const randomOffset = Math.floor(Math.random() * this.maxDelay);
+    const nextPublishTime = now + this.baseInterval + randomOffset;
+
+    this.publishQueue.push({
+      deviceId,
+      screenType,
+      scheduledTime: nextPublishTime,
+      priority: 'normal'
+    });
+
+    logger.debug('Scheduled next publication', {
+      deviceId,
+      screenType,
+      nextTime: new Date(nextPublishTime).toISOString(),
+      delay: this.baseInterval + randomOffset
+    });
+  }
+
+  // Public method to trigger event-based publishing
+  async triggerEventPublish(deviceId: string, eventType: string): Promise<void> {
+    try {
+      const cache = getActiveDeviceCache();
+      const device = await cache.getDevice(deviceId);
+
+      if (!device) {
+        logger.debug('Device not active for event publish', { deviceId, eventType });
         return;
       }
 
-      const root = this.getTopicRoot();
-      logger.info('📤 [PUBLISH_CYCLE] Starting publish cycle', {
-        deviceCount: activeDevices.length,
-        source: 'redis',
-        devices: activeDevices.map(d => ({
-          id: d.deviceId,
-          userId: d.userId || '(none)',
-          adMgmt: d.adManagementEnabled,
-          brand: d.brandCanvasEnabled,
-          lastSeen: new Date(d.lastSeen).toISOString()
-        }))
-      });
+      logger.info('⚡ Triggering event-based publish', { deviceId, eventType });
 
-      for (const device of activeDevices) {
-        try {
-          logger.debug('📤 [PUBLISH_CYCLE] Publishing all screens to device', { deviceId: device.deviceId });
-          await this.publishInstagram(device.deviceId, root, device.userId || undefined);
-          await this.publishGmb(device.deviceId, root);
-          await this.publishPos(device.deviceId, root);
-          await this.publishPromotion(device, root);
-        } catch (err: unknown) {
-          logger.error('Failed to publish screens for device', {
-            deviceId: device.deviceId,
-            error: err instanceof Error ? err.message : String(err)
-          });
-        }
+      // Map event to screen type
+      let screenType: 'instagram' | 'gmb' | 'pos' | 'promotion' | null = null;
+
+      switch (eventType) {
+        case 'instagram_update':
+          screenType = 'instagram';
+          break;
+        case 'gmb_update':
+          screenType = 'gmb';
+          break;
+        case 'pos_update':
+          screenType = 'pos';
+          break;
+        case 'ad_update':
+        case 'campaign_update':
+          screenType = 'promotion';
+          break;
       }
-    } catch (err: unknown) {
-      logger.error('Error in screen publisher', { error: err instanceof Error ? err.message : String(err) });
+
+      if (screenType) {
+        // Add to queue with high priority
+        this.publishQueue.push({
+          deviceId,
+          screenType,
+          scheduledTime: Date.now(),
+          priority: 'high'
+        });
+
+        logger.info('📢 Event queued for immediate publish', {
+          deviceId,
+          eventType,
+          screenType
+        });
+      }
+    } catch (error) {
+      logger.error('Failed to trigger event publish', { deviceId, eventType, error });
     }
   }
 
-  private ensureDeviceState(deviceId: string): DeviceScreenState {
-    if (!this.deviceState.has(deviceId)) {
-      this.deviceState.set(deviceId, {
-        instagram: { followers: 7500 + Math.floor(Math.random() * 500), target: 10000 },
-        gmb: { reviews: 370 + Math.floor(Math.random() * 30), rating: 4.8 },
-        pos: { customersToday: 130 + Math.floor(Math.random() * 40) }
+  // Batch trigger for multiple devices (useful for bulk updates)
+  async triggerBulkEventPublish(deviceIds: string[], eventType: string): Promise<void> {
+    const now = Date.now();
+
+    for (const deviceId of deviceIds) {
+      // Add to queue with staggered timing to avoid spikes
+      this.publishQueue.push({
+        deviceId,
+        screenType: this.mapEventToScreenType(eventType),
+        scheduledTime: now + Math.floor(Math.random() * 10000), // Spread over 10 seconds
+        priority: 'high'
       });
     }
-    return this.deviceState.get(deviceId)!;
+
+    logger.info('📢 Bulk events queued', {
+      count: deviceIds.length,
+      eventType
+    });
   }
 
-  /**
-   * Instagram: Publish a fetch request to Kafka so the real Instagram Graph API
-   * is called and the result is routed back to the device via InstagramResultConsumer.
-   *
-   * Falls back to mock data if Kafka is not configured (development mode).
-   */
+  private mapEventToScreenType(eventType: string): any {
+    switch (eventType) {
+      case 'instagram_update': return 'instagram';
+      case 'gmb_update': return 'gmb';
+      case 'pos_update': return 'pos';
+      case 'ad_update':
+      case 'campaign_update': return 'promotion';
+      default: return 'promotion';
+    }
+  }
+
   private async publishInstagram(deviceId: string, root: string, userId?: string): Promise<void> {
     // ── Kafka path (production): trigger a real API fetch ──────────────────
     if (this.kafkaService?.connected) {
@@ -200,10 +499,8 @@ export class StatsPublisher {
       qos: 1,
       retain: false
     });
-    logger.debug('Published mock Instagram screen (Kafka unavailable)', { deviceId, progress, celebratory: isCelebratory });
   }
 
-  /** Google My Business: reviews progress or celebratory milestone. */
   private async publishGmb(deviceId: string, root: string): Promise<void> {
     const state = this.ensureDeviceState(deviceId);
     state.gmb.reviews += 5 + Math.floor(Math.random() * 15);
@@ -236,10 +533,8 @@ export class StatsPublisher {
       qos: 1,
       retain: false
     });
-    logger.debug('Published GMB screen', { deviceId, reviews, milestone: isMilestone });
   }
 
-  /** POS: screen_update with must_try, customers_today, provider (square/shopify). */
   private async publishPos(deviceId: string, root: string): Promise<void> {
     const state = this.ensureDeviceState(deviceId);
     state.pos.customersToday += 3 + Math.floor(Math.random() * 10);
@@ -266,20 +561,8 @@ export class StatsPublisher {
       qos: 1,
       retain: false
     });
-    logger.debug('Published POS screen', { deviceId, provider, customersToday: state.pos.customersToday });
   }
 
-  /**
-   * Canvas/Promotion screen — reads preferences from Redis cache (zero MongoDB for prefs).
-   * Fetches the latest RUNNING ad for this user from MongoDB (1 query, no type filter).
-   * Shapes the payload based on the cached preference:
-   *
-   * - adManagementEnabled = true  → Promotion canvas (template data + provider + claim URL)
-   * - brandCanvasEnabled  = true  → Brand canvas (template data only, no provider/url)
-   * - Both false                  → Default empty canvas
-   *
-   * Phase 1: Always fetch latest RUNNING ad. Type-specific filtering deferred to future phase.
-   */
   private async publishPromotion(device: ActiveDevice, root: string): Promise<void> {
     const { deviceId, userId, adManagementEnabled, brandCanvasEnabled } = device;
 
@@ -290,7 +573,6 @@ export class StatsPublisher {
         return;
       }
 
-      // Determine canvas mode: only one pref enabled at a time, or both disabled
       let canvasMode: 'PROMOTION' | 'BRAND' | 'DEFAULT';
       if (adManagementEnabled) {
         canvasMode = 'PROMOTION';
@@ -300,21 +582,11 @@ export class StatsPublisher {
         canvasMode = 'DEFAULT';
       }
 
-      logger.info('🎨 [PROMOTION] Resolving canvas', {
-        deviceId,
-        userId,
-        adManagementEnabled,
-        brandCanvasEnabled,
-        canvasMode
-      });
-
-      // Both prefs disabled → default empty canvas
       if (canvasMode === 'DEFAULT') {
         await this.publishDefaultCanvas(deviceId, root);
         return;
       }
 
-      // Fetch the latest RUNNING ad matching the canvas mode
       const userOid = new mongoose.Types.ObjectId(userId);
       const adType = canvasMode === 'PROMOTION' ? AdType.PROMOTION : AdType.BRAND_CANVAS;
       const ad = await Ad.findOne({
@@ -324,27 +596,10 @@ export class StatsPublisher {
       }).sort({ createdAt: -1 });
 
       if (!ad) {
-        logger.info('🎨 [PROMOTION:AD_QUERY] No RUNNING ad found for user — sending default canvas', {
-          deviceId,
-          userId,
-          canvasMode
-        });
         await this.publishDefaultCanvas(deviceId, root);
         return;
       }
 
-      logger.info('🎨 [PROMOTION:AD_FOUND] Ad resolved from MongoDB', {
-        deviceId,
-        adId: ad._id.toString(),
-        adName: ad.name,
-        adType: ad.type,
-        adStatus: ad.status,
-        hasCampaign: !!ad.campaignId,
-        hasTemplateData: !!ad.templateData,
-        canvasMode
-      });
-
-      // Build inner payload from ad templateData
       const tplData = (ad.templateData || {}) as Record<string, any>;
 
       const innerPayload: Record<string, any> = {
@@ -354,8 +609,6 @@ export class StatsPublisher {
         ...(tplData.textColors && { textColors: tplData.textColors })
       };
 
-      // PROMOTION: include provider + claim URL
-      // BRAND: template data only — no provider, no url
       if (canvasMode === 'PROMOTION') {
         if (tplData.provider) {
           innerPayload.provider = tplData.provider;
@@ -380,14 +633,6 @@ export class StatsPublisher {
       const topic = `${root}/${deviceId}/promotion`;
       await this.mqttClient.publish({ topic, payload: JSON.stringify(payload), qos: 1, retain: false });
 
-      logger.info(`🎨 [${canvasMode}:PUBLISHED] Canvas sent`, {
-        deviceId,
-        topic,
-        adId: ad._id.toString(),
-        adName: ad.name,
-        canvasMode,
-        payloadKeys: Object.keys(innerPayload)
-      });
     } catch (err: unknown) {
       logger.error('Failed to publish promotion screen', {
         deviceId,
@@ -399,7 +644,6 @@ export class StatsPublisher {
     }
   }
 
-  /** 4.3 Default canvas — both prefs disabled or no ad found */
   private async publishDefaultCanvas(deviceId: string, root: string): Promise<void> {
     const payload = {
       version: '1.1',
@@ -413,26 +657,38 @@ export class StatsPublisher {
 
     const topic = `${root}/${deviceId}/promotion`;
     await this.mqttClient.publish({ topic, payload: JSON.stringify(payload), qos: 1, retain: false });
-    logger.info('🎨 [DEFAULT:PUBLISHED] Empty default canvas sent', { deviceId, topic });
+    logger.debug('Published default canvas', { deviceId });
   }
 
-  private async cleanupInactiveDeviceState(): Promise<void> {
-    const now = Date.now();
-    if (now - this.lastCleanupTime < 60000) return;
-    this.lastCleanupTime = now;
+  private ensureDeviceState(deviceId: string): DeviceScreenState {
+    if (!this.deviceState.has(deviceId)) {
+      this.deviceState.set(deviceId, {
+        instagram: { followers: 7500 + Math.floor(Math.random() * 500), target: 10000 },
+        gmb: { reviews: 370 + Math.floor(Math.random() * 30), rating: 4.8 },
+        pos: { customersToday: 130 + Math.floor(Math.random() * 40) }
+      });
+    }
+    return this.deviceState.get(deviceId)!;
+  }
 
-    // Use Redis active cache as source of truth for active devices
-    const cache = getActiveDeviceCache();
-    const activeDevices = await cache.getAllActive();
-    const activeIds = new Set(activeDevices.map(d => d.deviceId));
-
+  private async cleanupInactiveDeviceState(activeDevices: Set<string>): Promise<void> {
     let removed = 0;
     for (const deviceId of this.deviceState.keys()) {
-      if (!activeIds.has(deviceId)) {
+      if (!activeDevices.has(deviceId)) {
         this.deviceState.delete(deviceId);
         removed++;
       }
     }
-    if (removed > 0) logger.debug('Cleaned up inactive device screen state', { removed, remaining: this.deviceState.size });
+
+    // Also clean up queue for inactive devices
+    this.publishQueue = this.publishQueue.filter(p => activeDevices.has(p.deviceId));
+
+    if (removed > 0) {
+      logger.debug('Cleaned up inactive device state', {
+        removed,
+        remaining: this.deviceState.size,
+        queueSize: this.publishQueue.length
+      });
+    }
   }
 }

@@ -110,6 +110,34 @@ export class ActiveDeviceCache {
   }
 
   /**
+   * Get a specific active device from Redis.
+   */
+  async getDevice(deviceId: string): Promise<ActiveDevice | null> {
+    const redis = getRedisService();
+    if (!redis || !redis.isRedisConnected()) return null;
+
+    try {
+      const client = redis.getClient();
+      const key = `${REDIS_ACTIVE_PREFIX}${deviceId}`;
+      const raw = await client.get(key);
+      if (!raw) return null;
+
+      const parsed = JSON.parse(raw);
+      return {
+        deviceId: parsed.deviceId || '',
+        userId: parsed.userId || '',
+        adManagementEnabled: parsed.adManagementEnabled ?? true,
+        brandCanvasEnabled: parsed.brandCanvasEnabled ?? false,
+        lastSeen: parsed.lastSeen ? new Date(parsed.lastSeen).getTime() : Date.now()
+      };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error('Failed to get active device from Redis', { deviceId, error: msg });
+      return null;
+    }
+  }
+
+  /**
    * Get all active devices from Redis (SCAN-based, no blocking).
    */
   async getAllActive(): Promise<ActiveDevice[]> {
@@ -246,20 +274,20 @@ export class DeviceService {
         existing.macID = data.macID;
         existing.lastSeenAt = new Date();
         existing.updatedAt = new Date();
-        
+
         // Update status if it's not already active
         if (existing.status === DeviceStatus.OFFLINE) {
           existing.status = DeviceStatus.ACTIVE;
         }
-        
+
         await existing.save();
-        
+
         logger.info('Device updated', {
           deviceId: data.deviceId,
           clientId: data.clientId,
           status: existing.status
         });
-        
+
         return existing;
       }
 
@@ -300,7 +328,7 @@ export class DeviceService {
   async getDevice(clientId: string): Promise<DeviceData | null> {
     try {
       const device = await Device.findOne({ clientId });
-      
+
       if (!device) {
         return null;
       }
@@ -361,7 +389,7 @@ export class DeviceService {
   async updateDeviceStatus(clientId: string, status: 'active' | 'inactive'): Promise<void> {
     try {
       const device = await Device.findOne({ clientId });
-      
+
       if (device) {
         // Map to DeviceStatus enum
         if (status === 'active') {
@@ -369,11 +397,11 @@ export class DeviceService {
         } else if (status === 'inactive') {
           device.status = DeviceStatus.OFFLINE;
         }
-        
+
         device.lastSeenAt = new Date();
         device.updatedAt = new Date();
         await device.save();
-        
+
         logger.debug('Device status updated', { clientId, status: device.status });
       }
     } catch (error) {
@@ -388,11 +416,11 @@ export class DeviceService {
     try {
       await Device.updateOne(
         { clientId },
-        { 
-          $set: { 
+        {
+          $set: {
             lastSeenAt: new Date(),
             updatedAt: new Date()
-          } 
+          }
         }
       );
     } catch (error) {
@@ -438,12 +466,12 @@ export class DeviceService {
   async deleteDevice(clientId: string): Promise<boolean> {
     try {
       const result = await Device.deleteOne({ clientId });
-      
+
       if (result.deletedCount > 0) {
         logger.info('Device deleted', { clientId });
         return true;
       }
-      
+
       return false;
     } catch (error) {
       logger.error('Failed to delete device', { clientId, error });
@@ -468,7 +496,7 @@ export class DeviceService {
   private async cleanupInactiveDevices(): Promise<void> {
     try {
       const cutoffTime = new Date(Date.now() - this.cleanupIntervalMs);
-      
+
       // Only cleanup devices that are OFFLINE and haven't been seen in a while
       const result = await Device.deleteMany({
         status: DeviceStatus.OFFLINE,

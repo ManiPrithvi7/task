@@ -331,6 +331,9 @@ export class StatsMqttLite {
         this.statsPublisher.setKafkaService(this.kafkaService);
       }
 
+      // Ensure topics exist before consumers subscribe (avoids "does not host this topic-partition")
+      await this.kafkaService.ensureTopics();
+
       // ── Instagram Fetch Consumer (instagram-fetch-requests) ─────────
       this.instagramFetchConsumer = createInstagramFetchConsumer(this.config.kafka);
       await this.instagramFetchConsumer.start();
@@ -789,6 +792,25 @@ export class StatsMqttLite {
             await this.handleDeviceStatus(receivedTopic, message);
           } else if (receivedTopic.endsWith('/instagram') || receivedTopic.endsWith('/gmb') || receivedTopic.endsWith('/pos')) {
             logger.debug('Screen message received', { topic: receivedTopic, screen: message.screen });
+
+            // ✅ Forward Webhook events to Kafka (MQTT -> Kafka bridge)
+            // if (receivedTopic.endsWith('/gmb') && message.type === 'NEW_REVIEW' && this.kafkaService) {
+            //   try {
+            //     const targetTopic = this.config.kafka?.defaultTopic || 'social-webhook-events';
+            //     logger.info('🔄 Bridging webhook event from MQTT to Kafka', {
+            //       fromMqttTopic: receivedTopic,
+            //       toKafkaTopic: targetTopic,
+            //       eventType: message.type
+            //     });
+            //     await this.kafkaService.produce(
+            //       targetTopic,
+            //       message,
+            //       message.locationId || 'unknown-location'
+            //     );
+            //   } catch (err: any) {
+            //     logger.error('Failed to bridge webhook event to Kafka', { error: err.message });
+            //   }
+            // }
           } else {
             logger.debug('MQTT message received', { topic: receivedTopic, type: message.type || 'unknown', size: payload.length });
           }
@@ -1310,13 +1332,12 @@ export class StatsMqttLite {
     this.statsPublisher = new StatsPublisher(
       this.mqttClient,
       this.deviceService,
-      60 * 1000, // Publish every minute to /instagram, /gmb, /pos
       this.caService
     );
 
     await this.statsPublisher.start();
 
-    logger.info('✅ Stats publisher initialized - publishing every 60s to /instagram, /gmb, /pos, /promotion');
+    logger.info('✅ Stats publisher initialized - scheduling publications dynamically');
   }
 
   private initializeKeepAlive(): void {

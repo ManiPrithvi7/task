@@ -18,6 +18,7 @@ import {
     logLevel, SASLOptions, EachMessagePayload
 } from 'kafkajs';
 import { logger } from '../utils/logger';
+import { connectWithRetry } from '../utils/kafkaRetry';
 import { KafkaConfig } from '../config';
 import { Social, Provider } from '../models/Social';
 import { fetchInstagramMetrics, InstagramFetchResult } from './instagramApiClient';
@@ -77,7 +78,9 @@ export class InstagramFetchConsumer {
             brokers: config.brokers,
             ssl: config.ssl || undefined,
             sasl: config.sasl as SASLOptions | undefined,
-            logLevel: logLevel.WARN
+            logLevel: logLevel.WARN,
+            connectionTimeout: 10000,
+            requestTimeout: 10000
         });
 
         this.consumer = this.kafka.consumer({ groupId: CONSUMER_GROUP });
@@ -90,8 +93,8 @@ export class InstagramFetchConsumer {
     async start(): Promise<void> {
         if (this.running) return;
 
-        await this.consumer.connect();
-        await this.producer.connect();
+        await connectWithRetry(() => this.consumer.connect(), 'Instagram fetch consumer');
+        await connectWithRetry(() => this.producer.connect(), 'Instagram fetch producer');
 
         await this.consumer.subscribe({
             topics: [FETCH_REQUESTS_TOPIC],

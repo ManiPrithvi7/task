@@ -1,7 +1,17 @@
 import { Kafka, Producer, logLevel, SASLOptions, Partitioners } from 'kafkajs';
 import { logger } from '../utils/logger';
+import { connectWithRetry } from '../utils/kafkaRetry';
 import { KafkaConfig } from '../config';
-import { FETCH_REQUESTS_TOPIC, FetchRequest } from './instagramFetchConsumer';
+import { FETCH_REQUESTS_TOPIC, FETCH_RESULTS_TOPIC, FetchRequest } from './instagramFetchConsumer';
+
+const KAFKA_CONNECTION_TIMEOUT_MS = 10000;
+
+/** Topics required for Instagram fetch flow and cross-domain events. Created at startup if missing. */
+const REQUIRED_TOPICS = [
+  { topic: FETCH_REQUESTS_TOPIC, numPartitions: 3, replicationFactor: 1 },
+  { topic: FETCH_RESULTS_TOPIC, numPartitions: 3, replicationFactor: 1 },
+  { topic: 'social-webhook-events', numPartitions: 3, replicationFactor: 1 }
+] as const;
 
 export class KafkaService {
   private kafka: Kafka;
@@ -17,7 +27,9 @@ export class KafkaService {
       brokers: config.brokers,
       ssl: config.ssl || undefined,
       sasl: config.sasl as SASLOptions | undefined,
-      logLevel: logLevel.INFO
+      logLevel: logLevel.INFO,
+      connectionTimeout: KAFKA_CONNECTION_TIMEOUT_MS,
+      requestTimeout: KAFKA_CONNECTION_TIMEOUT_MS
     });
 
     this.producer = this.kafka.producer({
@@ -30,12 +42,46 @@ export class KafkaService {
 
   async connect(): Promise<void> {
     if (this.connected) return;
-    await this.producer.connect();
+    await connectWithRetry(() => this.producer.connect(), 'Kafka producer');
     this.connected = true;
     logger.info('✅ Kafka producer connected', {
       brokers: this.config.brokers,
       clientId: this.config.clientId
     });
+  }
+
+  /**
+   * Ensure required Kafka topics exist before consumers start.
+   * Prevents "This server does not host this topic-partition" when subscribing to new topics.
+   */
+  async ensureTopics(): Promise<void> {
+    const admin = this.kafka.admin();
+    try {
+      await admin.connect();
+      const existing = await admin.listTopics();
+      const toCreate = REQUIRED_TOPICS.filter(t => !existing.includes(t.topic));
+      if (toCreate.length > 0) {
+        await admin.createTopics({
+          topics: toCreate.map(({ topic, numPartitions, replicationFactor }) => ({
+            topic,
+            numPartitions,
+            replicationFactor
+          })),
+          waitForLeaders: true,
+          timeout: 10000
+        });
+        logger.info('Kafka topics created', {
+          topics: toCreate.map(t => t.topic)
+        });
+      }
+      // Brief delay so broker metadata is updated before consumers subscribe
+      await new Promise(r => setTimeout(r, 500));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn('Kafka ensureTopics failed (continuing anyway)', { error: msg });
+    } finally {
+      await admin.disconnect();
+    }
   }
 
   async produce(topic: string | undefined, value: unknown, key?: string): Promise<void> {

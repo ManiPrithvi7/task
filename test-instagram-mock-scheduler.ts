@@ -6,7 +6,7 @@ import { Kafka } from 'kafkajs';
 dotenv.config();
 
 const MONGO_URI = process.env.MONGODB_URI || process.env.MONGO_URI;
-const KAFKA_BROKERS = (process.env.KAFKA_BROKERS || 'localhost:3003').split(',');
+const KAFKA_BROKERS = (process.env.KAFKA_BROKERS || 'localhost:9092').split(',');
 const TARGET_EMAIL = 'dev.maniprithvi@gmail.com';
 const userid = new mongoose.Types.ObjectId("68d3753f9f99d6b73ae2d991")
 
@@ -88,7 +88,7 @@ async function main() {
     await publishJob();
 
     // Schedule the job to run every 60 seconds
-    setInterval(publishJob, 60000);
+    setInterval(publishJob, 600000);
 }
 
 main().catch(err => {

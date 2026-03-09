@@ -14,7 +14,7 @@ A production-ready MQTT publisher server for IoT device fleet management. Handle
 - **Tiered Rate Limiting** — Global, provisioning, and CSR-specific rate limits with Redis persistence
 - **Certificate Transparency Log** — Internal Merkle tree with inclusion proofs for every issued certificate
 - **WebSocket Support** — Real-time MQTT message streaming to web clients
-- **Kafka Event Streaming** — Cross-domain event publishing via HTTP bridge; external apps can push events to Kafka topics over port 3003
+- **Kafka Event Streaming** — Cross-domain event publishing via HTTP bridge; external apps can push events to Kafka topics over port 9092
 - **Cloud-Ready** — Deployed on Render.com with EMQX Cloud broker
 
 ---
@@ -55,7 +55,7 @@ A production-ready MQTT publisher server for IoT device fleet management. Handle
 │                                                              │
 │  ┌────────────────────────────────────────────────────────┐ │
 │  │  Kafka Broker (Docker - Apache Kafka 4.1.0 / KRaft)    │ │
-│  │  ├─ EXTERNAL listener → host port 3003                 │ │
+│  │  ├─ PLAINTEXT listener → host port 9092                │ │
 │  │  └─ Topics: social-webhook-events, post-fix-test, ...  │ │
 │  └────────────────────────────────────────────────────────┘ │
 └──────────────────────────────────────────────────────────────┘
@@ -90,7 +90,7 @@ await fetch('http://your-server:3002/api/kafka/publish', {
 });
 ```
 
-The MQTT server receives the request, validates it, and publishes the event to Kafka on `localhost:3003`. Kafka is accessible on port `3003` and can be reached from any service that has network access to the host.
+The MQTT server receives the request, validates it, and publishes the event to Kafka on `localhost:9092`. Kafka is accessible on port `9092` and can be reached from any service that has network access to the host.
 
 ### Cache Invalidation via Redis Pub/Sub
 When the web app updates device-related data, it publishes invalidation events:
@@ -385,7 +385,7 @@ ws.send(JSON.stringify({
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `KAFKA_ENABLED` | `false` | Enable Kafka integration |
-| `KAFKA_BROKERS` | — | Comma-separated broker list (e.g., `localhost:3003`) |
+| `KAFKA_BROKERS` | `localhost:9092` | Comma-separated broker list (e.g., `localhost:9092`) |
 | `KAFKA_CLIENT_ID` | `mqtt-publisher-lite` | Kafka client identifier |
 | `KAFKA_DEFAULT_TOPIC` | `social-webhook-events` | Default topic when none is specified in the publish request |
 | `KAFKA_PUBLIC_IP` | `localhost` | Public IP or domain used in advertised listener; set to your server's IP for remote access |
@@ -442,6 +442,7 @@ mqtt-publisher-lite/
 │   ├── storage/             # Token store (Redis-backed)
 │   ├── utils/
 │   │   ├── certValidator.ts      # Runtime KU/EKU enforcement
+│   │   ├── kafkaRetry.ts         # Kafka connect retry with backoff
 │   │   └── logger.ts             # Winston logger
 │   ├── app.ts               # Main application orchestrator
 │   └── index.ts             # Entry point
@@ -470,17 +471,14 @@ npm run dev
 
 #### Kafka Docker Details
 - **Image**: `apache/kafka:4.1.0` (native KRaft mode — no ZooKeeper required)
-- **Listeners**:
-  - `EXTERNAL://0.0.0.0:3003` → host port `3003` (for app and cross-domain access)
-  - `INTERNAL://0.0.0.0:29092` → inter-broker communication
-  - `CONTROLLER://0.0.0.0:29093` → KRaft controller
-- **Advertised Listener**: `localhost:3003` (configurable via `KAFKA_PUBLIC_IP`)
+- **Listeners**: `PLAINTEXT://0.0.0.0:9092` (exposed for app and cross-domain access), `CONTROLLER://0.0.0.0:9093` (KRaft)
+- **Advertised Listener**: `localhost:9092` (set `KAFKA_PUBLIC_IP` for remote access)
 
 #### Cross-Domain / Remote Kafka Access
 To allow an external server or domain to publish to Kafka:
-1. Set `KAFKA_PUBLIC_IP=your.server.ip` in `.env`
+1. Set `KAFKA_PUBLIC_IP=your.server.ip` in `.env` and ensure Kafka advertises that host.
 2. Restart Kafka: `docker compose up -d kafka`
-3. External clients can now connect to `your.server.ip:3003`
+3. External clients connect to `your.server.ip:9092`
 
 ### Production Build
 ```bash
@@ -539,10 +537,10 @@ lsof -ti:3002 | xargs kill -9
 
 ### Kafka not connecting / publish fails
 - Ensure Kafka is running: `docker compose up -d kafka`
-- Verify port 3003 is listening: `ss -tlnp | grep 3003`
-- Ensure `KAFKA_ENABLED=true` and `KAFKA_BROKERS=localhost:3003` in `.env`
+- Verify port 9092 is listening: `ss -tlnp | grep 9092`
+- Ensure `KAFKA_ENABLED=true` and `KAFKA_BROKERS=localhost:9092` (or leave unset to use default) in `.env`
 - Check Kafka container logs: `docker logs mqtt-lite-kafka --tail 50`
-- **Port mapping mismatch**: Kafka's EXTERNAL listener uses port `3003` inside the container. The Docker port mapping **must** be `3003:3003`, not `3003:9092`.
+- **Connection retries**: The app retries Kafka connection with backoff (5 attempts). If the broker is slow to start, wait a few seconds and try again.
 - **Multiple app instances**: If you see MQTT `clientId` conflicts or Kafka rebalances, kill duplicate `ts-node-dev` processes:
   ```bash
   pkill -f ts-node-dev
@@ -550,7 +548,7 @@ lsof -ti:3002 | xargs kill -9
 - **Topic not found**: Kafka uses `allowAutoTopicCreation: true` — topics are created on first publish automatically.
 - **Test connectivity**:
   ```bash
-  docker exec mqtt-lite-kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:3003 --list
+  docker exec mqtt-lite-kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list
   ```
 
 ---
