@@ -154,8 +154,7 @@ export class InstagramResultConsumer {
 
         // Check if device is currently active in Redis
         const cache = getActiveDeviceCache();
-        const activeDevices = await cache.getAllActive();
-        const isActive = activeDevices.some(d => d.deviceId === deviceId);
+        const isActive = !!(await cache.getDevice(deviceId));
 
         const { topic, payload } = formatMqttPayload(result, this.topicRoot);
 

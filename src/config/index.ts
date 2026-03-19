@@ -235,7 +235,7 @@ export function loadConfig(): AppConfig {
     kafka: {
       enabled: process.env.KAFKA_ENABLED === 'true',
       brokers: (() => {
-        const raw = (process.env.KAFKA_BROKERS || 'localhost:9092')
+        const raw = (process.env.KAFKA_BROKERS || process.env.KAFKA_BROKER || 'localhost:9092')
           .split(',')
           .map(b => b.trim())
           .filter(Boolean);
@@ -340,9 +340,12 @@ export function loadConfig(): AppConfig {
     }
   };
 
-  // If TLS config present, ensure TLS paths exist (use sensible defaults under dataDir)
+  // Only enable MQTT TLS behavior when explicitly enabled.
+  // If not enabled, keep TLS config undefined so the app won't attempt a TLS pre-check.
   const tlsCfg = config.mqtt.tls;
-  if (tlsCfg) {
+  if (!tlsCfg?.enabled) {
+    config.mqtt.tls = undefined;
+  } else {
     // Provide defaults if paths not set
     // IMPORTANT: broker CA must NOT collide with the provisioning Root CA filename (root-ca.crt / root-ca.key)
     // because CAService.initialize() will overwrite root-ca.crt if root-ca.key is missing.
@@ -389,7 +392,6 @@ export function loadConfig(): AppConfig {
 }
 
 export function validateConfig(config: AppConfig): void {
-  console.log("mongo", config.mongodb.uri)
   if (!config.mqtt.broker) {
     throw new Error('MQTT broker is required');
   }

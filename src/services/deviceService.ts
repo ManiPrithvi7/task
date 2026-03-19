@@ -15,6 +15,7 @@ import mongoose from 'mongoose';
 // ─── Active Device Cache (Redis-backed) ─────────────────────────────────────
 
 const REDIS_ACTIVE_PREFIX = 'proof.mqtt:active:';
+const REDIS_ACTIVE_SET_KEY = 'active_devices';
 
 /**
  * Represents a device in the Redis active cache.
@@ -53,6 +54,7 @@ export class ActiveDeviceCache {
       });
 
       await client.set(key, value, { EX: 86400 }); // 24h TTL
+      await client.sAdd(REDIS_ACTIVE_SET_KEY, device.deviceId);
 
       logger.info('\uD83D\uDFE2 [REDIS:SET] Active device cached', {
         key,
@@ -79,6 +81,7 @@ export class ActiveDeviceCache {
       const client = redis.getClient();
       const key = `${REDIS_ACTIVE_PREFIX}${deviceId}`;
       const deleted = await client.del(key);
+      await client.sRem(REDIS_ACTIVE_SET_KEY, deviceId);
       return deleted > 0;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -188,6 +191,24 @@ export class ActiveDeviceCache {
   }
 
   /**
+   * Get all active device IDs from Redis (set-based).
+   * This is the canonical source for the Instagram scheduler.
+   */
+  async getAllActiveDeviceIds(): Promise<string[]> {
+    const redis = getRedisService();
+    if (!redis || !redis.isRedisConnected()) return [];
+
+    try {
+      const client = redis.getClient();
+      return await client.sMembers(REDIS_ACTIVE_SET_KEY);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn('Failed to read active device ID set from Redis', { error: msg });
+      return [];
+    }
+  }
+
+  /**
    * Flush all active device keys (used on startup to clear stale sessions).
    */
   async flushAll(): Promise<void> {
@@ -204,6 +225,7 @@ export class ActiveDeviceCache {
         await client.del(keys);
         logger.info('\uD83D\uDDD1\uFE0F [REDIS:FLUSH] Cleared stale active device keys', { count: keys.length });
       }
+      await client.del(REDIS_ACTIVE_SET_KEY);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       logger.warn('Failed to flush active device cache', { error: msg });

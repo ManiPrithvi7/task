@@ -10,6 +10,7 @@ const KAFKA_CONNECTION_TIMEOUT_MS = 10000;
 const REQUIRED_TOPICS = [
   { topic: FETCH_REQUESTS_TOPIC, numPartitions: 3, replicationFactor: 1 },
   { topic: FETCH_RESULTS_TOPIC, numPartitions: 3, replicationFactor: 1 },
+  { topic: 'instagram-errors', numPartitions: 2, replicationFactor: 1 },
   { topic: 'social-webhook-events', numPartitions: 3, replicationFactor: 1 }
 ] as const;
 

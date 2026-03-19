@@ -6,7 +6,7 @@
  * Topic produced:  instagram-fetch-results
  *
  * For each incoming fetch request:
- *   1. Look up device's Instagram social account in MongoDB
+ *   1. Look up device's Instagram token + accountId in Redis
  *   2. Call Instagram Graph API (with rate limiting + retry)
  *   3. Write raw metrics to InfluxDB (instagram_metrics)
  *   4. Write audit entry to InfluxDB (instagram_fetch_audit)
@@ -20,19 +20,21 @@ import {
 import { logger } from '../utils/logger';
 import { connectWithRetry } from '../utils/kafkaRetry';
 import { KafkaConfig } from '../config';
-import { Social, Provider } from '../models/Social';
 import { fetchInstagramMetrics, InstagramFetchResult } from './instagramApiClient';
 import { getInfluxService } from './influxService';
-import { getMongoService } from './mongoService';
 import { Point } from '@influxdata/influxdb-client';
+import { getActiveDeviceCache } from './deviceService';
+import { InstagramRedisStore } from './instagramRedisStore';
 
 export const FETCH_REQUESTS_TOPIC = 'instagram-fetch-requests';
 export const FETCH_RESULTS_TOPIC = 'instagram-fetch-results';
+export const INSTAGRAM_ERRORS_TOPIC = 'instagram-errors';
 export const CONSUMER_GROUP = 'instagram-fetch-consumers';
 
 export interface FetchRequest {
     deviceId: string;
     trigger: 'new_connection' | 'scheduled' | 'retry';
+    fetchType?: 'media' | 'insights' | 'both';
     priority?: 'high' | 'normal' | 'low';
     requested_at: string;
     force_refresh?: boolean;
@@ -70,6 +72,9 @@ export class InstagramFetchConsumer {
     private producer: Producer;
     private config: KafkaConfig;
     private running = false;
+    private influxBuffer: Point[] = [];
+    private influxFlushTimer: NodeJS.Timeout | null = null;
+    private redisStore = new InstagramRedisStore();
 
     constructor(config: KafkaConfig) {
         this.config = config;
@@ -107,6 +112,10 @@ export class InstagramFetchConsumer {
             topic: FETCH_REQUESTS_TOPIC
         });
 
+        this.influxFlushTimer = setInterval(() => {
+            this.flushInfluxBuffer().catch(() => {});
+        }, 5000);
+
         await this.consumer.run({
             eachMessage: async ({ message }: EachMessagePayload) => {
                 const raw = message.value?.toString();
@@ -126,76 +135,37 @@ export class InstagramFetchConsumer {
     }
 
     private async handleFetchRequest(request: FetchRequest): Promise<void> {
-        const { deviceId, trigger, userId } = request;
+        const { deviceId, trigger } = request;
         logger.info('📩 [INSTAGRAM_CONSUMER] Processing fetch request', { deviceId, trigger });
 
-        // ── Lookup Instagram social account from MongoDB ──────────────────────
-        let socialAccount: { accessToken: string; socialAccountId: string; userId: string } | null = null;
-        try {
-            const mongoService = getMongoService();
-            const db = mongoService?.getDatabase();
-            if (!db) throw new Error('Native MongoDB connection not available via MongoService');
-
-            const mongoose = await import('mongoose');
-
-            // Bypass Mongoose strict schema bug, try with ObjectId first
-            let social = await db.collection('socials').findOne({
-                provider: 'INSTAGRAM',
-                ...(userId ? { userId: new mongoose.Types.ObjectId(userId) } : {})
-            });
-            // console.log({ social })
-            // Fallback: try with the raw string
-            if (!social && userId) {
-                social = await db.collection('socials').findOne({
-                    provider: 'INSTAGRAM',
-                    userId: userId
-                });
-            }
-
-            // Fallback: try different collection casing
-            if (!social) {
-                social = await db.collection('Social').findOne({
-                    provider: 'INSTAGRAM',
-                    ...(userId ? { userId: new mongoose.Types.ObjectId(userId) } : {})
-                });
-            }
-
-            if (!social) {
-                logger.warn('[INSTAGRAM_CONSUMER] No Instagram social account found', { deviceId, userId });
-                await this.publishResult({
-                    deviceId,
-                    success: false,
-                    fetched_at: new Date().toISOString(),
-                    error: 'No Instagram account linked',
-                    metadata: {
-                        api_response_time_ms: 0,
-                        instagram_account_id: '',
-                        cache_hit: false,
-                        trigger
-                    }
-                });
-                return;
-            }
-
-            socialAccount = {
-                accessToken: social.accessToken,
-                socialAccountId: social.socialAccountId,
-                userId: social.userId.toString()
-            };
-            console.log({ socialAccount })
-        } catch (err: unknown) {
-            logger.error('[INSTAGRAM_CONSUMER] MongoDB lookup failed', {
+        // ── Lookup token + Instagram accountId from Redis ─────────────────────
+        const auth = await this.redisStore.getDeviceAuth(deviceId);
+        if (!auth) {
+            const error = 'Missing Instagram token/account id in Redis';
+            await this.publishDlq({ deviceId, trigger, error });
+            await this.publishResult({
                 deviceId,
-                error: err instanceof Error ? err.message : String(err)
+                success: false,
+                fetched_at: new Date().toISOString(),
+                error,
+                metadata: {
+                    api_response_time_ms: 0,
+                    instagram_account_id: '',
+                    cache_hit: false,
+                    trigger
+                }
             });
             return;
         }
 
+        const activeDevice = await getActiveDeviceCache().getDevice(deviceId);
+        const userId = activeDevice?.userId || 'unknown';
+
         // ── Fetch from Instagram Graph API ────────────────────────────────────
         const result: InstagramFetchResult = await fetchInstagramMetrics(deviceId, {
-            accessToken: socialAccount.accessToken,
-            instagramAccountId: socialAccount.socialAccountId,
-            userId: socialAccount.userId
+            accessToken: auth.accessToken,
+            instagramAccountId: auth.instagramAccountId,
+            userId
         });
 
         // ── Write to InfluxDB ─────────────────────────────────────────────────
@@ -212,7 +182,7 @@ export class InstagramFetchConsumer {
 
                 const metricsPoint = new Point('instagram_metrics')
                     .tag('device_id', deviceId)
-                    .tag('user_id', socialAccount.userId)
+                    .tag('user_id', userId)
                     .tag('instagram_account_id', result.instagramAccountId)
                     // Only writing followers_count for now
                     .intField('followers', result.metrics.followers_count)
@@ -235,9 +205,11 @@ export class InstagramFetchConsumer {
                     .intField('retry_count', 0)
                     .timestamp(new Date());
 
-                writeApi.writePoint(metricsPoint);
-                writeApi.writePoint(auditPoint);
-                await writeApi.flush();
+                // Buffer points; flush in batches (timer + size threshold)
+                this.influxBuffer.push(metricsPoint, auditPoint);
+                if (this.influxBuffer.length >= 100) {
+                    await this.flushInfluxBuffer();
+                }
 
                 logger.info('[INSTAGRAM_CONSUMER] 🟢 Metrics written to InfluxDB successfully', { deviceId });
             } catch (err: unknown) {
@@ -260,8 +232,10 @@ export class InstagramFetchConsumer {
                     .stringField('error_message', result.error || 'unknown')
                     .timestamp(new Date());
 
-                writeApi.writePoint(auditPoint);
-                await writeApi.flush();
+                this.influxBuffer.push(auditPoint);
+                if (this.influxBuffer.length >= 100) {
+                    await this.flushInfluxBuffer();
+                }
             } catch { /* swallow */ }
         }
 
@@ -281,7 +255,54 @@ export class InstagramFetchConsumer {
             }
         };
 
+        if (!result.success) {
+            await this.publishDlq({
+                deviceId,
+                trigger,
+                error: result.error || 'unknown',
+                errorCode: result.errorCode
+            });
+        }
+
         await this.publishResult(fetchResult);
+    }
+
+    private async flushInfluxBuffer(): Promise<void> {
+        const influx = getInfluxService();
+        if (!influx) return;
+        if (this.influxBuffer.length === 0) return;
+
+        const points = this.influxBuffer.splice(0, this.influxBuffer.length);
+        try {
+            const writeApi = (influx as unknown as { writeApi: { writePoints: (p: Point[]) => void; flush: () => Promise<void> } }).writeApi;
+            writeApi.writePoints(points);
+            await writeApi.flush();
+        } catch {
+            // If flush fails, drop this batch (avoid unbounded memory growth)
+        }
+    }
+
+    private async publishDlq(payload: {
+        deviceId: string;
+        trigger: string;
+        error: string;
+        errorCode?: string | number;
+    }): Promise<void> {
+        try {
+            await this.producer.send({
+                topic: INSTAGRAM_ERRORS_TOPIC,
+                messages: [{
+                    key: payload.deviceId,
+                    value: JSON.stringify({
+                        ...payload,
+                        timestamp: new Date().toISOString(),
+                        service: 'mqtt-publisher-lite'
+                    })
+                }]
+            });
+        } catch {
+            // swallow; DLQ is best-effort
+        }
     }
 
     private async publishResult(result: FetchResult): Promise<void> {
@@ -307,6 +328,11 @@ export class InstagramFetchConsumer {
 
     async stop(): Promise<void> {
         this.running = false;
+        if (this.influxFlushTimer) {
+            clearInterval(this.influxFlushTimer);
+            this.influxFlushTimer = null;
+        }
+        await this.flushInfluxBuffer();
         await this.consumer.disconnect();
         await this.producer.disconnect();
         logger.info('[INSTAGRAM_CONSUMER] Stopped');

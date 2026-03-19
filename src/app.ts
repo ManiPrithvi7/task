@@ -67,7 +67,6 @@ export class StatsMqttLite {
   // Kafka service (external events)
   private kafkaService?: KafkaService;
   // Instagram Kafka consumers
-  private instagramFetchConsumer?: InstagramFetchConsumer;
   private instagramResultConsumer?: InstagramResultConsumer;
 
   // PKI services (Industrial Grade — Improvements #3 and #7)
@@ -333,11 +332,6 @@ export class StatsMqttLite {
 
       // Ensure topics exist before consumers subscribe (avoids "does not host this topic-partition")
       await this.kafkaService.ensureTopics();
-
-      // ── Instagram Fetch Consumer (instagram-fetch-requests) ─────────
-      this.instagramFetchConsumer = createInstagramFetchConsumer(this.config.kafka);
-      await this.instagramFetchConsumer.start();
-      logger.info('✅ Instagram fetch consumer started');
 
       // ── Instagram Result Consumer (instagram-fetch-results → MQTT) ───
       this.instagramResultConsumer = createInstagramResultConsumer(
@@ -1047,6 +1041,11 @@ export class StatsMqttLite {
     // Cache active device in Redis with userId + user preferences (one-time MongoDB read)
     logger.info('📋 [LIFECYCLE:REGISTER] Caching device in Redis active list', { deviceId });
     await this.cacheActiveDevice(deviceId);
+
+    // Flush any queued Instagram messages now that device is online
+    if (this.instagramResultConsumer) {
+      await this.instagramResultConsumer.flushPendingForDevice(deviceId);
+    }
     logger.info('📋 [LIFECYCLE:REGISTER] Device registration complete', { deviceId });
   }
 
