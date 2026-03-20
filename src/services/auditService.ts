@@ -32,6 +32,7 @@ export enum AuditEventType {
   CERTIFICATE_REPLACED = 'CERTIFICATE_REPLACED',
   CERTIFICATE_EXPIRED = 'CERTIFICATE_EXPIRED',
   CERTIFICATE_GRACE_ACCEPTED = 'CERTIFICATE_GRACE_ACCEPTED',
+  CONTENT_PAYLOAD_RECEIVED = 'CONTENT_PAYLOAD_RECEIVED',
   CSR_RECEIVED = 'CSR_RECEIVED',
   CSR_REJECTED = 'CSR_REJECTED',
   CSR_RATE_LIMITED = 'CSR_RATE_LIMITED',
@@ -227,6 +228,8 @@ export class AuditService {
 
   /**
    * Verify integrity of the audit chain by querying InfluxDB.
+   * Chain integrity is hash-linkage only (previous_hash continuity);
+   * event taxonomy changes do not require modifications to this verifier.
    * Returns { valid, checkedCount, firstBrokenSequence? }
    */
   async verifyChain(): Promise<{ valid: boolean; checkedCount: number; firstBrokenSequence?: number }> {

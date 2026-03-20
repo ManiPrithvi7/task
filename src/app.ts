@@ -19,6 +19,7 @@ import { SessionService } from './services/sessionService';
 import { AuditService, createAuditService, getAuditService, AuditEventType } from './services/auditService';
 import { TransparencyLog, createTransparencyLog, getTransparencyLog } from './services/transparencyLog';
 import { validateKeyUsageAndEKU, getCertificateInfo } from './utils/certValidator';
+import { canonicalizeAndHash } from './utils/contentHash';
 import { validateCertificateChain } from './services/chainValidator';
 import { Device } from './models/Device';
 import { User } from './models/User';
@@ -745,10 +746,19 @@ export class StatsMqttLite {
             return;
           }
 
-          const message = JSON.parse(payload.toString());
+          let message: any = null;
+          try {
+            message = JSON.parse(payload.toString());
+          } catch (err: unknown) {
+            logger.warn('Failed to parse MQTT payload JSON', {
+              topic: receivedTopic,
+              error: err instanceof Error ? err.message : String(err),
+              payloadSize: payload.length
+            });
+          }
 
           // ✅ FILTER 3: Timestamp validation (ignore messages older than 2 minutes)
-          if (message.timestamp) {
+          if (message?.timestamp) {
             const messageAge = Date.now() - new Date(message.timestamp).getTime();
             if (messageAge > 120000) {  // 2 minutes
               logger.debug('Ignoring old message', {
@@ -779,13 +789,74 @@ export class StatsMqttLite {
 
           // Log based on topic type
           if (receivedTopic.endsWith('/active')) {
+            if (!message) {
+              logger.warn('Skipping /active processing due to non-JSON payload', { topic: receivedTopic });
+              return;
+            }
             await this.handleDeviceRegistration(receivedTopic, message);
           } else if (receivedTopic.endsWith('/lwt')) {
+            if (!message) {
+              logger.warn('Skipping /lwt processing due to non-JSON payload', { topic: receivedTopic });
+              return;
+            }
             await this.handleDeviceLWT(receivedTopic, message);
           } else if (receivedTopic.endsWith('/status')) {
+            if (!message) {
+              logger.warn('Skipping /status processing due to non-JSON payload', { topic: receivedTopic });
+              return;
+            }
             await this.handleDeviceStatus(receivedTopic, message);
-          } else if (receivedTopic.endsWith('/instagram') || receivedTopic.endsWith('/gmb') || receivedTopic.endsWith('/pos')) {
-            logger.debug('Screen message received', { topic: receivedTopic, screen: message.screen });
+          } else if (
+            receivedTopic.endsWith('/instagram') ||
+            receivedTopic.endsWith('/gmb') ||
+            receivedTopic.endsWith('/pos') ||
+            receivedTopic.endsWith('/promotion')
+          ) {
+            logger.debug('Screen message received', { topic: receivedTopic, screen: message?.screen });
+
+            // ── Content payload audit (Phase 1: server-side tamper-evident receipt) ──
+            const contentHash = canonicalizeAndHash(payload);
+            const contentDeviceId = incomingDeviceId || this.extractDeviceId(receivedTopic);
+
+            if (!contentDeviceId) {
+              logger.warn('Content audit skipped: could not extract deviceId from topic', { topic: receivedTopic });
+            } else if (contentHash === null) {
+              // Soft failure policy: malformed/non-object JSON — audit skipped, message passes.
+              logger.warn(
+                `[ContentAudit] Could not canonicalize payload for device=${contentDeviceId} ` +
+                `topic=${receivedTopic} — content audit skipped, message forwarded`
+              );
+            } else {
+              const auditSvc = getAuditService();
+              if (auditSvc) {
+                let certificateFingerprint: string | null = null;
+                if (this.caService) {
+                  const activeCert = await this.caService.findActiveCertificateByDeviceId(contentDeviceId);
+                  certificateFingerprint = activeCert?.fingerprint ?? null;
+                }
+
+                try {
+                  await auditSvc.logEvent({
+                    event: AuditEventType.CONTENT_PAYLOAD_RECEIVED,
+                    deviceId: contentDeviceId,
+                    details: {
+                      topic: receivedTopic,
+                      contentHash,
+                      payloadSize: payload.length,
+                      certificateFingerprint,
+                      mqttTimestamp: new Date().toISOString()
+                    }
+                  });
+                } catch (auditErr: unknown) {
+                  // Soft failure: audit write error must never drop a legitimate device message
+                  logger.warn(
+                    `[ContentAudit] Audit write failed for device=${contentDeviceId} ` +
+                    `topic=${receivedTopic} hash=${contentHash}: ${auditErr instanceof Error ? auditErr.message : String(auditErr)}`
+                  );
+                }
+              }
+            }
+            // ── End content payload audit ─────────────────────────────────────────────
 
             // ✅ Forward Webhook events to Kafka (MQTT -> Kafka bridge)
             // if (receivedTopic.endsWith('/gmb') && message.type === 'NEW_REVIEW' && this.kafkaService) {
@@ -806,13 +877,13 @@ export class StatsMqttLite {
             //   }
             // }
           } else {
-            logger.debug('MQTT message received', { topic: receivedTopic, type: message.type || 'unknown', size: payload.length });
+            logger.debug('MQTT message received', { topic: receivedTopic, type: message?.type || 'unknown', size: payload.length });
           }
 
           // Update device last seen (but skip for unregistration messages)
           // ✅ FIX: Don't update lastSeen for unregistration to preserve inactive status
           const deviceId = this.extractDeviceId(receivedTopic);
-          if (deviceId && message.type !== 'un_registration') {
+          if (deviceId && message?.type !== 'un_registration') {
             await this.deviceService.updateLastSeen(deviceId).catch(err => {
               logger.debug('Device not found in storage', { deviceId });
             });
