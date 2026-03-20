@@ -10,6 +10,7 @@ import * as forge from 'node-forge';
 import mongoose from 'mongoose';
 import { logger } from '../utils/logger';
 import { DeviceCertificate, IDeviceCertificate, DeviceCertificateStatus } from '../models/DeviceCertificate';
+import type { AuditEventType } from './auditService';
 
 /**
  * Thrown when the CSR uses a key type not supported by the current CA implementation.
@@ -392,8 +393,14 @@ export class CAService {
           const { getAuditService } = await import('./auditService');
           const auditService = getAuditService();
           if (auditService) {
-            const { AuditEventType } = await import('./auditService');
-            const eventType = (AuditEventType as any)[event] || AuditEventType.CERTIFICATE_ISSUED;
+            const { AuditEventType: AuditEventTypeValue } = await import('./auditService');
+            const AUDIT_EVENT_MAP: Record<string, AuditEventType> = {
+              CERT_ISSUED_IN_MEMORY: AuditEventTypeValue.CERTIFICATE_ISSUED_IN_MEMORY,
+              CERT_REPLACED: AuditEventTypeValue.CERTIFICATE_REPLACED,
+              CERT_ISSUED: AuditEventTypeValue.CERTIFICATE_ISSUED
+            };
+
+            const eventType = AUDIT_EVENT_MAP[event] ?? AuditEventTypeValue.CERTIFICATE_ISSUED;
             await auditService.logEvent({
               event: eventType,
               deviceId,
@@ -455,7 +462,57 @@ export class CAService {
           serialNumber: cert.serialNumber,
           expiresAt: notAfter.toISOString()
         });
-        await audit('CERT_ISSUED_IN_MEMORY', { serialNumber: cert.serialNumber, cn, expiresAt: notAfter.toISOString() });
+
+        await audit('CERT_ISSUED_IN_MEMORY', {
+          serialNumber: cert.serialNumber,
+          cn,
+          fingerprint,
+          expiresAt: notAfter.toISOString()
+        });
+
+        // CT transparency logging — soft failure policy
+        const { getTransparencyLog } = await import('./transparencyLog');
+        const transparencyLog = getTransparencyLog();
+        if (transparencyLog) {
+          const ctResult = await transparencyLog.addEntry(fingerprint, cert.serialNumber, cn, deviceId, notBefore);
+          const { getAuditService, AuditEventType } = await import('./auditService');
+          const auditServiceForCt = getAuditService();
+          if (auditServiceForCt) {
+            if (ctResult === null) {
+              logger.warn(
+                `[PKI] CT transparency entry FAILED for device=${deviceId} serial=${cert.serialNumber}. ` +
+                `Certificate issued but ct_log not updated.`
+              );
+              await auditServiceForCt.logEvent({
+                event: AuditEventType.TRANSPARENCY_ENTRY_FAILED,
+                deviceId,
+                serialNumber: cert.serialNumber,
+                certificateFingerprint: fingerprint,
+                details: {
+                  serialNumber: cert.serialNumber,
+                  fingerprint,
+                  cn,
+                  reason: 'addEntry() returned null'
+                }
+              });
+            } else {
+              await auditServiceForCt.logEvent({
+                event: AuditEventType.TRANSPARENCY_ENTRY_ADDED,
+                deviceId,
+                serialNumber: cert.serialNumber,
+                certificateFingerprint: fingerprint,
+                details: {
+                  serialNumber: cert.serialNumber,
+                  fingerprint,
+                  cn,
+                  ctIndex: ctResult.index
+                }
+              });
+            }
+          } else {
+            logger.warn('[PKI] Skipping CT audit log: AuditService not available');
+          }
+        }
         return mockDoc as IDeviceCertificate;
       }
 
@@ -490,7 +547,58 @@ export class CAService {
           userId,
           certificateId: updated._id
         });
-        await audit('CERT_REPLACED', { certificateId: updated._id, serialNumber: cert.serialNumber, cn, expiresAt: notAfter.toISOString() });
+
+        await audit('CERT_REPLACED', {
+          certificateId: updated._id,
+          serialNumber: cert.serialNumber,
+          cn,
+          fingerprint,
+          expiresAt: notAfter.toISOString()
+        });
+
+        // CT transparency logging — soft failure policy
+        const { getTransparencyLog } = await import('./transparencyLog');
+        const transparencyLog = getTransparencyLog();
+        if (transparencyLog) {
+          const ctResult = await transparencyLog.addEntry(fingerprint, cert.serialNumber, cn, deviceId, notBefore);
+          const { getAuditService, AuditEventType } = await import('./auditService');
+          const auditServiceForCt = getAuditService();
+          if (auditServiceForCt) {
+            if (ctResult === null) {
+              logger.warn(
+                `[PKI] CT transparency entry FAILED for device=${deviceId} serial=${cert.serialNumber}. ` +
+                `Certificate issued but ct_log not updated.`
+              );
+              await auditServiceForCt.logEvent({
+                event: AuditEventType.TRANSPARENCY_ENTRY_FAILED,
+                deviceId,
+                serialNumber: cert.serialNumber,
+                certificateFingerprint: fingerprint,
+                details: {
+                  serialNumber: cert.serialNumber,
+                  fingerprint,
+                  cn,
+                  reason: 'addEntry() returned null'
+                }
+              });
+            } else {
+              await auditServiceForCt.logEvent({
+                event: AuditEventType.TRANSPARENCY_ENTRY_ADDED,
+                deviceId,
+                serialNumber: cert.serialNumber,
+                certificateFingerprint: fingerprint,
+                details: {
+                  serialNumber: cert.serialNumber,
+                  fingerprint,
+                  cn,
+                  ctIndex: ctResult.index
+                }
+              });
+            }
+          } else {
+            logger.warn('[PKI] Skipping CT audit log: AuditService not available');
+          }
+        }
         return updated as IDeviceCertificate;
       }
 
@@ -511,7 +619,57 @@ export class CAService {
       });
 
       await certDoc.save();
-      await audit('CERT_ISSUED', { certificateId: certDoc._id, serialNumber: cert.serialNumber, cn, expiresAt: notAfter.toISOString() });
+      await audit('CERT_ISSUED', {
+        certificateId: certDoc._id,
+        serialNumber: cert.serialNumber,
+        cn,
+        fingerprint,
+        expiresAt: notAfter.toISOString()
+      });
+
+      // CT transparency logging — soft failure policy
+      const { getTransparencyLog } = await import('./transparencyLog');
+      const transparencyLog = getTransparencyLog();
+      if (transparencyLog) {
+        const ctResult = await transparencyLog.addEntry(fingerprint, cert.serialNumber, cn, deviceId, notBefore);
+        const { getAuditService, AuditEventType } = await import('./auditService');
+        const auditServiceForCt = getAuditService();
+        if (auditServiceForCt) {
+          if (ctResult === null) {
+            logger.warn(
+              `[PKI] CT transparency entry FAILED for device=${deviceId} serial=${cert.serialNumber}. ` +
+              `Certificate issued but ct_log not updated.`
+            );
+            await auditServiceForCt.logEvent({
+              event: AuditEventType.TRANSPARENCY_ENTRY_FAILED,
+              deviceId,
+              serialNumber: cert.serialNumber,
+              certificateFingerprint: fingerprint,
+              details: {
+                serialNumber: cert.serialNumber,
+                fingerprint,
+                cn,
+                reason: 'addEntry() returned null'
+              }
+            });
+          } else {
+            await auditServiceForCt.logEvent({
+              event: AuditEventType.TRANSPARENCY_ENTRY_ADDED,
+              deviceId,
+              serialNumber: cert.serialNumber,
+              certificateFingerprint: fingerprint,
+              details: {
+                serialNumber: cert.serialNumber,
+                fingerprint,
+                cn,
+                ctIndex: ctResult.index
+              }
+            });
+          }
+        } else {
+          logger.warn('[PKI] Skipping CT audit log: AuditService not available');
+        }
+      }
 
       logger.info('CSR signed and certificate stored in MongoDB', {
         deviceId,

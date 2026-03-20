@@ -89,6 +89,17 @@ export class TransparencyLog {
     if (!this.config.enabled) return null;
     if (!this.initialized) await this.initialize();
 
+    // Guard against partially populated identity inputs.
+    if (!certFingerprint || !serialNumber || !cn || !deviceId) {
+      logger.warn('[CT] addEntry() called with incomplete inputs — skipping', {
+        certFingerprintProvided: certFingerprint.length > 0,
+        serialNumberProvided: serialNumber.length > 0,
+        cnProvided: cn.length > 0,
+        deviceIdProvided: deviceId.length > 0
+      });
+      return null;
+    }
+
     try {
       const issuedAt = timestamp || new Date();
 
