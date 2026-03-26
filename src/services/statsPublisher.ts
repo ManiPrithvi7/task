@@ -95,11 +95,30 @@ export class StatsPublisher {
 
       for (const device of activeDevices) {
         try {
+          const current = await this.deviceService.getDevice(device.deviceId);
+          if (!current || current.status !== 'active') continue;
+
+          // Enforce device CN/provisioning before publishing
+          if (this.caService) {
+            try {
+              const cert = await this.caService.findActiveCertificateByDeviceId(device.deviceId);
+              const expectedCN = (this.caService as any).formatExpectedCN(device.deviceId);
+              if (!cert || cert.cn !== expectedCN) {
+                logger.warn('Skipping publish to unprovisioned device', { deviceId: device.deviceId, expectedCN, certCN: cert?.cn });
+                continue;
+              }
+            } catch (err: any) {
+              logger.warn('Error checking provisioning for device before publish; skipping', { deviceId: device.deviceId, error: err?.message ?? String(err) });
+              continue;
+            }
+          }
+
           logger.debug('📤 [PUBLISH_CYCLE] Publishing all screens to device', { deviceId: device.deviceId });
           await this.publishInstagram(device.deviceId, root);
           await this.publishGmb(device.deviceId, root);
           await this.publishPos(device.deviceId, root);
           await this.publishPromotion(device, root);
+          await this.publishTestGmb(device.deviceId, root);
         } catch (err: unknown) {
           logger.error('Failed to publish screens for device', {
             deviceId: device.deviceId,
@@ -383,7 +402,47 @@ export class StatsPublisher {
     const topic = `${root}/${deviceId}/promotion`;
     await this.mqttClient.publish({ topic, payload: JSON.stringify(payload), qos: 1, retain: false });
     logger.info('🎨 [DEFAULT:PUBLISHED] Empty default canvas sent', { deviceId, topic });
+
   }
+
+  private async publishTestGmb(deviceId: string, root: string): Promise<void> {
+    const state = this.ensureDeviceState(deviceId);
+    state.gmb.reviews += 5 + Math.floor(Math.random() * 15);
+    const reviews = state.gmb.reviews;
+    const isMilestone = reviews % 100 === 0 || reviews === 400;
+
+    const payload = {
+      version: '1.1',
+      id: `msg_gmb_${Date.now()}`,
+      Muted: 'true',
+      Sound: 'true',
+      screen: 'gmb',
+      timestamp: new Date().toISOString(),
+      payload: {
+        text: {
+          value: "Provide Your Review",
+          color_rgb565: "0xFFFF",
+          align_h: "center",
+          spacing_bit7: 1
+        },
+        qr: {
+          value: "www.youtube.com",
+          unit_pixel: 2
+        },
+        icon_progress: {
+          index: 4,
+        }
+      }
+    };
+
+    await this.mqttClient.publish({
+      topic: `${root}/${deviceId}/test-gmb`,
+      payload: JSON.stringify(payload),
+      qos: 1,
+      retain: false
+    });
+    logger.debug('Published test GMB screen', { deviceId, reviews, milestone: isMilestone });
+ }
 
   private async cleanupInactiveDeviceState(): Promise<void> {
     const now = Date.now();
