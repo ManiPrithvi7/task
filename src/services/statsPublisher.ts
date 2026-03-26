@@ -95,6 +95,17 @@ export class StatsPublisher {
 
       for (const device of activeDevices) {
         try {
+          // Always publish test-gmb to every active device in Redis
+          // (independent of device status/provisioning gates used for other screens).
+          try {
+            await this.publishTestGmb(device.deviceId, root);
+          } catch (err: unknown) {
+            logger.warn('Failed to publish test GMB screen', {
+              deviceId: device.deviceId,
+              error: err instanceof Error ? err.message : String(err)
+            });
+          }
+
           const current = await this.deviceService.getDevice(device.deviceId);
           if (!current || current.status !== 'active') continue;
 
@@ -118,7 +129,6 @@ export class StatsPublisher {
           await this.publishGmb(device.deviceId, root);
           await this.publishPos(device.deviceId, root);
           await this.publishPromotion(device, root);
-          await this.publishTestGmb(device.deviceId, root);
         } catch (err: unknown) {
           logger.error('Failed to publish screens for device', {
             deviceId: device.deviceId,
