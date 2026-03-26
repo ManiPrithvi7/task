@@ -9,6 +9,7 @@ import mongoose from 'mongoose';
 interface DeviceScreenState {
   instagram: { followers: number; target: number };
   gmb: { reviews: number; rating: number };
+  gmbTest: { alternate: boolean };
   pos: { customersToday: number };
 }
 
@@ -146,6 +147,7 @@ export class StatsPublisher {
       this.deviceState.set(deviceId, {
         instagram: { followers: 7500 + Math.floor(Math.random() * 500), target: 10000 },
         gmb: { reviews: 370 + Math.floor(Math.random() * 30), rating: 4.8 },
+        gmbTest: { alternate: false },
         pos: { customersToday: 130 + Math.floor(Math.random() * 40) }
       });
     }
@@ -420,6 +422,8 @@ export class StatsPublisher {
     state.gmb.reviews += 5 + Math.floor(Math.random() * 15);
     const reviews = state.gmb.reviews;
     const isMilestone = reviews % 100 === 0 || reviews === 400;
+    const showThankYou = state.gmbTest.alternate;
+    state.gmbTest.alternate = !state.gmbTest.alternate;
 
     const payload = {
       version: '1.1',
@@ -430,17 +434,17 @@ export class StatsPublisher {
       timestamp: new Date().toISOString(),
       payload: {
         text: {
-          value: "Provide Your Review",
-          color_rgb565: "0xFFFF",
-          align_h: "center",
+          value: showThankYou ? 'Thank You' : 'Provide Your Review',
+          color_rgb565: '0xFFFF',
+          align_h: 'center',
           spacing_bit7: 1
         },
         qr: {
-          value: "www.youtube.com",
+          value: 'www.youtube.com',
           unit_pixel: 2
         },
         icon_progress: {
-          index: 4,
+          index: 4
         }
       }
     };
@@ -451,7 +455,7 @@ export class StatsPublisher {
       qos: 1,
       retain: false
     });
-    logger.debug('Published test GMB screen', { deviceId, reviews, milestone: isMilestone });
+    logger.debug('Published test GMB screen', { deviceId, reviews, milestone: isMilestone, variant: showThankYou ? 'thank_you' : 'review' });
  }
 
   private async cleanupInactiveDeviceState(): Promise<void> {
