@@ -18,6 +18,7 @@ export class StatsPublisher {
   private deviceService: DeviceService;
   private publishInterval: number;
   private caService?: CAService;
+  private enforceProvisioning: boolean;
   private intervalTimer: NodeJS.Timeout | null = null;
   private isRunning: boolean = false;
   private deviceState: Map<string, DeviceScreenState> = new Map();
@@ -27,12 +28,14 @@ export class StatsPublisher {
     mqttClient: MqttClientManager,
     deviceService: DeviceService,
     publishInterval: number = 60000, // Default: every minute
-    caService?: CAService
+    caService?: CAService,
+    enforceProvisioning: boolean = true
   ) {
     this.mqttClient = mqttClient;
     this.deviceService = deviceService;
     this.publishInterval = publishInterval;
     this.caService = caService;
+    this.enforceProvisioning = enforceProvisioning;
   }
 
   async start(): Promise<void> {
@@ -110,8 +113,8 @@ export class StatsPublisher {
           const current = await this.deviceService.getDevice(device.deviceId);
           if (!current || current.status !== 'active') continue;
 
-          // Enforce device CN/provisioning before publishing
-          if (this.caService) {
+          // Enforce device CN/provisioning before publishing (optional in testing mode)
+          if (this.enforceProvisioning && this.caService) {
             try {
               const cert = await this.caService.findActiveCertificateByDeviceId(device.deviceId);
               const expectedCN = (this.caService as any).formatExpectedCN(device.deviceId);

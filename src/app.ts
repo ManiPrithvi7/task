@@ -1060,7 +1060,8 @@ export class StatsMqttLite {
       this.mqttClient,
       this.deviceService,
       60 * 1000, // Publish every minute to /instagram, /gmb, /pos
-      this.caService
+      this.caService,
+      this.config.provisioning.requireMtlsForRegistration
     );
     
     await this.statsPublisher.start();

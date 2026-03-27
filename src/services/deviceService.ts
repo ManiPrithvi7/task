@@ -7,12 +7,13 @@
  */
 
 import { Device, IDevice, DeviceStatus } from '../models/Device';
-import { RedisClientType } from 'redis';
-import { getRedisService } from './redisService';
 import { logger } from '../utils/logger';
 import mongoose from 'mongoose';
+import { LocalActiveDeviceStore } from '../storage/localActiveDeviceStore';
 
-// ─── Redis Active Device Cache ───────────────────────────────────────────────
+// ─── Active Device Cache (LOCAL PERSISTENCE PRIMARY) ────────────────────────
+// Development testing mode: local file persistence is the source-of-truth.
+// Redis-based active device cache is intentionally disabled here.
 
 const ACTIVE_PREFIX = 'proof.mqtt:active:';
 
@@ -25,10 +26,10 @@ export interface ActiveDevice {
 }
 
 export class ActiveDeviceCache {
-  private getRedis(): RedisClientType | null {
-    const svc = getRedisService();
-    if (!svc || !svc.isRedisConnected()) return null;
-    return svc.getClient();
+  private localStore: LocalActiveDeviceStore;
+
+  constructor(dataDir: string = process.env.DATA_DIR || './data') {
+    this.localStore = new LocalActiveDeviceStore(dataDir);
   }
 
   /**
@@ -36,24 +37,9 @@ export class ActiveDeviceCache {
    * Called once when device publishes to /active topic.
    */
   async setActive(device: ActiveDevice): Promise<boolean> {
-    const redis = this.getRedis();
-    if (!redis) {
-      logger.warn('ActiveDeviceCache: Redis unavailable, cannot cache active device', { deviceId: device.deviceId });
-      return false;
-    }
-
     try {
-      const key = `${ACTIVE_PREFIX}${device.deviceId}`;
-      const value = JSON.stringify(device);
-      await redis.set(key, value);
-      logger.info('🟢 [REDIS:SET] Active device cached', {
-        key,
-        deviceId: device.deviceId,
-        userId: device.userId || '(no user)',
-        adManagementEnabled: device.adManagementEnabled,
-        brandCanvasEnabled: device.brandCanvasEnabled,
-        lastSeen: new Date(device.lastSeen).toISOString()
-      });
+      // Primary: local persistence
+      await this.localStore.upsert(device);
       return true;
     } catch (err: unknown) {
       logger.error('ActiveDeviceCache: failed to set active device', {
@@ -69,18 +55,10 @@ export class ActiveDeviceCache {
    * Called on LWT, PUBACK timeout, or explicit unregistration.
    */
   async removeActive(deviceId: string): Promise<boolean> {
-    const redis = this.getRedis();
-    if (!redis) return false;
-
     try {
-      const key = `${ACTIVE_PREFIX}${deviceId}`;
-      const deleted = await redis.del(key);
-      if (deleted > 0) {
-        logger.info('🔴 [REDIS:DEL] Active device removed', { key, deviceId });
-      } else {
-        logger.debug('🔴 [REDIS:DEL] Key not found (device was not cached)', { key, deviceId });
-      }
-      return deleted > 0;
+      // Primary: local persistence
+      await this.localStore.remove(deviceId);
+      return true;
     } catch (err: unknown) {
       logger.error('ActiveDeviceCache: failed to remove active device', {
         deviceId,
@@ -94,26 +72,9 @@ export class ActiveDeviceCache {
    * Update lastSeen timestamp for an active device (on PUBACK received).
    */
   async updateLastSeen(deviceId: string): Promise<void> {
-    const redis = this.getRedis();
-    if (!redis) return;
-
     try {
-      const key = `${ACTIVE_PREFIX}${deviceId}`;
-      const raw = await redis.get(key);
-      if (!raw) {
-        logger.debug('🕐 [REDIS:LASTSEEN] Skip — device not in active cache', { deviceId });
-        return;
-      }
-
-      const entry: ActiveDevice = JSON.parse(raw);
-      const previousSeen = entry.lastSeen;
-      entry.lastSeen = Date.now();
-      await redis.set(key, JSON.stringify(entry));
-      logger.debug('🕐 [REDIS:LASTSEEN] Updated', {
-        deviceId,
-        previousSeen: new Date(previousSeen).toISOString(),
-        newSeen: new Date(entry.lastSeen).toISOString()
-      });
+      const now = Date.now();
+      await this.localStore.updateLastSeen(deviceId, now);
     } catch (err: unknown) {
       logger.error('ActiveDeviceCache: failed to update lastSeen', {
         deviceId,
@@ -126,13 +87,9 @@ export class ActiveDeviceCache {
    * Get a single active device entry.
    */
   async getActive(deviceId: string): Promise<ActiveDevice | null> {
-    const redis = this.getRedis();
-    if (!redis) return null;
-
     try {
-      const raw = await redis.get(`${ACTIVE_PREFIX}${deviceId}`);
-      if (!raw) return null;
-      return JSON.parse(raw) as ActiveDevice;
+      const local = await this.localStore.getAll();
+      return local.find(d => d.deviceId === deviceId) || null;
     } catch (err: unknown) {
       logger.error('ActiveDeviceCache: failed to get active device', {
         deviceId,
@@ -147,36 +104,10 @@ export class ActiveDeviceCache {
    * This is the hot-path method called every publish cycle.
    */
   async getAllActive(): Promise<ActiveDevice[]> {
-    const redis = this.getRedis();
-    if (!redis) return [];
-
     try {
-      const devices: ActiveDevice[] = [];
-      let cursor = 0;
-
-      do {
-        const result = await redis.scan(cursor, { MATCH: `${ACTIVE_PREFIX}*`, COUNT: 100 });
-        cursor = result.cursor;
-
-        if (result.keys.length > 0) {
-          const values = await redis.mGet(result.keys);
-          for (const val of values) {
-            if (val) {
-              try {
-                devices.push(JSON.parse(val) as ActiveDevice);
-              } catch { /* skip malformed entries */ }
-            }
-          }
-        }
-      } while (cursor !== 0);
-
-      logger.debug('📋 [REDIS:SCAN] Active devices retrieved', {
-        count: devices.length,
-        deviceIds: devices.map(d => d.deviceId)
-      });
-      return devices;
+      return await this.localStore.getAll();
     } catch (err: unknown) {
-      logger.error('ActiveDeviceCache: failed to scan active devices', {
+      logger.error('ActiveDeviceCache: failed to read local active devices', {
         error: err instanceof Error ? err.message : String(err)
       });
       return [];
@@ -187,30 +118,15 @@ export class ActiveDeviceCache {
    * Flush all active device keys on server startup (stale from previous session).
    */
   async flushAll(): Promise<number> {
-    const redis = this.getRedis();
-    if (!redis) return 0;
-
     try {
-      let deleted = 0;
-      let cursor = 0;
-
-      do {
-        const result = await redis.scan(cursor, { MATCH: `${ACTIVE_PREFIX}*`, COUNT: 100 });
-        cursor = result.cursor;
-
-        if (result.keys.length > 0) {
-          await redis.del(result.keys);
-          deleted += result.keys.length;
-        }
-      } while (cursor !== 0);
-
-      logger.info('🧹 [REDIS:FLUSH] Startup flush completed', {
-        deletedKeys: deleted,
-        pattern: `${ACTIVE_PREFIX}*`
+      const cleared = await this.localStore.clear();
+      logger.info('🧹 [LOCAL_ACTIVE_CACHE] Startup flush completed', {
+        deletedDevices: cleared,
+        file: 'active-devices.json'
       });
-      return deleted;
+      return cleared;
     } catch (err: unknown) {
-      logger.error('ActiveDeviceCache: failed to flush active keys', {
+      logger.error('ActiveDeviceCache: failed to flush local active devices', {
         error: err instanceof Error ? err.message : String(err)
       });
       return 0;
@@ -231,7 +147,7 @@ let activeDeviceCacheInstance: ActiveDeviceCache | null = null;
 
 export function getActiveDeviceCache(): ActiveDeviceCache {
   if (!activeDeviceCacheInstance) {
-    activeDeviceCacheInstance = new ActiveDeviceCache();
+    activeDeviceCacheInstance = new ActiveDeviceCache(process.env.DATA_DIR || './data');
   }
   return activeDeviceCacheInstance;
 }
