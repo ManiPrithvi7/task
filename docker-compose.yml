@@ -1,0 +1,40 @@
+version: "3.8"
+
+# Local development mirror of the Fly.io deployment.
+# Runs Mosquitto + statsmqtt in one container, same as production.
+#
+#   docker compose build && docker compose up
+#
+# Firmware test: connect to localhost:8883 with device cert + key.
+# Dashboard:    http://localhost:3002/health
+#
+# If devices were signed by an older/different root than this volume’s root-ca.crt,
+# add that PEM as data/ca/extra-device-ca.crt (see deploy/fly/start.sh). Same CN
+# “StatsMQTT Lite Root CA” with a different key still fails mTLS without this.
+
+services:
+  proof-mqtt:
+    build:
+      context: .
+      dockerfile: deploy/fly/Dockerfile
+    ports:
+      - "8883:8883"
+      - "3002:3002"
+    volumes:
+      - proof_data:/data
+      # Optional: PEM of the CA that signed existing device certs (if ≠ volume root-ca.crt)
+      - ./data/ca/extra-device-ca.crt:/data/ca/extra-device-ca.crt:ro
+    environment:
+      NODE_ENV: development
+      LOG_LEVEL: debug
+      MQTT_TOPIC_ROOT: proof.mqtt
+      MQTT_CLIENT_ID: unified-server-local
+      SERVER_HOST: "0.0.0.0"
+      REDIS_ENABLED: "false"
+      REQUIRE_MTLS_FOR_REGISTRATION: "false"
+      MONGODB_URI: "${MONGODB_URI}"
+      AUTH_SECRET: "${AUTH_SECRET:-vg0JanaHHHHosQlFXAWnJCN0mAULWAWkOP5p3gqvaE4=}"
+      JWT_SECRET: "${JWT_SECRET:-statsmqtt-jwt-secret-2024}"
+
+volumes:
+  proof_data:

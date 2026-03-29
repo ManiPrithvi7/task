@@ -1,0 +1,60 @@
+# Fly.io deployment — Mosquitto MQTT broker + statsmqtt Node.js server
+#
+# Ports exposed:
+#   8883  TCP   — MQTTS with X.509 client certificate auth (firmware devices)
+#   3002  HTTP  — Health-check / dashboard (Node.js)
+#
+# Deploy:
+#   fly apps create proof-mqtt --org personal
+#   fly volumes create proof_data --region sin --size 1
+#   fly secrets set MONGODB_URI="..." AUTH_SECRET="..." JWT_SECRET="..."
+#   fly deploy --config deploy/fly/fly.toml
+
+app = "proof-mqtt"
+primary_region = "sin"
+
+[build]
+  dockerfile = "deploy/fly/Dockerfile"
+
+# Health check — Node.js HTTP endpoint
+[http_service]
+  internal_port = 3002
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+  [http_service.concurrency]
+    type = "connections"
+    hard_limit = 100
+    soft_limit = 80
+
+# MQTT TLS — raw TCP passthrough (firmware connects here)
+[[services]]
+  protocol = "tcp"
+  internal_port = 8883
+  [[services.ports]]
+    port = 8883
+
+# Persistent storage for CA certs, Mosquitto data, device store
+[mounts]
+  source = "proof_data"
+  destination = "/data"
+
+[env]
+  NODE_ENV           = "production"
+  LOG_LEVEL          = "info"
+  MQTT_TOPIC_ROOT    = "proof.mqtt"
+  MQTT_CLIENT_ID     = "unified-server-fly"
+  SERVER_HOST        = "0.0.0.0"
+  REDIS_ENABLED      = "false"
+  REQUIRE_MTLS_FOR_REGISTRATION = "false"
+
+# Set these via `fly secrets set`:
+#   MONGODB_URI
+#   AUTH_SECRET
+#   JWT_SECRET
+
+[[vm]]
+  memory = "256mb"
+  cpu_kind = "shared"
+  cpus = 1

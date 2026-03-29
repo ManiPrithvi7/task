@@ -228,9 +228,10 @@ export function loadConfig(): AppConfig {
     }
   };
 
-  // If TLS config present, ensure TLS paths exist (use sensible defaults under dataDir)
+  // If TLS config present AND not explicitly disabled, ensure TLS paths exist
+  const tlsExplicitlyDisabled = process.env.MQTT_TLS_ENABLED === 'false' || process.env.MQTT_TLS === 'false';
   const tlsCfg = config.mqtt.tls;
-  if (tlsCfg) {
+  if (tlsCfg && !tlsExplicitlyDisabled) {
     // Provide defaults if paths not set
     // IMPORTANT: broker CA must NOT collide with the provisioning Root CA filename (root-ca.crt / root-ca.key)
     // because CAService.initialize() will overwrite root-ca.crt if root-ca.key is missing.

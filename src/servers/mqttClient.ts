@@ -99,7 +99,7 @@ export class MqttClientManager extends EventEmitter {
           }
         | undefined;
 
-      if (tlsCfg && (tlsCfg.enabled || tlsCfg.caPath || tlsCfg.clientCertPath || tlsCfg.clientKeyPath)) {
+      if (tlsCfg && tlsCfg.enabled !== false && (tlsCfg.enabled || tlsCfg.caPath || tlsCfg.clientCertPath || tlsCfg.clientKeyPath)) {
         // load files if paths provided
         try {
           if (tlsCfg.caPath && fs.existsSync(tlsCfg.caPath)) {
