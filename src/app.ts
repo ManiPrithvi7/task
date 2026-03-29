@@ -23,6 +23,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as forge from 'node-forge';
 import mongoose from 'mongoose';
+import { caForBrokerTls } from './utils/tlsBrokerCa';
 
 export class StatsMqttLite {
   private config: AppConfig;
@@ -177,6 +178,10 @@ export class StatsMqttLite {
       });
       logger.error('💡 MongoDB is REQUIRED for mqtt-publisher-lite');
       logger.error('   Set MONGODB_URI environment variable');
+      logger.error(
+        '   The MQTT broker is not contacted until MongoDB connects. ' +
+          'If you see "Server selection timed out", check MongoDB Atlas Network Access (IP allowlist), VPN/firewall, and optionally MONGODB_SERVER_SELECTION_TIMEOUT_MS (default 5000).'
+      );
       throw error;
     }
   }
@@ -417,7 +422,7 @@ export class StatsMqttLite {
           const socket = tls.connect({
             host: broker,
             port,
-            ca: [caPem],
+            ca: caForBrokerTls(caPem),
             servername: broker,
             rejectUnauthorized: tlsCfg?.rejectUnauthorized !== false,
             timeout: 5000

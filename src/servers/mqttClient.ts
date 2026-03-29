@@ -2,6 +2,7 @@ import mqtt, { MqttClient, IClientOptions, IPublishPacket } from 'mqtt';
 import * as fs from 'fs';
 import { EventEmitter } from 'events';
 import { logger } from '../utils/logger';
+import { caForBrokerTls } from '../utils/tlsBrokerCa';
 
 export interface MqttConfig {
   broker: string;
@@ -103,7 +104,8 @@ export class MqttClientManager extends EventEmitter {
         // load files if paths provided
         try {
           if (tlsCfg.caPath && fs.existsSync(tlsCfg.caPath)) {
-            options.ca = fs.readFileSync(tlsCfg.caPath);
+            const customCa = fs.readFileSync(tlsCfg.caPath, 'utf8');
+            options.ca = caForBrokerTls(customCa);
           }
           if (tlsCfg.clientCertPath && fs.existsSync(tlsCfg.clientCertPath)) {
             options.cert = fs.readFileSync(tlsCfg.clientCertPath);
