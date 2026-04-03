@@ -8,6 +8,7 @@ export interface MqttConfig {
   broker: string;
   port: number;
   clientId: string;
+  authX509Only?: boolean;
   username?: string;
   password?: string;
   topicPrefix: string;
@@ -18,6 +19,7 @@ export interface MqttConfig {
     clientCertPath?: string;
     clientKeyPath?: string;
     rejectUnauthorized?: boolean;
+    servername?: string;
   };
 }
 
@@ -114,6 +116,9 @@ export class MqttClientManager extends EventEmitter {
             options.key = fs.readFileSync(tlsCfg.clientKeyPath);
           }
           options.rejectUnauthorized = tlsCfg.rejectUnauthorized !== false;
+          if (tlsCfg.servername) {
+            (options as any).servername = tlsCfg.servername;
+          }
           brokerUrl = `mqtts://${this.config.broker}:${this.config.port}`;
         } catch (err: any) {
           logger.warn('Failed to load TLS credentials for MQTT client; falling back to plain MQTT if allowed', {
@@ -122,10 +127,12 @@ export class MqttClientManager extends EventEmitter {
         }
       }
 
+      const x509Only = this.config.authX509Only === true;
       logger.info('Connecting to MQTT broker...', {
         broker: this.config.broker,
         port: this.config.port,
-        clientId: this.config.clientId
+        clientId: this.config.clientId,
+        mqttAuth: x509Only ? 'X.509 only (no CONNECT username/password)' : 'username/password if configured'
       });
 
       this.client = mqtt.connect(brokerUrl, options);

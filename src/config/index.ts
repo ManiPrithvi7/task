@@ -10,6 +10,11 @@ export interface MqttConfig {
   broker: string;
   port: number;
   clientId: string;
+  /**
+   * Derived: true when MQTT_USERNAME and MQTT_PASSWORD are both unset or empty (after trim).
+   * Then CONNECT uses no user/pass and the broker should authenticate via client TLS certificate.
+   */
+  authX509Only?: boolean;
   username?: string;
   password?: string;
   /** Optional prefix prepended to all topics (e.g. '' or 'proof.mqtt'). */
@@ -23,6 +28,8 @@ export interface MqttConfig {
     clientCertPath?: string; // Path to client cert (PEM) for mTLS (optional)
     clientKeyPath?: string;  // Path to client private key (PEM) for mTLS (optional)
     rejectUnauthorized?: boolean;
+    /** TLS SNI / cert hostname (e.g. broker cert CN when MQTT_BROKER is a TCP proxy hostname). */
+    servername?: string;
   };
 }
 
@@ -97,13 +104,18 @@ export interface AppConfig {
 export function loadConfig(): AppConfig {
   const dataDir = process.env.DATA_DIR || './data';
 
+  const userTrim = process.env.MQTT_USERNAME?.trim();
+  const passTrim = process.env.MQTT_PASSWORD?.trim();
+  const authX509Only = !userTrim && !passTrim;
+
   const config: AppConfig = {
     mqtt: {
       broker: process.env.MQTT_BROKER || 'broker.emqx.io',
       port: parseInt(process.env.MQTT_PORT || '1883'),
       clientId: process.env.MQTT_CLIENT_ID || `firmware-test-1234`,
-      username: process.env.MQTT_USERNAME || undefined,
-      password: process.env.MQTT_PASSWORD || undefined,
+      authX509Only,
+      username: userTrim || undefined,
+      password: passTrim || undefined,
       topicPrefix: process.env.MQTT_TOPIC_PREFIX || '',
       topicRoot: process.env.MQTT_TOPIC_ROOT || 'proof.mqtt',
       tls: {
@@ -123,7 +135,8 @@ export function loadConfig(): AppConfig {
           process.env.MQTT_TLS_CLIENT_CERT_PATH || process.env.MQTT_CLIENT_CERT_PATH || process.env.MQTT_TLS_CLIENT_CERT || undefined,
         clientKeyPath:
           process.env.MQTT_TLS_CLIENT_KEY_PATH || process.env.MQTT_CLIENT_KEY_PATH || process.env.MQTT_TLS_CLIENT_KEY || undefined,
-        rejectUnauthorized: process.env.MQTT_TLS_REJECT_UNAUTHORIZED !== 'false'
+        rejectUnauthorized: process.env.MQTT_TLS_REJECT_UNAUTHORIZED !== 'false',
+        servername: process.env.MQTT_TLS_SERVERNAME?.trim() || undefined
       }
     },
     http: {
@@ -180,7 +193,9 @@ export function loadConfig(): AppConfig {
     mqtt: {
       broker: config.mqtt.broker,
       port: config.mqtt.port,
-      topicPrefix: config.mqtt.topicPrefix
+      topicPrefix: config.mqtt.topicPrefix,
+      authX509Only: config.mqtt.authX509Only === true,
+      mqttConnectUser: config.mqtt.authX509Only ? 'none (X.509 only)' : config.mqtt.username ? 'set' : 'none'
     },
     http: {
       port: config.http.port
@@ -306,6 +321,27 @@ export function validateConfig(config: AppConfig): void {
   }
   if (!config.mongodb.uri) {
     throw new Error('MongoDB URI is REQUIRED. Set MONGODB_URI environment variable.');
+  }
+
+  if (config.mqtt.authX509Only) {
+    const tls = config.mqtt.tls;
+    const certPath = tls?.clientCertPath;
+    const keyPath = tls?.clientKeyPath;
+    if (!certPath || !keyPath) {
+      throw new Error(
+        'With no MQTT_USERNAME and MQTT_PASSWORD, mTLS is required: set MQTT TLS client cert and key paths (defaults: DATA_DIR/ca/client.crt and client.key).'
+      );
+    }
+    if (!fs.existsSync(certPath)) {
+      throw new Error(
+        `No MQTT username/password: client certificate required for broker auth but file missing: ${certPath}`
+      );
+    }
+    if (!fs.existsSync(keyPath)) {
+      throw new Error(
+        `No MQTT username/password: client private key required but file missing: ${keyPath}`
+      );
+    }
   }
   // Redis: host + port required when enabled (password optional for no-auth Redis).
   if (config.redis.enabled && (!config.redis.host || config.redis.port === undefined)) {

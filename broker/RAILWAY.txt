@@ -1,0 +1,61 @@
+Railway — NanoMQ broker (mTLS on 8883)
+=======================================
+
+This service is the **MQTT broker only** (NanoMQ). The Node `mqtt-publisher-lite` app
+stays on Render (or another host) and connects as an **MQTT client** with client certs.
+
+Prerequisites (local, not committed)
+------------------------------------
+Generate once (see README.txt smoke test or your PKI docs):
+
+  data/ca/root-ca.crt   + root-ca.key   — CA that signs broker + client certs
+  broker/certs/broker.crt, broker.key   — server cert CN should match what clients use for TLS verify
+  broker/certs/client.crt, client.key   — for app / devices (signed by same root CA)
+
+Broker server cert CN is referenced as **nanomq-broker** in README examples; your cert
+`openssl req -subj "/CN=..."` must match what clients pass as SNI / hostname.
+
+Railway project setup
+---------------------
+1. railway.app → New Project → **Deploy from GitHub** → select this repo.
+
+2. **Build**
+   - Railway should pick up `railway.toml` and use `broker/Dockerfile.nanomq`.
+   - If not: Service → Settings → Build → **Dockerfile path** =
+     `broker/Dockerfile.nanomq`
+   - Build context is the **repository root** (required for `COPY broker/...`).
+
+3. **Networking**
+   - Service → Settings → **Networking** → **Generate Domain** is HTTP-only.
+   - For MQTT over TLS you need **TCP Proxy**: add **TCP** on container port **8883**.
+   - Railway shows a public host + port, e.g. `xxxx.up.railway.app:NNNNN`.
+   - Use that **hostname + port** as `MQTT_BROKER` / `MQTT_PORT` on Render (or `.env` locally).
+
+4. **Variables (secrets)**
+   Paste **full PEM text** (including `-----BEGIN...` lines) into Railway Variables:
+
+   NANOMQ_TLS_CA_CERT   = contents of data/ca/root-ca.crt
+   NANOMQ_TLS_CERT      = contents of broker/certs/broker.crt
+   NANOMQ_TLS_KEY       = contents of broker/certs/broker.key
+
+   On deploy, `docker-entrypoint.sh` writes these to `/etc/nanomq/certs/` before starting NanoMQ.
+
+5. **Redeploy** after saving variables.
+
+Client (Render / statsmqtt) env
+--------------------------------
+Point the app at the Railway TCP endpoint, for example:
+
+  MQTT_BROKER=<railway-tcp-hostname>
+  MQTT_PORT=<railway-tcp-external-port>
+
+If the public TCP hostname does **not** match the broker cert CN, set (already supported in code):
+
+  MQTT_TLS_SERVERNAME=<CN in broker.crt, e.g. nanomq-broker>
+
+and ensure the client verifies the server using the **same** root CA as `root-ca.crt`.
+
+Costs
+-----
+Railway is not a permanent free tier; use trial credit or paid Hobby. For long-term $0 broker
+hosting, move this same image to a small VPS (see broker/README.txt).

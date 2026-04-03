@@ -1,0 +1,13 @@
+# Railway: deploy NanoMQ broker only (TCP 8883).
+# Create a separate Railway service for the Node app if needed (use root Dockerfile).
+#
+# Dashboard override (if this file is ignored): set variable
+#   RAILWAY_DOCKERFILE_PATH=broker/Dockerfile.nanomq
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "broker/Dockerfile.nanomq"
+
+[deploy]
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

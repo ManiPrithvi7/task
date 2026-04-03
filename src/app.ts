@@ -418,12 +418,13 @@ export class StatsMqttLite {
             }
           }
         }
+        const tlsServerName = (tlsCfg?.servername as string | undefined) || broker;
         await new Promise<void>((resolve, reject) => {
           const socket = tls.connect({
             host: broker,
             port,
             ca: caForBrokerTls(caPem),
-            servername: broker,
+            servername: tlsServerName,
             rejectUnauthorized: tlsCfg?.rejectUnauthorized !== false,
             timeout: 5000
           }, () => {
