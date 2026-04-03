@@ -16,56 +16,44 @@ Broker server cert CN is referenced as **nanomq-broker** in README examples; you
 `openssl req -subj "/CN=..."` must match what clients pass as SNI / hostname.
 
 -------------------------------------------------------------------------------
-Option A — use this (repo root + broker/Dockerfile.nanomq)
+Why Railpack failed before
 -------------------------------------------------------------------------------
-1. railway.app → New Project → **Deploy from GitHub** → select **this full repo**.
+Railway auto-detects a file named **Dockerfile** only. The old **Dockerfile.nanomq** was ignored.
+This repo now uses **broker/Dockerfile** (repo-root build context).
 
-2. **Root Directory**
-   - Leave **empty** (or `.`). Do **not** set it to `broker`.
-   - The repo root must contain `railway.toml` and the `broker/` folder.
+This repo also has a **root Dockerfile** for the Node app — Railway will not guess NanoMQ’s
+image; you must point at **broker/Dockerfile** (see below).
+
+-------------------------------------------------------------------------------
+Option A — recommended (repo root, empty Root Directory)
+-------------------------------------------------------------------------------
+1. railway.app → New Project → **Deploy from GitHub** → this repo.
+
+2. **Root Directory** — leave **empty** (not `broker`).
 
 3. **Build**
-   - Railway should read **`railway.toml`** at the repo root and use Dockerfile builder.
-   - If the UI shows **Railpack** or auto-detect: switch **Builder** to **Dockerfile**.
-   - **Dockerfile path:** `broker/Dockerfile.nanomq`
-   - If the dashboard does not pick it up, add a variable:
-     `RAILWAY_DOCKERFILE_PATH` = `broker/Dockerfile.nanomq`
+   - **Variables:** `RAILWAY_DOCKERFILE_PATH` = `broker/Dockerfile`  (most reliable)
+   - Or rely on repo-root **`railway.json`** / **`railway.toml`** after pulling latest `main`.
+   - UI: Builder = **Dockerfile**, path **broker/Dockerfile**
 
-4. **Networking**
-   - Service → **Networking** → add **TCP** proxy on container port **8883**.
-   - Note the public **hostname** and **port** for `MQTT_BROKER` / `MQTT_PORT` on your app.
+4. **Networking** — TCP proxy on port **8883**; note public host + port for your app.
 
-5. **Variables (secrets)**
-   See **`broker/env.railway.example`**. Paste full PEM text into Railway Variables:
+5. **Secrets** — see **`broker/env.railway.example`** (`NANOMQ_TLS_*`).
 
-   NANOMQ_TLS_CA_CERT   = contents of data/ca/root-ca.crt
-   NANOMQ_TLS_CERT      = contents of broker/certs/broker.crt
-   NANOMQ_TLS_KEY       = contents of broker/certs/broker.key
-
-   On deploy, `docker-entrypoint.sh` writes these to `/etc/nanomq/certs/` before starting NanoMQ.
-
-6. **Redeploy** after saving variables.
+6. **Redeploy**
 
 -------------------------------------------------------------------------------
-Alternative — Option B only (Root Directory = broker)
+Option B — Root Directory = broker/ only
 -------------------------------------------------------------------------------
-If you **must** set Root Directory to `broker`, use **`broker/Dockerfile`** +
-**`broker/railway.toml`** instead (same image; different COPY paths). Do not use Option A
-and Option B settings at the same time.
+If the service root is **broker/**, use **`broker/Dockerfile.broker-root`** (build context = broker/).
+Set **`RAILWAY_DOCKERFILE_PATH`** = `Dockerfile.broker-root` or use **`broker/railway.toml`**.
 
 -------------------------------------------------------------------------------
 Client (Render / statsmqtt) env
 -------------------------------------------------------------------------------
-Point the app at the Railway TCP endpoint, for example:
-
   MQTT_BROKER=<railway-tcp-hostname>
   MQTT_PORT=<railway-tcp-external-port>
-
-If the public TCP hostname does **not** match the broker cert CN, set (already supported in code):
-
-  MQTT_TLS_SERVERNAME=<CN in broker.crt, e.g. nanomq-broker>
-
-and ensure the client verifies the server using the **same** root CA as `root-ca.crt`.
+  MQTT_TLS_SERVERNAME=<CN in broker.crt>   # if TCP hostname ≠ cert CN
 
 Costs
 -----

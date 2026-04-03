@@ -1,0 +1,11 @@
+# Use only when Railway "Root Directory" = broker/ (build context = broker/ folder).
+# docker build -f broker/Dockerfile.broker-root -t proof-nanomq ./broker
+FROM emqx/nanomq:latest-slim
+
+COPY nanomq.conf /etc/nanomq.conf
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
+EXPOSE 8883
+
+ENTRYPOINT ["/docker-entrypoint.sh"]

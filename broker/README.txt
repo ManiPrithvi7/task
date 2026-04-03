@@ -2,7 +2,8 @@ NanoMQ private broker (Render pserv or self-hosted)
 ==================================================
 
 Files:
-  Dockerfile.nanomq  — `emqx/nanomq:latest-slim` (TLS); Basic `latest` has no TLS
+  Dockerfile              — NanoMQ image; build context = repo root (`COPY broker/...`)
+  Dockerfile.broker-root  — same broker, context = broker/ only (Railway Root Directory = broker)
   nanomq.conf        — mTLS on 8883; TLS paths are flat under listeners.ssl (official docs)
 
 Required PEM files for the broker container (mount under /etc/nanomq/certs/):
@@ -14,7 +15,7 @@ HOCON note: use keyfile / certfile / cacertfile directly on listeners.ssl. A nes
 listeners.ssl.tls { } block is not read correctly on NanoMQ 0.24.x (paths become null).
 
 Local smoke test (from repo root):
-  docker build -f broker/Dockerfile.nanomq -t proof-nanomq .
+  docker build -f broker/Dockerfile -t proof-nanomq .
   docker run -d --name nanomq-test -p 8883:8883 \
     -v "$PWD/data/ca/root-ca.crt:/etc/nanomq/certs/root_ca.crt:ro" \
     -v "$PWD/broker/certs/broker.crt:/etc/nanomq/certs/broker.crt:ro" \
@@ -41,8 +42,8 @@ Render:
   - Private service: Secret Files → /etc/nanomq/certs/{root_ca.crt,broker.crt,broker.key}
   - Web service: MQTT_BROKER=nanomq-broker, MQTT_PORT=8883, MQTT_TLS_* for client mTLS
 
-Railway (Option A — repo root):
-  - See broker/RAILWAY.txt — Root Directory empty, Dockerfile broker/Dockerfile.nanomq,
-    TCP proxy 8883, PEMs via NANOMQ_TLS_* env vars. Template: broker/env.railway.example
+Railway:
+  - See broker/RAILWAY.txt — broker/Dockerfile, RAILWAY_DOCKERFILE_PATH=broker/Dockerfile if needed,
+    TCP proxy 8883, PEMs via NANOMQ_TLS_*. Template: broker/env.railway.example
 
 Regenerating data/ca/root-ca.{key,crt} invalidates device certs in Mongo — re-provision devices.

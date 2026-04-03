@@ -80,7 +80,7 @@ services:
     runtime: docker
     region: oregon
     plan: starter
-    dockerfilePath: ./broker/Dockerfile.nanomq
+    dockerfilePath: ./broker/Dockerfile
 
     envVars:
       - key: NANOMQ_BROKER_NAME
