@@ -1,0 +1,10 @@
+# Option B only — Railway "Root Directory" = broker/
+# Option A (recommended): repo root + ../railway.toml + broker/Dockerfile.nanomq
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

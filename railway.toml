@@ -1,8 +1,13 @@
-# Railway: deploy NanoMQ broker only (TCP 8883).
-# Create a separate Railway service for the Node app if needed (use root Dockerfile).
+# =============================================================================
+# Railway — Option A (recommended): NanoMQ broker
+# =============================================================================
+# 1. Service → Settings → Root Directory: leave EMPTY (repository root). Not "broker/".
+# 2. Service → Settings → Build → Builder: Dockerfile (disable Railpack / auto).
+# 3. Dockerfile path: broker/Dockerfile.nanomq (this file sets it automatically).
+# 4. Add TCP proxy on port 8883; set NANOMQ_TLS_* variables (see broker/env.railway.example).
 #
-# Dashboard override (if this file is ignored): set variable
-#   RAILWAY_DOCKERFILE_PATH=broker/Dockerfile.nanomq
+# If Railway ignores this file, set variable: RAILWAY_DOCKERFILE_PATH=broker/Dockerfile.nanomq
+# =============================================================================
 
 [build]
 builder = "DOCKERFILE"

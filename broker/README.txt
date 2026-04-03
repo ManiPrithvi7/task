@@ -41,7 +41,8 @@ Render:
   - Private service: Secret Files → /etc/nanomq/certs/{root_ca.crt,broker.crt,broker.key}
   - Web service: MQTT_BROKER=nanomq-broker, MQTT_PORT=8883, MQTT_TLS_* for client mTLS
 
-Railway:
-  - See broker/RAILWAY.txt (TCP proxy on 8883, PEMs via NANOMQ_TLS_* env vars).
+Railway (Option A — repo root):
+  - See broker/RAILWAY.txt — Root Directory empty, Dockerfile broker/Dockerfile.nanomq,
+    TCP proxy 8883, PEMs via NANOMQ_TLS_* env vars. Template: broker/env.railway.example
 
 Regenerating data/ca/root-ca.{key,crt} invalidates device certs in Mongo — re-provision devices.
