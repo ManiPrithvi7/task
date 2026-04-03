@@ -32,6 +32,7 @@ Railway project setup
    - Use that **hostname + port** as `MQTT_BROKER` / `MQTT_PORT` on Render (or `.env` locally).
 
 4. **Variables (secrets)**
+   See **`broker/env.railway.example`** for a filled-out template (placeholders only).
    Paste **full PEM text** (including `-----BEGIN...` lines) into Railway Variables:
 
    NANOMQ_TLS_CA_CERT   = contents of data/ca/root-ca.crt

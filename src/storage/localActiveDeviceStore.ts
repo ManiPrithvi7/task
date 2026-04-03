@@ -60,7 +60,7 @@ export class LocalActiveDeviceStore {
   private async readFileSafe(): Promise<LocalStoreFile> {
     try {
       const dir = path.dirname(this.filePath);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      await fs.promises.mkdir(dir, { recursive: true });
 
       if (!fs.existsSync(this.filePath)) {
         return { version: 1, updatedAt: new Date().toISOString(), devices: {} };
@@ -83,12 +83,25 @@ export class LocalActiveDeviceStore {
 
   private async writeFileAtomic(data: LocalStoreFile): Promise<void> {
     const dir = path.dirname(this.filePath);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    await fs.promises.mkdir(dir, { recursive: true });
 
     const tmp = `${this.filePath}.tmp`;
     const json = JSON.stringify(data);
     await fs.promises.writeFile(tmp, json, { encoding: 'utf8', mode: 0o600 });
-    await fs.promises.rename(tmp, this.filePath);
+    try {
+      await fs.promises.rename(tmp, this.filePath);
+    } catch (err: unknown) {
+      const code = err && typeof err === 'object' && 'code' in err ? (err as NodeJS.ErrnoException).code : undefined;
+      // Ephemeral / container FS sometimes rejects rename (e.g. ENOENT); direct write is acceptable here.
+      if (code === 'ENOENT' || code === 'EXDEV') {
+        await fs.promises.mkdir(dir, { recursive: true });
+        await fs.promises.writeFile(this.filePath, json, { encoding: 'utf8', mode: 0o600 });
+        await fs.promises.unlink(tmp).catch(() => {});
+        return;
+      }
+      await fs.promises.unlink(tmp).catch(() => {});
+      throw err;
+    }
   }
 }
 

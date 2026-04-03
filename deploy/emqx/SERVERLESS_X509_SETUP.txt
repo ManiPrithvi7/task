@@ -43,13 +43,28 @@ In EMQX Cloud Console (Serverless supports X.509 per auth matrix):
   disable or reorder authenticators so X.509 is sufficient, per EMQX docs for your plan.
 
 
-3) YOUR APP (.env)
-------------------
+3) YOUR APP (.env) — statsmqtt server
+-------------------------------------
   MQTT_BROKER=dfc176cf.ala.asia-southeast1.emqxsl.com
   MQTT_PORT=8883
-  MQTT_USERNAME / MQTT_PASSWORD   ← often still required at MQTT layer until broker is cert-only
 
-  If using client cert from app to EMQX: place PEMs and set paths or MQTT_TLS_*_BASE64 in Render secrets.
+  Option A — username + password (typical EMQX built-in user):
+  MQTT_USERNAME=...
+  MQTT_PASSWORD=...
+
+  Option B — X.509 only (no MQTT username/password; broker must accept mTLS identity alone):
+  • In EMQX: X.509 authenticator enabled; built-in/password auth disabled or ordered so cert clients are
+    not forced through password (otherwise connack 4/5).
+  • Upload the CA that signed the server’s client cert (e.g. provisioning root public PEM).
+  • Match EMQX identity rules: often MQTT_CLIENT_ID and/or cert CN must match what ACL/auth expects.
+  • In statsmqtt .env: leave MQTT_USERNAME and MQTT_PASSWORD unset or empty (whitespace-only counts as empty).
+      The server then omits CONNECT user/pass and uses client.crt + client.key only.
+      MQTT_TLS_ENABLED=true   (or rely on default paths under DATA_DIR/ca/)
+      Paths: broker-ca.crt, client.crt, client.key (or MQTT_TLS_*_PATH / *_BASE64 on Render)
+      Startup fails fast if client cert/key files are missing when both credentials are absent.
+
+  If you set either MQTT_USERNAME or MQTT_PASSWORD, the server uses username/password auth (and client
+  certs are optional depending on broker mTLS requirements).
 
 
 4) TROUBLESHOOTING CONNACK AFTER TLS OK
