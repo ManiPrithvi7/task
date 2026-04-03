@@ -1,22 +1,27 @@
 EMQX Cloud Serverless — X.509 and TLS notes (statsmqtt)
 ========================================================
 
+NOTE (2026-04): EMQX-downloaded PEMs (e.g. emqxcloud-download-ISRG-Root-X1.crt) and DigiCert broker-ca
+bundles were removed from data/ca/. The repo now uses a single regenerated StatsMQTT Root CA in
+data/ca/ (see broker/README.txt for NanoMQ). If you still use EMQX Cloud, download the current CA/chain
+from the EMQX console and set MQTT_TLS_CA_PATH to that PEM (DigiCert or ISRG as appropriate); do not
+commit those files if they duplicate public roots — merge with tlsBrokerCa behavior as needed.
+
 1) VERIFYING THE BROKER (your Node app / firmware trusts the SERVER)
 --------------------------------------------------------------------
 Your deployment host: *.ala.asia-southeast1.emqxsl.com
 TLS chain uses DigiCert (e.g. "Encryption Everywhere DV TLS CA - G2" → DigiCert roots).
 
-• Keep MQTT TLS trust file: data/ca/broker-ca.crt  (DigiCert Global Root G2 works; openssl verify = OK).
+• For EMQX Cloud: use a PEM that verifies your broker hostname (DigiCert Global Root G2 often works).
 • The app merges this PEM with Node’s Mozilla CA store for TLS (see src/utils/tlsBrokerCa.ts) so EMQX’s
   DigiCert chain does not fail with “unable to get local issuer certificate” when only one root PEM is set.
 
 • The file from EMQX Downloads named emqxcloud-ca.crt is often ISRG Root X1 (Let’s Encrypt root).
-  For THIS Serverless hostname it does NOT complete the chain (verify return code 20).
-  A copy is saved as: data/ca/emqxcloud-download-ISRG-Root-X1.crt — do not replace broker-ca.crt with it
-  for dfc176cf.ala.asia-southeast1.emqxsl.com:8883.
+  For some Serverless hostnames it does NOT complete the chain (verify return code 20) — use the chain
+  EMQX documents for your exact endpoint.
 
 Env (optional override):
-  MQTT_TLS_CA_PATH=./data/ca/broker-ca.crt
+  MQTT_TLS_CA_PATH=./path/to/your-emqx-trust-bundle.crt
 
 
 2) X.509 CLIENT AUTH (broker trusts DEVICE certificates)
@@ -65,6 +70,6 @@ If logs show “<- packet cmd=connack” then “Bad username or password” (MQ
 
 5) FIRMWARE
 -----------
-  • Trust server: same as broker-ca.crt (DigiCert chain).
+  • Trust server: same PEM you use for MQTT_TLS_CA_PATH (DigiCert chain for EMQX Cloud, or your Root CA for NanoMQ).
   • Present device cert + key signed by the CA you uploaded in step 2.
-  • Use MQTT_URL / host + 8883; follow EMQX rules for username (CN vs fixed user).
+  • Use broker host + 8883; follow EMQX rules for username (CN vs fixed user).

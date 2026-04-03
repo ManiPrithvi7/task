@@ -2,6 +2,24 @@ node_modules/
 dist/
 data/*.json
 data/*.csv
+
+# Local provisioning CA / serial — never commit (use env or secrets in prod)
+data/ca/*.crt
+data/ca/*.key
+data/ca/*.srl
+!data/ca/.gitkeep
 .env
 *.log
 .DS_Store
+
+# NanoMQ broker TLS (never commit private keys)
+broker/certs/*.crt
+broker/certs/*.key
+broker/certs/*.pem
+broker/certs/*.csr
+!broker/certs/.gitkeep
+
+# OpenSSL leftovers / base64 PEM exports (use env vars in prod, not committed files)
+*.csr
+*.crt.b64
+*.key.b64

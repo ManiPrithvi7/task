@@ -475,8 +475,12 @@ export class StatsMqttLite {
     }
 
     const tlsCfg = this.config.mqtt.tls;
-    const certPath = tlsCfg.clientCertPath ? path.resolve(tlsCfg.clientCertPath) : path.resolve(this.config.storage.dataDir, 'ca', 'client.crt');
-    const keyPath = tlsCfg.clientKeyPath ? path.resolve(tlsCfg.clientKeyPath) : path.resolve(this.config.storage.dataDir, 'ca', 'client.key');
+    const certPath = tlsCfg.clientCertPath
+      ? path.resolve(tlsCfg.clientCertPath)
+      : path.resolve(this.config.storage.dataDir, '..', 'broker', 'certs', 'client.crt');
+    const keyPath = tlsCfg.clientKeyPath
+      ? path.resolve(tlsCfg.clientKeyPath)
+      : path.resolve(this.config.storage.dataDir, '..', 'broker', 'certs', 'client.key');
 
     // If both files exist, validate PEM structure; regenerate if invalid.
     let certExists = fs.existsSync(certPath);

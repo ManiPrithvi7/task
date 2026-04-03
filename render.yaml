@@ -1,28 +1,26 @@
+# Render Blueprint: web app + private NanoMQ (internal mTLS on 8883).
+# Free tier cannot run private services alongside a web service — use Starter+ for both.
+#
+# Before first deploy:
+# 1) NanoMQ pserv: Secret Files → /etc/nanomq/certs/{root_ca.crt,broker.crt,broker.key}
+# 2) Web service: Secret Files → /etc/mqtt-certs/{root_ca.crt,client.crt,client.key}
+# 3) Set MONGODB_URI, REDIS_*, JWT_SECRET, AUTH_SECRET in the dashboard (sync: false below).
+#
+# Optional: set CREATE_MQTT_CLIENT_CERT=true on the web service only if you generate the app client cert inside the container (advanced).
+
 services:
-  # MQTT Publisher Lite - Web Service
   - type: web
     name: mqtt-publisher-lite
-    env: node
-    region: oregon  # US West - closest to broker.emqx.io
-    plan: free  # Free tier (750 hours/month)
-    
-    # Build configuration
-    buildCommand: npm install && npm run build
-    startCommand: npm start
-    
-    # Health checks
+    runtime: docker
+    region: oregon
+    plan: starter
+    dockerfilePath: ./Dockerfile
+
     healthCheckPath: /health
-    
-    # Environment variables
+
     envVars:
       - key: NODE_ENV
         value: production
-      - key: MQTT_BROKER
-        value: broker.emqx.io
-      - key: MQTT_PORT
-        value: 1883
-      - key: MQTT_CLIENT_ID
-        generateValue: true  # Render generates unique ID
       - key: HTTP_HOST
         value: 0.0.0.0
       - key: LOG_LEVEL
@@ -33,6 +31,59 @@ services:
         value: 3600
       - key: MQTT_TOPIC_PREFIX
         value: ""
-    
-    # Auto-deploy on GitHub push
+      - key: MQTT_TOPIC_ROOT
+        value: proof.mqtt
+
+      # Internal NanoMQ (private service hostname on Render)
+      - key: MQTT_BROKER
+        value: nanomq-broker
+      - key: MQTT_PORT
+        value: "8883"
+      - key: MQTT_TLS_ENABLED
+        value: "true"
+      - key: MQTT_TLS_CA_PATH
+        value: /etc/mqtt-certs/root_ca.crt
+      - key: MQTT_TLS_CLIENT_CERT_PATH
+        value: /etc/mqtt-certs/client.crt
+      - key: MQTT_TLS_CLIENT_KEY_PATH
+        value: /etc/mqtt-certs/client.key
+
+      - key: MQTT_CLIENT_ID
+        generateValue: true
+      - key: MQTT_USERNAME
+        value: ""
+      - key: MQTT_PASSWORD
+        value: ""
+      - key: MQTT_PEER_CN_AS_MQTT_USERNAME
+        value: "0"
+
+      - key: CERT_CN_PREFIX
+        value: PROOF
+
+      - key: MONGODB_URI
+        sync: false
+      - key: REDIS_HOST
+        sync: false
+      - key: REDIS_PORT
+        sync: false
+      - key: REDIS_PASSWORD
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: AUTH_SECRET
+        sync: false
+
+    autoDeploy: true
+
+  - type: pserv
+    name: nanomq-broker
+    runtime: docker
+    region: oregon
+    plan: starter
+    dockerfilePath: ./broker/Dockerfile.nanomq
+
+    envVars:
+      - key: NANOMQ_BROKER_NAME
+        value: nanomq-broker
+
     autoDeploy: true

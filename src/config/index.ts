@@ -107,10 +107,22 @@ export function loadConfig(): AppConfig {
       topicPrefix: process.env.MQTT_TOPIC_PREFIX || '',
       topicRoot: process.env.MQTT_TOPIC_ROOT || 'proof.mqtt',
       tls: {
-        enabled: process.env.MQTT_TLS_ENABLED === 'true' || process.env.MQTT_TLS === 'true',
-        caPath: process.env.MQTT_TLS_CA_PATH || process.env.MQTT_CA_PATH || undefined,
-        clientCertPath: process.env.MQTT_TLS_CLIENT_CERT_PATH || process.env.MQTT_CLIENT_CERT_PATH || undefined,
-        clientKeyPath: process.env.MQTT_TLS_CLIENT_KEY_PATH || process.env.MQTT_CLIENT_KEY_PATH || undefined,
+        enabled:
+          process.env.MQTT_TLS_ENABLED === 'true' ||
+          process.env.MQTT_TLS === 'true' ||
+          !!(
+            process.env.MQTT_TLS_CA_PATH ||
+            process.env.MQTT_TLS_CA ||
+            process.env.MQTT_TLS_CLIENT_CERT_PATH ||
+            process.env.MQTT_TLS_CLIENT_CERT ||
+            process.env.MQTT_TLS_CLIENT_KEY_PATH ||
+            process.env.MQTT_TLS_CLIENT_KEY
+          ),
+        caPath: process.env.MQTT_TLS_CA_PATH || process.env.MQTT_CA_PATH || process.env.MQTT_TLS_CA || undefined,
+        clientCertPath:
+          process.env.MQTT_TLS_CLIENT_CERT_PATH || process.env.MQTT_CLIENT_CERT_PATH || process.env.MQTT_TLS_CLIENT_CERT || undefined,
+        clientKeyPath:
+          process.env.MQTT_TLS_CLIENT_KEY_PATH || process.env.MQTT_CLIENT_KEY_PATH || process.env.MQTT_TLS_CLIENT_KEY || undefined,
         rejectUnauthorized: process.env.MQTT_TLS_REJECT_UNAUTHORIZED !== 'false'
       }
     },
@@ -231,17 +243,17 @@ export function loadConfig(): AppConfig {
   // If TLS config present, ensure TLS paths exist (use sensible defaults under dataDir)
   const tlsCfg = config.mqtt.tls;
   if (tlsCfg) {
-    // Provide defaults if paths not set
-    // IMPORTANT: broker CA must NOT collide with the provisioning Root CA filename (root-ca.crt / root-ca.key)
-    // because CAService.initialize() will overwrite root-ca.crt if root-ca.key is missing.
-    // Use 'broker-ca.crt' as the default so the two CAs stay separate.
-    const defaultCa = path.join(dataDir, 'ca', 'broker-ca.crt');
-    const defaultClientCert = path.join(dataDir, 'ca', 'client.crt');
-    const defaultClientKey = path.join(dataDir, 'ca', 'client.key');
+    // Defaults: same Root CA PEM for MQTT TLS trust (NanoMQ / internal mTLS) and provisioning CAService.
+    // Leaf certs for the Node MQTT client live under broker/certs/ (see broker/README.txt).
+    const defaultCa = path.join(dataDir, 'ca', 'root-ca.crt');
+    const defaultClientCert = path.join(dataDir, '..', 'broker', 'certs', 'client.crt');
+    const defaultClientKey = path.join(dataDir, '..', 'broker', 'certs', 'client.key');
 
-    tlsCfg.caPath = tlsCfg.caPath || process.env.MQTT_TLS_CA_PATH || defaultCa;
-    tlsCfg.clientCertPath = tlsCfg.clientCertPath || process.env.MQTT_TLS_CLIENT_CERT_PATH || defaultClientCert;
-    tlsCfg.clientKeyPath = tlsCfg.clientKeyPath || process.env.MQTT_TLS_CLIENT_KEY_PATH || defaultClientKey;
+    tlsCfg.caPath = tlsCfg.caPath || process.env.MQTT_TLS_CA_PATH || process.env.MQTT_TLS_CA || defaultCa;
+    tlsCfg.clientCertPath =
+      tlsCfg.clientCertPath || process.env.MQTT_TLS_CLIENT_CERT_PATH || process.env.MQTT_TLS_CLIENT_CERT || defaultClientCert;
+    tlsCfg.clientKeyPath =
+      tlsCfg.clientKeyPath || process.env.MQTT_TLS_CLIENT_KEY_PATH || process.env.MQTT_TLS_CLIENT_KEY || defaultClientKey;
 
     // Try to write from env (raw PEM preferred, base64 fallback)
     writePemFromEnv('MQTT_TLS_CA_BASE64', 'MQTT_TLS_CA_PEM', tlsCfg.caPath, 0o644);
@@ -261,7 +273,7 @@ export function loadConfig(): AppConfig {
     try {
       const caKeyCandidate = path.join(path.dirname(tlsCfg.caPath), 'root-ca.key');
       if (tlsCfg.clientKeyPath && path.resolve(tlsCfg.clientKeyPath) === path.resolve(caKeyCandidate)) {
-        const fallbackClientKey = path.resolve(path.join(dataDir, 'ca', 'client.key'));
+        const fallbackClientKey = path.resolve(path.join(dataDir, '..', 'broker', 'certs', 'client.key'));
         logger.warn('Client key path pointed to root CA key; switching to fallback client key path to avoid PEM confusion', {
           old: tlsCfg.clientKeyPath,
           new: fallbackClientKey
