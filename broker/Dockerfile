@@ -6,9 +6,10 @@
 FROM emqx/nanomq:latest-slim
 
 COPY broker/nanomq.conf /etc/nanomq.conf
+COPY broker/nanomq.plain.conf /etc/nanomq.plain.conf
 COPY broker/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
-EXPOSE 8883
+EXPOSE 8883 1883
 
 ENTRYPOINT ["/docker-entrypoint.sh"]

@@ -6,7 +6,11 @@ Files:
   Dockerfile.broker-root  — same broker, context = broker/ only (Railway Root Directory = broker)
   nanomq.conf        — mTLS on 8883; TLS paths are flat under listeners.ssl (official docs)
 
-Required PEM files for the broker container (mount under /etc/nanomq/certs/):
+**Production / staging with mTLS (Option B):** set **`NANOMQ_TLS_CA_CERT`**, **`NANOMQ_TLS_CERT`**, **`NANOMQ_TLS_KEY`**
+(full PEMs) in Railway, or mount files under `/etc/nanomq/certs/` — see **`env.railway.example`**.
+**Plain MQTT only (no TLS):** **`NANOMQ_DISABLE_TLS=1`** — port **1883**; not for public production.
+
+Required PEM files for the broker container (mount under /etc/nanomq/certs/) when TLS is enabled:
   root_ca.crt  — copy of data/ca/root-ca.crt (CA that signed broker.crt); underscore name in-container
   broker.crt   — NanoMQ server cert
   broker.key   — NanoMQ server private key (never commit; use Render Secret Files)

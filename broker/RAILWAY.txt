@@ -25,7 +25,7 @@ This repo also has a **root Dockerfile** for the Node app — Railway will not g
 image; you must point at **broker/Dockerfile** (see below).
 
 -------------------------------------------------------------------------------
-Option A — recommended (repo root, empty Root Directory)
+Deploy — repo root (empty Root Directory)
 -------------------------------------------------------------------------------
 1. railway.app → New Project → **Deploy from GitHub** → this repo.
 
@@ -38,15 +38,20 @@ Option A — recommended (repo root, empty Root Directory)
 
 4. **Networking** — TCP proxy on port **8883**; note public host + port for your app.
 
-5. **Secrets** — see **`broker/env.railway.example`** (`NANOMQ_TLS_*`).
+5. **Runtime — Option B (recommended): mTLS via env**
+   - Set **`NANOMQ_TLS_CA_CERT`**, **`NANOMQ_TLS_CERT`**, **`NANOMQ_TLS_KEY`** with full PEM text (see **`broker/env.railway.example`**).
+   - Do **not** set `NANOMQ_DISABLE_TLS`.
+   - TCP proxy **8883** → mTLS.
+   - **Staging only (plain 1883):** `NANOMQ_DISABLE_TLS=1` and TCP proxy **1883** — no certs.
 
 6. **Redeploy**
 
 -------------------------------------------------------------------------------
-Option B — Root Directory = broker/ only
+Deploy — Root Directory = broker/ only
 -------------------------------------------------------------------------------
 If the service root is **broker/**, use **`broker/Dockerfile.broker-root`** (build context = broker/).
 Set **`RAILWAY_DOCKERFILE_PATH`** = `Dockerfile.broker-root` or use **`broker/railway.toml`**.
+Same **Option B** TLS variables (`NANOMQ_TLS_*`) apply as above.
 
 -------------------------------------------------------------------------------
 Client (Render / statsmqtt) env
