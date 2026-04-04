@@ -340,10 +340,10 @@ export class StatsMqttLite {
       throw new Error(`DNS resolution failed for broker: ${broker}`);
     }
 
-    // TLS handshake if TLS config present
+    // TLS handshake only when MQTT TLS is explicitly enabled (plain MQTT skips even if CA files exist on disk)
     const tlsCfg = (this.config.mqtt as any).tls;
     const caPath = tlsCfg?.caPath;
-    if (caPath) {
+    if (caPath && tlsCfg?.enabled) {
       try {
         // Basic PEM sanity checks for client certificate/key — only if files exist.
         // Client cert/key are OPTIONAL (broker may authenticate via username/password over TLS).

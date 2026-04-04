@@ -99,10 +99,12 @@ export class MqttClientManager extends EventEmitter {
             clientCertPath?: string;
             clientKeyPath?: string;
             rejectUnauthorized?: boolean;
+            servername?: string;
           }
         | undefined;
 
-      if (tlsCfg && (tlsCfg.enabled || tlsCfg.caPath || tlsCfg.clientCertPath || tlsCfg.clientKeyPath)) {
+      // Only use mqtts/mTLS when TLS is explicitly enabled; ignore on-disk PEM paths for plain MQTT
+      if (tlsCfg && tlsCfg.enabled) {
         // load files if paths provided
         try {
           if (tlsCfg.caPath && fs.existsSync(tlsCfg.caPath)) {
