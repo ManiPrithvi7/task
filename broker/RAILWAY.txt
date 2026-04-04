@@ -1,6 +1,15 @@
 Railway — NanoMQ broker (mTLS on 8883)
 =======================================
 
+**Preferred (decoupled):** deploy **`nanomq-broker/`** as its own Railway service
+(Root Directory = `nanomq-broker`). See **`nanomq-broker/README.md`** and
+**`nanomq-broker/railway.toml`**.
+
+The rest of this file documents the **legacy** layout (`broker/Dockerfile` with
+repo-root build context) for older setups.
+
+---
+
 This service is the **MQTT broker only** (NanoMQ). The Node `mqtt-publisher-lite` app
 stays on Render (or another host) and connects as an **MQTT client** with client certs.
 

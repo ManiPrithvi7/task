@@ -19,6 +19,9 @@ broker/certs/*.pem
 broker/certs/*.csr
 !broker/certs/.gitkeep
 
+
+nanomq-broker/
+
 # OpenSSL leftovers / base64 PEM exports (use env vars in prod, not committed files)
 *.csr
 *.crt.b64

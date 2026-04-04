@@ -1,14 +1,12 @@
-# Railway — NanoMQ broker (TCP 8883)
-# Root Directory: empty (repo root). This repo also has a root Dockerfile for Node — NanoMQ
-# must use path broker/Dockerfile (see railway.json).
+# mqtt-publisher-lite (Node.js) — NOT the NanoMQ broker.
+# Broker lives in nanomq-broker/ (separate Railway service, Root Directory = nanomq-broker).
 #
-# Fallback variable: RAILWAY_DOCKERFILE_PATH=broker/Dockerfile
-#
-# If Root Directory = broker/ only: use broker/railway.toml + Dockerfile.broker-root
+# This service: Root Directory = repo root (empty). Connect to broker via public URL + mTLS
+# (MQTT_TLS_* + client cert paths — same CA as devices).
 
 [build]
 builder = "DOCKERFILE"
-dockerfilePath = "broker/Dockerfile"
+dockerfilePath = "Dockerfile"
 
 [deploy]
 restartPolicyType = "ON_FAILURE"

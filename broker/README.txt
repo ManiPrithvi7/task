@@ -1,7 +1,11 @@
 NanoMQ private broker (Render pserv or self-hosted)
 ==================================================
 
-Files:
+**Railway (recommended):** use standalone **`nanomq-broker/`** in this repo
+(Root Directory = `nanomq-broker`, own `Dockerfile` + `railway.toml`). See
+**`nanomq-broker/README.md`**.
+
+Files (legacy / repo-root build):
   Dockerfile              — NanoMQ image; build context = repo root (`COPY broker/...`)
   Dockerfile.broker-root  — same broker, context = broker/ only (Railway Root Directory = broker)
   nanomq.conf        — mTLS on 8883; TLS paths are flat under listeners.ssl (official docs)
