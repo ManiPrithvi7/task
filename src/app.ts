@@ -340,94 +340,82 @@ export class StatsMqttLite {
       throw new Error(`DNS resolution failed for broker: ${broker}`);
     }
 
-    // TLS handshake only when MQTT TLS is explicitly enabled (plain MQTT skips even if CA files exist on disk)
-    const tlsCfg = (this.config.mqtt as any).tls;
-    const caPath = tlsCfg?.caPath;
-    if (caPath && tlsCfg?.enabled) {
-      try {
-        // Basic PEM sanity checks for client certificate/key — only if files exist.
-        // Client cert/key are OPTIONAL (broker may authenticate via username/password over TLS).
-        if (tlsCfg.clientCertPath && fs.existsSync(path.resolve(tlsCfg.clientCertPath))) {
-          const certContent = fs.readFileSync(path.resolve(tlsCfg.clientCertPath), 'utf8');
-          if (!certContent.includes('-----BEGIN')) {
-            logger.error('Client certificate file exists but is not valid PEM', { path: tlsCfg.clientCertPath });
-            throw new Error(`Invalid client certificate at ${tlsCfg.clientCertPath}`);
-          }
-          logger.debug('Client certificate PEM validated', { path: tlsCfg.clientCertPath });
-        } else if (tlsCfg.clientCertPath) {
-          logger.info('Client certificate file not found; skipping mTLS client auth (username/password will be used)', { path: tlsCfg.clientCertPath });
-        }
-        if (tlsCfg.clientKeyPath && fs.existsSync(path.resolve(tlsCfg.clientKeyPath))) {
-          const keyContent = fs.readFileSync(path.resolve(tlsCfg.clientKeyPath), 'utf8');
-          if (!keyContent.includes('-----BEGIN')) {
-            logger.error('Client key file exists but is not valid PEM', { path: tlsCfg.clientKeyPath });
-            throw new Error(`Invalid client key at ${tlsCfg.clientKeyPath}`);
-          }
-          logger.debug('Client key PEM validated', { path: tlsCfg.clientKeyPath });
-        } else if (tlsCfg.clientKeyPath) {
-          logger.info('Client key file not found; skipping mTLS client auth', { path: tlsCfg.clientKeyPath });
-        }
+    const tlsCfg = this.config.mqtt.tls;
+    if (!tlsCfg?.enabled) {
+      logger.debug('MQTT TLS not enabled; skipping TLS handshake validation');
+      return;
+    }
 
-        const resolved = path.resolve(caPath);
-        // If CA file is missing in the image/container, allow injecting it via
-        // MQTT_TLS_CA_BASE64 env var (useful for platforms that don't allow file mounts).
-        if (!fs.existsSync(resolved)) {
-          const b64 = process.env.MQTT_TLS_CA_BASE64;
-          if (b64) {
-            try {
-              const pem = Buffer.from(b64, 'base64').toString('utf8');
-              // Ensure directory exists
-              fs.mkdirSync(path.dirname(resolved), { recursive: true });
-              fs.writeFileSync(resolved, pem, { encoding: 'utf8', mode: 0o644 });
-              logger.info('Wrote CA PEM from MQTT_TLS_CA_BASE64 to path', { path: resolved });
-            } catch (writeErr: any) {
-              throw new Error(`Failed to write CA file from MQTT_TLS_CA_BASE64: ${writeErr?.message ?? writeErr}`);
-            }
-          } else {
-            throw new Error(`CA file not found at ${resolved}`);
-          }
-        }
-        const caPem = fs.readFileSync(resolved, 'utf8');
-        // Also ensure client cert/key files exist if configured; allow base64 env fallback
-        const clientCertPath = tlsCfg?.clientCertPath;
-        const clientKeyPath = tlsCfg?.clientKeyPath;
-        if (clientCertPath && !fs.existsSync(path.resolve(clientCertPath))) {
-          const certB64 = process.env.MQTT_TLS_CLIENT_CERT_BASE64;
-          if (certB64) {
-            try {
-              const pem = Buffer.from(certB64, 'base64').toString('utf8');
-              fs.mkdirSync(path.dirname(path.resolve(clientCertPath)), { recursive: true });
-              fs.writeFileSync(path.resolve(clientCertPath), pem, { encoding: 'utf8', mode: 0o644 });
-              logger.info('Wrote client cert PEM from MQTT_TLS_CLIENT_CERT_BASE64 to path', { path: clientCertPath });
-            } catch (err: any) {
-              throw new Error(`Failed to write client cert from MQTT_TLS_CLIENT_CERT_BASE64: ${err?.message ?? err}`);
-            }
-          }
-        }
+    let caPem: string | undefined;
+    if (tlsCfg.caPem?.includes('-----BEGIN')) {
+      caPem = tlsCfg.caPem;
+    } else if (tlsCfg.caPath) {
+      const resolved = path.resolve(tlsCfg.caPath);
+      if (!fs.existsSync(resolved)) {
+        throw new Error(`MQTT TLS CA file not found at ${resolved} (or set MQTT_TLS_CA_PEM / MQTT_TLS_CA_BASE64)`);
+      }
+      caPem = fs.readFileSync(resolved, 'utf8');
+    }
 
-        if (clientKeyPath && !fs.existsSync(path.resolve(clientKeyPath))) {
-          const keyB64 = process.env.MQTT_TLS_CLIENT_KEY_BASE64;
-          if (keyB64) {
-            try {
-              const keyPem = Buffer.from(keyB64, 'base64');
-              fs.mkdirSync(path.dirname(path.resolve(clientKeyPath)), { recursive: true });
-              fs.writeFileSync(path.resolve(clientKeyPath), keyPem, { mode: 0o600 });
-              logger.info('Wrote client key from MQTT_TLS_CLIENT_KEY_BASE64 to path', { path: clientKeyPath });
-            } catch (err: any) {
-              throw new Error(`Failed to write client key from MQTT_TLS_CLIENT_KEY_BASE64: ${err?.message ?? err}`);
-            }
-          }
+    if (!caPem?.includes('-----BEGIN')) {
+      logger.warn('MQTT TLS enabled but no usable CA PEM; skipping TLS pre-check');
+      return;
+    }
+
+    let clientCert: string | Buffer | undefined;
+    let clientKey: string | Buffer | undefined;
+    if (tlsCfg.clientCertPem?.includes('-----BEGIN')) {
+      clientCert = tlsCfg.clientCertPem;
+    } else if (tlsCfg.clientCertPath) {
+      const p = path.resolve(tlsCfg.clientCertPath);
+      if (fs.existsSync(p)) {
+        clientCert = fs.readFileSync(p, 'utf8');
+        if (!clientCert.includes('-----BEGIN')) {
+          throw new Error(`Invalid client certificate PEM at ${tlsCfg.clientCertPath}`);
         }
-        const tlsServerName = (tlsCfg?.servername as string | undefined) || broker;
-        await new Promise<void>((resolve, reject) => {
-          const socket = tls.connect({
+      }
+    }
+    if (tlsCfg.clientKeyPem?.includes('-----BEGIN')) {
+      clientKey = tlsCfg.clientKeyPem;
+    } else if (tlsCfg.clientKeyPath) {
+      const p = path.resolve(tlsCfg.clientKeyPath);
+      if (fs.existsSync(p)) {
+        clientKey = fs.readFileSync(p, 'utf8');
+        if (!clientKey.includes('-----BEGIN')) {
+          throw new Error(`Invalid client key PEM at ${tlsCfg.clientKeyPath}`);
+        }
+      }
+    }
+
+    const x509Only = this.config.mqtt.authX509Only === true;
+    if (x509Only && (!clientCert || !clientKey)) {
+      throw new Error(
+        'mTLS-only MQTT: provide client cert and key via MQTT_TLS_CLIENT_*_PEM / *_BASE64 or readable *_PATH files for broker pre-check'
+      );
+    }
+
+    try {
+      const tlsServerName = tlsCfg.servername || broker;
+      if (!tlsCfg.servername && /\.proxy\.rlwy\.net$/i.test(broker)) {
+        logger.warn(
+          'MQTT_BROKER looks like a Railway TCP proxy host; TLS hostname check uses SNI. If the broker certificate CN/SAN is different (e.g. nanomq-broker), set MQTT_TLS_SERVERNAME to that name.',
+          { broker, tlsServerNameUsed: tlsServerName }
+        );
+      }
+      logger.info('MQTT TLS pre-check', { broker, port, servername: tlsServerName });
+      await new Promise<void>((resolve, reject) => {
+        const socket = tls.connect(
+          {
             host: broker,
             port,
             ca: caForBrokerTls(caPem),
+            cert: clientCert,
+            key: clientKey,
             servername: tlsServerName,
-            rejectUnauthorized: tlsCfg?.rejectUnauthorized !== false,
+            rejectUnauthorized: tlsCfg.rejectUnauthorized !== false,
             timeout: 5000
-          }, () => {
+          },
+          () => {
             if (!socket.authorized) {
               const errMsg = socket.authorizationError || 'TLS authorization failed';
               socket.end();
@@ -438,25 +426,28 @@ export class StatsMqttLite {
             logger.info('TLS handshake succeeded', { broker, subject: peer?.subject || null });
             socket.end();
             resolve();
-          });
+          }
+        );
 
-          socket.on('error', (e) => {
-            const msg = e instanceof Error ? e.message : String(e);
-            reject(msg);
-          });
-
-          setTimeout(() => {
-            socket.destroy();
-            reject('TLS handshake timeout');
-          }, 5000);
+        socket.on('error', (e) => {
+          const msg = e instanceof Error ? e.message : String(e);
+          reject(msg);
         });
-      } catch (err: any) {
-        const errMsg = err instanceof Error ? err.message : String(err);
-        logger.error('TLS handshake/check failed', { broker, error: errMsg });
-        throw new Error(`TLS validation failed for broker ${broker}: ${errMsg}`);
-      }
-    } else {
-      logger.debug('No MQTT TLS CA configured; skipping TLS handshake validation');
+
+        setTimeout(() => {
+          socket.destroy();
+          reject('TLS handshake timeout');
+        }, 5000);
+      });
+    } catch (err: any) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      logger.error('TLS handshake/check failed', { broker, error: errMsg });
+      const nameMismatch =
+        /altnames|Hostname\/IP does not match|does not match certificate/i.test(errMsg);
+      const hint = nameMismatch
+        ? ' Set MQTT_TLS_SERVERNAME to the broker certificate CN or a matching SAN (often nanomq-broker for NanoMQ dev certs) when MQTT_BROKER is a proxy hostname.'
+        : '';
+      throw new Error(`TLS validation failed for broker ${broker}: ${errMsg}${hint}`);
     }
   }
 

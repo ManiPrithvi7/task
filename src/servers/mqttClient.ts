@@ -1,5 +1,6 @@
 import mqtt, { MqttClient, IClientOptions, IPublishPacket } from 'mqtt';
 import * as fs from 'fs';
+import * as tls from 'tls';
 import { EventEmitter } from 'events';
 import { logger } from '../utils/logger';
 import { caForBrokerTls } from '../utils/tlsBrokerCa';
@@ -18,6 +19,9 @@ export interface MqttConfig {
     caPath?: string;
     clientCertPath?: string;
     clientKeyPath?: string;
+    caPem?: string;
+    clientCertPem?: string;
+    clientKeyPem?: string;
     rejectUnauthorized?: boolean;
     servername?: string;
   };
@@ -84,42 +88,51 @@ export class MqttClientManager extends EventEmitter {
         protocolVersion: 5
       };
 
-      if (this.config.username) {
-        options.username = this.config.username;
+      const x509Only = this.config.authX509Only === true;
+      if (!x509Only) {
+        if (this.config.username) options.username = this.config.username;
+        if (this.config.password) options.password = this.config.password;
       }
-      if (this.config.password) {
-        options.password = this.config.password;
-      }
-      // TLS / mTLS support: read cert/key/ca files if provided in config
-      let brokerUrl = `mqtt://${this.config.broker}:${this.config.port}`;
-      const tlsCfg = (this.config as any).tls as
-        | {
-            enabled?: boolean;
-            caPath?: string;
-            clientCertPath?: string;
-            clientKeyPath?: string;
-            rejectUnauthorized?: boolean;
-            servername?: string;
-          }
-        | undefined;
 
-      // Only use mqtts/mTLS when TLS is explicitly enabled; ignore on-disk PEM paths for plain MQTT
-      if (tlsCfg && tlsCfg.enabled) {
-        // load files if paths provided
+      let brokerUrl = `mqtt://${this.config.broker}:${this.config.port}`;
+      const tlsCfg = this.config.tls;
+
+      if (tlsCfg?.enabled) {
         try {
-          if (tlsCfg.caPath && fs.existsSync(tlsCfg.caPath)) {
-            const customCa = fs.readFileSync(tlsCfg.caPath, 'utf8');
-            options.ca = caForBrokerTls(customCa);
+          if (tlsCfg.caPem?.includes('-----BEGIN')) {
+            options.ca = caForBrokerTls(tlsCfg.caPem);
+          } else if (tlsCfg.caPath && fs.existsSync(tlsCfg.caPath)) {
+            options.ca = caForBrokerTls(fs.readFileSync(tlsCfg.caPath, 'utf8'));
           }
-          if (tlsCfg.clientCertPath && fs.existsSync(tlsCfg.clientCertPath)) {
+
+          if (tlsCfg.clientCertPem?.includes('-----BEGIN')) {
+            options.cert = tlsCfg.clientCertPem;
+          } else if (tlsCfg.clientCertPath && fs.existsSync(tlsCfg.clientCertPath)) {
             options.cert = fs.readFileSync(tlsCfg.clientCertPath);
           }
-          if (tlsCfg.clientKeyPath && fs.existsSync(tlsCfg.clientKeyPath)) {
+
+          if (tlsCfg.clientKeyPem?.includes('-----BEGIN')) {
+            options.key = tlsCfg.clientKeyPem;
+          } else if (tlsCfg.clientKeyPath && fs.existsSync(tlsCfg.clientKeyPath)) {
             options.key = fs.readFileSync(tlsCfg.clientKeyPath);
           }
+
           options.rejectUnauthorized = tlsCfg.rejectUnauthorized !== false;
           if (tlsCfg.servername) {
             (options as any).servername = tlsCfg.servername;
+          }
+          // mqtt.js overwrites servername with the URL hostname in connect/tls.js (buildStream),
+          // so TLS hostname verification uses MQTT_BROKER even when MQTT_TLS_SERVERNAME is set.
+          // Pin verification to the cert identity (e.g. nanomq-broker) when they differ (Railway TCP proxy).
+          const expectedServerName = tlsCfg.servername?.trim();
+          if (
+            expectedServerName &&
+            expectedServerName !== this.config.broker
+          ) {
+            (options as any).checkServerIdentity = (
+              _hostname: string,
+              cert: tls.PeerCertificate
+            ) => tls.checkServerIdentity(expectedServerName, cert);
           }
           brokerUrl = `mqtts://${this.config.broker}:${this.config.port}`;
         } catch (err: any) {
@@ -128,8 +141,6 @@ export class MqttClientManager extends EventEmitter {
           });
         }
       }
-
-      const x509Only = this.config.authX509Only === true;
       logger.info('Connecting to MQTT broker...', {
         broker: this.config.broker,
         port: this.config.port,
