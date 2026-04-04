@@ -54,6 +54,23 @@ Set **`RAILWAY_DOCKERFILE_PATH`** = `Dockerfile.broker-root` or use **`broker/ra
 Same **Option B** TLS variables (`NANOMQ_TLS_*`) apply as above.
 
 -------------------------------------------------------------------------------
+Verify the broker is reachable (after TCP proxy is set)
+-------------------------------------------------------------------------------
+**Plain MQTT (1883)** — map Railway TCP to container **1883** if `NANOMQ_DISABLE_TLS=1`:
+
+  mosquitto_pub -h <railway-host> -p <exposed-port> -t test -m "hello" -v
+
+**mTLS (8883)** — map TCP to **8883** and use client cert + CA, e.g.:
+
+  mosquitto_pub -h <railway-host> -p <port> --cafile root-ca.crt --cert client.crt --key client.key ...
+
+If `mosquitto_pub` is not installed, from this repo root (plain only):
+
+  node -e "require('mqtt').connect('mqtt://HOST:PORT').on('connect',c=>c.publish('test','hello',()=>process.exit(0)))"
+
+If plain connect works, the broker is live; tune `nanomq.conf` / TLS only if needed.
+
+-------------------------------------------------------------------------------
 Client (Render / statsmqtt) env
 -------------------------------------------------------------------------------
   MQTT_BROKER=<railway-tcp-hostname>

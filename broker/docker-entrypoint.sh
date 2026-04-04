@@ -1,7 +1,13 @@
 #!/bin/sh
 # Railway / cloud: PEMs from env (no file mounts). Local: mount files under /etc/nanomq/certs/.
 # NANOMQ_DISABLE_TLS=1 → plain MQTT on 1883 (staging only; no certs required).
+#
+# Always pass --conf so NanoMQ does not search a wrong default path.
+# Optional overrides: NANOMQ_PLAIN_CONF, NANOMQ_TLS_CONF (default paths below).
 set -e
+
+CONF_PLAIN="${NANOMQ_PLAIN_CONF:-/etc/nanomq.plain.conf}"
+CONF_TLS="${NANOMQ_TLS_CONF:-/etc/nanomq.conf}"
 
 CERT_DIR="/etc/nanomq/certs"
 mkdir -p "$CERT_DIR"
@@ -12,8 +18,8 @@ case "${NANOMQ_DISABLE_TLS:-}" in
 esac
 
 if [ "$disable_tls" = true ]; then
-  echo "[nanomq] NANOMQ_DISABLE_TLS set — starting plain MQTT on 1883 (no TLS; staging only)."
-  exec nanomq start --conf /etc/nanomq.plain.conf
+  echo "[nanomq] NANOMQ_DISABLE_TLS set — starting plain MQTT (config: $CONF_PLAIN)."
+  exec nanomq start --conf "$CONF_PLAIN"
 fi
 
 # Prefer env vars when all three are set (Railway secrets).
@@ -37,4 +43,5 @@ else
   exit 1
 fi
 
-exec nanomq start --conf /etc/nanomq.conf
+echo "[nanomq] Starting mTLS broker (config: $CONF_TLS)."
+exec nanomq start --conf "$CONF_TLS"
