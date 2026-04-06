@@ -193,6 +193,15 @@ export class ProvisioningService {
         return { valid: false, error: 'Token expired' };
       }
 
+      // Step 3a: Explicit consumed marker after successful sign-csr (JWT may still be valid)
+      if (await this.tokenStore.isTokenConsumed(token)) {
+        return {
+          valid: false,
+          error:
+            'Provisioning token was already used after successful certificate issuance (sign-csr). Tokens are one-time use. Request a new token from POST /api/v1/onboarding.'
+        };
+      }
+
       // Step 4: Check if token exists in store (secondary validation)
       // When store is unavailable (Redis down, etc.), fall back to JWT-only so valid tokens still work
       let deviceId: string | null = null;
@@ -281,7 +290,7 @@ export class ProvisioningService {
   }
 
   /**
-   * Revoke a provisioning token
+   * Revoke a provisioning token (cleanup only; does not set consumed marker)
    */
   async revokeToken(token: string): Promise<void> {
     try {
@@ -296,6 +305,26 @@ export class ProvisioningService {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logger.error('Failed to revoke provisioning token', { error: errorMessage });
     }
+  }
+
+  /**
+   * After successful sign-csr: remove active token and record consumption until JWT exp
+   * so repeat requests get TOKEN_ALREADY_USED instead of ambiguous "not in store".
+   */
+  async finalizeTokenAfterSuccessfulSignCsr(token: string): Promise<void> {
+    let ttlSeconds = this.config.tokenTTL;
+    try {
+      const decoded = jwt.decode(token) as ProvisioningTokenPayload | null;
+      if (decoded?.exp) {
+        ttlSeconds = Math.max(1, decoded.exp - Math.floor(Date.now() / 1000));
+      }
+    } catch {
+      /* keep default */
+    }
+    await this.tokenStore.markTokenConsumed(token, ttlSeconds);
+    logger.info('Provisioning token finalized after sign-csr (consumed marker set)', {
+      ttlSecondsRemaining: ttlSeconds
+    });
   }
 
   /**

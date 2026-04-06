@@ -609,8 +609,8 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
           certificateId: certificateDoc._id
         });
 
-        // Revoke provisioning token after successful certificate creation (one-time use)
-        await provisioningService.revokeToken(provisioningToken);
+        // One-time use: mark token consumed in store (Redis/memory) until JWT exp
+        await provisioningService.finalizeTokenAfterSuccessfulSignCsr(provisioningToken);
 
         // Get certificate ID
         const certId = certificateDoc._id.toString();
@@ -618,7 +618,7 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
           ? certificateDoc.expires_at
           : certificateDoc.expires_at.toISOString();
 
-        logger.info('sign-csr 200: certificate issued, token revoked (one-time use)', {
+        logger.info('sign-csr 200: certificate issued, provisioning token marked consumed (one-time use)', {
           deviceId,
           certificateId: certId
         });
@@ -629,7 +629,7 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
         const protocol = req.protocol || (req.get('x-forwarded-proto') ?? 'http');
         const downloadUrl = host ? `${protocol}://${host}${pathOnly}` : pathOnly;
 
-        // Return certificate and Root CA (provisioning token was revoked; do not reuse)
+        // Return certificate and Root CA (provisioning token marked consumed; do not reuse)
         res.set('X-Response-Type', 'certificate-issued');
         res.status(200);
         res.json({
@@ -641,7 +641,7 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
           serial_number: certificateDoc.fingerprint,
           certificateId: certId,
           downloadUrl,
-          message: 'Certificate issued. Provisioning token has been revoked; request a new token from /onboarding for another device.',
+          message: 'Certificate issued. Provisioning token was consumed (one-time use); request a new token from /onboarding for another enrollment.',
           timestamp: new Date().toISOString()
         });
         return;
