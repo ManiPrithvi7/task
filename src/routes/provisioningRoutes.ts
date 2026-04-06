@@ -221,6 +221,7 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
               success: false,
               error: 'This device already has an active certificate. Revoke the existing certificate first if you need to re-provision.',
               code: 'DEVICE_HAS_ACTIVE_CERTIFICATE',
+              certificateId: existingCert._id.toString(),
               timestamp: new Date().toISOString()
             });
             return;
@@ -648,11 +649,12 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
       } catch (certError) {
         // Device already has active cert (replace not allowed): return 409; token not revoked so client can retry with new token after revoke
         if (certError instanceof DeviceAlreadyHasCertificateError) {
-          logger.warn('sign-csr 409: device already has active certificate', { deviceId });
+          logger.warn('sign-csr 409: device already has active certificate', { deviceId, certificateId: certError.certificateId });
           res.status(409).json({
             success: false,
             error: certError.message,
             code: 'DEVICE_HAS_ACTIVE_CERTIFICATE',
+            certificateId: certError.certificateId,
             timestamp: new Date().toISOString()
           });
           return;
@@ -723,6 +725,15 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
       let errorResponse: string = 'Internal server error';
       let code: string | undefined;
 
+      let certIdForConflict: string | undefined;
+
+      // If the error is a DeviceAlreadyHasCertificateError that slipped past instanceof
+      // (can happen with prototype chain issues in transpiled code), grab certificateId directly.
+      const errAny = error as any;
+      if (errAny?.certificateId) {
+        certIdForConflict = String(errAny.certificateId);
+      }
+
       if (
         errorMessage.includes('E11000') &&
         (errorMessage.includes('device_id') || errorMessage.includes('device_certificates'))
@@ -730,6 +741,32 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
         statusCode = 409;
         code = 'DEVICE_HAS_ACTIVE_CERTIFICATE';
         errorResponse = 'Device already has an active certificate';
+        if (!certIdForConflict) {
+          try {
+            const conflictDeviceId = deviceId || req.body?.device_id || '';
+            if (conflictDeviceId) {
+              // Use findCertificateByDeviceId (no status/expiry filter) so we always find the cert
+              const existingCert = await caService.findCertificateByDeviceId(conflictDeviceId);
+              if (existingCert) certIdForConflict = existingCert._id.toString();
+            }
+          } catch (_ignore) {}
+        }
+      } else if (
+        errorMessage.includes('Device already has an active certificate') ||
+        errAny?.name === 'DeviceAlreadyHasCertificateError'
+      ) {
+        statusCode = 409;
+        code = 'DEVICE_HAS_ACTIVE_CERTIFICATE';
+        errorResponse = errorMessage;
+        if (!certIdForConflict) {
+          try {
+            const conflictDeviceId = deviceId || req.body?.device_id || '';
+            if (conflictDeviceId) {
+              const existingCert = await caService.findCertificateByDeviceId(conflictDeviceId);
+              if (existingCert) certIdForConflict = existingCert._id.toString();
+            }
+          } catch (_ignore) {}
+        }
       } else if (errorMessage.includes('not found in CSR')) {
         statusCode = 400;
         code = 'INVALID_CSR_DEVICE_ID';
@@ -753,6 +790,7 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
         success: false,
         error: errorResponse,
         ...(code && { code }),
+        ...(certIdForConflict && { certificateId: certIdForConflict }),
         timestamp: new Date().toISOString()
       });
     }
@@ -775,6 +813,34 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
         return;
       }
 
+      // Authenticate: require provisioning token via Authorization header or ?token= query
+      const authHeader = req.headers.authorization;
+      const provisioningToken = (authHeader && authHeader.startsWith('Bearer '))
+        ? authHeader.substring(7)
+        : (req.query.token as string | undefined);
+
+      if (!provisioningToken) {
+        res.status(401).json({
+          success: false,
+          error: 'Authorization required. Send provisioning token as Authorization: Bearer <token> or ?token=<token>.',
+          code: 'TOKEN_MISSING',
+          timestamp: new Date().toISOString()
+        });
+        return;
+      }
+
+      const tokenValidation = await provisioningService.validateToken(provisioningToken);
+      if (!tokenValidation.valid || !tokenValidation.deviceId) {
+        const errMsg = tokenValidation.error || 'Invalid or expired provisioning token';
+        res.status(401).json({
+          success: false,
+          error: errMsg,
+          code: 'TOKEN_INVALID',
+          timestamp: new Date().toISOString()
+        });
+        return;
+      }
+
       // Find certificate using dual-storage method
       const certificateDoc = await caService.findCertificateById(certificateId);
 
@@ -792,36 +858,18 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
         ? certificateDoc.expires_at
         : certificateDoc.expires_at.toISOString();
 
-      const response: any = {
+      // Return flat PEM strings (same shape as the sign-csr 200 response)
+      // so clients can parse both endpoints identically.
+      res.status(200).json({
         success: true,
         device_id: certificateDoc.device_id,
-        certificate: {
-          content: certificateDoc.certificate,
-          filename: `device-${certificateDoc.device_id}.crt`,
-          expires_at: expiresAt
-        },
-        ca_certificate: {
-          content: rootCACert,
-          filename: 'root-ca.crt'
-        },
+        certificate: certificateDoc.certificate,
+        ca_certificate: rootCACert,
+        expires_at: expiresAt,
+        serial_number: certificateDoc.fingerprint,
+        certificateId,
         timestamp: new Date().toISOString()
-      };
-
-      if (certificateDoc.private_key) {
-        response.private_key = {
-          content: certificateDoc.private_key,
-          filename: `device-${certificateDoc.device_id}.key`,
-          warning: 'Keep this private key secure'
-        };
-      } else {
-        response.private_key = {
-          content: null,
-          filename: `device-${certificateDoc.device_id}.key`,
-          note: 'Private key is stored on the device (CSR signing)'
-        };
-      }
-
-      res.status(200).json(response);
+      });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logger.error('Failed to download certificate', { error: errorMessage });

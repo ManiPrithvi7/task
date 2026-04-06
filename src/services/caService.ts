@@ -29,9 +29,12 @@ export class UnsupportedCSRKeyTypeError extends Error {
  * Route should return 409 with code DEVICE_HAS_ACTIVE_CERTIFICATE.
  */
 export class DeviceAlreadyHasCertificateError extends Error {
-  constructor(message: string = 'Device already has an active certificate') {
+  public certificateId?: string;
+
+  constructor(message: string = 'Device already has an active certificate', certificateId?: string) {
     super(message);
     this.name = 'DeviceAlreadyHasCertificateError';
+    this.certificateId = certificateId;
     Object.setPrototypeOf(this, DeviceAlreadyHasCertificateError.prototype);
   }
 }
@@ -141,9 +144,9 @@ export class CAService {
 
       cert.setSubject([
         { name: 'countryName', value: 'US' },
-        { name: 'organizationName', value: 'StatsMQTT Lite' },
+        { name: 'organizationName', value: 'Proof' },
         { name: 'organizationalUnitName', value: 'Certificate Authority' },
-        { name: 'commonName', value: 'StatsMQTT Lite Root CA' }
+        { name: 'commonName', value: 'PROOF-CA' }
       ]);
 
       cert.setIssuer(cert.subject.attributes);
@@ -385,13 +388,14 @@ export class CAService {
         return mockDoc as IDeviceCertificate;
       }
 
-      // If device already has an active cert: either return 409 or replace (dev/replace mode)
+      // Check for ANY existing cert for this device (not just active — avoids E11000 when
+      // an expired/revoked cert exists but findActiveCertificateByDeviceId misses it).
       const allowReplace =
         process.env.ALLOW_ONBOARDING_WITH_ACTIVE_CERT === 'true' || process.env.NODE_ENV === 'development';
-      const existingCert = await this.findActiveCertificateByDeviceId(deviceId);
+      const existingCert = await this.findCertificateByDeviceId(deviceId);
       if (existingCert) {
         if (!allowReplace) {
-          throw new DeviceAlreadyHasCertificateError('Device already has an active certificate');
+          throw new DeviceAlreadyHasCertificateError('Device already has an active certificate', existingCert._id.toString());
         }
         const updated = await DeviceCertificate.findOneAndUpdate(
           { device_id: deviceId },
@@ -420,23 +424,25 @@ export class CAService {
         return updated as IDeviceCertificate;
       }
 
-      // Store new certificate in MongoDB
-      // Note: private_key is required in schema but we use empty string
-      // because device keeps its private key during CSR signing
-      const certDoc = new DeviceCertificate({
-        device_id: deviceId,
-        user_id: new mongoose.Types.ObjectId(userId),
-        certificate: certificatePem,
-        private_key: '', // Empty string (device keeps its private key)
-        ca_certificate: this.rootCA.certificate,
-        cn,
-        fingerprint,
-        status: DeviceCertificateStatus.active,
-        expires_at: notAfter,
-        created_at: notBefore
-      });
+      // No existing cert — atomic upsert to avoid E11000 race
+      const certDoc = await DeviceCertificate.findOneAndUpdate(
+        { device_id: deviceId },
+        {
+          $set: {
+            user_id: new mongoose.Types.ObjectId(userId),
+            certificate: certificatePem,
+            private_key: '', // Empty string (device keeps its private key)
+            ca_certificate: this.rootCA.certificate,
+            cn,
+            fingerprint,
+            status: DeviceCertificateStatus.active,
+            expires_at: notAfter,
+            created_at: notBefore
+          }
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
 
-      await certDoc.save();
       await audit('CERT_ISSUED', { certificateId: certDoc._id, serialNumber: cert.serialNumber, cn, expiresAt: notAfter.toISOString() });
 
       logger.info('CSR signed and certificate stored in MongoDB', {
@@ -447,7 +453,7 @@ export class CAService {
         expiresAt: notAfter.toISOString()
       });
 
-      return certDoc;
+      return certDoc as IDeviceCertificate;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logger.error('Failed to sign CSR', { deviceId, error: errorMessage });
