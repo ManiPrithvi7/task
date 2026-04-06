@@ -25,11 +25,11 @@ fi
 # Prefer env vars when all three are set (Railway secrets).
 # Railway/UI often stores multiline PEMs as one line with literal "\n" — restore real newlines for mbedTLS.
 if [ -n "$NANOMQ_TLS_CA_CERT" ] && [ -n "$NANOMQ_TLS_CERT" ] && [ -n "$NANOMQ_TLS_KEY" ]; then
-  printf '%s' "$NANOMQ_TLS_CA_CERT" | sed 's/\\n/\n/g' > "$CERT_DIR/root_ca.crt"
+  echo "$NANOMQ_TLS_CA_CERT" | sed 's/\\n/\n/g' > "$CERT_DIR/root_ca.crt"
   chmod 644 "$CERT_DIR/root_ca.crt"
-  printf '%s' "$NANOMQ_TLS_CERT" | sed 's/\\n/\n/g' > "$CERT_DIR/broker.crt"
+  echo "$NANOMQ_TLS_CERT" | sed 's/\\n/\n/g' > "$CERT_DIR/broker.crt"
   chmod 644 "$CERT_DIR/broker.crt"
-  printf '%s' "$NANOMQ_TLS_KEY" | sed 's/\\n/\n/g' > "$CERT_DIR/broker.key"
+  echo "$NANOMQ_TLS_KEY" | sed 's/\\n/\n/g' > "$CERT_DIR/broker.key"
   chmod 600 "$CERT_DIR/broker.key"
   echo "[nanomq] Wrote TLS PEMs from environment variables (newlines normalized)."
 
