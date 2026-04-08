@@ -346,51 +346,22 @@ export class StatsMqttLite {
       return;
     }
 
-    let caPem: string | undefined;
-    if (tlsCfg.caPem?.includes('-----BEGIN')) {
-      caPem = tlsCfg.caPem;
-    } else if (tlsCfg.caPath) {
-      const resolved = path.resolve(tlsCfg.caPath);
-      if (!fs.existsSync(resolved)) {
-        throw new Error(`MQTT TLS CA file not found at ${resolved} (or set MQTT_TLS_CA_PEM / MQTT_TLS_CA_BASE64)`);
-      }
-      caPem = fs.readFileSync(resolved, 'utf8');
-    }
+    const caPem = tlsCfg.caPem?.includes('-----BEGIN') ? tlsCfg.caPem : undefined;
 
     if (!caPem?.includes('-----BEGIN')) {
       logger.warn('MQTT TLS enabled but no usable CA PEM; skipping TLS pre-check');
       return;
     }
 
-    let clientCert: string | Buffer | undefined;
-    let clientKey: string | Buffer | undefined;
-    if (tlsCfg.clientCertPem?.includes('-----BEGIN')) {
-      clientCert = tlsCfg.clientCertPem;
-    } else if (tlsCfg.clientCertPath) {
-      const p = path.resolve(tlsCfg.clientCertPath);
-      if (fs.existsSync(p)) {
-        clientCert = fs.readFileSync(p, 'utf8');
-        if (!clientCert.includes('-----BEGIN')) {
-          throw new Error(`Invalid client certificate PEM at ${tlsCfg.clientCertPath}`);
-        }
-      }
-    }
-    if (tlsCfg.clientKeyPem?.includes('-----BEGIN')) {
-      clientKey = tlsCfg.clientKeyPem;
-    } else if (tlsCfg.clientKeyPath) {
-      const p = path.resolve(tlsCfg.clientKeyPath);
-      if (fs.existsSync(p)) {
-        clientKey = fs.readFileSync(p, 'utf8');
-        if (!clientKey.includes('-----BEGIN')) {
-          throw new Error(`Invalid client key PEM at ${tlsCfg.clientKeyPath}`);
-        }
-      }
-    }
+    const clientCert =
+      tlsCfg.clientCertPem?.includes('-----BEGIN') ? tlsCfg.clientCertPem : undefined;
+    const clientKey =
+      tlsCfg.clientKeyPem?.includes('-----BEGIN') ? tlsCfg.clientKeyPem : undefined;
 
     const x509Only = this.config.mqtt.authX509Only === true;
     if (x509Only && (!clientCert || !clientKey)) {
       throw new Error(
-        'mTLS-only MQTT: provide client cert and key via MQTT_TLS_CLIENT_*_PEM / *_BASE64 or readable *_PATH files for broker pre-check'
+        'mTLS-only MQTT: provide client cert and key via MQTT_TLS_CLIENT_*_PEM or MQTT_TLS_CLIENT_*_BASE64 for broker pre-check'
       );
     }
 
@@ -466,13 +437,8 @@ export class StatsMqttLite {
       return;
     }
 
-    const tlsCfg = this.config.mqtt.tls;
-    const certPath = tlsCfg.clientCertPath
-      ? path.resolve(tlsCfg.clientCertPath)
-      : path.resolve(this.config.storage.dataDir, '..', 'broker', 'certs', 'client.crt');
-    const keyPath = tlsCfg.clientKeyPath
-      ? path.resolve(tlsCfg.clientKeyPath)
-      : path.resolve(this.config.storage.dataDir, '..', 'broker', 'certs', 'client.key');
+    const certPath = path.resolve(this.config.storage.dataDir, '..', 'broker', 'certs', 'client.crt');
+    const keyPath = path.resolve(this.config.storage.dataDir, '..', 'broker', 'certs', 'client.key');
 
     // If both files exist, validate PEM structure; regenerate if invalid.
     let certExists = fs.existsSync(certPath);

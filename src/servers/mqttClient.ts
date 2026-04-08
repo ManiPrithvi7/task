@@ -1,5 +1,4 @@
 import mqtt, { MqttClient, IClientOptions, IPublishPacket } from 'mqtt';
-import * as fs from 'fs';
 import * as tls from 'tls';
 import { EventEmitter } from 'events';
 import { logger } from '../utils/logger';
@@ -16,9 +15,6 @@ export interface MqttConfig {
   topicRoot: string;
   tls?: {
     enabled?: boolean;
-    caPath?: string;
-    clientCertPath?: string;
-    clientKeyPath?: string;
     caPem?: string;
     clientCertPem?: string;
     clientKeyPem?: string;
@@ -101,20 +97,14 @@ export class MqttClientManager extends EventEmitter {
         try {
           if (tlsCfg.caPem?.includes('-----BEGIN')) {
             options.ca = caForBrokerTls(tlsCfg.caPem);
-          } else if (tlsCfg.caPath && fs.existsSync(tlsCfg.caPath)) {
-            options.ca = caForBrokerTls(fs.readFileSync(tlsCfg.caPath, 'utf8'));
           }
 
           if (tlsCfg.clientCertPem?.includes('-----BEGIN')) {
             options.cert = tlsCfg.clientCertPem;
-          } else if (tlsCfg.clientCertPath && fs.existsSync(tlsCfg.clientCertPath)) {
-            options.cert = fs.readFileSync(tlsCfg.clientCertPath);
           }
 
           if (tlsCfg.clientKeyPem?.includes('-----BEGIN')) {
             options.key = tlsCfg.clientKeyPem;
-          } else if (tlsCfg.clientKeyPath && fs.existsSync(tlsCfg.clientKeyPath)) {
-            options.key = fs.readFileSync(tlsCfg.clientKeyPath);
           }
 
           options.rejectUnauthorized = tlsCfg.rejectUnauthorized !== false;

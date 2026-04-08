@@ -1,7 +1,5 @@
 import dotenv from 'dotenv';
 import { logger } from '../utils/logger';
-import * as fs from 'fs';
-import * as path from 'path';
 
 // Load environment variables
 dotenv.config();
@@ -53,10 +51,7 @@ export interface MqttConfig {
   /** TLS / mTLS configuration for connecting to MQTT broker (optional) */
   tls?: {
     enabled?: boolean;
-    caPath?: string;         // Path to CA cert (PEM)
-    clientCertPath?: string; // Path to client cert (PEM) for mTLS (optional)
-    clientKeyPath?: string;  // Path to client private key (PEM) for mTLS (optional)
-    /** Inline PEM from env (no disk); preferred over path when set */
+    /** Broker CA + client cert/key: env PEM or *_BASE64 only (no file paths). */
     caPem?: string;
     clientCertPem?: string;
     clientKeyPem?: string;
@@ -153,6 +148,9 @@ export function loadConfig(): AppConfig {
   const caPemResolved =
     caPemInline ||
     (mqttTlsCaRaw && looksLikePem(mqttTlsCaRaw) ? normalizeMqttPemFromEnv(mqttTlsCaRaw) : undefined);
+  if (mqttTlsCaRaw && !looksLikePem(mqttTlsCaRaw)) {
+    logger.warn('MQTT_TLS_CA is set but is not PEM text; path-based CA is not supported. Use MQTT_TLS_CA_BASE64 or MQTT_TLS_CA_PEM.');
+  }
 
   const clientCertPemInline =
     firstPemEnv('MQTT_TLS_CLIENT_CERT_PEM') ||
@@ -163,6 +161,9 @@ export function loadConfig(): AppConfig {
     (mqttTlsClientCertRaw && looksLikePem(mqttTlsClientCertRaw)
       ? normalizeMqttPemFromEnv(mqttTlsClientCertRaw)
       : undefined);
+  if (mqttTlsClientCertRaw && !looksLikePem(mqttTlsClientCertRaw)) {
+    logger.warn('MQTT_TLS_CLIENT_CERT is set but is not PEM text; path-based client cert is not supported. Use *_BASE64 or *_PEM.');
+  }
 
   const clientKeyPemInline =
     firstPemEnv('MQTT_TLS_CLIENT_KEY_PEM') ||
@@ -173,19 +174,9 @@ export function loadConfig(): AppConfig {
     (mqttTlsClientKeyRaw && looksLikePem(mqttTlsClientKeyRaw)
       ? normalizeMqttPemFromEnv(mqttTlsClientKeyRaw)
       : undefined);
-
-  const caPathOnly =
-    process.env.MQTT_TLS_CA_PATH ||
-    process.env.MQTT_CA_PATH ||
-    (mqttTlsCaRaw && !looksLikePem(mqttTlsCaRaw) ? mqttTlsCaRaw : undefined);
-  const clientCertPathOnly =
-    process.env.MQTT_TLS_CLIENT_CERT_PATH ||
-    process.env.MQTT_CLIENT_CERT_PATH ||
-    (mqttTlsClientCertRaw && !looksLikePem(mqttTlsClientCertRaw) ? mqttTlsClientCertRaw : undefined);
-  const clientKeyPathOnly =
-    process.env.MQTT_TLS_CLIENT_KEY_PATH ||
-    process.env.MQTT_CLIENT_KEY_PATH ||
-    (mqttTlsClientKeyRaw && !looksLikePem(mqttTlsClientKeyRaw) ? mqttTlsClientKeyRaw : undefined);
+  if (mqttTlsClientKeyRaw && !looksLikePem(mqttTlsClientKeyRaw)) {
+    logger.warn('MQTT_TLS_CLIENT_KEY is set but is not PEM text; path-based client key is not supported. Use *_BASE64 or *_PEM.');
+  }
 
   const tlsExplicitOn =
     process.env.MQTT_TLS_ENABLED === 'true' || process.env.MQTT_TLS === 'true';
@@ -194,9 +185,6 @@ export function loadConfig(): AppConfig {
     !!caPemResolved ||
     !!clientCertPemResolved ||
     !!clientKeyPemResolved ||
-    !!caPathOnly ||
-    !!clientCertPathOnly ||
-    !!clientKeyPathOnly ||
     !!process.env.MQTT_TLS_CA_BASE64 ||
     !!process.env.MQTT_TLS_CLIENT_CERT_BASE64 ||
     !!process.env.MQTT_TLS_CLIENT_KEY_BASE64;
@@ -213,9 +201,6 @@ export function loadConfig(): AppConfig {
       topicRoot: process.env.MQTT_TOPIC_ROOT || 'proof.mqtt',
       tls: {
         enabled: tlsEnabled,
-        caPath: caPathOnly,
-        clientCertPath: clientCertPathOnly,
-        clientKeyPath: clientKeyPathOnly,
         caPem: caPemResolved,
         clientCertPem: clientCertPemResolved,
         clientKeyPem: clientKeyPemResolved,
@@ -300,88 +285,6 @@ export function loadConfig(): AppConfig {
     },
     env: config.app.env
   });
-  /**
-   * Helper: write PEM file from environment vars into a desired path if file missing.
-   * Supports either a raw PEM env var (MQTT_TLS_*_PEM) or a base64-encoded env var (MQTT_TLS_*_BASE64).
-   * - envB64Name: name of env var containing base64-encoded PEM
-   * - envPemName: name of env var containing raw PEM
-   * - filePath: where to write the decoded PEM
-   * - mode: file mode (e.g. 0o644 for cert, 0o600 for key)
-   */
-  const writePemFromEnv = (envB64Name: string | undefined, envPemName: string | undefined, filePath: string | undefined, mode: number) => {
-    if (!filePath) return;
-    const resolved = path.resolve(filePath);
-    try {
-      if (fs.existsSync(resolved)) {
-        logger.debug('PEM file already exists, skipping write', { path: resolved });
-        return;
-      }
-      // Prefer raw PEM env over base64
-      const rawPem = envPemName ? process.env[envPemName] : undefined;
-      const b64 = envB64Name ? process.env[envB64Name] : undefined;
-      if (!rawPem && !b64) {
-        // Nothing to write
-        return;
-      }
-      // Ensure directory exists
-      fs.mkdirSync(path.dirname(resolved), { recursive: true });
-      if (rawPem) {
-        fs.writeFileSync(resolved, normalizeMqttPemFromEnv(rawPem), { encoding: 'utf8', mode });
-        logger.info('Wrote PEM from raw env to filesystem', { envPemName, path: resolved });
-        return;
-      }
-      // Base64 fallback (PEM text)
-      const pemText = Buffer.from(b64 as string, 'base64').toString('utf8');
-      fs.writeFileSync(resolved, pemText, { encoding: 'utf8', mode });
-      logger.info('Wrote PEM from base64 env to filesystem', { envB64Name, path: resolved });
-    } catch (err: any) {
-      logger.warn('Failed to write PEM from env', { envB64Name, envPemName, path: resolved, error: err?.message ?? String(err) });
-    }
-  };
-
-  // TLS: default file paths only when not using inline PEM from env (Railway-friendly).
-  const tlsCfg = config.mqtt.tls;
-  if (tlsCfg) {
-    const defaultCa = path.join(dataDir, 'ca', 'root-ca.crt');
-    const defaultClientCert = path.join(dataDir, '..', 'broker', 'certs', 'client.crt');
-    const defaultClientKey = path.join(dataDir, '..', 'broker', 'certs', 'client.key');
-
-    if (!tlsCfg.caPem) {
-      if (!tlsCfg.caPath) tlsCfg.caPath = defaultCa;
-      writePemFromEnv('MQTT_TLS_CA_BASE64', 'MQTT_TLS_CA_PEM', tlsCfg.caPath, 0o644);
-    }
-    if (!tlsCfg.clientCertPem) {
-      if (!tlsCfg.clientCertPath) tlsCfg.clientCertPath = defaultClientCert;
-      writePemFromEnv('MQTT_TLS_CLIENT_CERT_BASE64', 'MQTT_TLS_CLIENT_CERT_PEM', tlsCfg.clientCertPath, 0o644);
-    }
-    if (!tlsCfg.clientKeyPem) {
-      if (!tlsCfg.clientKeyPath) tlsCfg.clientKeyPath = defaultClientKey;
-      writePemFromEnv('MQTT_TLS_CLIENT_KEY_BASE64', 'MQTT_TLS_CLIENT_KEY_PEM', tlsCfg.clientKeyPath, 0o600);
-    }
-
-    try {
-      if (tlsCfg.caPath) tlsCfg.caPath = path.resolve(tlsCfg.caPath);
-      if (tlsCfg.clientCertPath) tlsCfg.clientCertPath = path.resolve(tlsCfg.clientCertPath);
-      if (tlsCfg.clientKeyPath) tlsCfg.clientKeyPath = path.resolve(tlsCfg.clientKeyPath);
-    } catch (err) {
-      logger.debug('Failed to resolve TLS paths', { error: err instanceof Error ? err.message : String(err) });
-    }
-    try {
-      if (tlsCfg.caPath && tlsCfg.clientKeyPath) {
-        const caKeyCandidate = path.join(path.dirname(tlsCfg.caPath), 'root-ca.key');
-        if (path.resolve(tlsCfg.clientKeyPath) === path.resolve(caKeyCandidate)) {
-          const fallbackClientKey = path.resolve(path.join(dataDir, '..', 'broker', 'certs', 'client.key'));
-          logger.warn('Client key path pointed to root CA key; switching to fallback client key path to avoid PEM confusion', {
-            old: tlsCfg.clientKeyPath,
-            new: fallbackClientKey
-          });
-          tlsCfg.clientKeyPath = fallbackClientKey;
-        }
-      }
-    } catch (err) {
-      // ignore
-    }
-  }
 
   return config;
 }
@@ -410,29 +313,20 @@ export function validateConfig(config: AppConfig): void {
     const tls = config.mqtt.tls;
     if (!tls?.enabled) {
       throw new Error(
-        'mTLS-only MQTT: set MQTT_TLS_ENABLED=true and provide CA + client cert/key via env PEM or file paths.'
+        'mTLS-only MQTT: set MQTT_TLS_ENABLED=true and provide CA + client cert/key via MQTT_TLS_*_BASE64 or MQTT_TLS_*_PEM (no file paths).'
       );
     }
-    const hasCa = !!(
-      (tls.caPem && tls.caPem.includes('-----BEGIN')) ||
-      (tls.caPath && fs.existsSync(tls.caPath))
-    );
-    const hasCert = !!(
-      (tls.clientCertPem && tls.clientCertPem.includes('-----BEGIN')) ||
-      (tls.clientCertPath && fs.existsSync(tls.clientCertPath))
-    );
-    const hasKey = !!(
-      (tls.clientKeyPem && tls.clientKeyPem.includes('-----BEGIN')) ||
-      (tls.clientKeyPath && fs.existsSync(tls.clientKeyPath))
-    );
+    const hasCa = !!(tls.caPem && tls.caPem.includes('-----BEGIN'));
+    const hasCert = !!(tls.clientCertPem && tls.clientCertPem.includes('-----BEGIN'));
+    const hasKey = !!(tls.clientKeyPem && tls.clientKeyPem.includes('-----BEGIN'));
     if (!hasCa) {
       throw new Error(
-        'mTLS-only MQTT: set MQTT_TLS_CA_PEM / MQTT_TLS_CA_CERT (or MQTT_TLS_CA_BASE64) or MQTT_TLS_CA_PATH with a readable file.'
+        'mTLS-only MQTT: set MQTT_TLS_CA_PEM / MQTT_TLS_CA_CERT or MQTT_TLS_CA_BASE64 (broker trust CA PEM).'
       );
     }
     if (!hasCert || !hasKey) {
       throw new Error(
-        'mTLS-only MQTT: set MQTT_TLS_CLIENT_CERT_PEM + MQTT_TLS_CLIENT_KEY_PEM (or *_BASE64), or *_PATH files. Optional: MQTT_MTLS_ONLY=true to ignore MQTT_USERNAME/PASSWORD.'
+        'mTLS-only MQTT: set MQTT_TLS_CLIENT_CERT_PEM + MQTT_TLS_CLIENT_KEY_PEM or MQTT_TLS_CLIENT_CERT_BASE64 + MQTT_TLS_CLIENT_KEY_BASE64.'
       );
     }
   }

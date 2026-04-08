@@ -146,15 +146,10 @@ async function main() {
   console.log('  NANOMQ_TLS_CERT=' + JSON.stringify(brokerCertPem));
   console.log('  NANOMQ_TLS_KEY=' + JSON.stringify(brokerKeyPem));
 
-  console.log('\n[pki] App env (base64) — if you prefer env over files:');
+  console.log('\n[pki] Node app (Render/Railway): set these env vars (base64 PEM) — path-based MQTT_TLS_*_PATH is not supported:');
   console.log('  MQTT_TLS_CA_BASE64=' + toBase64(rootCaPem));
   console.log('  MQTT_TLS_CLIENT_CERT_BASE64=' + toBase64(appCertPem));
   console.log('  MQTT_TLS_CLIENT_KEY_BASE64=' + toBase64(appKeyPem));
-
-  console.log('\n[pki] Recommended local .env (file paths) for the Node server:');
-  console.log(`  MQTT_TLS_CA_PATH=${path.join(brokerCertDir, 'root_ca.crt')}`);
-  console.log(`  MQTT_TLS_CLIENT_CERT_PATH=${path.join(brokerCertDir, 'client.crt')}`);
-  console.log(`  MQTT_TLS_CLIENT_KEY_PATH=${path.join(brokerCertDir, 'client.key')}`);
 }
 
 main().catch((err) => {

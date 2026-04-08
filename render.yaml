@@ -3,7 +3,8 @@
 #
 # Before first deploy:
 # 1) NanoMQ pserv: Secret Files → /etc/nanomq/certs/{root_ca.crt,broker.crt,broker.key}
-# 2) Web service: Secret Files → /etc/mqtt-certs/{root_ca.crt,client.crt,client.key}
+# 2) Web service: set MQTT_TLS_CA_BASE64, MQTT_TLS_CLIENT_CERT_BASE64, MQTT_TLS_CLIENT_KEY_BASE64
+#    (PEM text base64-encoded). Path-based MQTT_TLS_*_PATH is not supported by the app.
 # 3) Set MONGODB_URI, REDIS_*, JWT_SECRET, AUTH_SECRET in the dashboard (sync: false below).
 #
 # Optional: set CREATE_MQTT_CLIENT_CERT=true on the web service only if you generate the app client cert inside the container (advanced).
@@ -41,12 +42,12 @@ services:
         value: "8883"
       - key: MQTT_TLS_ENABLED
         value: "true"
-      - key: MQTT_TLS_CA_PATH
-        value: /etc/mqtt-certs/root_ca.crt
-      - key: MQTT_TLS_CLIENT_CERT_PATH
-        value: /etc/mqtt-certs/client.crt
-      - key: MQTT_TLS_CLIENT_KEY_PATH
-        value: /etc/mqtt-certs/client.key
+      - key: MQTT_TLS_CA_BASE64
+        sync: false
+      - key: MQTT_TLS_CLIENT_CERT_BASE64
+        sync: false
+      - key: MQTT_TLS_CLIENT_KEY_BASE64
+        sync: false
 
       - key: MQTT_CLIENT_ID
         generateValue: true
