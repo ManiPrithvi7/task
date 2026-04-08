@@ -39,3 +39,4 @@ nanomq-broker/
 *.crt.b64
 *.key.b64
 *.bak-*
+/broker.key
