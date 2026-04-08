@@ -7,6 +7,7 @@ data/*.csv
 data/ca/*.crt
 data/ca/*.key
 data/ca/*.srl
+data/ca/*.bak-*
 !data/ca/.gitkeep
 .env
 *.log
@@ -17,6 +18,7 @@ broker/certs/*.crt
 broker/certs/*.key
 broker/certs/*.pem
 broker/certs/*.csr
+broker/certs/*.bak-*
 !broker/certs/.gitkeep
 
 
@@ -26,3 +28,4 @@ nanomq-broker/
 *.csr
 *.crt.b64
 *.key.b64
+*.bak-*

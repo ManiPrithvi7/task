@@ -53,6 +53,9 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
    *   { "device_id": "device-123" }
    */
   router.post('/onboarding', async (req: Request, res: Response): Promise<void> => {
+    // Keep key request context available for catch-path retries
+    let userId: string | undefined;
+    let trimmedDeviceId: string | undefined;
     try {
       logger.debug('Onboarding request received', {
         method: req.method,
@@ -128,7 +131,7 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
         return;
       }
 
-      const userId = authTokenVerification.userId;
+      userId = authTokenVerification.userId;
 
       // Verify user exists in database
       if (!userService) {
@@ -196,7 +199,7 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
         return;
       }
 
-      const trimmedDeviceId = device_id.trim();
+      trimmedDeviceId = device_id.trim();
 
       logger.debug('Checking for existing certificate', {
         deviceId: trimmedDeviceId
@@ -285,19 +288,52 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
 
       // Handle case where provisioning service threw "token already exists" (409) with details
       if (statusCode === 409 && details?.token) {
-        const deviceId = req.body?.device_id || 'unknown';
+        const deviceIdFromBody = (req.body?.device_id && String(req.body.device_id)) || trimmedDeviceId || 'unknown';
         const existingToken = details.token;
         const expiresInSeconds = details.expiresInSeconds;
         const tokenTTL = provisioningService?.getTokenTTL() ?? 300;
 
-        logger.info('Onboarding: returning existing provisioning token', { device_id: deviceId });
+        // Critical fix: do NOT return an existing token if it was already consumed (one-time use).
+        // This prevents clients from looping on TOKEN_ALREADY_USED at sign-csr.
+        const existingValidation = await provisioningService.validateToken(existingToken);
+        if (existingValidation.valid) {
+          logger.info('Onboarding: returning existing provisioning token', { device_id: deviceIdFromBody });
+          res.status(200).json({
+            success: true,
+            message:
+              'Existing provisioning token is still valid. Use it for POST /api/v1/sign-csr. Token is one-time use per sign-csr.',
+            provisioning_token: existingToken,
+            expires_in: expiresInSeconds ?? tokenTTL,
+            device_id: deviceIdFromBody,
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
 
+        logger.warn('Onboarding: existing token present but not usable; issuing a new token', {
+          device_id: deviceIdFromBody,
+          error: existingValidation.error
+        });
+
+        // Best-effort cleanup then mint a fresh token.
+        await provisioningService.revokeToken(existingToken);
+        if (!trimmedDeviceId || !userId) {
+          res.status(500).json({
+            success: false,
+            error: 'Failed to recover from stale provisioning token. Please retry onboarding.',
+            code: 'INTERNAL_ERROR',
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
+        const newToken = await provisioningService.issueToken(trimmedDeviceId, userId);
         res.status(200).json({
           success: true,
-          message: 'Existing provisioning token is still valid. Use it for POST /api/v1/sign-csr. Token is one-time use per sign-csr.',
-          provisioning_token: existingToken,
-          expires_in: expiresInSeconds ?? tokenTTL,
-          device_id: deviceId,
+          message:
+            'A previous provisioning token for this device was already consumed. A new provisioning token was issued. Use it once for POST /api/v1/sign-csr.',
+          provisioning_token: newToken,
+          expires_in: tokenTTL,
+          device_id: trimmedDeviceId,
           timestamp: new Date().toISOString()
         });
         return;
