@@ -4,6 +4,7 @@
  * Uses SQLite CertificateStore instead of MongoDB
  */
 
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as forge from 'node-forge';
@@ -106,7 +107,7 @@ export class CAService {
       await fs.promises.mkdir(this.config.storagePath, { recursive: true });
 
       if (fs.existsSync(certPath) && fs.existsSync(keyPath)) {
-        logger.info('Loading existing Root CA');
+        logger.info('Root CA: reading certificate and key from disk', { certPath, keyPath });
         const certificate = await fs.promises.readFile(certPath, 'utf8');
         const privateKey = await fs.promises.readFile(keyPath, 'utf8');
 
@@ -117,7 +118,13 @@ export class CAService {
           serialNumber: cert.serialNumber
         };
 
-        logger.info('Root CA loaded successfully', { serialNumber: cert.serialNumber });
+        const certShaPrefix = crypto.createHash('sha256').update(certificate, 'utf8').digest('hex').slice(0, 16);
+        logger.info('Root CA loaded successfully', {
+          serialNumber: cert.serialNumber,
+          cert_pem_bytes: Buffer.byteLength(certificate, 'utf8'),
+          key_pem_bytes: Buffer.byteLength(privateKey, 'utf8'),
+          cert_sha256_prefix: certShaPrefix
+        });
       } else {
         logger.info('Generating new Root CA');
         await this.generateRootCA();

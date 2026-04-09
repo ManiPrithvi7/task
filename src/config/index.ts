@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from '../utils/logger';
@@ -159,10 +160,60 @@ export function reloadMqttTlsClientPemFromRuntime(config: AppConfig): void {
  * loads the same material from disk (storagePath + fixed filenames).
  * Returns the directory used, or undefined so `caStoragePath` falls back to `CA_STORAGE_PATH` / {@link DEFAULT_PROVISIONING_CA_STORAGE_PATH}.
  */
+function sha256HexPrefix(pemUtf8: string, hexChars = 16): string {
+  return crypto.createHash('sha256').update(pemUtf8, 'utf8').digest('hex').slice(0, hexChars);
+}
+
+function describePrivateKeyPemKind(pem: string): 'PKCS#1 RSA' | 'PKCS#8' | 'EC' | 'unknown' {
+  if (pem.includes('BEGIN RSA PRIVATE KEY')) return 'PKCS#1 RSA';
+  if (pem.includes('BEGIN PRIVATE KEY')) return 'PKCS#8';
+  if (pem.includes('BEGIN EC PRIVATE KEY')) return 'EC';
+  return 'unknown';
+}
+
 function writeProvisioningRootCaFromEnv(): string | undefined {
+  const caB64 = process.env.MQTT_TLS_CA_BASE64?.trim() ?? '';
+  const keyB64 = process.env.MQTT_TLS_CA_KEY_BASE64?.trim() ?? '';
+
+  logger.info('Provisioning Root CA: env probe (lengths only, values not logged)', {
+    source: 'MQTT_TLS_CA_BASE64 + MQTT_TLS_CA_KEY_BASE64',
+    MQTT_TLS_CA_BASE64_present: caB64.length > 0,
+    MQTT_TLS_CA_BASE64_length: caB64.length,
+    MQTT_TLS_CA_KEY_BASE64_present: keyB64.length > 0,
+    MQTT_TLS_CA_KEY_BASE64_length: keyB64.length,
+    PROVISIONING_CA_DIR: process.env.PROVISIONING_CA_DIR?.trim() || '(default)'
+  });
+
   const certPem = getProvisioningRootCaCertFromEnv();
   const keyPem = getProvisioningRootCaKeyFromEnv();
-  if (!certPem || !keyPem) return undefined;
+
+  if (caB64.length > 0 && !certPem) {
+    logger.warn(
+      'Provisioning Root CA: MQTT_TLS_CA_BASE64 is set but decoded value is not a valid certificate PEM (check base64 and PEM format).'
+    );
+  }
+  if (keyB64.length > 0 && !keyPem) {
+    logger.warn(
+      'Provisioning Root CA: MQTT_TLS_CA_KEY_BASE64 is set but decoded value is not a recognized private key PEM (check base64 and PEM format).'
+    );
+  }
+
+  if (!certPem || !keyPem) {
+    if (caB64.length > 0 || keyB64.length > 0) {
+      logger.info('Provisioning Root CA: skipping write from env until both cert and key decode successfully', {
+        certDecoded: !!certPem,
+        keyDecoded: !!keyPem
+      });
+    }
+    return undefined;
+  }
+
+  logger.info('Provisioning Root CA: read PEM from environment (decoded)', {
+    cert_pem_bytes: Buffer.byteLength(certPem, 'utf8'),
+    cert_sha256_prefix: sha256HexPrefix(certPem),
+    key_pem_bytes: Buffer.byteLength(keyPem, 'utf8'),
+    key_kind: describePrivateKeyPemKind(keyPem)
+  });
 
   const dirRaw = process.env.PROVISIONING_CA_DIR?.trim();
   const dir = dirRaw
@@ -178,7 +229,16 @@ function writeProvisioningRootCaFromEnv(): string | undefined {
   const keyOut = keyPem.endsWith('\n') ? keyPem : `${keyPem}\n`;
   fs.writeFileSync(certPath, certOut, { encoding: 'utf8', mode: 0o644 });
   fs.writeFileSync(keyPath, keyOut, { encoding: 'utf8', mode: 0o600 });
-  logger.info('Provisioning Root CA written from environment', { caStoragePath: dir });
+
+  const certStat = fs.statSync(certPath);
+  const keyStat = fs.statSync(keyPath);
+  logger.info('Provisioning Root CA: wrote files from env (CAService will load these paths)', {
+    certPath,
+    keyPath,
+    cert_file_bytes: certStat.size,
+    key_file_bytes: keyStat.size,
+    caStoragePath: dir
+  });
   return dir;
 }
 
