@@ -61,6 +61,7 @@ export interface RootCA {
 export class CAService {
   private config: CAConfig;
   private rootCA: RootCA | null = null;
+  /** Loaded from config.storagePath (default `src/certs`; override `CA_STORAGE_PATH` in containers without a `src/` tree). */
   private readonly ROOT_CA_CERT_FILE = 'root-ca.crt';
   private readonly ROOT_CA_KEY_FILE = 'root-ca.key';
 
@@ -89,7 +90,12 @@ export class CAService {
   }
 
   /**
-   * Initialize Root CA
+   * Initialize Root CA.
+   *
+   * Reads `root-ca.crt` and `root-ca.key` under `storagePath` only (no `process.env` here).
+   * At process startup, `loadConfig()` may have written those files from env first:
+   * `MQTT_TLS_CA_BASE64` + `MQTT_TLS_CA_KEY_BASE64` (base64 PEM only), via `writeProvisioningRootCaFromEnv()` — see `src/config/index.ts`.
+   * If either file is missing, a new Root CA is generated on disk.
    */
   async initialize(): Promise<void> {
     try {

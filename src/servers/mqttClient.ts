@@ -15,6 +15,7 @@ export interface MqttConfig {
   topicRoot: string;
   tls?: {
     enabled?: boolean;
+    /** Filled from env → DATA_DIR/.mqtt-tls/ at config load (see config/index.ts). */
     caPem?: string;
     clientCertPem?: string;
     clientKeyPem?: string;

@@ -60,7 +60,7 @@ function toBase64(pem: string): string {
 
 async function main() {
   const repoRoot = path.resolve(__dirname, '..');
-  const caStoragePath = path.resolve(repoRoot, 'data/ca');
+  const caStoragePath = path.resolve(repoRoot, 'src/certs');
   const brokerCertDir = path.resolve(repoRoot, 'broker/certs');
 
   const rootCaCertPath = path.join(caStoragePath, 'root-ca.crt');

@@ -1,7 +1,7 @@
 const fs = require('fs');
 
 try {
-  const rootCA = fs.readFileSync('data/ca/root-ca.crt', 'utf8');
+  const rootCA = fs.readFileSync('src/certs/root-ca.crt', 'utf8');
   const brokerCrt = fs.readFileSync('broker/certs/broker.crt', 'utf8');
   const brokerKey = fs.readFileSync('broker/certs/broker.key', 'utf8');
 

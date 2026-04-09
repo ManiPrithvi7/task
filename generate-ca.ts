@@ -4,7 +4,7 @@ import * as path from 'path';
 async function main() {
   console.log('Initializing CAService to generate PROOF-CA Root CA...');
   const config = {
-    storagePath: path.resolve(__dirname, 'data/ca'),
+    storagePath: path.resolve(__dirname, 'src/certs'),
     rootCAValidityYears: 10,
     deviceCertValidityDays: 3650
   };

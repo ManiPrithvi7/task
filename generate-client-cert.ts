@@ -5,7 +5,7 @@ import * as forge from 'node-forge';
 
 async function main() {
   const config = {
-    storagePath: path.resolve(__dirname, 'data/ca'),
+    storagePath: path.resolve(__dirname, 'src/certs'),
     rootCAValidityYears: 10,
     deviceCertValidityDays: 3650
   };
@@ -35,7 +35,7 @@ async function main() {
 
   console.log('Successfully generated proper client certificate with extensions.');
 
-  const rootCA = fs.readFileSync('data/ca/root-ca.crt', 'utf8');
+  const rootCA = fs.readFileSync('src/certs/root-ca.crt', 'utf8');
 
   console.log('\nUPDATE YOUR .env WITH THESE BASE64 VARS FOR THE NODE SERVER:');
   console.log('=============================================================');

@@ -1,5 +1,11 @@
 import { logger } from './utils/logger';
-import { loadConfig, validateConfig, AppConfig } from './config';
+import {
+  loadConfig,
+  validateConfig,
+  AppConfig,
+  getMqttTlsRuntimeDir,
+  reloadMqttTlsClientPemFromRuntime
+} from './config';
 import { HttpServer } from './servers/httpServer';
 import { WebSocketServerManager } from './servers/webSocketServer';
 import { MqttClientManager } from './servers/mqttClient';
@@ -437,10 +443,11 @@ export class StatsMqttLite {
       return;
     }
 
-    const certPath = path.resolve(this.config.storage.dataDir, '..', 'broker', 'certs', 'client.crt');
-    const keyPath = path.resolve(this.config.storage.dataDir, '..', 'broker', 'certs', 'client.key');
+    const runtimeDir = getMqttTlsRuntimeDir(this.config.storage.dataDir);
+    const certPath = path.join(runtimeDir, 'client.crt');
+    const keyPath = path.join(runtimeDir, 'client.key');
 
-    // If both files exist, validate PEM structure; regenerate if invalid.
+    // Optional skip if this run already has valid PEMs in the runtime dir (e.g. from env at startup).
     let certExists = fs.existsSync(certPath);
     let keyExists = fs.existsSync(keyPath);
     const isPemLike = (p: string) => {
@@ -455,11 +462,19 @@ export class StatsMqttLite {
       const certValid = isPemLike(certPath);
       const keyValid = isPemLike(keyPath);
       if (certValid && keyValid) {
-        logger.info('Client certificate and key already exist and look valid; skipping generation', { certPath, keyPath });
+        logger.info('MQTT client cert/key already present in runtime dir; skipping generation', {
+          certPath,
+          keyPath
+        });
+        reloadMqttTlsClientPemFromRuntime(this.config);
         return;
       }
-      logger.warn('Existing client cert/key found but not valid PEM; regenerating and overwriting', { certPath, keyPath, certValid, keyValid });
-      // allow regeneration by flipping flags
+      logger.warn('Existing client cert/key in runtime dir are not valid PEM; regenerating', {
+        certPath,
+        keyPath,
+        certValid,
+        keyValid
+      });
       certExists = false;
       keyExists = false;
     }
@@ -500,6 +515,7 @@ export class StatsMqttLite {
       logger.info('Wrote generated client certificate', { certPath });
       fs.writeFileSync(keyPath, privateKeyPem, { encoding: 'utf8', mode: 0o600 });
       logger.info('Wrote generated client private key', { keyPath });
+      reloadMqttTlsClientPemFromRuntime(this.config);
     } catch (err: any) {
       logger.error('Failed to generate client certificate', { error: err instanceof Error ? err.message : String(err) });
       throw err;

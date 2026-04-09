@@ -1,4 +1,3 @@
-import * as fs from 'fs';
 import * as crypto from 'crypto';
 
 export interface DeviceKeys {
@@ -37,17 +36,3 @@ export function deviceIdFromCertPem(certPem: string): string | null {
   }
 }
 
-/**
- * Loads device cert material from a directory of PEM files.
- * Expects root_ca.crt, client.crt, client.key (same layout as broker/certs for local mTLS).
- */
-export function loadDeviceKeysFromCrtDir(crtDir: string): DeviceKeys {
-  const ca = fs.readFileSync(`${crtDir}/root_ca.crt`, 'utf8');
-  const cert = fs.readFileSync(`${crtDir}/client.crt`, 'utf8');
-  const key = fs.readFileSync(`${crtDir}/client.key`, 'utf8');
-
-  const deviceId =
-    process.env.DEVICE_ID_OVERRIDE ?? deviceIdFromCertPem(cert) ?? 'UNKNOWN';
-
-  return { deviceId, ca, cert, key };
-}

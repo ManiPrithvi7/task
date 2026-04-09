@@ -15,9 +15,22 @@ Files (legacy / repo-root build):
 **Plain MQTT only (no TLS):** **`NANOMQ_DISABLE_TLS=1`** — port **1883**; not for public production.
 
 Required PEM files for the broker container (mount under /etc/nanomq/certs/) when TLS is enabled:
-  root_ca.crt  — copy of data/ca/root-ca.crt (CA that signed broker.crt); underscore name in-container
-  broker.crt   — NanoMQ server cert
+  root_ca.crt  — copy of data/ca/root-ca.crt (CA that signs *client* certs for mTLS; same PKI as devices)
+  broker.crt   — NanoMQ server cert (CN=PROOF-nanomq-broker + SANs; see generate script below)
   broker.key   — NanoMQ server private key (never commit; use Render Secret Files)
+
+Regenerate broker cert with OpenSSL (CN + SAN for TCP proxy):
+  ./broker/generate-broker-cert-openssl.sh
+Optional IP SANs (clients connecting by public IP — comma-separated; there is no wildcard “any IP”):
+  BROKER_SAN_IPS="203.0.113.1,198.51.100.2" ./broker/generate-broker-cert-openssl.sh
+Verify leaf:
+  openssl verify -CAfile data/ca/root-ca.crt broker/certs/broker.crt
+If openssl verify fails on broker-fullchain.crt, verify broker.crt only — fullchain is leaf+root for
+bundling; -CAfile already supplies the trust anchor.
+
+Railway app / Node client behind switchback.proxy.rlwy.net:
+  MQTT_TLS_SERVERNAME=PROOF-nanomq-broker
+  (or MQTT_TLS_VERIFY_HOST=PROOF-nanomq-broker — alias)
 
 HOCON note: use keyfile / certfile / cacertfile directly on listeners.ssl. A nested
 listeners.ssl.tls { } block is not read correctly on NanoMQ 0.24.x (paths become null).

@@ -3,14 +3,14 @@ set -e
 
 # Delete old CA
 echo "Deleting old CA..."
-rm -rf data/ca/root-ca.*
+rm -rf src/certs/root-ca.*
 
 # Generate new CA
 echo "Generating new PROOF-CA Root CA..."
 npx ts-node generate-ca.ts
 
 echo "Verifying new Root CA:"
-openssl x509 -in data/ca/root-ca.crt -noout -subject -issuer
+openssl x509 -in src/certs/root-ca.crt -noout -subject -issuer
 
 echo "Generating new broker CSR..."
 openssl genrsa -out broker/certs/broker.key 2048
@@ -34,8 +34,8 @@ EOF
 echo "Signing broker CSR with new PROOF-CA and SAN extensions..."
 openssl x509 -req \
   -in broker/certs/broker.csr \
-  -CA data/ca/root-ca.crt \
-  -CAkey data/ca/root-ca.key \
+  -CA src/certs/root-ca.crt \
+  -CAkey src/certs/root-ca.key \
   -CAcreateserial \
   -out broker/certs/broker.crt \
   -days 825 -sha256 \

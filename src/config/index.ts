@@ -1,4 +1,6 @@
 import dotenv from 'dotenv';
+import * as fs from 'fs';
+import * as path from 'path';
 import { logger } from '../utils/logger';
 
 // Load environment variables
@@ -33,6 +35,153 @@ function firstPemEnv(...names: string[]): string | undefined {
   return undefined;
 }
 
+function looksLikeCertificatePem(value: string): boolean {
+  return value.includes('-----BEGIN CERTIFICATE-----');
+}
+
+function looksLikePrivateKeyPem(value: string): boolean {
+  return /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/.test(value);
+}
+
+/**
+ * Provisioning Root CA certificate PEM — base64 only, same as broker-trust CA: `MQTT_TLS_CA_BASE64`.
+ * Written to disk by `writeProvisioningRootCaFromEnv` for CAService; not used for validation when only MQTT mTLS is needed without an env signing key.
+ */
+function getProvisioningRootCaCertFromEnv(): string | undefined {
+  const fromB64 = decodeBase64ToUtf8(process.env.MQTT_TLS_CA_BASE64);
+  const certCandidate = fromB64 ? normalizeMqttPemFromEnv(fromB64) : undefined;
+  if (certCandidate && looksLikeCertificatePem(certCandidate)) return certCandidate;
+  return undefined;
+}
+
+/**
+ * Provisioning Root CA private key PEM — base64 only: `MQTT_TLS_CA_KEY_BASE64`.
+ * Required only when you want the app to sign CSRs using a Root CA key from env (paired with `MQTT_TLS_CA_BASE64`).
+ */
+function getProvisioningRootCaKeyFromEnv(): string | undefined {
+  const fromB64 = decodeBase64ToUtf8(process.env.MQTT_TLS_CA_KEY_BASE64);
+  const keyCandidate = fromB64 ? normalizeMqttPemFromEnv(fromB64) : undefined;
+  if (keyCandidate && looksLikePrivateKeyPem(keyCandidate)) return keyCandidate;
+  return undefined;
+}
+
+/** Default Root CA directory (env decode + auto-generated CA). Override with `CA_STORAGE_PATH` or `PROVISIONING_CA_DIR` (e.g. in Docker use `/data/provisioning-ca`). */
+export const DEFAULT_PROVISIONING_CA_STORAGE_PATH = path.resolve(process.cwd(), 'src', 'certs');
+
+/** Runtime directory for MQTT TLS PEMs (written from env each process start; not for committing). */
+const MQTT_TLS_RUNTIME_SUB = '.mqtt-tls';
+
+export function getMqttTlsRuntimeDir(dataDir: string): string {
+  return path.join(path.resolve(dataDir), MQTT_TLS_RUNTIME_SUB);
+}
+
+/** MQTT TLS: env-only (BASE64 or *_PEM). No MQTT_TLS_CA / MQTT_TLS_CLIENT_* generic PEM, no loading pre-existing files. */
+function resolveMqttTlsPemFromEnv(): {
+  caPem?: string;
+  clientCertPem?: string;
+  clientKeyPem?: string;
+} {
+  const caPem =
+    firstPemEnv('MQTT_TLS_CA_PEM', 'MQTT_TLS_CA_CERT') ||
+    decodeBase64ToUtf8(process.env.MQTT_TLS_CA_BASE64);
+  const clientCertPem =
+    firstPemEnv('MQTT_TLS_CLIENT_CERT_PEM') ||
+    decodeBase64ToUtf8(process.env.MQTT_TLS_CLIENT_CERT_BASE64);
+  const clientKeyPem =
+    firstPemEnv('MQTT_TLS_CLIENT_KEY_PEM') ||
+    decodeBase64ToUtf8(process.env.MQTT_TLS_CLIENT_KEY_BASE64);
+  return {
+    caPem: caPem && looksLikeCertificatePem(caPem) ? caPem : undefined,
+    clientCertPem: clientCertPem && looksLikeCertificatePem(clientCertPem) ? clientCertPem : undefined,
+    clientKeyPem: clientKeyPem && looksLikePrivateKeyPem(clientKeyPem) ? clientKeyPem : undefined
+  };
+}
+
+/**
+ * Write MQTT TLS PEMs from env to dataDir/.mqtt-tls/ and read them back (single source for this run).
+ * Does not read stale files if env is empty.
+ */
+function writeAndReadMqttTlsRuntime(dataDir: string): {
+  caPem?: string;
+  clientCertPem?: string;
+  clientKeyPem?: string;
+} {
+  const resolved = resolveMqttTlsPemFromEnv();
+  const { caPem, clientCertPem, clientKeyPem } = resolved;
+  if (!caPem && !clientCertPem && !clientKeyPem) {
+    return {};
+  }
+
+  const dir = getMqttTlsRuntimeDir(dataDir);
+  fs.mkdirSync(dir, { recursive: true });
+  if (caPem) {
+    const p = path.join(dir, 'ca.pem');
+    fs.writeFileSync(p, caPem.endsWith('\n') ? caPem : `${caPem}\n`, { encoding: 'utf8', mode: 0o644 });
+  }
+  if (clientCertPem) {
+    const p = path.join(dir, 'client.crt');
+    fs.writeFileSync(p, clientCertPem.endsWith('\n') ? clientCertPem : `${clientCertPem}\n`, {
+      encoding: 'utf8',
+      mode: 0o644
+    });
+  }
+  if (clientKeyPem) {
+    const p = path.join(dir, 'client.key');
+    fs.writeFileSync(p, clientKeyPem.endsWith('\n') ? clientKeyPem : `${clientKeyPem}\n`, {
+      encoding: 'utf8',
+      mode: 0o600
+    });
+  }
+
+  const out: { caPem?: string; clientCertPem?: string; clientKeyPem?: string } = {};
+  if (caPem) out.caPem = fs.readFileSync(path.join(dir, 'ca.pem'), 'utf8');
+  if (clientCertPem) out.clientCertPem = fs.readFileSync(path.join(dir, 'client.crt'), 'utf8');
+  if (clientKeyPem) out.clientKeyPem = fs.readFileSync(path.join(dir, 'client.key'), 'utf8');
+  logger.info('MQTT TLS credentials loaded from environment via runtime directory', { mqttTlsRuntimeDir: dir });
+  return out;
+}
+
+/** After CREATE_MQTT_CLIENT_CERT writes client.crt/key under .mqtt-tls/, refresh in-memory TLS for the MQTT client. */
+export function reloadMqttTlsClientPemFromRuntime(config: AppConfig): void {
+  const tls = config.mqtt.tls;
+  if (!tls) return;
+  const dir = getMqttTlsRuntimeDir(config.storage.dataDir);
+  const certPath = path.join(dir, 'client.crt');
+  const keyPath = path.join(dir, 'client.key');
+  if (!fs.existsSync(certPath) || !fs.existsSync(keyPath)) return;
+  tls.clientCertPem = fs.readFileSync(certPath, 'utf8');
+  tls.clientKeyPem = fs.readFileSync(keyPath, 'utf8');
+  tls.enabled = true;
+}
+
+/**
+ * Decode provisioning Root CA from env and write root-ca.crt / root-ca.key so CAService
+ * loads the same material from disk (storagePath + fixed filenames).
+ * Returns the directory used, or undefined so `caStoragePath` falls back to `CA_STORAGE_PATH` / {@link DEFAULT_PROVISIONING_CA_STORAGE_PATH}.
+ */
+function writeProvisioningRootCaFromEnv(): string | undefined {
+  const certPem = getProvisioningRootCaCertFromEnv();
+  const keyPem = getProvisioningRootCaKeyFromEnv();
+  if (!certPem || !keyPem) return undefined;
+
+  const dirRaw = process.env.PROVISIONING_CA_DIR?.trim();
+  const dir = dirRaw
+    ? path.isAbsolute(dirRaw)
+      ? dirRaw
+      : path.resolve(process.cwd(), dirRaw)
+    : DEFAULT_PROVISIONING_CA_STORAGE_PATH;
+
+  fs.mkdirSync(dir, { recursive: true });
+  const certPath = path.join(dir, 'root-ca.crt');
+  const keyPath = path.join(dir, 'root-ca.key');
+  const certOut = certPem.endsWith('\n') ? certPem : `${certPem}\n`;
+  const keyOut = keyPem.endsWith('\n') ? keyPem : `${keyPem}\n`;
+  fs.writeFileSync(certPath, certOut, { encoding: 'utf8', mode: 0o644 });
+  fs.writeFileSync(keyPath, keyOut, { encoding: 'utf8', mode: 0o600 });
+  logger.info('Provisioning Root CA written from environment', { caStoragePath: dir });
+  return dir;
+}
+
 export interface MqttConfig {
   broker: string;
   port: number;
@@ -51,7 +200,10 @@ export interface MqttConfig {
   /** TLS / mTLS configuration for connecting to MQTT broker (optional) */
   tls?: {
     enabled?: boolean;
-    /** Broker CA + client cert/key: env PEM or *_BASE64 only (no file paths). */
+    /**
+     * Broker CA + client cert/key: only from MQTT_TLS_*_BASE64 / MQTT_TLS_*_PEM env.
+     * Startup writes PEMs under dataDir/.mqtt-tls/ and these fields are read back from disk.
+     */
     caPem?: string;
     clientCertPem?: string;
     clientKeyPem?: string;
@@ -132,51 +284,34 @@ export interface AppConfig {
 export function loadConfig(): AppConfig {
   const dataDir = process.env.DATA_DIR || './data';
 
-  const userTrim = process.env.MQTT_USERNAME?.trim();
-  const passTrim = process.env.MQTT_PASSWORD?.trim();
+  const provisioningCaDirFromEnv = writeProvisioningRootCaFromEnv();
+
   const mtlsOnlyEnv =
     process.env.MQTT_MTLS_ONLY === 'true' ||
     process.env.MQTT_MTLS_ONLY === '1' ||
     process.env.MQTT_AUTH_X509_ONLY === 'true';
-  const authX509Only = mtlsOnlyEnv || (!userTrim && !passTrim);
+  const authX509Only = mtlsOnlyEnv || true;
 
-  // Inline PEM (env) — same idea as NANOMQ_TLS_* on the broker; supports literal \n
-  const caPemInline =
-    firstPemEnv('MQTT_TLS_CA_PEM', 'MQTT_TLS_CA_CERT') ||
-    decodeBase64ToUtf8(process.env.MQTT_TLS_CA_BASE64);
-  const mqttTlsCaRaw = process.env.MQTT_TLS_CA?.trim();
-  const caPemResolved =
-    caPemInline ||
-    (mqttTlsCaRaw && looksLikePem(mqttTlsCaRaw) ? normalizeMqttPemFromEnv(mqttTlsCaRaw) : undefined);
-  if (mqttTlsCaRaw && !looksLikePem(mqttTlsCaRaw)) {
-    logger.warn('MQTT_TLS_CA is set but is not PEM text; path-based CA is not supported. Use MQTT_TLS_CA_BASE64 or MQTT_TLS_CA_PEM.');
+  if (process.env.MQTT_TLS_CA?.trim()) {
+    logger.warn(
+      'MQTT_TLS_CA is ignored; use MQTT_TLS_CA_BASE64 or MQTT_TLS_CA_PEM / MQTT_TLS_CA_CERT. Material is written to DATA_DIR/.mqtt-tls/ at startup.'
+    );
+  }
+  if (process.env.MQTT_TLS_CLIENT_CERT?.trim()) {
+    logger.warn(
+      'MQTT_TLS_CLIENT_CERT is ignored; use MQTT_TLS_CLIENT_CERT_BASE64 or MQTT_TLS_CLIENT_CERT_PEM. Material is written to DATA_DIR/.mqtt-tls/ at startup.'
+    );
+  }
+  if (process.env.MQTT_TLS_CLIENT_KEY?.trim()) {
+    logger.warn(
+      'MQTT_TLS_CLIENT_KEY is ignored; use MQTT_TLS_CLIENT_KEY_BASE64 or MQTT_TLS_CLIENT_KEY_PEM. Material is written to DATA_DIR/.mqtt-tls/ at startup.'
+    );
   }
 
-  const clientCertPemInline =
-    firstPemEnv('MQTT_TLS_CLIENT_CERT_PEM') ||
-    decodeBase64ToUtf8(process.env.MQTT_TLS_CLIENT_CERT_BASE64);
-  const mqttTlsClientCertRaw = process.env.MQTT_TLS_CLIENT_CERT?.trim();
-  const clientCertPemResolved =
-    clientCertPemInline ||
-    (mqttTlsClientCertRaw && looksLikePem(mqttTlsClientCertRaw)
-      ? normalizeMqttPemFromEnv(mqttTlsClientCertRaw)
-      : undefined);
-  if (mqttTlsClientCertRaw && !looksLikePem(mqttTlsClientCertRaw)) {
-    logger.warn('MQTT_TLS_CLIENT_CERT is set but is not PEM text; path-based client cert is not supported. Use *_BASE64 or *_PEM.');
-  }
-
-  const clientKeyPemInline =
-    firstPemEnv('MQTT_TLS_CLIENT_KEY_PEM') ||
-    decodeBase64ToUtf8(process.env.MQTT_TLS_CLIENT_KEY_BASE64);
-  const mqttTlsClientKeyRaw = process.env.MQTT_TLS_CLIENT_KEY?.trim();
-  const clientKeyPemResolved =
-    clientKeyPemInline ||
-    (mqttTlsClientKeyRaw && looksLikePem(mqttTlsClientKeyRaw)
-      ? normalizeMqttPemFromEnv(mqttTlsClientKeyRaw)
-      : undefined);
-  if (mqttTlsClientKeyRaw && !looksLikePem(mqttTlsClientKeyRaw)) {
-    logger.warn('MQTT_TLS_CLIENT_KEY is set but is not PEM text; path-based client key is not supported. Use *_BASE64 or *_PEM.');
-  }
+  const mqttRuntimeTls = writeAndReadMqttTlsRuntime(dataDir);
+  const caPemResolved = mqttRuntimeTls.caPem;
+  const clientCertPemResolved = mqttRuntimeTls.clientCertPem;
+  const clientKeyPemResolved = mqttRuntimeTls.clientKeyPem;
 
   const tlsExplicitOn =
     process.env.MQTT_TLS_ENABLED === 'true' || process.env.MQTT_TLS === 'true';
@@ -185,9 +320,13 @@ export function loadConfig(): AppConfig {
     !!caPemResolved ||
     !!clientCertPemResolved ||
     !!clientKeyPemResolved ||
-    !!process.env.MQTT_TLS_CA_BASE64 ||
-    !!process.env.MQTT_TLS_CLIENT_CERT_BASE64 ||
-    !!process.env.MQTT_TLS_CLIENT_KEY_BASE64;
+    !!process.env.MQTT_TLS_CA_BASE64?.trim() ||
+    !!process.env.MQTT_TLS_CLIENT_CERT_BASE64?.trim() ||
+    !!process.env.MQTT_TLS_CLIENT_KEY_BASE64?.trim() ||
+    !!process.env.MQTT_TLS_CA_PEM?.trim() ||
+    !!process.env.MQTT_TLS_CA_CERT?.trim() ||
+    !!process.env.MQTT_TLS_CLIENT_CERT_PEM?.trim() ||
+    !!process.env.MQTT_TLS_CLIENT_KEY_PEM?.trim();
 
   const config: AppConfig = {
     mqtt: {
@@ -195,8 +334,6 @@ export function loadConfig(): AppConfig {
       port: parseInt(process.env.MQTT_PORT || '1883'),
       clientId: process.env.MQTT_CLIENT_ID || `firmware-test-1234`,
       authX509Only,
-      username: mtlsOnlyEnv ? undefined : userTrim || undefined,
-      password: mtlsOnlyEnv ? undefined : passTrim || undefined,
       topicPrefix: process.env.MQTT_TOPIC_PREFIX || '',
       topicRoot: process.env.MQTT_TOPIC_ROOT || 'proof.mqtt',
       tls: {
@@ -205,7 +342,10 @@ export function loadConfig(): AppConfig {
         clientCertPem: clientCertPemResolved,
         clientKeyPem: clientKeyPemResolved,
         rejectUnauthorized: process.env.MQTT_TLS_REJECT_UNAUTHORIZED !== 'false',
-        servername: process.env.MQTT_TLS_SERVERNAME?.trim() || undefined
+        servername:
+          process.env.MQTT_TLS_SERVERNAME?.trim() ||
+          process.env.MQTT_TLS_VERIFY_HOST?.trim() ||
+          undefined
       }
     },
     http: {
@@ -221,7 +361,13 @@ export function loadConfig(): AppConfig {
       enabled: process.env.PROVISIONING_ENABLED !== 'false',  // Enabled by default
       tokenTTL: parseInt(process.env.PROVISIONING_TOKEN_TTL || '6000'),  // 1 hour
       jwtSecret: process.env.JWT_SECRET || process.env.PROVISIONING_JWT_SECRET || 'mqtt-publisher-lite-secret-key-change-in-production',
-      caStoragePath: process.env.CA_STORAGE_PATH || `${dataDir}/ca`,
+      caStoragePath:
+        provisioningCaDirFromEnv ||
+        (process.env.CA_STORAGE_PATH?.trim()
+          ? path.isAbsolute(process.env.CA_STORAGE_PATH)
+            ? process.env.CA_STORAGE_PATH
+            : path.resolve(process.cwd(), process.env.CA_STORAGE_PATH)
+          : DEFAULT_PROVISIONING_CA_STORAGE_PATH),
       rootCAValidityYears: parseInt(process.env.ROOT_CA_VALIDITY_YEARS || '10'),
       deviceCertValidityDays: parseInt(process.env.DEVICE_CERT_VALIDITY_DAYS || '90'),
       certificateDbPath: process.env.CERTIFICATE_DB_PATH || `${dataDir}/certificates.db`,
@@ -305,6 +451,21 @@ export function validateConfig(config: AppConfig): void {
   if (config.provisioning.enabled && !config.auth.secret) {
     throw new Error('AUTH_SECRET is required when provisioning is enabled. Set AUTH_SECRET environment variable.');
   }
+  if (config.provisioning.enabled) {
+    const certPem = getProvisioningRootCaCertFromEnv();
+    const keyPem = getProvisioningRootCaKeyFromEnv();
+    const keyFromEnvRequested = Boolean(process.env.MQTT_TLS_CA_KEY_BASE64?.trim());
+    if (keyFromEnvRequested && !keyPem) {
+      throw new Error(
+        'Provisioning Root CA: MQTT_TLS_CA_KEY_BASE64 is set but the private key PEM is missing or invalid after base64 decode.'
+      );
+    }
+    if (keyFromEnvRequested && !certPem) {
+      throw new Error(
+        'Provisioning Root CA: set MQTT_TLS_CA_BASE64 (Root CA certificate, base64 PEM) together with MQTT_TLS_CA_KEY_BASE64.'
+      );
+    }
+  }
   if (!config.mongodb.uri) {
     throw new Error('MongoDB URI is REQUIRED. Set MONGODB_URI environment variable.');
   }
@@ -313,7 +474,7 @@ export function validateConfig(config: AppConfig): void {
     const tls = config.mqtt.tls;
     if (!tls?.enabled) {
       throw new Error(
-        'mTLS-only MQTT: set MQTT_TLS_ENABLED=true and provide CA + client cert/key via MQTT_TLS_*_BASE64 or MQTT_TLS_*_PEM (no file paths).'
+        'mTLS-only MQTT: set MQTT_TLS_ENABLED=true and provide CA + client cert/key via MQTT_TLS_*_BASE64 or MQTT_TLS_*_PEM (env only; app writes DATA_DIR/.mqtt-tls/ at startup — not broker/certs).'
       );
     }
     const hasCa = !!(tls.caPem && tls.caPem.includes('-----BEGIN'));
