@@ -3,6 +3,8 @@ dist/
 data/*.json
 data/*.csv
 
+src/Proof-ca/*
+
 # MQTT TLS runtime (env → disk each boot under DATA_DIR)
 data/.mqtt-tls/
 

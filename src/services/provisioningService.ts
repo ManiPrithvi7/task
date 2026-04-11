@@ -31,10 +31,39 @@ export interface TokenValidationResult {
 export class ProvisioningService {
   private config: ProvisioningConfig;
   private tokenStore: TokenStore;
+  /**
+   * Per-device mutex to prevent TOCTOU token issuance races.
+   * Ensures only one `issueToken(deviceId, ...)` runs at a time for a given deviceId.
+   */
+  private issueTokenMutex: Map<string, { locked: boolean; queue: Array<() => void> }> = new Map();
 
   constructor(config: ProvisioningConfig) {
     this.config = config;
     this.tokenStore = getTokenStore();
+  }
+
+  private async withIssueTokenLock<T>(deviceId: string, fn: () => Promise<T>): Promise<T> {
+    const state =
+      this.issueTokenMutex.get(deviceId) ?? { locked: false, queue: [] as Array<() => void> };
+    this.issueTokenMutex.set(deviceId, state);
+
+    if (state.locked) {
+      await new Promise<void>((resolve) => state.queue.push(resolve));
+    }
+
+    state.locked = true;
+    try {
+      return await fn();
+    } finally {
+      const next = state.queue.shift();
+      if (next) {
+        next();
+      } else {
+        state.locked = false;
+        // avoid unbounded growth for device IDs that churn
+        this.issueTokenMutex.delete(deviceId);
+      }
+    }
   }
 
   /**
@@ -43,7 +72,8 @@ export class ProvisioningService {
    * Token binds both device_id and user_id for security
    */
   async issueToken(deviceId: string, userId: string): Promise<string> {
-    try {
+    return this.withIssueTokenLock(deviceId, async () => {
+      try {
       logger.debug('Token issuance started', { deviceId, userId });
 
       // Check if device already has an active token
@@ -51,38 +81,39 @@ export class ProvisioningService {
 
       if (existingToken) {
         // Validate existing token
-        const validation = await this.validateTokenWithoutRevoke(existingToken);
+        const validation = await this.validateTokenWithoutRevoke(existingToken, { allowConsumed: false });
 
         if (validation.valid && validation.deviceId === deviceId) {
-          try {
-            const decoded = jwt.decode(existingToken) as ProvisioningTokenPayload;
-            if (decoded && decoded.exp) {
-              const expiresAt = new Date(decoded.exp * 1000);
-              const now = Date.now();
-              const expiresIn = Math.floor((decoded.exp * 1000 - now) / 1000);
+          // If we already have an active, valid token, return a 409 so caller can decide whether to reuse.
+          // Decode is best-effort to provide expiry info; unexpected errors must be logged.
+          const decoded = jwt.decode(existingToken) as ProvisioningTokenPayload | null;
+          if (decoded && typeof decoded.exp === 'number') {
+            const expiresAt = new Date(decoded.exp * 1000);
+            const nowMs = Date.now();
+            const expiresIn = Math.floor((decoded.exp * 1000 - nowMs) / 1000);
 
-              logger.warn('Active provisioning token already exists', {
-                deviceId,
-                userId,
-                expiresAt: expiresAt.toISOString(),
-                expiresInSeconds: expiresIn
-              });
+            logger.warn('Active provisioning token already exists', {
+              deviceId,
+              userId,
+              expiresAt: expiresAt.toISOString(),
+              expiresInSeconds: expiresIn
+            });
 
-              const error = new Error('Active provisioning token already exists') as any;
-              error.statusCode = 409;
-              error.details = {
-                message: 'A provisioning token for this device is already active.',
-                expiresAt: expiresAt.toISOString(),
-                expiresInSeconds: expiresIn > 0 ? expiresIn : 0,
-                token: existingToken
-              };
-              throw error;
-            }
-          } catch (decodeError: any) {
-            if (decodeError instanceof Error && decodeError.message === 'Active provisioning token already exists') {
-              throw decodeError;
-            }
-            // Token invalid, revoke and continue
+            const error = new Error('Active provisioning token already exists') as any;
+            error.statusCode = 409;
+            error.details = {
+              message: 'A provisioning token for this device is already active.',
+              expiresAt: expiresAt.toISOString(),
+              expiresInSeconds: expiresIn > 0 ? expiresIn : 0,
+              token: existingToken
+            };
+            throw error;
+          } else {
+            // If we can't decode expiry, treat it as suspect and revoke it so we can issue a fresh token.
+            logger.warn('Active token exists but expiry could not be decoded; revoking and re-issuing', {
+              deviceId,
+              userId
+            });
             await this.revokeToken(existingToken);
           }
         } else {
@@ -117,10 +148,22 @@ export class ProvisioningService {
       });
 
       return token;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('Failed to issue provisioning token', { deviceId, userId, error: errorMessage });
-      throw error;
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        logger.error('Failed to issue provisioning token', { deviceId, userId, error: errorMessage });
+        throw error;
+      }
+    });
+  }
+
+  private async isConsumed(token: string): Promise<boolean> {
+    try {
+      return await this.tokenStore.isTokenConsumed(token);
+    } catch (e) {
+      logger.warn('Consumed marker lookup failed (treating as not consumed)', {
+        error: e instanceof Error ? e.message : e
+      });
+      return false;
     }
   }
 
@@ -128,7 +171,10 @@ export class ProvisioningService {
    * Validate a provisioning token without revoking
    * Returns both deviceId and userId from token payload
    */
-  async validateTokenWithoutRevoke(token: string): Promise<TokenValidationResult> {
+  async validateTokenWithoutRevoke(
+    token: string,
+    options?: { allowConsumed?: boolean; allowMissingInStore?: boolean }
+  ): Promise<TokenValidationResult> {
     try {
       // Step 1: Verify JWT signature and expiration FIRST
       // This is the primary validation - JWT library handles expiration
@@ -194,7 +240,8 @@ export class ProvisioningService {
       }
 
       // Step 3a: Explicit consumed marker after successful sign-csr (JWT may still be valid)
-      if (await this.tokenStore.isTokenConsumed(token)) {
+      const consumed = await this.isConsumed(token);
+      if (consumed && !options?.allowConsumed) {
         return {
           valid: false,
           error:
@@ -203,20 +250,32 @@ export class ProvisioningService {
       }
 
       // Step 4: Check if token exists in store (secondary validation)
-      // When store is unavailable (Redis down, etc.), fall back to JWT-only so valid tokens still work
+      // When store is unavailable (Redis down, etc.), we do NOT accept JWT-only for sign-csr,
+      // because one-time-use guarantees depend on store-backed consumed markers and mapping.
       let deviceId: string | null = null;
       try {
         deviceId = await this.tokenStore.getDeviceByToken(token);
       } catch (storeError) {
-        deviceId = decoded.device_id;
-        logger.warn('Token store lookup failed, proceeding with JWT-only validation', {
-          error: storeError instanceof Error ? storeError.message : 'Unknown error',
-          deviceId: decoded.device_id
-        });
+        const msg = storeError instanceof Error ? storeError.message : 'Unknown error';
+        logger.error('Token store lookup failed', { error: msg, deviceId: decoded.device_id });
+        return {
+          valid: false,
+          error:
+            'Token store unavailable. Please retry. If this persists, ensure Redis is configured for provisioning token persistence.'
+        };
       }
 
       // If token not in store but JWT is valid (and store did not throw): already used or store cleared
       if (!deviceId) {
+        // For download flows we may deliberately allow missing-in-store tokens (e.g., consumed tokens are deleted).
+        if (options?.allowMissingInStore || consumed) {
+          const userId = decoded.user_id;
+          if (!userId) {
+            return { valid: false, error: 'User ID not found in token payload' };
+          }
+          return { valid: true, deviceId: decoded.device_id, userId };
+        }
+
         const storeStats = await this.tokenStore.getStats();
         logger.warn('Token not found in store, but JWT is valid (one-time use or store cleared)', {
           deviceId: decoded.device_id,
@@ -271,22 +330,30 @@ export class ProvisioningService {
   }
 
   /**
-   * Validate a provisioning token
-   * Returns both deviceId and userId from token payload
+   * Read-only validation (no side effects).
+   * Named explicitly to avoid implying token revocation/consumption.
    */
-  async validateToken(token: string): Promise<TokenValidationResult> {
-    const validation = await this.validateTokenWithoutRevoke(token);
+  async peekToken(token: string): Promise<TokenValidationResult> {
+    const validation = await this.validateTokenWithoutRevoke(token, { allowConsumed: false });
 
     if (validation.valid) {
-      logger.info('Provisioning token validated', { 
+      logger.info('Provisioning token peeked (read-only)', {
         deviceId: validation.deviceId,
         userId: validation.userId
       });
     } else {
-      logger.warn('Provisioning token validation failed', { error: validation.error });
+      logger.warn('Provisioning token peek failed', { error: validation.error });
     }
 
     return validation;
+  }
+
+  /**
+   * Token validation for certificate download.
+   * Allows tokens that were already consumed by sign-csr, because download is a non-mutating follow-up.
+   */
+  async peekTokenForDownload(token: string): Promise<TokenValidationResult> {
+    return this.validateTokenWithoutRevoke(token, { allowConsumed: true, allowMissingInStore: true });
   }
 
   /**

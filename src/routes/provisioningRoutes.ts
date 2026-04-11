@@ -34,6 +34,7 @@ function getTokenErrorCode(errorMessage: string): string {
   if (errorMessage.includes('Invalid token type')) return 'TOKEN_INVALID_TYPE';
   if (errorMessage.includes('Device ID mismatch')) return 'TOKEN_DEVICE_MISMATCH';
   if (errorMessage.includes('User ID not found')) return 'TOKEN_USER_MISSING';
+  if (errorMessage.includes('Token verification failed') || errorMessage.includes('Token validation failed')) return 'TOKEN_INVALID';
   return 'TOKEN_INVALID';
 }
 
@@ -295,7 +296,16 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
 
         // Critical fix: do NOT return an existing token if it was already consumed (one-time use).
         // This prevents clients from looping on TOKEN_ALREADY_USED at sign-csr.
-        const existingValidation = await provisioningService.validateToken(existingToken);
+        let existingValidation: { valid: boolean; error?: string };
+        try {
+          existingValidation = await provisioningService.peekToken(existingToken);
+        } catch (e) {
+          logger.warn('Onboarding: token store error while validating existing token; issuing a new token', {
+            device_id: deviceIdFromBody,
+            error: e instanceof Error ? e.message : e
+          });
+          existingValidation = { valid: false, error: 'Token store unavailable' };
+        }
         if (existingValidation.valid) {
           logger.info('Onboarding: returning existing provisioning token', { device_id: deviceIdFromBody });
           res.status(200).json({
@@ -318,6 +328,11 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
         // Best-effort cleanup then mint a fresh token.
         await provisioningService.revokeToken(existingToken);
         if (!trimmedDeviceId || !userId) {
+          logger.error('Onboarding: failed to recover from stale token; missing context for re-issue', {
+            hasTrimmedDeviceId: !!trimmedDeviceId,
+            hasUserId: !!userId,
+            deviceIdFromBody
+          });
           res.status(500).json({
             success: false,
             error: 'Failed to recover from stale provisioning token. Please retry onboarding.',
@@ -422,7 +437,7 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
       });
 
       // Validate provisioning token
-      const tokenValidation = await provisioningService.validateToken(provisioningToken);
+      const tokenValidation = await provisioningService.peekToken(provisioningToken);
       
       logger.debug('Token validation result', {
         valid: tokenValidation.valid,
@@ -453,10 +468,11 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
         return;
       }
 
-      deviceId = tokenValidation.deviceId;
-      const userId = tokenValidation.userId;  // Extract user_id from token
+      const validatedDeviceId = tokenValidation.deviceId;
+      const validatedUserId = tokenValidation.userId; // Extract user_id from token
+      deviceId = validatedDeviceId;
       
-      logger.debug('Device ID and User ID extracted from token', { deviceId, userId });
+      logger.debug('Device ID and User ID extracted from token', { deviceId: validatedDeviceId, userId: validatedUserId });
 
       // Validate request body (only CSR needed now, user_id comes from token)
       // Accept both "csr" and "CSR" for compatibility; ensure we get a string
@@ -467,8 +483,8 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
         hasCSR: !!csr,
         csrLength: csr ? csr.length : 0,
         bodyKeys: req.body ? Object.keys(req.body) : [],
-        deviceId,
-        userId
+        deviceId: validatedDeviceId,
+        userId: validatedUserId
       });
 
       // Verify user exists in database (using userId from token)
@@ -482,7 +498,7 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
         return;
       }
 
-      const userIdObjectId = new mongoose.Types.ObjectId(userId);
+      const userIdObjectId = new mongoose.Types.ObjectId(validatedUserId);
       const userVerification = await userService.verifyUserExists(userIdObjectId);
 
       if (!userVerification.found || !userVerification.user) {
@@ -493,7 +509,7 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
         if (isConnectionError) {
           logger.error('MongoDB connection error during user verification', {
             deviceId,
-            userId: userId,
+            userId: validatedUserId,
             error: userVerification.error
           });
           res.status(503).json({
@@ -505,8 +521,8 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
         }
 
         logger.warn('User not found in database', {
-          deviceId,
-          userId: userId
+          deviceId: validatedDeviceId,
+          userId: validatedUserId
         });
         res.status(404).json({
           success: false,
@@ -518,7 +534,7 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
 
       // Verify device is associated with user (using userId from token)
       const deviceVerification = await userService.verifyDeviceUserAssociation(
-        deviceId,
+        validatedDeviceId,
         userIdObjectId
       );
 
@@ -529,8 +545,8 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
         
         if (isConnectionError) {
           logger.error('MongoDB connection error during device verification', {
-            deviceId,
-            userId: userId,
+            deviceId: validatedDeviceId,
+            userId: validatedUserId,
             error: deviceVerification.error
           });
           res.status(503).json({
@@ -542,8 +558,8 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
         }
 
         logger.warn('Device not found in database', {
-          deviceId,
-          userId: userId
+          deviceId: validatedDeviceId,
+          userId: validatedUserId
         });
         res.status(404).json({
           success: false,
@@ -555,8 +571,8 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
 
       if (!deviceVerification.isAssociated) {
         logger.warn('Device is not associated with the authenticated user', {
-          deviceId,
-          userId: userId,
+          deviceId: validatedDeviceId,
+          userId: validatedUserId,
           deviceUserId: deviceVerification.device?.userId?.toString()
         });
         res.status(403).json({
@@ -568,8 +584,8 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
       }
 
       logger.info('All validations passed', {
-        deviceId,
-        userId: userId,
+        deviceId: validatedDeviceId,
+        userId: validatedUserId,
         userEmail: userVerification.user.email
       });
 
@@ -588,7 +604,7 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
           : ` Request body keys received: ${bodyKeys.join(', ')}.`;
         res.status(400).json({
           success: false,
-          error: `csr is required in the request body (JSON: { "csr": "<base64 or PEM string>" }) and must be non-empty.${hint}`,
+          error: `csr (or CSR) is required in the request body (JSON: { "csr": "<base64 or PEM string>" }) and must be non-empty.${hint}`,
           timestamp: new Date().toISOString()
         });
         return;
@@ -629,20 +645,20 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
       let certificateDoc;
       
       logger.debug('Starting CSR signing', {
-        deviceId,
-        userId: userId,
+        deviceId: validatedDeviceId,
+        userId: validatedUserId,
         csrPemLength: csrPem.length
       });
 
       try {
-        certificateDoc = await caService.signCSR(csrPem, deviceId, userId);
+        certificateDoc = await caService.signCSR(csrPem, validatedDeviceId, validatedUserId);
 
         // Get Root CA certificate
         const rootCACert = caService.getRootCACertificate();
 
         logger.info('CSR signed and certificate created', {
-          deviceId,
-          userId: userId,
+          deviceId: validatedDeviceId,
+          userId: validatedUserId,
           certificateId: certificateDoc._id
         });
 
@@ -656,7 +672,7 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
           : certificateDoc.expires_at.toISOString();
 
         logger.info('sign-csr 200: certificate issued, provisioning token marked consumed (one-time use)', {
-          deviceId,
+          deviceId: validatedDeviceId,
           certificateId: certId
         });
 
@@ -671,7 +687,7 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
         res.status(200);
         res.json({
           success: true,
-          device_id: deviceId,
+          device_id: validatedDeviceId,
           certificate: certificateDoc.certificate,
           ca_certificate: rootCACert,
           expires_at: expiresAt,
@@ -849,29 +865,18 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
         return;
       }
 
-      // Authenticate: require provisioning token via Authorization header or ?token= query
+      // Authenticate: prefer auth_token (AUTH_SECRET) via Authorization header.
+      // For backward-compatibility, fall back to provisioning token (including consumed) via Authorization or ?token=.
       const authHeader = req.headers.authorization;
-      const provisioningToken = (authHeader && authHeader.startsWith('Bearer '))
-        ? authHeader.substring(7)
-        : (req.query.token as string | undefined);
+      const bearer = (authHeader && authHeader.startsWith('Bearer ')) ? authHeader.substring(7) : undefined;
+      const queryToken = req.query.token as string | undefined;
+      const tokenCandidate = bearer ?? queryToken;
 
-      if (!provisioningToken) {
+      if (!tokenCandidate) {
         res.status(401).json({
           success: false,
-          error: 'Authorization required. Send provisioning token as Authorization: Bearer <token> or ?token=<token>.',
-          code: 'TOKEN_MISSING',
-          timestamp: new Date().toISOString()
-        });
-        return;
-      }
-
-      const tokenValidation = await provisioningService.validateToken(provisioningToken);
-      if (!tokenValidation.valid || !tokenValidation.deviceId) {
-        const errMsg = tokenValidation.error || 'Invalid or expired provisioning token';
-        res.status(401).json({
-          success: false,
-          error: errMsg,
-          code: 'TOKEN_INVALID',
+          error: 'Authorization required. Send auth token as Authorization: Bearer <auth_token>. (Legacy: provisioning token also accepted via Authorization or ?token=.)',
+          code: 'AUTH_TOKEN_MISSING',
           timestamp: new Date().toISOString()
         });
         return;
@@ -887,6 +892,57 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
           timestamp: new Date().toISOString()
         });
         return;
+      }
+
+      // Try auth token first (recommended path)
+      const authVerification = await authService.verifyAuthToken(tokenCandidate);
+      if (authVerification.valid && authVerification.userId) {
+        if (String(certificateDoc.user_id) !== String(authVerification.userId)) {
+          res.status(403).json({
+            success: false,
+            error: 'Certificate does not belong to the authenticated user',
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
+      } else {
+        // Legacy path: treat as provisioning token for download (allows consumed tokens)
+        const tokenValidation = await provisioningService.peekTokenForDownload(tokenCandidate);
+        if (!tokenValidation.valid) {
+          const errMsg = authVerification.error || tokenValidation.error || 'Invalid or expired token';
+          const errorCode = authVerification.error ? 'AUTH_TOKEN_INVALID' : getTokenErrorCode(errMsg);
+          res.set('X-Error-Code', errorCode);
+          res.status(401).json({
+            success: false,
+            error: errMsg,
+            code: errorCode,
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
+
+        // IMPORTANT: bind the token to the certificate being downloaded.
+        // Prevents a provisioning token (even consumed) from device-A being used to download device-B's cert.
+        if (tokenValidation.deviceId && certificateDoc.device_id !== tokenValidation.deviceId) {
+          res.status(403).json({
+            success: false,
+            error: 'Certificate does not belong to this device',
+            code: 'CERT_DEVICE_MISMATCH',
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
+
+        // Additional binding: token user must match cert user (defense in depth).
+        if (tokenValidation.userId && String(certificateDoc.user_id) !== String(tokenValidation.userId)) {
+          res.status(403).json({
+            success: false,
+            error: 'Certificate does not belong to the token user',
+            code: 'CERT_USER_MISMATCH',
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
       }
 
       const rootCACert = caService.getRootCACertificate();
@@ -913,6 +969,175 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
       res.status(500).json({
         success: false,
         error: 'Internal server error',
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  /**
+   * POST /api/v1/certificates/recover
+   * Recover an already-issued certificate for a device.
+   *
+   * Intended for real-world cases like:
+   * - device completed sign-csr but failed to persist the response
+   * - server restarted mid-flow and in-memory provisioning tokens were lost
+   *
+   * Auth:
+   *   Authorization: Bearer <auth_token> (AUTH_SECRET)
+   *
+   * Body:
+   *   { "device_id": "device-123" }
+   */
+  router.post('/certificates/recover', async (req: Request, res: Response): Promise<void> => {
+    try {
+      if (!authService || !userService || !caService) {
+        res.status(503).json({
+          success: false,
+          error: 'Service unavailable',
+          code: 'SERVICE_UNAVAILABLE',
+          timestamp: new Date().toISOString()
+        });
+        return;
+      }
+
+      const authHeader = req.headers.authorization;
+      const authToken = (authHeader && authHeader.startsWith('Bearer ')) ? authHeader.substring(7) : undefined;
+      if (!authToken || typeof authToken !== 'string' || authToken.trim().length === 0) {
+        res.status(401).json({
+          success: false,
+          error: 'Authentication required. Send a valid auth token in the Authorization header as: Bearer <auth_token>.',
+          code: 'AUTH_TOKEN_MISSING',
+          timestamp: new Date().toISOString()
+        });
+        return;
+      }
+
+      const authVerification = await authService.verifyAuthToken(authToken);
+      if (!authVerification.valid || !authVerification.userId) {
+        res.status(401).json({
+          success: false,
+          error: authVerification.error || 'The auth token is invalid or expired. Sign in again to get a new token.',
+          code: 'AUTH_TOKEN_INVALID',
+          timestamp: new Date().toISOString()
+        });
+        return;
+      }
+
+      const rawDeviceId = req.body?.device_id;
+      if (typeof rawDeviceId !== 'string' || rawDeviceId.trim().length === 0) {
+        res.status(400).json({
+          success: false,
+          error: 'Request body must include a non-empty device_id (string). Example: { "device_id": "my-device-001" }.',
+          code: 'DEVICE_ID_REQUIRED',
+          timestamp: new Date().toISOString()
+        });
+        return;
+      }
+
+      const deviceId = rawDeviceId.trim();
+      const userId = authVerification.userId;
+      const userIdObjectId = new mongoose.Types.ObjectId(userId);
+
+      const userVerification = await userService.verifyUserExists(userIdObjectId);
+      if (!userVerification.found || !userVerification.user) {
+        const isConnectionError =
+          userVerification.error?.includes('MongoDB connection') || userVerification.error?.includes('connection');
+        if (isConnectionError) {
+          res.status(503).json({
+            success: false,
+            error: 'Database is temporarily unavailable. Please try again later.',
+            code: 'DATABASE_UNAVAILABLE',
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
+        res.status(404).json({
+          success: false,
+          error: 'User account not found. The authenticated user does not exist in the system.',
+          code: 'USER_NOT_FOUND',
+          timestamp: new Date().toISOString()
+        });
+        return;
+      }
+
+      const deviceVerification = await userService.verifyDeviceUserAssociation(deviceId, userIdObjectId);
+      if (!deviceVerification.found) {
+        const isConnectionError =
+          deviceVerification.error?.includes('MongoDB connection') || deviceVerification.error?.includes('connection');
+        if (isConnectionError) {
+          res.status(503).json({
+            success: false,
+            error: deviceVerification.error || 'Database service unavailable',
+            code: 'DATABASE_UNAVAILABLE',
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
+        res.status(404).json({
+          success: false,
+          error: deviceVerification.error || 'Device not found in database',
+          code: 'DEVICE_NOT_FOUND',
+          timestamp: new Date().toISOString()
+        });
+        return;
+      }
+
+      if (!deviceVerification.isAssociated) {
+        res.status(403).json({
+          success: false,
+          error: deviceVerification.error || 'Device is not associated with the authenticated user',
+          code: 'FORBIDDEN',
+          timestamp: new Date().toISOString()
+        });
+        return;
+      }
+
+      const certificateDoc = await caService.findCertificateByDeviceId(deviceId);
+      if (!certificateDoc) {
+        res.status(404).json({
+          success: false,
+          error: 'No certificate found for this device',
+          code: 'CERTIFICATE_NOT_FOUND',
+          timestamp: new Date().toISOString()
+        });
+        return;
+      }
+
+      // Ownership check (defense in depth; device association should already enforce this).
+      if (String(certificateDoc.user_id) !== String(userId)) {
+        res.status(403).json({
+          success: false,
+          error: 'Certificate does not belong to the authenticated user',
+          code: 'FORBIDDEN',
+          timestamp: new Date().toISOString()
+        });
+        return;
+      }
+
+      const rootCACert = caService.getRootCACertificate();
+      const expiresAt = typeof certificateDoc.expires_at === 'string'
+        ? certificateDoc.expires_at
+        : certificateDoc.expires_at.toISOString();
+      const certId = certificateDoc._id.toString();
+
+      res.status(200).json({
+        success: true,
+        device_id: certificateDoc.device_id,
+        certificate: certificateDoc.certificate,
+        ca_certificate: rootCACert,
+        expires_at: expiresAt,
+        serial_number: certificateDoc.fingerprint,
+        certificateId: certId,
+        status: certificateDoc.status,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error('Failed to recover certificate', { error: errorMessage });
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error',
+        code: 'INTERNAL_ERROR',
         timestamp: new Date().toISOString()
       });
     }
