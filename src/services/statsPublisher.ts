@@ -5,11 +5,39 @@ import { CAService } from './caService';
 import { Ad, AdStatus, AdType } from '../models/Ad';
 import mongoose from 'mongoose';
 
+/** Static inner `payload` for topic `.../test-gmb` — alternates each successful publish per device. */
+const TEST_GMB_STATIC_PAYLOAD_A = {
+  google_review: 'Best latte in Portland. This place never misses.',
+  qrText: 'www.youtube.com',
+  smallStars: 5,
+  bigStars: 5,
+  review: 454,
+  verifiedReview: 350,
+  rating: 4.9,
+  remainingGoal: 3,
+  nextGoal: 297,
+  progress: 100
+};
+
+const TEST_GMB_STATIC_PAYLOAD_B = {
+  google_review: 'Outstanding service and atmosphere. Five stars every time.',
+  qrText: 'https://maps.google.com/review',
+  smallStars: 5,
+  bigStars: 4,
+  review: 512,
+  verifiedReview: 420,
+  rating: 4.8,
+  remainingGoal: 8,
+  nextGoal: 500,
+  progress: 88
+};
+
 /** Per-device state for Instagram, GMB, POS (for progress/celebratory rotation). */
 interface DeviceScreenState {
   instagram: { followers: number; target: number };
   gmb: { reviews: number; rating: number };
-  gmbTest: { alternate: boolean };
+  /** alternate: legacy thank-you toggle for real /gmb; testGmbCycle: A/B for /test-gmb only */
+  gmbTest: { alternate: boolean; testGmbCycle: number };
   pos: { customersToday: number };
 }
 
@@ -150,11 +178,15 @@ export class StatsPublisher {
       this.deviceState.set(deviceId, {
         instagram: { followers: 7500 + Math.floor(Math.random() * 500), target: 10000 },
         gmb: { reviews: 370 + Math.floor(Math.random() * 30), rating: 4.8 },
-        gmbTest: { alternate: false },
+        gmbTest: { alternate: false, testGmbCycle: 0 },
         pos: { customersToday: 130 + Math.floor(Math.random() * 40) }
       });
     }
-    return this.deviceState.get(deviceId)!;
+    const s = this.deviceState.get(deviceId)!;
+    if (typeof s.gmbTest.testGmbCycle !== 'number') {
+      s.gmbTest.testGmbCycle = 0;
+    }
+    return s;
   }
 
   /** Instagram: progress (progress < 100) or celebratory (progress 100). */
@@ -221,15 +253,18 @@ export class StatsPublisher {
       screen: 'gmb',
       timestamp: new Date().toISOString(),
       payload: {
-        reviews_count: reviews,
-        celebration_type: 'milestone',
-        duration: isMilestone ? 20 : 15,
-        overall_rating: state.gmb.rating,
-        color_palette: 'google',
-        message: isMilestone ? `you get ${reviews} impressions` : `${reviews} reviews! Help us reach 500`,
-        animation: 'rating_stars',
-        ...(isMilestone && { sound: 'celebration.wav' }),
-        url: 'https://g.page/r/EXAMPLE/review'
+        
+          "google_review": "Best latte in Portland. This place never misses.",
+          "qrText": "www.youtube.com",
+          "smallStars": 5,
+          "bigStars": 5,
+          "review": 454,
+          "verifiedReview": 350,
+          "rating": 4.9,
+          "remainingGoal": 3,
+          "nextGoal": 297,
+          "progress": 100
+        
       }
     };
 
@@ -422,11 +457,9 @@ export class StatsPublisher {
 
   private async publishTestGmb(deviceId: string, root: string): Promise<void> {
     const state = this.ensureDeviceState(deviceId);
-    state.gmb.reviews += 5 + Math.floor(Math.random() * 15);
-    const reviews = state.gmb.reviews;
-    const isMilestone = reviews % 100 === 0 || reviews === 400;
-    const showThankYou = state.gmbTest.alternate;
-    state.gmbTest.alternate = !state.gmbTest.alternate;
+    const cycle = state.gmbTest.testGmbCycle % 2;
+    const innerPayload = cycle === 0 ? TEST_GMB_STATIC_PAYLOAD_A : TEST_GMB_STATIC_PAYLOAD_B;
+    const variantLabel = cycle === 0 ? 'static_a' : 'static_b';
 
     const payload = {
       version: '1.1',
@@ -434,22 +467,10 @@ export class StatsPublisher {
       Muted: 'true',
       Sound: 'true',
       screen: 'gmb',
+      /** Lets firmware/logs confirm A/B without diffing nested fields. */
+      testGmbVariant: variantLabel,
       timestamp: new Date().toISOString(),
-      payload: {
-        text: {
-          value: showThankYou ? 'Thank You' : 'Provide Your Review',
-          color_rgb565: '0xFFFF',
-          align_h: 'center',
-          spacing_bit7: 1
-        },
-        qr: {
-          value: 'www.youtube.com',
-          unit_pixel: 2
-        },
-        icon_progress: {
-          index: 4
-        }
-      }
+      payload: innerPayload
     };
 
     await this.mqttClient.publish({
@@ -458,8 +479,11 @@ export class StatsPublisher {
       qos: 1,
       retain: false
     });
-    logger.debug('Published test GMB screen', { deviceId, reviews, milestone: isMilestone, variant: showThankYou ? 'thank_you' : 'review' });
- }
+
+    state.gmbTest.testGmbCycle += 1;
+
+    logger.info('Published test GMB screen', { deviceId, testGmbVariant: variantLabel, cycle: state.gmbTest.testGmbCycle });
+  }
 
   private async cleanupInactiveDeviceState(): Promise<void> {
     const now = Date.now();
