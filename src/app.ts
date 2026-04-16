@@ -22,6 +22,7 @@ import { Device } from './models/Device';
 import { User } from './models/User';
 import { createProvisioningRoutes } from './routes/provisioningRoutes';
 import { createConfigRoutes } from './routes/configRoutes';
+import { createLifecycleRoutes } from './routes/lifecycleRoutes';
 import { getTokenStore } from './storage/tokenStore';
 import * as dns from 'dns';
 import * as tls from 'tls';
@@ -671,7 +672,8 @@ export class StatsMqttLite {
     if (!this.caService) {
       return true; // No CA service: cannot enforce; allow (e.g. provisioning disabled)
     }
-    const cert = await this.caService.findActiveCertificateByDeviceId(deviceId);
+    // Renewal overlap: allow either primary or staging to be treated as provisioned.
+    const cert = await this.caService.findActiveCertificateByDeviceId(deviceId, { slots: ['primary', 'staging'] });
     if (!cert) return false;
 
     // Validate certificate CN matches expected prefix + deviceId
@@ -1006,6 +1008,14 @@ export class StatsMqttLite {
       });
       this.httpServer.getApp().use('/api/v1', provisioningRoutes);
       logger.info('✅ Provisioning routes registered at /api/v1');
+
+      const lifecycleRoutes = createLifecycleRoutes({
+        caService: this.caService,
+        authService: this.authService,
+        userService: this.userService
+      });
+      this.httpServer.getApp().use('/api/v1', lifecycleRoutes);
+      logger.info('✅ Lifecycle routes registered at /api/v1');
     }
     
     // Device configuration endpoint for devices to fetch broker settings

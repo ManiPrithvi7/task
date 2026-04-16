@@ -10,6 +10,7 @@
     "test": "npm run test:connections",
     "test:connections": "ts-node --transpile-only test-connections.ts",
     "pki:rotate": "ts-node --transpile-only scripts/rotate-pki.ts",
+    "db:migrate:cert-slots": "ts-node --transpile-only scripts/migrate-device-certificates-to-slots.ts",
     "clean": "rm -rf dist data/*.json"
   },
   "keywords": [
