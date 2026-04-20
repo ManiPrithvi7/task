@@ -22,6 +22,9 @@ import { Device } from './models/Device';
 import { User } from './models/User';
 import { createProvisioningRoutes } from './routes/provisioningRoutes';
 import { createConfigRoutes } from './routes/configRoutes';
+import { createLifecycleRoutes } from './routes/lifecycleRoutes';
+import { createRecoveryRoutes } from './routes/recoveryRoutes';
+import { createRecoveryCodeService } from './services/recoveryCodeService';
 import { getTokenStore } from './storage/tokenStore';
 import * as dns from 'dns';
 import * as tls from 'tls';
@@ -671,7 +674,8 @@ export class StatsMqttLite {
     if (!this.caService) {
       return true; // No CA service: cannot enforce; allow (e.g. provisioning disabled)
     }
-    const cert = await this.caService.findActiveCertificateByDeviceId(deviceId);
+    // Renewal overlap: allow either primary or staging to be treated as provisioned.
+    const cert = await this.caService.findActiveCertificateByDeviceId(deviceId, { slots: ['primary', 'staging'] });
     if (!cert) return false;
 
     // Validate certificate CN matches expected prefix + deviceId
@@ -1006,6 +1010,23 @@ export class StatsMqttLite {
       });
       this.httpServer.getApp().use('/api/v1', provisioningRoutes);
       logger.info('✅ Provisioning routes registered at /api/v1');
+
+      const recoveryCodeService = createRecoveryCodeService(this.config.redis.keyPrefix || 'mqtt-lite:');
+
+      const lifecycleRoutes = createLifecycleRoutes({
+        caService: this.caService,
+        recoveryCodeService
+      });
+      this.httpServer.getApp().use('/api/v1', lifecycleRoutes);
+      logger.info('✅ Lifecycle routes registered at /api/v1');
+
+      const recoveryRoutes = createRecoveryRoutes({ recoveryCodeService });
+      this.httpServer.getApp().use('/api/v1', recoveryRoutes);
+      logger.info('✅ Recovery routes registered at /api/v1/recovery');
+
+      // Compatibility alias (older clients): /api/recovery/* instead of /api/v1/recovery/*
+      this.httpServer.getApp().use('/api', recoveryRoutes);
+      logger.info('✅ Recovery routes registered at /api/recovery (alias)');
     }
     
     // Device configuration endpoint for devices to fetch broker settings

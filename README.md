@@ -87,6 +87,18 @@ curl http://localhost:3002/health
 
 ---
 
+## 🔐 Security & limitations (V5.0)
+
+### Certificate revocation (NanoMQ)
+
+This repo can **mark certificates revoked in MongoDB** and the Node service will **reject actions / drop traffic** from revoked or expired certificates.
+
+**Known limitation (accepted for V5.0):** the bundled NanoMQ broker config (`broker/nanomq.conf`) validates **CA-chain mTLS only** and does **not** enforce CRL/OCSP/DB-backed revocation. A revoked device cert may still be able to complete an MQTT CONNECT at the broker layer.
+
+**V6 hardening track:** implement broker-side auth (plugin/gateway) or migrate to a broker with first-class authn/authz plugins (e.g. EMQX).
+
+---
+
 ## 📡 API Endpoints
 
 ### Health Check
@@ -415,6 +427,81 @@ lsof -ti:3002 | xargs kill
 - Verify broker connection: Check `/health` endpoint
 - Check topic prefix matches
 - Verify QoS levels
+
+---
+
+## 🧭 Device Lifecycle V5.0 (firmware contract)
+
+This section is the **firmware-facing contract** for the V5.0 flows (Boot Audit, Renewal, WiFi Reconfig, Reissue).
+
+### mTLS identity for HTTP (proxy mode)
+
+`/api/v1/certificates/renewAuth` and `/api/v1/certificates/confirm` authenticate the device via a **client certificate forwarded by a TLS-terminating proxy**.
+
+- **Default header**: `X-Forwarded-Client-Cert` (full PEM; may be URL-encoded and/or contain escaped `\\n`)
+- **Config**: set `MTLS_CLIENT_CERT_HEADER` to override
+- **Fallback (not recommended)**: forward CN as a header and set `MTLS_CLIENT_CN_HEADER` + `MTLS_CN_IS_DEVICE_ID=true`
+
+### HTTP endpoints used by firmware
+
+#### Broker config (Flow 1)
+
+- `GET /api/v1/mqtt-config`
+  - Response: `{ broker, port, ca_cert }` where `ca_cert` is base64 PEM (or null)
+
+#### Initial enrollment (existing)
+
+- `POST /api/v1/onboarding` (user bearer token → provisioning token)
+- `POST /api/v1/sign-csr` (provisioning token + CSR → primary device certificate)
+
+#### Flow 2: Seamless Renewal (overlap, MQTT-validated)
+
+- `POST /api/v1/certificates/renewAuth`
+  - Auth: mTLS **primary** cert (via proxy header)
+  - Body: `{ "csr": "<PEM CSR or base64(PEM CSR)>" }`
+  - Response: `{ certificate, ca_certificate, expires_at, fingerprint, slot:"staging" }`
+
+- `POST /api/v1/certificates/confirm`
+  - Auth: mTLS **staging** cert (via proxy header)
+  - Effect: **promote staging → primary** and **revoke old primary** (backend-level revocation)
+
+Firmware rule: **Do not delete the old cert until MQTT connect succeeds with staging** and `confirm` returns 200.
+
+#### Flow 4: Identity Re-Binding (reissue)
+
+- `POST /api/v1/certificates/reissue`
+  - Auth: `Authorization: Bearer <user_auth_token>`
+  - Body: `{ "device_id": "<device_id>", "csr": "<PEM CSR or base64(PEM CSR)>" }`
+  - Effect: revoke all active certs for device, issue a fresh **primary** cert
+
+### Firmware flow mapping (V5.0)
+
+- **Flow 1 (Boot Audit)**:
+  - WiFi connect (NVS creds, retry/backoff)
+  - NTP sync (fallback RTC + 48h grace)
+  - integrity check: verify signature of `"PROOF_INTEGRITY_CHECK"`
+  - cert parse: if expired/corrupt → Flow 4; if <30d → Flow 2
+  - MQTT connect → OPERATIONAL
+
+- **Flow 2 (Renewal)**:
+  - generate staging keypair + CSR
+  - `POST /certificates/renewAuth` (using primary cert for auth)
+  - MQTT connect using staging cert/key (timeout 15s)
+  - `POST /certificates/confirm` (using staging cert for auth)
+  - promote staging assets → primary; re-sign integrity string
+
+- **Flow 3 (WiFi Reconfig)**:
+  - AP portal: `PROOF-{device_id}` SSID
+  - dual-mode station test while AP stays alive
+  - MQTT connect is the “internet OK” validator
+  - commit WiFi + reboot → Flow 1
+
+- **Flow 4 (Reissue)**:
+  - AP portal: user submits `user_auth_token` (+ WiFi if empty)
+  - generate staging keypair + CSR
+  - `POST /certificates/reissue`
+  - MQTT connect using new cert/key (timeout 15s)
+  - commit staging → primary; re-sign integrity; wipe old flags; reboot → Flow 1
 
 ---
 
