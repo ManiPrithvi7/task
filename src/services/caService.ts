@@ -429,25 +429,52 @@ export class CAService {
       }
 
       // Slot-scoped upsert: ensures at most one record per device_id+slot.
-      // For staging renewal, this overwrites the staging slot without touching the primary.
-      const certDoc = await DeviceCertificate.findOneAndUpdate(
-        { device_id: deviceId, slot },
-        {
-          $set: {
-            user_id: new mongoose.Types.ObjectId(userId),
-            slot,
-            certificate: certificatePem,
-            private_key: '', // Empty string (device keeps its private key)
-            ca_certificate: this.rootCA.certificate,
-            cn,
-            fingerprint,
-            status: DeviceCertificateStatus.active,
-            expires_at: notAfter,
-            created_at: notBefore
-          }
-        },
-        { upsert: true, new: true, setDefaultsOnInsert: true }
-      );
+      // NOTE: Some deployments may still have a legacy UNIQUE index on { device_id } (no slot),
+      // which will throw E11000 on insert when a different slot exists. We fall back to a
+      // device_id-only update in that case to keep issuance working without requiring a DB migration.
+      const updateDoc = {
+        $set: {
+          user_id: new mongoose.Types.ObjectId(userId),
+          slot,
+          certificate: certificatePem,
+          private_key: '', // Empty string (device keeps its private key)
+          ca_certificate: this.rootCA.certificate,
+          cn,
+          fingerprint,
+          status: DeviceCertificateStatus.active,
+          expires_at: notAfter,
+          created_at: notBefore
+        }
+      };
+
+      let certDoc: any;
+      try {
+        certDoc = await DeviceCertificate.findOneAndUpdate(
+          { device_id: deviceId, slot },
+          updateDoc,
+          { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+      } catch (e: any) {
+        const msg = e?.message ? String(e.message) : String(e);
+        const isDup = msg.includes('E11000') && (msg.includes('device_id') || msg.includes('device_certificates_device_id_key'));
+        if (!isDup) throw e;
+
+        logger.warn('Legacy unique index on device_id detected; falling back to device_id-only certificate upsert', {
+          deviceId,
+          slot,
+          error: msg
+        });
+
+        certDoc = await DeviceCertificate.findOneAndUpdate(
+          { device_id: deviceId },
+          updateDoc,
+          { upsert: false, new: true }
+        );
+        if (!certDoc) {
+          // If we couldn't update (should be rare), surface the original error.
+          throw e;
+        }
+      }
 
       await audit('CERT_ISSUED', { certificateId: certDoc._id, serialNumber: cert.serialNumber, cn, expiresAt: notAfter.toISOString() });
 

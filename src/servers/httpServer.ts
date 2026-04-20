@@ -128,7 +128,10 @@ export class HttpServer {
             signCSR: 'POST /api/v1/sign-csr',
             downloadCert: 'GET /api/v1/certificates/:id/download',
             certStatus: 'GET /api/v1/certificates/:deviceId/status',
-            revokeCert: 'DELETE /api/v1/certificates/:deviceId'
+            revokeCert: 'DELETE /api/v1/certificates/:deviceId',
+            recoveryGenerateCode: 'POST /api/v1/recovery/generate-code',
+            reissueWithRecovery:
+              'POST /api/v1/certificates/reissue (body: device_id, csr, recovery_code — requires prior generate-code)'
           },
           note: 'User management is handled by Next.js web app'
         }
