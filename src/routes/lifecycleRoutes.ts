@@ -25,8 +25,6 @@ function httpStatusForRecoveryError(code: string): number {
   switch (code) {
     case 'CODE_EXPIRED':
       return 410;
-    case 'DEVICE_ID_MISMATCH':
-      return 400;
     case 'RATE_LIMITED':
       return 429;
     case 'REDIS_UNAVAILABLE':

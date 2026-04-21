@@ -20,7 +20,6 @@ export type RecoveryCodeError =
   | 'CODE_USED'
   | 'RATE_LIMITED'
   | 'CODE_INVALID'
-  | 'DEVICE_ID_MISMATCH'
   | 'GENERATE_RATE_LIMITED'
   | 'REDIS_UNAVAILABLE';
 
@@ -35,11 +34,6 @@ export class RecoveryCodeService {
 
   private recoveryKey(deviceId: string): string {
     return `${this.keyPrefix}${RECOVERY_KEY}${deviceId}`;
-  }
-
-  private stripPrefix(deviceId: string): string {
-    const prefix = String(process.env.CERT_CN_PREFIX || 'PROOF').trim().replace(/[-_]+$/g, '');
-    return deviceId.replace(new RegExp(`^${prefix}[-_]*`), '');
   }
 
   private getRedis(): RedisClientType | null {
@@ -122,28 +116,6 @@ export class RecoveryCodeService {
     const key = this.recoveryKey(deviceId);
     const raw = await redis.get(key);
     if (raw == null) {
-      // If caller used a different device_id string than generate-code, try a single alternate form
-      // and return an explicit mismatch error (source of truth remains Redis).
-      const altDeviceId = deviceId.includes('-') ? this.stripPrefix(deviceId) : deviceId;
-      if (altDeviceId && altDeviceId !== deviceId) {
-        const altKey = this.recoveryKey(altDeviceId);
-        const altRaw = await redis.get(altKey);
-        if (altRaw != null) {
-          const ttl = await redis.ttl(altKey);
-          logger.warn('recovery device_id mismatch (code exists under different key)', {
-            deviceId,
-            redisKey: key,
-            altDeviceId,
-            altRedisKey: altKey,
-            altTtl: ttl
-          });
-          return {
-            ok: false,
-            error: 'DEVICE_ID_MISMATCH',
-            message: `Recovery code exists for a different device_id key. Use device_id \"${altDeviceId}\" (expires in ${ttl}s).`
-          };
-        }
-      }
       const ttl = await redis.ttl(key);
       logger.warn('recovery code not found in redis', { deviceId, redisKey: key, ttl });
       return { ok: false, error: 'CODE_EXPIRED', message: 'Recovery code expired or missing' };
