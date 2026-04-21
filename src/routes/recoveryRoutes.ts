@@ -3,6 +3,16 @@ import { Device } from '../models/Device';
 import { RecoveryCodeService } from '../services/recoveryCodeService';
 import { logger } from '../utils/logger';
 
+// function alternateDeviceId(raw: string): string | null {
+//   const v = raw.trim();
+//   if (!v) return null;
+//   const prefix = String(process.env.CERT_CN_PREFIX || 'PROOF').trim().replace(/[-_]+$/g, '');
+//   const stripped = v.replace(new RegExp(`^${prefix}[-_]*`), '');
+//   if (stripped !== v) return stripped;
+//   // Only add prefix if it doesn't already have it.
+//   return `${prefix}-${v}`;
+// }
+
 export interface RecoveryRoutesDeps {
   recoveryCodeService: RecoveryCodeService;
 }
@@ -40,10 +50,17 @@ export function createRecoveryRoutes(deps: RecoveryRoutesDeps): Router {
         });
         return;
       }
-      const deviceId = raw.trim();
-      logger.info('recovery generate-code request received', { requestedDeviceId: raw, deviceId });
+      const requestedDeviceId = raw.trim();
+      logger.info('recovery generate-code request received', { requestedDeviceId });
 
-      const device = await Device.findOne({ clientId: deviceId });
+      // Canonicalize to the exact device id stored in MongoDB (Device.clientId).
+      let device = await Device.findOne({ clientId: requestedDeviceId });
+      // if (!device) {
+      //   const alt = alternateDeviceId(requestedDeviceId);
+      //   if (alt) {
+      //     device = await Device.findOne({ clientId: alt });
+      //   }
+      // }
       if (!device) {
         res.status(404).json({
           success: false,
@@ -53,6 +70,9 @@ export function createRecoveryRoutes(deps: RecoveryRoutesDeps): Router {
         });
         return;
       }
+
+      const deviceId = device.clientId;
+      logger.info('recovery generate-code resolved device', { requestedDeviceId, deviceId });
 
       const active = await recoveryCodeService.getActiveCodeTtl(deviceId);
       if ('error' in active) {
