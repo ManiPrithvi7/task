@@ -17,6 +17,9 @@ export function createRecoveryRoutes(deps: RecoveryRoutesDeps): Router {
 
   router.post('/recovery/generate-code', async (req: Request, res: Response) => {
     try {
+      // Ensure consistent JSON responses (even if upstream middleware changes defaults).
+      res.type('application/json');
+
       if (!recoveryCodeService.isAvailable()) {
         res.status(503).json({
           success: false,
@@ -37,7 +40,6 @@ export function createRecoveryRoutes(deps: RecoveryRoutesDeps): Router {
         });
         return;
       }
-console.log({raw})
       const deviceId = raw.trim();
       logger.info('recovery generate-code request received', { requestedDeviceId: raw, deviceId });
 
