@@ -75,16 +75,3 @@ services:
         sync: false
 
     autoDeploy: true
-
-  - type: pserv
-    name: nanomq-broker
-    runtime: docker
-    region: oregon
-    plan: starter
-    dockerfilePath: ./broker/Dockerfile
-
-    envVars:
-      - key: NANOMQ_BROKER_NAME
-        value: nanomq-broker
-
-    autoDeploy: true

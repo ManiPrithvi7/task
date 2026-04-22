@@ -93,7 +93,7 @@ curl http://localhost:3002/health
 
 This repo can **mark certificates revoked in MongoDB** and the Node service will **reject actions / drop traffic** from revoked or expired certificates.
 
-**Known limitation (accepted for V5.0):** the bundled NanoMQ broker config (`broker/nanomq.conf`) validates **CA-chain mTLS only** and does **not** enforce CRL/OCSP/DB-backed revocation. A revoked device cert may still be able to complete an MQTT CONNECT at the broker layer.
+**Known limitation (accepted for V5.0):** NanoMQ mTLS validation is **CA-chain only** and does **not** enforce CRL/OCSP/DB-backed revocation by default. A revoked device cert may still be able to complete an MQTT CONNECT at the broker layer.
 
 **V6 hardening track:** implement broker-side auth (plugin/gateway) or migrate to a broker with first-class authn/authz plugins (e.g. EMQX).
 

@@ -30,8 +30,11 @@ async function main() {
   const deviceCert = await caService.signCSR(csrPem, 'proof-server', '000000000000000000000000');
   const clientCrtPem = deviceCert.certificate;
 
-  fs.writeFileSync('broker/certs/client.key', clientKeyPem);
-  fs.writeFileSync('broker/certs/client.crt', clientCrtPem);
+  // Local broker configuration was removed from this repo; write outputs under data/ for convenience.
+  const outDir = path.resolve(__dirname, 'data', 'mqtt-client');
+  fs.mkdirSync(outDir, { recursive: true });
+  fs.writeFileSync(path.join(outDir, 'client.key'), clientKeyPem);
+  fs.writeFileSync(path.join(outDir, 'client.crt'), clientCrtPem);
 
   console.log('Successfully generated proper client certificate with extensions.');
 

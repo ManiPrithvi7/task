@@ -8,15 +8,6 @@ import { DeviceCertificate, DeviceCertificateStatus } from '../models/DeviceCert
 import { Device, DeviceStatus } from '../models/Device';
 import { decodeCsrToPem } from '../utils/csr';
 
-function alternateDeviceId(raw: string): string | null {
-  const v = raw.trim();
-  if (!v) return null;
-  const prefix = String(process.env.CERT_CN_PREFIX || 'PROOF').trim().replace(/[-_]+$/g, '');
-  const stripped = v.replace(new RegExp(`^${prefix}[-_]*`), '');
-  if (stripped !== v) return stripped;
-  return `${prefix}-${v}`;
-}
-
 export interface LifecycleDeps {
   caService: CAService;
   recoveryCodeService: RecoveryCodeService;
@@ -221,12 +212,6 @@ export function createLifecycleRoutes(deps: LifecycleDeps): Router {
 
       // Canonicalize to the exact device id stored in MongoDB (Device.clientId).
       let device = await Device.findOne({ clientId: requestedDeviceId });
-      if (!device) {
-        const alt = alternateDeviceId(requestedDeviceId);
-        if (alt) {
-          device = await Device.findOne({ clientId: alt });
-        }
-      }
       if (!device) {
         res.status(404).json({ success: false, error: 'Device not found', code: 'DEVICE_NOT_FOUND', timestamp: new Date().toISOString() });
         return;

@@ -61,14 +61,15 @@ function toBase64(pem: string): string {
 async function main() {
   const repoRoot = path.resolve(__dirname, '..');
   const caStoragePath = path.resolve(repoRoot, 'src/certs');
-  const brokerCertDir = path.resolve(repoRoot, 'broker/certs');
+  // Local broker configuration was removed from this repo; keep outputs under data/.
+  const outDir = path.resolve(repoRoot, 'data', 'pki');
 
   const rootCaCertPath = path.join(caStoragePath, 'root-ca.crt');
   const rootCaKeyPath = path.join(caStoragePath, 'root-ca.key');
 
-  console.log('[pki] Rotating Root CA and broker/app TLS certs...');
+  console.log('[pki] Rotating Root CA and generating app client cert...');
   mkdirp(caStoragePath);
-  mkdirp(brokerCertDir);
+  mkdirp(outDir);
 
   // Backup previous CA (rotation is disruptive; this makes rollback possible).
   backupIfExists(rootCaCertPath);
@@ -83,37 +84,14 @@ async function main() {
   await ca.initialize();
 
   const rootCaPem = fs.readFileSync(rootCaCertPath, 'utf8');
-  writeFile(path.join(brokerCertDir, 'root_ca.crt'), rootCaPem, 0o644);
+  writeFile(path.join(outDir, 'root-ca.crt'), rootCaPem, 0o644);
 
-  // 1) Generate broker server cert (must include serverAuth).
-  const brokerKeys = generateRsaKeyPair();
-  const brokerKeyPem = forge.pki.privateKeyToPem(brokerKeys.privateKey);
-  const brokerDeviceId = process.env.NANOMQ_BROKER_NAME?.trim() || 'nanomq-broker';
-  const brokerCnPrefix = (process.env.CERT_CN_PREFIX || 'PROOF').trim().replace(/[-_]+$/g, '');
-  const brokerCn = `${brokerCnPrefix}-${brokerDeviceId.replace(new RegExp(`^${brokerCnPrefix}[-_]*`), '')}`;
-  const brokerCsrPem = makeCsr(brokerCn, brokerKeys);
-  const brokerCertPem = await signWithProfile({
-    caStoragePath,
-    rootCAValidityYears: 10,
-    deviceCertValidityDays: 3650,
-    certProfile: {
-      validityDays: 3650,
-      keyUsage: ['digitalSignature', 'keyEncipherment'],
-      extendedKeyUsage: ['serverAuth', 'clientAuth'],
-      requireSanDeviceId: true,
-      minKeyBits: 2048
-    },
-    csrPem: brokerCsrPem,
-    deviceId: brokerDeviceId
-  });
-  writeFile(path.join(brokerCertDir, 'broker.key'), brokerKeyPem, 0o600);
-  writeFile(path.join(brokerCertDir, 'broker.crt'), brokerCertPem, 0o644);
-
-  // 2) Generate app/client certificate for the Node server to connect to the broker with mTLS.
+  // Generate app/client certificate for the Node server to connect to the broker with mTLS.
   const appKeys = generateRsaKeyPair();
   const appKeyPem = forge.pki.privateKeyToPem(appKeys.privateKey);
   const appDeviceId = 'proof-server';
-  const appCn = `${brokerCnPrefix}-proof-server`;
+  const cnPrefix = (process.env.CERT_CN_PREFIX || 'PROOF').trim().replace(/[-_]+$/g, '');
+  const appCn = `${cnPrefix}-proof-server`;
   const appCsrPem = makeCsr(appCn, appKeys);
   const appCertPem = await signWithProfile({
     caStoragePath,
@@ -129,22 +107,15 @@ async function main() {
     csrPem: appCsrPem,
     deviceId: appDeviceId
   });
-  writeFile(path.join(brokerCertDir, 'client.key'), appKeyPem, 0o600);
-  writeFile(path.join(brokerCertDir, 'client.crt'), appCertPem, 0o644);
+  writeFile(path.join(outDir, 'mqtt-client.key'), appKeyPem, 0o600);
+  writeFile(path.join(outDir, 'mqtt-client.crt'), appCertPem, 0o644);
 
   console.log('\n[pki] Generated files:');
   console.log(`  - ${rootCaCertPath}`);
   console.log(`  - ${rootCaKeyPath}`);
-  console.log(`  - ${path.join(brokerCertDir, 'root_ca.crt')}`);
-  console.log(`  - ${path.join(brokerCertDir, 'broker.crt')}`);
-  console.log(`  - ${path.join(brokerCertDir, 'broker.key')}`);
-  console.log(`  - ${path.join(brokerCertDir, 'client.crt')}`);
-  console.log(`  - ${path.join(brokerCertDir, 'client.key')}`);
-
-  console.log('\n[pki] Broker env (NANOMQ_TLS_* expect full PEM text):');
-  console.log('  NANOMQ_TLS_CA_CERT=' + JSON.stringify(rootCaPem));
-  console.log('  NANOMQ_TLS_CERT=' + JSON.stringify(brokerCertPem));
-  console.log('  NANOMQ_TLS_KEY=' + JSON.stringify(brokerKeyPem));
+  console.log(`  - ${path.join(outDir, 'root-ca.crt')}`);
+  console.log(`  - ${path.join(outDir, 'mqtt-client.crt')}`);
+  console.log(`  - ${path.join(outDir, 'mqtt-client.key')}`);
 
   console.log('\n[pki] Node app (Render/Railway): set these env vars (base64 PEM) — path-based MQTT_TLS_*_PATH is not supported:');
   console.log('  MQTT_TLS_CA_BASE64=' + toBase64(rootCaPem));
