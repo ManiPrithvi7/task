@@ -188,9 +188,19 @@ Returns HTTP 429 with `Retry-After`, `X-RateLimit-*` headers. Rate limit events 
 - Enables detection of rogue/unauthorized certificate issuances
 - Enabled via `TRANSPARENCY_LOG_ENABLED=true`
 
+## 🔐 Security & limitations (V5.0)
+
+### Certificate revocation (NanoMQ)
+
+This repo can **mark certificates revoked in MongoDB** and the Node service will **reject actions / drop traffic** from revoked or expired certificates.
+
+**Known limitation (accepted for V5.0):** NanoMQ mTLS validation is **CA-chain only** and does **not** enforce CRL/OCSP/DB-backed revocation by default. A revoked device cert may still be able to complete an MQTT CONNECT at the broker layer.
+
+**V6 hardening track:** implement broker-side auth (plugin/gateway) or migrate to a broker with first-class authn/authz plugins (e.g. EMQX).
+
 ---
 
-## API Endpoints
+## 📡 API Endpoints
 
 ### Health Check
 ```bash
@@ -418,6 +428,148 @@ ws.send(JSON.stringify({
 
 ## Project Structure
 
+| Feature | Full Version | Lite Version |
+|---------|--------------|--------------|
+| **Dependencies** | Redis, Kafka, InfluxDB, MongoDB | None |
+| **Storage** | Distributed databases | Local JSON files |
+| **Memory** | ~300MB | ~50MB |
+| **Startup Time** | 30-60s | 2-3s |
+| **Docker Image** | ~500MB | ~150MB |
+| **Scalability** | High (multi-instance) | Low (single instance) |
+| **Data Persistence** | High availability | Local only |
+| **Best For** | Production | Development/Testing |
+
+---
+
+## 🎯 Use Cases
+
+✅ **Perfect For:**
+- Firmware development and testing
+- IoT device prototyping
+- Quick MQTT testing
+- Local development
+- CI/CD testing pipelines
+- Educational purposes
+
+❌ **Not Recommended For:**
+- Production workloads
+- High availability requirements
+- Multi-instance deployments
+- Large-scale data storage
+- Distributed systems
+
+---
+
+## 🐛 Troubleshooting
+
+### Can't connect to MQTT broker
+```bash
+# Test broker connectivity
+telnet broker.emqx.io 1883
+
+# Or use mosquitto
+mosquitto_pub -h broker.emqx.io -t "test" -m "hello"
+```
+
+### Port 3002 already in use
+```bash
+# Change port in .env
+HTTP_PORT=3003
+
+# Or stop existing process
+lsof -ti:3002 | xargs kill
+```
+
+### Data not persisting
+- Check `data/` directory exists and has write permissions
+- Verify `DATA_DIR` environment variable
+- Check disk space
+
+### MQTT messages not received
+- Verify broker connection: Check `/health` endpoint
+- Check topic prefix matches
+- Verify QoS levels
+
+---
+
+## 🧭 Device Lifecycle V5.0 (firmware contract)
+
+This section is the **firmware-facing contract** for the V5.0 flows (Boot Audit, Renewal, WiFi Reconfig, Reissue).
+
+### mTLS identity for HTTP (proxy mode)
+
+`/api/v1/certificates/renewAuth` and `/api/v1/certificates/confirm` authenticate the device via a **client certificate forwarded by a TLS-terminating proxy**.
+
+- **Default header**: `X-Forwarded-Client-Cert` (full PEM; may be URL-encoded and/or contain escaped `\\n`)
+- **Config**: set `MTLS_CLIENT_CERT_HEADER` to override
+- **Fallback (not recommended)**: forward CN as a header and set `MTLS_CLIENT_CN_HEADER` + `MTLS_CN_IS_DEVICE_ID=true`
+
+### HTTP endpoints used by firmware
+
+#### Broker config (Flow 1)
+
+- `GET /api/v1/mqtt-config`
+  - Response: `{ broker, port, ca_cert }` where `ca_cert` is base64 PEM (or null)
+
+#### Initial enrollment (existing)
+
+- `POST /api/v1/onboarding` (user bearer token → provisioning token)
+- `POST /api/v1/sign-csr` (provisioning token + CSR → primary device certificate)
+
+#### Flow 2: Seamless Renewal (overlap, MQTT-validated)
+
+- `POST /api/v1/certificates/renewAuth`
+  - Auth: mTLS **primary** cert (via proxy header)
+  - Body: `{ "csr": "<PEM CSR or base64(PEM CSR)>" }`
+  - Response: `{ certificate, ca_certificate, expires_at, fingerprint, slot:"staging" }`
+
+- `POST /api/v1/certificates/confirm`
+  - Auth: mTLS **staging** cert (via proxy header)
+  - Effect: **promote staging → primary** and **revoke old primary** (backend-level revocation)
+
+Firmware rule: **Do not delete the old cert until MQTT connect succeeds with staging** and `confirm` returns 200.
+
+#### Flow 4: Identity Re-Binding (reissue)
+
+- `POST /api/v1/certificates/reissue`
+  - Auth: `Authorization: Bearer <user_auth_token>`
+  - Body: `{ "device_id": "<device_id>", "csr": "<PEM CSR or base64(PEM CSR)>" }`
+  - Effect: revoke all active certs for device, issue a fresh **primary** cert
+
+### Firmware flow mapping (V5.0)
+
+- **Flow 1 (Boot Audit)**:
+  - WiFi connect (NVS creds, retry/backoff)
+  - NTP sync (fallback RTC + 48h grace)
+  - integrity check: verify signature of `"PROOF_INTEGRITY_CHECK"`
+  - cert parse: if expired/corrupt → Flow 4; if <30d → Flow 2
+  - MQTT connect → OPERATIONAL
+
+- **Flow 2 (Renewal)**:
+  - generate staging keypair + CSR
+  - `POST /certificates/renewAuth` (using primary cert for auth)
+  - MQTT connect using staging cert/key (timeout 15s)
+  - `POST /certificates/confirm` (using staging cert for auth)
+  - promote staging assets → primary; re-sign integrity string
+
+- **Flow 3 (WiFi Reconfig)**:
+  - AP portal: `PROOF-{device_id}` SSID
+  - dual-mode station test while AP stays alive
+  - MQTT connect is the “internet OK” validator
+  - commit WiFi + reboot → Flow 1
+
+- **Flow 4 (Reissue)**:
+  - AP portal: user submits `user_auth_token` (+ WiFi if empty)
+  - generate staging keypair + CSR
+  - `POST /certificates/reissue`
+  - MQTT connect using new cert/key (timeout 15s)
+  - commit staging → primary; re-sign integrity; wipe old flags; reboot → Flow 1
+
+---
+
+## 📝 Development
+
+### Project Structure
 ```
 mqtt-publisher-lite/
 ├── src/

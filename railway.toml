@@ -1,0 +1,13 @@
+# mqtt-publisher-lite (Node.js) — NOT the NanoMQ broker.
+# Broker lives in nanomq-broker/ (separate Railway service, Root Directory = nanomq-broker).
+#
+# This service: Root Directory = repo root (empty). Connect to broker via public URL + mTLS
+# (MQTT_TLS_* + client cert paths — same CA as devices).
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

@@ -11,6 +11,7 @@ import { Device, IDevice, DeviceStatus } from '../models/Device';
 import { logger } from '../utils/logger';
 import { getRedisService } from './redisService';
 import mongoose from 'mongoose';
+// LocalActiveDeviceStore intentionally not used in this branch; active device cache is Redis-backed.
 
 // ─── Active Device Cache (Redis-backed) ─────────────────────────────────────
 
@@ -34,6 +35,10 @@ export interface ActiveDevice {
  * Written once at registration; removed on LWT / PUBACK timeout.
  */
 export class ActiveDeviceCache {
+  // Keep a constructor signature compatible with callers that pass DATA_DIR.
+  // (Redis-backed cache does not require it.)
+  constructor(_dataDir: string = process.env.DATA_DIR || './data') {}
+
   /**
    * Cache a device as active with its user preferences.
    */
@@ -216,7 +221,7 @@ let activeDeviceCacheInstance: ActiveDeviceCache | null = null;
 
 export function getActiveDeviceCache(): ActiveDeviceCache {
   if (!activeDeviceCacheInstance) {
-    activeDeviceCacheInstance = new ActiveDeviceCache();
+    activeDeviceCacheInstance = new ActiveDeviceCache(process.env.DATA_DIR || './data');
   }
   return activeDeviceCacheInstance;
 }

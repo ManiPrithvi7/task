@@ -1,5 +1,11 @@
 import { logger } from './utils/logger';
-import { loadConfig, validateConfig, AppConfig } from './config';
+import {
+  loadConfig,
+  validateConfig,
+  AppConfig,
+  getMqttTlsRuntimeDir,
+  reloadMqttTlsClientPemFromRuntime
+} from './config';
 import { HttpServer } from './servers/httpServer';
 import { WebSocketServerManager } from './servers/webSocketServer';
 import { MqttClientManager } from './servers/mqttClient';
@@ -24,6 +30,9 @@ import { Device } from './models/Device';
 import { User } from './models/User';
 import { createProvisioningRoutes } from './routes/provisioningRoutes';
 import { createConfigRoutes } from './routes/configRoutes';
+import { createLifecycleRoutes } from './routes/lifecycleRoutes';
+import { createRecoveryRoutes } from './routes/recoveryRoutes';
+import { createRecoveryCodeService } from './services/recoveryCodeService';
 import { getTokenStore } from './storage/tokenStore';
 import * as dns from 'dns';
 import * as tls from 'tls';
@@ -31,6 +40,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as forge from 'node-forge';
 import mongoose from 'mongoose';
+import { caForBrokerTls } from './utils/tlsBrokerCa';
 
 export class StatsMqttLite {
   private config: AppConfig;
@@ -208,6 +218,10 @@ export class StatsMqttLite {
       });
       logger.error('💡 MongoDB is REQUIRED for mqtt-publisher-lite');
       logger.error('   Set MONGODB_URI environment variable');
+      logger.error(
+        '   The MQTT broker is not contacted until MongoDB connects. ' +
+          'If you see "Server selection timed out", check MongoDB Atlas Network Access (IP allowlist), VPN/firewall, and optionally MONGODB_SERVER_SELECTION_TIMEOUT_MS (default 5000).'
+      );
       throw error;
     }
   }
@@ -475,93 +489,53 @@ export class StatsMqttLite {
       throw new Error(`DNS resolution failed for broker: ${broker}`);
     }
 
-    // TLS handshake if TLS config present
-    const tlsCfg = (this.config.mqtt as any).tls;
-    const caPath = tlsCfg?.caPath;
-    if (caPath) {
-      try {
-        // Basic PEM sanity checks for client certificate/key — only if files exist.
-        // Client cert/key are OPTIONAL (broker may authenticate via username/password over TLS).
-        if (tlsCfg.clientCertPath && fs.existsSync(path.resolve(tlsCfg.clientCertPath))) {
-          const certContent = fs.readFileSync(path.resolve(tlsCfg.clientCertPath), 'utf8');
-          if (!certContent.includes('-----BEGIN')) {
-            logger.error('Client certificate file exists but is not valid PEM', { path: tlsCfg.clientCertPath });
-            throw new Error(`Invalid client certificate at ${tlsCfg.clientCertPath}`);
-          }
-          logger.debug('Client certificate PEM validated', { path: tlsCfg.clientCertPath });
-        } else if (tlsCfg.clientCertPath) {
-          logger.info('Client certificate file not found; skipping mTLS client auth (username/password will be used)', { path: tlsCfg.clientCertPath });
-        }
-        if (tlsCfg.clientKeyPath && fs.existsSync(path.resolve(tlsCfg.clientKeyPath))) {
-          const keyContent = fs.readFileSync(path.resolve(tlsCfg.clientKeyPath), 'utf8');
-          if (!keyContent.includes('-----BEGIN')) {
-            logger.error('Client key file exists but is not valid PEM', { path: tlsCfg.clientKeyPath });
-            throw new Error(`Invalid client key at ${tlsCfg.clientKeyPath}`);
-          }
-          logger.debug('Client key PEM validated', { path: tlsCfg.clientKeyPath });
-        } else if (tlsCfg.clientKeyPath) {
-          logger.info('Client key file not found; skipping mTLS client auth', { path: tlsCfg.clientKeyPath });
-        }
+    const tlsCfg = this.config.mqtt.tls;
+    if (!tlsCfg?.enabled) {
+      logger.debug('MQTT TLS not enabled; skipping TLS handshake validation');
+      return;
+    }
 
-        const resolved = path.resolve(caPath);
-        // If CA file is missing in the image/container, allow injecting it via
-        // MQTT_TLS_CA_BASE64 env var (useful for platforms that don't allow file mounts).
-        if (!fs.existsSync(resolved)) {
-          const b64 = process.env.MQTT_TLS_CA_BASE64;
-          if (b64) {
-            try {
-              const pem = Buffer.from(b64, 'base64').toString('utf8');
-              // Ensure directory exists
-              fs.mkdirSync(path.dirname(resolved), { recursive: true });
-              fs.writeFileSync(resolved, pem, { encoding: 'utf8', mode: 0o644 });
-              logger.info('Wrote CA PEM from MQTT_TLS_CA_BASE64 to path', { path: resolved });
-            } catch (writeErr: any) {
-              throw new Error(`Failed to write CA file from MQTT_TLS_CA_BASE64: ${writeErr?.message ?? writeErr}`);
-            }
-          } else {
-            throw new Error(`CA file not found at ${resolved}`);
-          }
-        }
-        const caPem = fs.readFileSync(resolved, 'utf8');
-        // Also ensure client cert/key files exist if configured; allow base64 env fallback
-        const clientCertPath = tlsCfg?.clientCertPath;
-        const clientKeyPath = tlsCfg?.clientKeyPath;
-        if (clientCertPath && !fs.existsSync(path.resolve(clientCertPath))) {
-          const certB64 = process.env.MQTT_TLS_CLIENT_CERT_BASE64;
-          if (certB64) {
-            try {
-              const pem = Buffer.from(certB64, 'base64').toString('utf8');
-              fs.mkdirSync(path.dirname(path.resolve(clientCertPath)), { recursive: true });
-              fs.writeFileSync(path.resolve(clientCertPath), pem, { encoding: 'utf8', mode: 0o644 });
-              logger.info('Wrote client cert PEM from MQTT_TLS_CLIENT_CERT_BASE64 to path', { path: clientCertPath });
-            } catch (err: any) {
-              throw new Error(`Failed to write client cert from MQTT_TLS_CLIENT_CERT_BASE64: ${err?.message ?? err}`);
-            }
-          }
-        }
+    const caPem = tlsCfg.caPem?.includes('-----BEGIN') ? tlsCfg.caPem : undefined;
 
-        if (clientKeyPath && !fs.existsSync(path.resolve(clientKeyPath))) {
-          const keyB64 = process.env.MQTT_TLS_CLIENT_KEY_BASE64;
-          if (keyB64) {
-            try {
-              const keyPem = Buffer.from(keyB64, 'base64');
-              fs.mkdirSync(path.dirname(path.resolve(clientKeyPath)), { recursive: true });
-              fs.writeFileSync(path.resolve(clientKeyPath), keyPem, { mode: 0o600 });
-              logger.info('Wrote client key from MQTT_TLS_CLIENT_KEY_BASE64 to path', { path: clientKeyPath });
-            } catch (err: any) {
-              throw new Error(`Failed to write client key from MQTT_TLS_CLIENT_KEY_BASE64: ${err?.message ?? err}`);
-            }
-          }
-        }
-        await new Promise<void>((resolve, reject) => {
-          const socket = tls.connect({
+    if (!caPem?.includes('-----BEGIN')) {
+      logger.warn('MQTT TLS enabled but no usable CA PEM; skipping TLS pre-check');
+      return;
+    }
+
+    const clientCert =
+      tlsCfg.clientCertPem?.includes('-----BEGIN') ? tlsCfg.clientCertPem : undefined;
+    const clientKey =
+      tlsCfg.clientKeyPem?.includes('-----BEGIN') ? tlsCfg.clientKeyPem : undefined;
+
+    const x509Only = this.config.mqtt.authX509Only === true;
+    if (x509Only && (!clientCert || !clientKey)) {
+      throw new Error(
+        'mTLS-only MQTT: provide client cert and key via MQTT_TLS_CLIENT_*_PEM or MQTT_TLS_CLIENT_*_BASE64 for broker pre-check'
+      );
+    }
+
+    try {
+      const tlsServerName = tlsCfg.servername || broker;
+      if (!tlsCfg.servername && /\.proxy\.rlwy\.net$/i.test(broker)) {
+        logger.warn(
+          'MQTT_BROKER looks like a Railway TCP proxy host; TLS hostname check uses SNI. If the broker certificate CN/SAN is different (e.g. nanomq-broker), set MQTT_TLS_SERVERNAME to that name.',
+          { broker, tlsServerNameUsed: tlsServerName }
+        );
+      }
+      logger.info('MQTT TLS pre-check', { broker, port, servername: tlsServerName });
+      await new Promise<void>((resolve, reject) => {
+        const socket = tls.connect(
+          {
             host: broker,
             port,
-            ca: [caPem],
-            servername: broker,
-            rejectUnauthorized: tlsCfg?.rejectUnauthorized !== false,
+            ca: caForBrokerTls(caPem),
+            cert: clientCert,
+            key: clientKey,
+            servername: tlsServerName,
+            rejectUnauthorized: tlsCfg.rejectUnauthorized !== false,
             timeout: 5000
-          }, () => {
+          },
+          () => {
             if (!socket.authorized) {
               const errMsg = socket.authorizationError || 'TLS authorization failed';
               socket.end();
@@ -572,25 +546,28 @@ export class StatsMqttLite {
             logger.info('TLS handshake succeeded', { broker, subject: peer?.subject || null });
             socket.end();
             resolve();
-          });
+          }
+        );
 
-          socket.on('error', (e) => {
-            const msg = e instanceof Error ? e.message : String(e);
-            reject(msg);
-          });
-
-          setTimeout(() => {
-            socket.destroy();
-            reject('TLS handshake timeout');
-          }, 5000);
+        socket.on('error', (e) => {
+          const msg = e instanceof Error ? e.message : String(e);
+          reject(msg);
         });
-      } catch (err: any) {
-        const errMsg = err instanceof Error ? err.message : String(err);
-        logger.error('TLS handshake/check failed', { broker, error: errMsg });
-        throw new Error(`TLS validation failed for broker ${broker}: ${errMsg}`);
-      }
-    } else {
-      logger.debug('No MQTT TLS CA configured; skipping TLS handshake validation');
+
+        setTimeout(() => {
+          socket.destroy();
+          reject('TLS handshake timeout');
+        }, 5000);
+      });
+    } catch (err: any) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      logger.error('TLS handshake/check failed', { broker, error: errMsg });
+      const nameMismatch =
+        /altnames|Hostname\/IP does not match|does not match certificate/i.test(errMsg);
+      const hint = nameMismatch
+        ? ' Set MQTT_TLS_SERVERNAME to the broker certificate CN or a matching SAN (often nanomq-broker for NanoMQ dev certs) when MQTT_BROKER is a proxy hostname.'
+        : '';
+      throw new Error(`TLS validation failed for broker ${broker}: ${errMsg}${hint}`);
     }
   }
 
@@ -609,11 +586,11 @@ export class StatsMqttLite {
       return;
     }
 
-    const tlsCfg = this.config.mqtt.tls;
-    const certPath = tlsCfg.clientCertPath ? path.resolve(tlsCfg.clientCertPath) : path.resolve(this.config.storage.dataDir, 'ca', 'client.crt');
-    const keyPath = tlsCfg.clientKeyPath ? path.resolve(tlsCfg.clientKeyPath) : path.resolve(this.config.storage.dataDir, 'ca', 'client.key');
+    const runtimeDir = getMqttTlsRuntimeDir(this.config.storage.dataDir);
+    const certPath = path.join(runtimeDir, 'client.crt');
+    const keyPath = path.join(runtimeDir, 'client.key');
 
-    // If both files exist, validate PEM structure; regenerate if invalid.
+    // Optional skip if this run already has valid PEMs in the runtime dir (e.g. from env at startup).
     let certExists = fs.existsSync(certPath);
     let keyExists = fs.existsSync(keyPath);
     const isPemLike = (p: string) => {
@@ -628,11 +605,19 @@ export class StatsMqttLite {
       const certValid = isPemLike(certPath);
       const keyValid = isPemLike(keyPath);
       if (certValid && keyValid) {
-        logger.info('Client certificate and key already exist and look valid; skipping generation', { certPath, keyPath });
+        logger.info('MQTT client cert/key already present in runtime dir; skipping generation', {
+          certPath,
+          keyPath
+        });
+        reloadMqttTlsClientPemFromRuntime(this.config);
         return;
       }
-      logger.warn('Existing client cert/key found but not valid PEM; regenerating and overwriting', { certPath, keyPath, certValid, keyValid });
-      // allow regeneration by flipping flags
+      logger.warn('Existing client cert/key in runtime dir are not valid PEM; regenerating', {
+        certPath,
+        keyPath,
+        certValid,
+        keyValid
+      });
       certExists = false;
       keyExists = false;
     }
@@ -673,6 +658,7 @@ export class StatsMqttLite {
       logger.info('Wrote generated client certificate', { certPath });
       fs.writeFileSync(keyPath, privateKeyPem, { encoding: 'utf8', mode: 0o600 });
       logger.info('Wrote generated client private key', { keyPath });
+      reloadMqttTlsClientPemFromRuntime(this.config);
     } catch (err: any) {
       logger.error('Failed to generate client certificate', { error: err instanceof Error ? err.message : String(err) });
       throw err;
@@ -853,8 +839,8 @@ export class StatsMqttLite {
     if (!this.caService) {
       return true; // No CA service: cannot enforce; allow (e.g. provisioning disabled)
     }
-
-    const cert = await this.caService.findActiveCertificateByDeviceId(deviceId);
+    // Renewal overlap: allow either primary or staging to be treated as provisioned.
+    const cert = await this.caService.findActiveCertificateByDeviceId(deviceId, { slots: ['primary', 'staging'] });
     if (!cert) return false;
 
     // PKI #5: Log expiry status (grace period awareness)
@@ -1296,6 +1282,23 @@ export class StatsMqttLite {
       });
       this.httpServer.getApp().use('/api/v1', provisioningRoutes);
       logger.info('✅ Provisioning routes registered at /api/v1');
+
+      const recoveryCodeService = createRecoveryCodeService(this.config.redis.keyPrefix || 'mqtt-lite:');
+
+      const lifecycleRoutes = createLifecycleRoutes({
+        caService: this.caService,
+        recoveryCodeService
+      });
+      this.httpServer.getApp().use('/api/v1', lifecycleRoutes);
+      logger.info('✅ Lifecycle routes registered at /api/v1');
+
+      const recoveryRoutes = createRecoveryRoutes({ recoveryCodeService });
+      this.httpServer.getApp().use('/api/v1', recoveryRoutes);
+      logger.info('✅ Recovery routes registered at /api/v1/recovery');
+
+      // Compatibility alias (older clients): /api/recovery/* instead of /api/v1/recovery/*
+      this.httpServer.getApp().use('/api', recoveryRoutes);
+      logger.info('✅ Recovery routes registered at /api/recovery (alias)');
     }
 
     // Device configuration endpoint for devices to fetch broker settings
@@ -1332,7 +1335,9 @@ export class StatsMqttLite {
     this.statsPublisher = new StatsPublisher(
       this.mqttClient,
       this.deviceService,
-      this.caService
+      60 * 1000, // Publish every minute to /instagram, /gmb, /pos
+      this.caService,
+      this.config.provisioning.requireMtlsForRegistration
     );
 
     await this.statsPublisher.start();

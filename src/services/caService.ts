@@ -4,12 +4,18 @@
  * Uses SQLite CertificateStore instead of MongoDB
  */
 
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as forge from 'node-forge';
 import mongoose from 'mongoose';
 import { logger } from '../utils/logger';
-import { DeviceCertificate, IDeviceCertificate, DeviceCertificateStatus } from '../models/DeviceCertificate';
+import {
+  DeviceCertificate,
+  IDeviceCertificate,
+  DeviceCertificateStatus,
+  DeviceCertificateSlot
+} from '../models/DeviceCertificate';
 
 /**
  * Thrown when the CSR uses a key type not supported by the current CA implementation.
@@ -29,9 +35,12 @@ export class UnsupportedCSRKeyTypeError extends Error {
  * Route should return 409 with code DEVICE_HAS_ACTIVE_CERTIFICATE.
  */
 export class DeviceAlreadyHasCertificateError extends Error {
-  constructor(message: string = 'Device already has an active certificate') {
+  public certificateId?: string;
+
+  constructor(message: string = 'Device already has an active certificate', certificateId?: string) {
     super(message);
     this.name = 'DeviceAlreadyHasCertificateError';
+    this.certificateId = certificateId;
     Object.setPrototypeOf(this, DeviceAlreadyHasCertificateError.prototype);
   }
 }
@@ -58,12 +67,17 @@ export interface RootCA {
 export class CAService {
   private config: CAConfig;
   private rootCA: RootCA | null = null;
+  /** Loaded from config.storagePath (default `src/certs`; override `CA_STORAGE_PATH` in containers without a `src/` tree). */
   private readonly ROOT_CA_CERT_FILE = 'root-ca.crt';
   private readonly ROOT_CA_KEY_FILE = 'root-ca.key';
 
   constructor(config: CAConfig, _dbPath?: string) {
     this.config = config;
     // Always use MongoDB - parameters kept for backward compatibility
+  }
+
+  private normalizeSlot(slot: DeviceCertificateSlot | undefined): DeviceCertificateSlot {
+    return slot === 'staging' ? 'staging' : 'primary';
   }
 
   /**
@@ -133,7 +147,12 @@ export class CAService {
   }
 
   /**
-   * Initialize Root CA
+   * Initialize Root CA.
+   *
+   * Reads `root-ca.crt` and `root-ca.key` under `storagePath` only (no `process.env` here).
+   * At process startup, `loadConfig()` may have written those files from env first:
+   * `MQTT_TLS_CA_BASE64` + `MQTT_TLS_CA_KEY_BASE64` (base64 PEM only), via `writeProvisioningRootCaFromEnv()` — see `src/config/index.ts`.
+   * If either file is missing, a new Root CA is generated on disk.
    */
   async initialize(): Promise<void> {
     try {
@@ -144,7 +163,7 @@ export class CAService {
       await fs.promises.mkdir(this.config.storagePath, { recursive: true });
 
       if (fs.existsSync(certPath) && fs.existsSync(keyPath)) {
-        logger.info('Loading existing Root CA');
+        logger.info('Root CA: reading certificate and key from disk', { certPath, keyPath });
         const certificate = await fs.promises.readFile(certPath, 'utf8');
         const privateKey = await fs.promises.readFile(keyPath, 'utf8');
 
@@ -155,7 +174,13 @@ export class CAService {
           serialNumber: cert.serialNumber
         };
 
-        logger.info('Root CA loaded successfully', { serialNumber: cert.serialNumber });
+        const certShaPrefix = crypto.createHash('sha256').update(certificate, 'utf8').digest('hex').slice(0, 16);
+        logger.info('Root CA loaded successfully', {
+          serialNumber: cert.serialNumber,
+          cert_pem_bytes: Buffer.byteLength(certificate, 'utf8'),
+          key_pem_bytes: Buffer.byteLength(privateKey, 'utf8'),
+          cert_sha256_prefix: certShaPrefix
+        });
       } else {
         logger.info('Generating new Root CA');
         await this.generateRootCA();
@@ -188,9 +213,9 @@ export class CAService {
 
       cert.setSubject([
         { name: 'countryName', value: 'US' },
-        { name: 'organizationName', value: 'StatsMQTT Lite' },
+        { name: 'organizationName', value: 'Proof' },
         { name: 'organizationalUnitName', value: 'Certificate Authority' },
-        { name: 'commonName', value: 'StatsMQTT Lite Root CA' }
+        { name: 'commonName', value: 'PROOF-CA' }
       ]);
 
       cert.setIssuer(cert.subject.attributes);
@@ -244,13 +269,25 @@ export class CAService {
     csrPem: string,
     deviceId: string,
     userId: string,
-    orderId?: string,
-    batchId?: string
+    optsOrOrderId?: { slot?: DeviceCertificateSlot; allowReplacePrimary?: boolean; orderId?: string; batchId?: string } | string,
+    batchIdLegacy?: string
   ): Promise<IDeviceCertificate> {
     try {
       if (!this.rootCA) {
         throw new Error('Root CA not initialized');
       }
+
+      // Backward compatible arg parsing:
+      // - signCSR(csr, deviceId, userId, { slot, allowReplacePrimary, orderId, batchId })
+      // - signCSR(csr, deviceId, userId, orderId?, batchId?)
+      const opts =
+        typeof optsOrOrderId === 'object' && optsOrOrderId !== null
+          ? optsOrOrderId
+          : undefined;
+      const orderId =
+        typeof optsOrOrderId === 'string' ? optsOrOrderId : opts?.orderId;
+      const batchId =
+        typeof optsOrOrderId === 'string' ? batchIdLegacy : opts?.batchId;
 
       // Parse CSR (node-forge only supports RSA; EC/ECDSA CSRs throw "OID is not RSA")
       let csr: forge.pki.CertificateSigningRequest;
@@ -430,6 +467,11 @@ export class CAService {
         }
       };
       
+      const slot = this.normalizeSlot(opts?.slot);
+      const allowReplacePrimaryDefault =
+        process.env.ALLOW_ONBOARDING_WITH_ACTIVE_CERT === 'true' || process.env.NODE_ENV === 'development';
+      const allowReplacePrimary = opts?.allowReplacePrimary ?? allowReplacePrimaryDefault;
+
       // If MongoDB is not connected, skip DB persistence and return a lightweight certificate object.
       const mongooseConnected = mongoose.connection && (mongoose.connection.readyState === 1);
       if (!mongooseConnected) {
@@ -437,6 +479,7 @@ export class CAService {
         const mockDoc: any = {
           _id: new mongoose.Types.ObjectId(),
           device_id: deviceId,
+          slot,
           user_id: new mongoose.Types.ObjectId(userId),
           certificate: certificatePem,
           private_key: '',
@@ -459,69 +502,77 @@ export class CAService {
         return mockDoc as IDeviceCertificate;
       }
 
-      // If device already has an active cert: either return 409 or replace (dev/replace mode)
-      const allowReplace =
-        process.env.ALLOW_ONBOARDING_WITH_ACTIVE_CERT === 'true' || process.env.NODE_ENV === 'development';
-      const existingCert = await this.findActiveCertificateByDeviceId(deviceId);
-      if (existingCert) {
-        if (!allowReplace) {
-          throw new DeviceAlreadyHasCertificateError('Device already has an active certificate');
+      // Primary slot retains the historical “do not replace active primary unless allowed” behavior.
+      if (slot === 'primary' && !allowReplacePrimary) {
+        const existingActivePrimary = await this.findActiveCertificateByDeviceId(deviceId, { slots: ['primary'] });
+        if (existingActivePrimary) {
+          throw new DeviceAlreadyHasCertificateError(
+            'Device already has an active certificate',
+            existingActivePrimary._id.toString()
+          );
         }
-        const updated = await DeviceCertificate.findOneAndUpdate(
-          { device_id: deviceId },
-          {
-            $set: {
-              certificate: certificatePem,
-              fingerprint,
-              cn,
-              ca_certificate: this.rootCA!.certificate,
-              expires_at: notAfter,
-              status: DeviceCertificateStatus.active,
-              user_id: new mongoose.Types.ObjectId(userId)
-            }
-          },
-          { new: true }
-        );
-        if (!updated) {
-          throw new Error('Failed to update existing certificate');
-        }
-        logger.info('Replaced existing device certificate (dev/replace mode)', {
-          deviceId,
-          userId,
-          certificateId: updated._id
-        });
-        await audit('CERT_REPLACED', { certificateId: updated._id, serialNumber: cert.serialNumber, cn, expiresAt: notAfter.toISOString() });
-        return updated as IDeviceCertificate;
       }
 
-      // Store new certificate in MongoDB
-      // Note: private_key is required in schema but we use empty string
-      // because device keeps its private key during CSR signing
-      const certDoc = new DeviceCertificate({
-        device_id: deviceId,
-        user_id: new mongoose.Types.ObjectId(userId),
-        certificate: certificatePem,
-        private_key: '', // Empty string (device keeps its private key)
-        ca_certificate: this.rootCA.certificate,
-        cn,
-        fingerprint,
-        status: DeviceCertificateStatus.active,
-        expires_at: notAfter,
-        created_at: notBefore
-      });
+      // Slot-scoped upsert: ensures at most one record per device_id+slot.
+      // NOTE: Some deployments may still have a legacy UNIQUE index on { device_id } (no slot),
+      // which will throw E11000 on insert when a different slot exists. We fall back to a
+      // device_id-only update in that case to keep issuance working without requiring a DB migration.
+      const updateDoc = {
+        $set: {
+          user_id: new mongoose.Types.ObjectId(userId),
+          slot,
+          certificate: certificatePem,
+          private_key: '', // Empty string (device keeps its private key)
+          ca_certificate: this.rootCA.certificate,
+          cn,
+          fingerprint,
+          status: DeviceCertificateStatus.active,
+          expires_at: notAfter,
+          created_at: notBefore
+        }
+      };
 
-      await certDoc.save();
+      let certDoc: any;
+      try {
+        certDoc = await DeviceCertificate.findOneAndUpdate(
+          { device_id: deviceId, slot },
+          updateDoc,
+          { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+      } catch (e: any) {
+        const msg = e?.message ? String(e.message) : String(e);
+        const isDup = msg.includes('E11000') && (msg.includes('device_id') || msg.includes('device_certificates_device_id_key'));
+        if (!isDup) throw e;
+
+        logger.warn('Legacy unique index on device_id detected; falling back to device_id-only certificate upsert', {
+          deviceId,
+          slot,
+          error: msg
+        });
+
+        certDoc = await DeviceCertificate.findOneAndUpdate(
+          { device_id: deviceId },
+          updateDoc,
+          { upsert: false, new: true }
+        );
+        if (!certDoc) {
+          // If we couldn't update (should be rare), surface the original error.
+          throw e;
+        }
+      }
+
       await audit('CERT_ISSUED', { certificateId: certDoc._id, serialNumber: cert.serialNumber, cn, expiresAt: notAfter.toISOString() });
 
       logger.info('CSR signed and certificate stored in MongoDB', {
         deviceId,
         userId,
+        slot,
         cn,
         serialNumber: cert.serialNumber,
         expiresAt: notAfter.toISOString()
       });
 
-      return certDoc;
+      return certDoc as IDeviceCertificate;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logger.error('Failed to sign CSR', { deviceId, error: errorMessage });
@@ -614,7 +665,7 @@ export class CAService {
 
   /**
    * Certificate expiry status for grace period handling.
-   * PKI Improvement #5: Grace Period for Certificate Renewal
+   * PKI Improvement #5: Grace Period for Certificate Renewal.
    */
   public static readonly ExpiryStatus = {
     VALID: 'valid',
@@ -624,25 +675,29 @@ export class CAService {
   } as const;
 
   /**
-   * Find active certificate by device ID with grace period awareness.
-   * 
-   * PKI Improvement #5: Instead of hard failure at expiry, calculates:
-   * - valid: Certificate is within validity period (> renewal window)
-   * - renewal_window: Certificate is approaching expiry (within CERT_RENEWAL_WINDOW_DAYS)
-   * - grace_period: Certificate is expired but within CERT_GRACE_PERIOD_DAYS
-   * - hard_expired: Certificate is past grace period (rejected)
-   * 
-   * @returns Certificate with expiryStatus property, or null if not found / hard expired
+   * Find active certificate by device ID.
+   *
+   * - Slot-aware: pass `opts.slots` (defaults to ['primary']).
+   * - Grace-aware: returns `null` only if certificate is hard-expired beyond grace period.
+   *
+   * @returns Certificate with optional `expiryStatus` + `daysUntilExpiry`, or null.
    */
-  async findActiveCertificateByDeviceId(deviceId: string): Promise<(IDeviceCertificate & { expiryStatus?: string; daysUntilExpiry?: number }) | null> {
+  async findActiveCertificateByDeviceId(
+    deviceId: string,
+    opts?: { slots?: DeviceCertificateSlot[] }
+  ): Promise<(IDeviceCertificate & { expiryStatus?: string; daysUntilExpiry?: number }) | null> {
     try {
+      const slots = (opts?.slots?.length ? opts.slots : (['primary'] as DeviceCertificateSlot[])).map((s) =>
+        this.normalizeSlot(s)
+      );
       const cert = await DeviceCertificate.findOne({
         device_id: deviceId,
-        status: DeviceCertificateStatus.active
-      });
-      
+        status: DeviceCertificateStatus.active,
+        slot: { $in: slots }
+      }).sort({ slot: 1 }); // primary then staging if both are in query
+
       if (!cert) return null;
-      
+
       const now = new Date();
       const expiresAt = cert.expires_at;
       const msUntilExpiry = expiresAt.getTime() - now.getTime();
@@ -656,13 +711,11 @@ export class CAService {
       certWithStatus.daysUntilExpiry = Math.round(daysUntilExpiry * 10) / 10;
 
       if (daysUntilExpiry > renewalWindowDays) {
-        // Certificate is well within validity
         certWithStatus.expiryStatus = CAService.ExpiryStatus.VALID;
         return certWithStatus;
       }
 
       if (daysUntilExpiry > 0) {
-        // Within renewal window but not yet expired
         certWithStatus.expiryStatus = CAService.ExpiryStatus.RENEWAL_WINDOW;
         logger.info('Certificate entering renewal window', {
           deviceId,
@@ -672,7 +725,6 @@ export class CAService {
         return certWithStatus;
       }
 
-      // Certificate is expired — check grace period
       const daysPastExpiry = Math.abs(daysUntilExpiry);
       if (daysPastExpiry <= gracePeriodDays) {
         certWithStatus.expiryStatus = CAService.ExpiryStatus.GRACE_PERIOD;
@@ -684,7 +736,6 @@ export class CAService {
         return certWithStatus;
       }
 
-      // Hard expired — past grace period
       logger.error('Certificate hard expired (past grace period) — rejecting', {
         deviceId,
         daysPastExpiry: Math.round(daysPastExpiry * 10) / 10,
@@ -693,7 +744,7 @@ export class CAService {
       return null;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('Failed to find active certificate', { deviceId, error: errorMessage });
+      logger.error('Failed to find active certificate (slot-aware)', { deviceId, error: errorMessage });
       return null;
     }
   }
@@ -717,14 +768,55 @@ export class CAService {
   /**
    * Find certificate by device ID
    */
-  async findCertificateByDeviceId(deviceId: string): Promise<IDeviceCertificate | null> {
+  async findCertificateByDeviceId(deviceId: string, slot?: DeviceCertificateSlot): Promise<IDeviceCertificate | null> {
     try {
-      return await DeviceCertificate.findOne({ device_id: deviceId });
+      const s = slot ? this.normalizeSlot(slot) : 'primary';
+      return await DeviceCertificate.findOne({ device_id: deviceId, slot: s });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logger.error('Failed to find certificate by device ID', { deviceId, error: errorMessage });
       return null;
     }
+  }
+
+  async promoteStagingToPrimary(deviceId: string): Promise<{ promoted: boolean }> {
+    const now = new Date();
+    // Fetch both in parallel for clear error messaging
+    const [staging, primary] = await Promise.all([
+      DeviceCertificate.findOne({ device_id: deviceId, slot: 'staging', status: DeviceCertificateStatus.active }),
+      DeviceCertificate.findOne({ device_id: deviceId, slot: 'primary', status: DeviceCertificateStatus.active })
+    ]);
+    if (!staging) {
+      return { promoted: false };
+    }
+
+    // Revoke old primary (if any) only at confirm time.
+    if (primary) {
+      primary.status = DeviceCertificateStatus.revoked;
+      primary.revoked_at = now;
+      await primary.save();
+    }
+
+    // Promote staging → primary by changing slot.
+    staging.slot = 'primary';
+    await staging.save();
+
+    // Ensure there is no remaining active staging (defense-in-depth)
+    await DeviceCertificate.updateMany(
+      { device_id: deviceId, slot: 'staging', status: DeviceCertificateStatus.active },
+      { $set: { status: DeviceCertificateStatus.revoked, revoked_at: now } }
+    );
+
+    return { promoted: true };
+  }
+
+  async revokeAllDeviceCertificates(deviceId: string): Promise<number> {
+    const now = new Date();
+    const res = await DeviceCertificate.updateMany(
+      { device_id: deviceId, status: DeviceCertificateStatus.active },
+      { $set: { status: DeviceCertificateStatus.revoked, revoked_at: now } }
+    );
+    return (res as any).modifiedCount ?? 0;
   }
 
   /**
@@ -750,16 +842,23 @@ export class CAService {
       }
       
       // Try as device_id
-      const cert = await DeviceCertificate.findOne({ device_id: certIdOrDeviceId });
-      if (cert) {
-        cert.status = status;
-        if (status === DeviceCertificateStatus.revoked) {
-          cert.revoked_at = new Date();
-        }
-        await cert.save();
-        logger.info('Certificate status updated', { 
-          deviceId: certIdOrDeviceId, 
-          status 
+      const now = new Date();
+      const update: any = { status };
+      if (status === DeviceCertificateStatus.revoked) {
+        update.revoked_at = now;
+      }
+
+      // Slot model: when called with a device_id, apply to ALL slots for that device_id.
+      const res = await DeviceCertificate.updateMany(
+        { device_id: certIdOrDeviceId },
+        { $set: update }
+      );
+      const modified = (res as any).modifiedCount ?? 0;
+      if (modified > 0) {
+        logger.info('Certificate status updated (all slots for device)', {
+          deviceId: certIdOrDeviceId,
+          status,
+          modified
         });
       }
     } catch (error) {

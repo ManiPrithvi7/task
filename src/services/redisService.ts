@@ -20,6 +20,7 @@ export class RedisService {
   private client: RedisClientType | null = null;
   private config: RedisConfig;
   private isConnected: boolean = false;
+  private heartbeatTimer: NodeJS.Timeout | null = null;
 
   constructor(config: RedisConfig) {
     this.config = config;
@@ -61,6 +62,18 @@ export class RedisService {
         socket: {
           host: this.config.host!,
           port: this.config.port!,
+          connectTimeout: 10000,
+          keepAlive: 5000,
+          noDelay: true,
+          reconnectStrategy: (retries: number) => {
+            if (retries > 20) {
+              logger.error('Redis reconnect attempts exhausted', { retries });
+              return new Error('Redis reconnect attempts exhausted');
+            }
+            const base = Math.min(1000 * Math.pow(2, retries), 15000);
+            const jitter = Math.floor(Math.random() * 250);
+            return base + jitter;
+          },
           ...(this.config.tls && { tls: true })
         },
         database: this.config.db ?? 0
@@ -70,7 +83,6 @@ export class RedisService {
       this.client.on('error', (err: Error) => {
         logger.error('Redis Client Error', { error: err.message });
         this.isConnected = false;
-        // Don't attempt to reconnect - fail gracefully
       });
 
       // Setup event handlers
@@ -79,6 +91,7 @@ export class RedisService {
       // Connect to Redis
       await this.client.connect();
       this.isConnected = true;
+      this.startHeartbeat();
 
       logger.info('✅ Redis connected successfully', {
         keyPrefix: this.config.keyPrefix || 'mqtt-lite:'
@@ -113,7 +126,8 @@ export class RedisService {
       } else {
         logger.debug('Redis client already closed, skipping quit');
       }
-      
+
+      this.stopHeartbeat();
       this.client = null;
       this.isConnected = false;
 
@@ -122,6 +136,7 @@ export class RedisService {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       // Don't throw on disconnect errors - client might already be closed
       logger.debug('Redis disconnect completed (client may have been closed)', { error: errorMessage });
+      this.stopHeartbeat();
       this.client = null;
       this.isConnected = false;
     }
@@ -176,24 +191,19 @@ export class RedisService {
     this.client.on('ready', () => {
       logger.info('Redis ready to accept commands');
       this.isConnected = true;
+      this.startHeartbeat();
     });
 
     this.client.on('end', () => {
       logger.warn('Redis connection ended');
       this.isConnected = false;
+      this.stopHeartbeat();
     });
 
     this.client.on('reconnecting', () => {
       logger.info('Redis reconnecting...');
     });
 
-    // Disable automatic reconnection on connection failure
-    this.client.on('error', () => {
-      // Error handler already set above, but ensure we don't reconnect
-      if (this.client) {
-        this.client.removeAllListeners('reconnecting');
-      }
-    });
   }
 
   /**
@@ -233,6 +243,27 @@ export class RedisService {
         memory: 'Error'
       };
     }
+  }
+
+  private startHeartbeat(): void {
+    if (this.heartbeatTimer) return;
+
+    this.heartbeatTimer = setInterval(async () => {
+      try {
+        if (!this.client || !this.isConnected || !this.client.isOpen) return;
+        await this.client.ping();
+      } catch (err) {
+        logger.warn('Redis heartbeat ping failed', {
+          error: err instanceof Error ? err.message : String(err)
+        });
+      }
+    }, 30000);
+  }
+
+  private stopHeartbeat(): void {
+    if (!this.heartbeatTimer) return;
+    clearInterval(this.heartbeatTimer);
+    this.heartbeatTimer = null;
   }
 }
 

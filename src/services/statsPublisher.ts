@@ -6,9 +6,39 @@ import { KafkaService } from './kafkaService';
 import { Ad, AdStatus, AdType } from '../models/Ad';
 import mongoose from 'mongoose';
 
+/** Static inner `payload` for topic `.../test-gmb` — alternates each successful publish per device. */
+const TEST_GMB_STATIC_PAYLOAD_A = {
+  google_review: 'Best latte in Portland. This place never misses.',
+  qrText: 'www.youtube.com',
+  smallStars: 5,
+  bigStars: 5,
+  review: 454,
+  verifiedReview: 350,
+  rating: 4.9,
+  remainingGoal: 3,
+  nextGoal: 297,
+  progress: 100
+};
+
+const TEST_GMB_STATIC_PAYLOAD_B = {
+  google_review: 'Outstanding service and atmosphere. Five stars every time.',
+  qrText: 'https://maps.google.com/review',
+  smallStars: 5,
+  bigStars: 4,
+  review: 512,
+  verifiedReview: 420,
+  rating: 4.8,
+  remainingGoal: 8,
+  nextGoal: 500,
+  progress: 88
+};
+
+/** Per-device state for Instagram, GMB, POS (for progress/celebratory rotation). */
 interface DeviceScreenState {
   instagram: { followers: number; target: number };
   gmb: { reviews: number; rating: number };
+  /** alternate: legacy thank-you toggle for real /gmb; testGmbCycle: A/B for /test-gmb only */
+  gmbTest: { alternate: boolean; testGmbCycle: number };
   pos: { customersToday: number };
 }
 
@@ -24,14 +54,14 @@ export class StatsPublisher {
   private deviceService: DeviceService;
   private caService?: CAService;
   private kafkaService?: KafkaService;
+  private enforceProvisioning: boolean;
 
   // Scheduling configuration
-  private readonly baseInterval: number = 60000; // 60 seconds base
+  private readonly baseInterval: number; // publish interval
   private readonly maxDelay: number = 30000; // 30 seconds max delay
   private readonly minDelay: number = 5000; // 5 seconds min delay
   private readonly batchSize: number = 50; // Max devices per batch
 
-  // State management
   private deviceState: Map<string, DeviceScreenState> = new Map();
   private publishQueue: ScheduledPublish[] = [];
   private processingTimer: NodeJS.Timeout | null = null;
@@ -45,13 +75,15 @@ export class StatsPublisher {
   constructor(
     mqttClient: MqttClientManager,
     deviceService: DeviceService,
+    publishInterval: number = 60000, // Default: every minute
     caService?: CAService,
-    kafkaService?: KafkaService
+    enforceProvisioning: boolean = true
   ) {
     this.mqttClient = mqttClient;
     this.deviceService = deviceService;
+    this.baseInterval = publishInterval;
     this.caService = caService;
-    this.kafkaService = kafkaService;
+    this.enforceProvisioning = enforceProvisioning;
   }
 
   setKafkaService(kafka: KafkaService): void {
@@ -408,24 +440,20 @@ export class StatsPublisher {
     }
   }
 
-  // Batch trigger for multiple devices (useful for bulk updates)
-  async triggerBulkEventPublish(deviceIds: string[], eventType: string): Promise<void> {
-    const now = Date.now();
-
-    for (const deviceId of deviceIds) {
-      // Add to queue with staggered timing to avoid spikes
-      this.publishQueue.push({
-        deviceId,
-        screenType: this.mapEventToScreenType(eventType),
-        scheduledTime: now + Math.floor(Math.random() * 10000), // Spread over 10 seconds
-        priority: 'high'
+  private ensureDeviceState(deviceId: string): DeviceScreenState {
+    if (!this.deviceState.has(deviceId)) {
+      this.deviceState.set(deviceId, {
+        instagram: { followers: 7500 + Math.floor(Math.random() * 500), target: 10000 },
+        gmb: { reviews: 370 + Math.floor(Math.random() * 30), rating: 4.8 },
+        gmbTest: { alternate: false, testGmbCycle: 0 },
+        pos: { customersToday: 130 + Math.floor(Math.random() * 40) }
       });
     }
-
-    logger.info('📢 Bulk events queued', {
-      count: deviceIds.length,
-      eventType
-    });
+    const s = this.deviceState.get(deviceId)!;
+    if (typeof s.gmbTest.testGmbCycle !== 'number') {
+      s.gmbTest.testGmbCycle = 0;
+    }
+    return s;
   }
 
   private mapEventToScreenType(eventType: string): any {
@@ -515,15 +543,16 @@ export class StatsPublisher {
       screen: 'gmb',
       timestamp: new Date().toISOString(),
       payload: {
-        reviews_count: reviews,
-        celebration_type: 'milestone',
-        duration: isMilestone ? 20 : 15,
-        overall_rating: state.gmb.rating,
-        color_palette: 'google',
-        message: isMilestone ? `you get ${reviews} impressions` : `${reviews} reviews! Help us reach 500`,
-        animation: 'rating_stars',
-        ...(isMilestone && { sound: 'celebration.wav' }),
-        url: 'https://g.page/r/EXAMPLE/review'
+        google_review: 'Best latte in Portland. This place never misses.',
+        qrText: 'www.youtube.com',
+        smallStars: 5,
+        bigStars: 5,
+        review: 454,
+        verifiedReview: 350,
+        rating: 4.9,
+        remainingGoal: 3,
+        nextGoal: 297,
+        progress: 100
       }
     };
 
@@ -657,18 +686,38 @@ export class StatsPublisher {
 
     const topic = `${root}/${deviceId}/promotion`;
     await this.mqttClient.publish({ topic, payload: JSON.stringify(payload), qos: 1, retain: false });
-    logger.debug('Published default canvas', { deviceId });
+    logger.info('🎨 [DEFAULT:PUBLISHED] Empty default canvas sent', { deviceId, topic });
+
   }
 
-  private ensureDeviceState(deviceId: string): DeviceScreenState {
-    if (!this.deviceState.has(deviceId)) {
-      this.deviceState.set(deviceId, {
-        instagram: { followers: 7500 + Math.floor(Math.random() * 500), target: 10000 },
-        gmb: { reviews: 370 + Math.floor(Math.random() * 30), rating: 4.8 },
-        pos: { customersToday: 130 + Math.floor(Math.random() * 40) }
-      });
-    }
-    return this.deviceState.get(deviceId)!;
+  private async publishTestGmb(deviceId: string, root: string): Promise<void> {
+    const state = this.ensureDeviceState(deviceId);
+    const cycle = state.gmbTest.testGmbCycle % 2;
+    const innerPayload = cycle === 0 ? TEST_GMB_STATIC_PAYLOAD_A : TEST_GMB_STATIC_PAYLOAD_B;
+    const variantLabel = cycle === 0 ? 'static_a' : 'static_b';
+
+    const payload = {
+      version: '1.1',
+      id: `msg_gmb_${Date.now()}`,
+      Muted: 'true',
+      Sound: 'true',
+      screen: 'gmb',
+      /** Lets firmware/logs confirm A/B without diffing nested fields. */
+      testGmbVariant: variantLabel,
+      timestamp: new Date().toISOString(),
+      payload: innerPayload
+    };
+
+    await this.mqttClient.publish({
+      topic: `${root}/${deviceId}/test-gmb`,
+      payload: JSON.stringify(payload),
+      qos: 1,
+      retain: false
+    });
+
+    state.gmbTest.testGmbCycle += 1;
+
+    logger.info('Published test GMB screen', { deviceId, testGmbVariant: variantLabel, cycle: state.gmbTest.testGmbCycle });
   }
 
   private async cleanupInactiveDeviceState(activeDevices: Set<string>): Promise<void> {

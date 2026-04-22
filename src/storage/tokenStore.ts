@@ -5,6 +5,7 @@
  * Uses official 'redis' package (node-redis)
  */
 
+import * as crypto from 'crypto';
 import { RedisClientType } from 'redis';
 import { getRedisService } from '../services/redisService';
 import { logger } from '../utils/logger';
@@ -19,10 +20,13 @@ export class TokenStore {
   private redis: RedisClientType | null = null;
   private readonly TOKEN_PREFIX = 'token:';
   private readonly DEVICE_PREFIX = 'device:';
+  /** SHA-256 of JWT — records one-time use after successful sign-csr until JWT exp */
+  private readonly CONSUMED_PREFIX = 'prov:consumed:';
 
   // In-memory fallback storage
   private inMemoryStore: Map<string, { entry: TokenEntry; expiresAt: number }> = new Map();
   private inMemoryDeviceMap: Map<string, string> = new Map();
+  private inMemoryConsumed: Map<string, number> = new Map();
   private cleanupInterval: NodeJS.Timeout | null = null;
   private useInMemory: boolean = false;
 
@@ -72,6 +76,11 @@ export class TokenStore {
           if (this.inMemoryDeviceMap.get(deviceId) === value.entry.token) {
             this.inMemoryDeviceMap.delete(deviceId);
           }
+        }
+      }
+      for (const [h, exp] of this.inMemoryConsumed.entries()) {
+        if (now > exp) {
+          this.inMemoryConsumed.delete(h);
         }
       }
     }, 60000); // Every minute
@@ -202,6 +211,64 @@ export class TokenStore {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logger.error('Failed to get token by device', { error: errorMessage });
       return null;
+    }
+  }
+
+  private hashToken(token: string): string {
+    return crypto.createHash('sha256').update(token, 'utf8').digest('hex');
+  }
+
+  /**
+   * After successful sign-csr: remove active token and record consumption until JWT expiry
+   * so clients get a clear "already used" instead of "not found" while JWT is still valid.
+   */
+  async markTokenConsumed(token: string, ttlSeconds: number): Promise<void> {
+    const ttl = Math.max(1, Math.floor(ttlSeconds));
+    const h = this.hashToken(token);
+    const key = `${this.CONSUMED_PREFIX}${h}`;
+    try {
+      await this.deleteToken(token);
+    } catch (e) {
+      logger.warn('deleteToken during markTokenConsumed failed (continuing to set consumed marker)', {
+        error: e instanceof Error ? e.message : e
+      });
+    }
+    try {
+      const redis = this.getRedis();
+      if (redis) {
+        await redis.setEx(key, ttl, JSON.stringify({ consumedAt: new Date().toISOString() }));
+        logger.debug('Provisioning token marked consumed in Redis', { ttlSeconds: ttl });
+      } else {
+        this.inMemoryConsumed.set(h, Date.now() + ttl * 1000);
+        logger.debug('Provisioning token marked consumed in memory', { ttlSeconds: ttl });
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error('Failed to mark token consumed', { error: errorMessage });
+      throw error;
+    }
+  }
+
+  async isTokenConsumed(token: string): Promise<boolean> {
+    const h = this.hashToken(token);
+    try {
+      const redis = this.getRedis();
+      if (redis) {
+        const v = await redis.get(`${this.CONSUMED_PREFIX}${h}`);
+        return v !== null;
+      }
+      const exp = this.inMemoryConsumed.get(h);
+      if (exp === undefined) {
+        return false;
+      }
+      if (Date.now() > exp) {
+        this.inMemoryConsumed.delete(h);
+        return false;
+      }
+      return true;
+    } catch (error) {
+      logger.error('isTokenConsumed failed', { error: error instanceof Error ? error.message : error });
+      return false;
     }
   }
 
@@ -378,6 +445,7 @@ export class TokenStore {
     }
     this.inMemoryStore.clear();
     this.inMemoryDeviceMap.clear();
+    this.inMemoryConsumed.clear();
     logger.info('TokenStore shutdown');
     this.redis = null;
   }

@@ -53,21 +53,18 @@ COPY --from=builder /app/dist ./dist
 # Copy public directory for static file serving
 COPY public ./public
 
-# Create data directory with proper permissions
-RUN mkdir -p data && chown -R nodejs:nodejs data
-
-# Change ownership of the app directory
-RUN chown -R nodejs:nodejs /app
+# Runtime dirs: data + mTLS PEM mount point (Render Secret Files → /etc/mqtt-certs/*)
+RUN mkdir -p data /etc/mqtt-certs && \
+    chown -R nodejs:nodejs data /etc/mqtt-certs /app
 
 # Switch to non-root user
 USER nodejs
 
-# Expose port
+# Default local port; Render sets PORT at runtime — healthcheck follows process.env.PORT
 EXPOSE 3002
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3002/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
+  CMD node -e "require('http').get('http://127.0.0.1:'+(process.env.PORT||3002)+'/health',(res)=>{process.exit(res.statusCode===200?0:1)}).on('error',()=>process.exit(1))"
 
 # Use dumb-init for proper signal handling
 ENTRYPOINT ["dumb-init", "--"]
