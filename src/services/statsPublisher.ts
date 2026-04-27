@@ -507,7 +507,7 @@ export class StatsPublisher {
     // ── Fallback path (dev / Kafka unavailable): send mock data directly ───
     const state = this.ensureDeviceState(deviceId);
     state.instagram.followers += 50 + Math.floor(Math.random() * 100);
-    const target = state.instagram.target;
+    const target = state.instagram.followers + 4;
     const followers = state.instagram.followers;
     const progress = Math.min(100, Math.round((followers / target) * 100));
     const envelope = buildScreenEnvelope('instagram', {
