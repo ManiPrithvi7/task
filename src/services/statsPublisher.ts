@@ -236,14 +236,15 @@ export class StatsPublisher {
   }
 
   /** Google My Business: reviews progress or celebratory milestone. */
+ 
   private async publishGmb(deviceId: string, root: string): Promise<void> {
     const state = this.ensureDeviceState(deviceId);
     state.gmb.reviews += 5 + Math.floor(Math.random() * 15);
     const reviews = state.gmb.reviews;
     state.gmb.rating = Math.max(1, Math.min(5, state.gmb.rating + (Math.random() * 0.2 - 0.1)));
 
-    const isMilestone = reviews % 100 === 0 || reviews === 400;
-    const nextGoal = Math.ceil(reviews / 10) * 10 + 10;
+    // Next milestone is every 5 reviews (e.g., 171 → 175, 175 → 180)
+    const nextGoal = Math.floor(reviews / 5) * 5 + 5;
     const remainingGoal = Math.max(0, nextGoal - reviews);
     const progress = Math.max(0, Math.min(100, Math.round((reviews / nextGoal) * 100)));
 
@@ -267,7 +268,7 @@ export class StatsPublisher {
       qos: 1,
       retain: false
     });
-    logger.debug('Published GMB screen', { deviceId, reviews, milestone: isMilestone });
+    logger.debug('Published GMB screen', { deviceId, reviews, milestone:nextGoal });
   }
 
   /** POS: screen_update with must_try, customers_today, provider (square/shopify). */
