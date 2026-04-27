@@ -532,7 +532,8 @@ export class StatsPublisher {
     const reviews = state.gmb.reviews;
     state.gmb.rating = Math.max(1, Math.min(5, state.gmb.rating + (Math.random() * 0.2 - 0.1)));
 
-    const nextGoal = Math.ceil(reviews / 10) * 10 + 10;
+    // Next milestone is every 5 reviews (e.g., 171 → 175, 175 → 180)
+    const nextGoal = Math.floor(reviews / 5) * 5 + 5;
     const remainingGoal = Math.max(0, nextGoal - reviews);
     const progress = Math.max(0, Math.min(100, Math.round((reviews / nextGoal) * 100)));
 
