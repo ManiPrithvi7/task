@@ -49,6 +49,28 @@ interface ScheduledPublish {
   priority: 'normal' | 'high';
 }
 
+type ScreenEnvelope<TPayload> = {
+  version: '1.2';
+  screen: 'instagram' | 'gmb' | 'pos' | 'promotion';
+  muted: 'true' | 'false';
+  timestamp: string;
+  payload: TPayload;
+};
+
+function buildScreenEnvelope<TPayload>(
+  screen: ScreenEnvelope<TPayload>['screen'],
+  payload: TPayload,
+  opts?: { muted?: ScreenEnvelope<TPayload>['muted']; timestamp?: Date }
+): ScreenEnvelope<TPayload> {
+  return {
+    version: '1.2',
+    screen,
+    muted: opts?.muted ?? 'true',
+    timestamp: (opts?.timestamp ?? new Date()).toISOString(),
+    payload
+  };
+}
+
 export class StatsPublisher {
   private mqttClient: MqttClientManager;
   private deviceService: DeviceService;
@@ -488,42 +510,17 @@ export class StatsPublisher {
     const target = state.instagram.target;
     const followers = state.instagram.followers;
     const progress = Math.min(100, Math.round((followers / target) * 100));
-    const isCelebratory = progress >= 100;
-
-    const payload = {
-      version: '1.1',
-      id: `msg_inst_${Date.now()}`,
-      screen: 'instagram',
-      Muted: 'true',
-      Sound: 'true',
-      timestamp: new Date().toISOString(),
-      payload: isCelebratory
-        ? {
-          followers_count: target,
-          duration: 20,
-          target,
-          progress: 100,
-          color_palette: 'instagram',
-          message: 'yey!, you made it!',
-          animation: 'pulse_grow',
-          sound: 'celebration.wav',
-          url: 'https://instagram.com/businessprofile'
-        }
-        : {
-          followers_count: followers,
-          duration: 15,
-          target,
-          progress,
-          color_palette: 'instagram',
-          message: `Almost at ${Math.round(followers / 1000)}k followers!`,
-          animation: 'pulse_grow',
-          url: 'https://instagram.com/businessprofile'
-        }
-    };
+    const envelope = buildScreenEnvelope('instagram', {
+      followers,
+      achievement: target,
+      remainingGoal: Math.max(0, target - followers),
+      progress,
+      qrText: 'https://ig.com/handle'
+    });
 
     await this.mqttClient.publish({
       topic: `${root}/${deviceId}/instagram`,
-      payload: JSON.stringify(payload),
+      payload: JSON.stringify(envelope),
       qos: 1,
       retain: false
     });
@@ -533,32 +530,29 @@ export class StatsPublisher {
     const state = this.ensureDeviceState(deviceId);
     state.gmb.reviews += 5 + Math.floor(Math.random() * 15);
     const reviews = state.gmb.reviews;
-    const isMilestone = reviews % 100 === 0 || reviews === 400;
+    state.gmb.rating = Math.max(1, Math.min(5, state.gmb.rating + (Math.random() * 0.2 - 0.1)));
 
-    const payload = {
-      version: '1.1',
-      id: `msg_gmb_${Date.now()}`,
-      Muted: 'true',
-      Sound: 'true',
-      screen: 'gmb',
-      timestamp: new Date().toISOString(),
-      payload: {
-        google_review: 'Best latte in Portland. This place never misses.',
-        qrText: 'www.youtube.com',
-        smallStars: 5,
-        bigStars: 5,
-        review: 454,
-        verifiedReview: 350,
-        rating: 4.9,
-        remainingGoal: 3,
-        nextGoal: 297,
-        progress: 100
-      }
-    };
+    const nextGoal = Math.ceil(reviews / 10) * 10 + 10;
+    const remainingGoal = Math.max(0, nextGoal - reviews);
+    const progress = Math.max(0, Math.min(100, Math.round((reviews / nextGoal) * 100)));
+
+    const envelope = buildScreenEnvelope('gmb', {
+      qrText: 'https://g.page/r/...',
+      verifiedReview: reviews,
+      rating: Math.round(state.gmb.rating * 10) / 10,
+      remainingGoal,
+      nextGoal,
+      progress,
+      reviews: [
+        { id: 1, googleReview: 'Best latte in Portland.', rating: '4' },
+        { id: 2, googleReview: 'Amazing pastries and welcoming staff.', rating: '4' },
+        { id: 3, googleReview: 'Coffee always hot, staff always friendly.', rating: '5' }
+      ]
+    });
 
     await this.mqttClient.publish({
       topic: `${root}/${deviceId}/gmb`,
-      payload: JSON.stringify(payload),
+      payload: JSON.stringify(envelope),
       qos: 1,
       retain: false
     });
@@ -570,23 +564,15 @@ export class StatsPublisher {
     const providers = ['square', 'shopify'] as const;
     const provider = providers[Math.floor(Math.random() * providers.length)];
 
-    const payload = {
-      version: '1.1',
-      id: `msg_pos_${Date.now()}`,
-      type: 'screen_update',
-      muted: 'true',
-      screen: 'pos',
-      timestamp: new Date().toISOString(),
-      payload: {
-        must_try: 'Premium Coffee Blend',
-        customers_today: state.pos.customersToday,
-        provider
-      }
-    };
+    const envelope = buildScreenEnvelope('pos', {
+      platform: provider,
+      orderCount: state.pos.customersToday,
+      top_seller: 'Caramel Latte'
+    });
 
     await this.mqttClient.publish({
       topic: `${root}/${deviceId}/pos`,
-      payload: JSON.stringify(payload),
+      payload: JSON.stringify(envelope),
       qos: 1,
       retain: false
     });
@@ -649,18 +635,15 @@ export class StatsPublisher {
         }
       }
 
-      const payload = {
-        version: '1.1',
-        id: `msg_promo_${Date.now()}`,
-        type: 'screen_update',
-        muted: 'true',
-        screen: 'canvas',
-        timestamp: new Date().toISOString(),
-        payload: innerPayload
-      };
+      const envelope = buildScreenEnvelope('promotion', {
+        platform: (innerPayload.provider ?? tplData.provider ?? 'shopify') as string,
+        Offer: (tplData.Offer ?? tplData.offer ?? '20%') as string,
+        message: (tplData.message ?? tplData.textContent ?? 'Cold Brew') as string,
+        qrText: (tplData.qrText ?? innerPayload.url ?? tplData.url ?? 'https://promo.link/coldbrew') as string
+      });
 
       const topic = `${root}/${deviceId}/promotion`;
-      await this.mqttClient.publish({ topic, payload: JSON.stringify(payload), qos: 1, retain: false });
+      await this.mqttClient.publish({ topic, payload: JSON.stringify(envelope), qos: 1, retain: false });
 
     } catch (err: unknown) {
       logger.error('Failed to publish promotion screen', {
@@ -674,18 +657,15 @@ export class StatsPublisher {
   }
 
   private async publishDefaultCanvas(deviceId: string, root: string): Promise<void> {
-    const payload = {
-      version: '1.1',
-      id: `msg_promo_${Date.now()}`,
-      type: 'screen_update',
-      muted: 'true',
-      screen: 'canvas',
-      timestamp: new Date().toISOString(),
-      payload: {}
-    };
+    const envelope = buildScreenEnvelope('promotion', {
+      platform: 'shopify',
+      Offer: '20%',
+      message: 'Cold Brew',
+      qrText: 'https://promo.link/coldbrew'
+    });
 
     const topic = `${root}/${deviceId}/promotion`;
-    await this.mqttClient.publish({ topic, payload: JSON.stringify(payload), qos: 1, retain: false });
+    await this.mqttClient.publish({ topic, payload: JSON.stringify(envelope), qos: 1, retain: false });
     logger.info('🎨 [DEFAULT:PUBLISHED] Empty default canvas sent', { deviceId, topic });
 
   }
@@ -696,21 +676,22 @@ export class StatsPublisher {
     const innerPayload = cycle === 0 ? TEST_GMB_STATIC_PAYLOAD_A : TEST_GMB_STATIC_PAYLOAD_B;
     const variantLabel = cycle === 0 ? 'static_a' : 'static_b';
 
-    const payload = {
-      version: '1.1',
-      id: `msg_gmb_${Date.now()}`,
-      Muted: 'true',
-      Sound: 'true',
-      screen: 'gmb',
-      /** Lets firmware/logs confirm A/B without diffing nested fields. */
-      testGmbVariant: variantLabel,
-      timestamp: new Date().toISOString(),
-      payload: innerPayload
-    };
+    const envelope = buildScreenEnvelope('gmb', {
+      qrText: innerPayload.qrText,
+      verifiedReview: innerPayload.verifiedReview,
+      rating: innerPayload.rating,
+      remainingGoal: innerPayload.remainingGoal,
+      nextGoal: innerPayload.nextGoal,
+      progress: innerPayload.progress,
+      reviews: [
+        { id: 1, googleReview: innerPayload.google_review, rating: String(innerPayload.bigStars ?? 5) }
+      ],
+      testVariant: variantLabel
+    } as any);
 
     await this.mqttClient.publish({
       topic: `${root}/${deviceId}/test-gmb`,
-      payload: JSON.stringify(payload),
+      payload: JSON.stringify(envelope),
       qos: 1,
       retain: false
     });

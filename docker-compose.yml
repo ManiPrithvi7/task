@@ -5,7 +5,7 @@
 services:
   influxdb:
     image: influxdb:2.7.4
-    container_name: mqtt-lite-influxdb
+    container_name: proof-influxdb
     restart: unless-stopped
     ports:
       - "8086:8086"
@@ -27,7 +27,7 @@ services:
 
   kafka:
     image: apache/kafka:4.1.0
-    container_name: mqtt-lite-kafka
+    container_name: proof-kafka
     restart: unless-stopped
     ports:
       - "9092:9092"        # Exposed for cross-domain event publishing
