@@ -20,6 +20,7 @@ import { DeviceService, getActiveDeviceCache, ActiveDeviceCache } from './servic
 import { SessionService } from './services/sessionService';
 import { Device } from './models/Device';
 import { User } from './models/User';
+import { Social, Provider as SocialProvider } from './models/Social';
 import { createProvisioningRoutes } from './routes/provisioningRoutes';
 import { createConfigRoutes } from './routes/configRoutes';
 import { createLifecycleRoutes } from './routes/lifecycleRoutes';
@@ -76,6 +77,75 @@ export class StatsMqttLite {
     validateConfig(this.config);
   }
 
+  private getRedisClientOrNull() {
+    if (!this.redisService) return null;
+    if (!this.redisService.isRedisConnected()) return null;
+    try {
+      return this.redisService.getClient();
+    } catch {
+      return null;
+    }
+  }
+
+  private async redisMarkDeviceActive(deviceId: string): Promise<void> {
+    const client = this.getRedisClientOrNull();
+    if (!client) return;
+    try {
+      await client.sAdd('proof.mqtt:active:devices', deviceId);
+    } catch (err: unknown) {
+      logger.debug('Redis: failed to add device to active set', {
+        deviceId,
+        error: err instanceof Error ? err.message : String(err)
+      });
+    }
+  }
+
+  private async redisRemoveDevice(deviceId: string): Promise<void> {
+    const client = this.getRedisClientOrNull();
+    if (!client) return;
+    try {
+      await client.sRem('proof.mqtt:active:devices', deviceId);
+      await client.del(`proof.mqtt:device:${deviceId}`);
+    } catch (err: unknown) {
+      logger.debug('Redis: failed to remove device keys', {
+        deviceId,
+        error: err instanceof Error ? err.message : String(err)
+      });
+    }
+  }
+
+  private async redisUpsertDeviceMetaFromMongo(deviceId: string, userId: string): Promise<void> {
+    const client = this.getRedisClientOrNull();
+    if (!client) return;
+    try {
+      if (!mongoose.Types.ObjectId.isValid(userId)) return;
+      const ig = await Social.findOne({
+        userId: new mongoose.Types.ObjectId(userId),
+        provider: SocialProvider.INSTAGRAM
+      }).sort({ updatedAt: -1 });
+
+      if (!ig) {
+        // Keep active set membership, but remove stale meta if any.
+        await client.del(`proof.mqtt:device:${deviceId}`);
+        return;
+      }
+
+      const meta = {
+        instagramAccountId: ig.socialAccountId,
+        accessToken: ig.accessToken,
+        tokenExpiresAt: ig.tokenExp || undefined,
+        lastFetchedAt: undefined
+      };
+      await client.set(`proof.mqtt:device:${deviceId}`, JSON.stringify(meta));
+    } catch (err: unknown) {
+      logger.debug('Redis: failed to upsert device meta', {
+        deviceId,
+        userId,
+        error: err instanceof Error ? err.message : String(err)
+      });
+    }
+  }
+
   async start(): Promise<void> {
     try {
       logger.info('🚀 Starting MQTT Publisher Lite...');
@@ -84,11 +154,11 @@ export class StatsMqttLite {
       // Initialize MongoDB (REQUIRED)
       await this.initializeMongoDB();
 
-      // Initialize Redis (REDIS_HOST + REDIS_PORT + REDIS_PASSWORD) for token persistence
-      if (this.config.redis.enabled && this.config.redis.host && this.config.redis.port !== undefined) {
+      // Initialize Redis (REDIS_URL) for token persistence
+      if (this.config.redis.enabled && this.config.redis.url) {
         await this.initializeRedis();
       } else if (this.config.redis.enabled) {
-        logger.warn('⚠️  Redis enabled but REDIS_HOST or REDIS_PORT not set. Provisioning tokens will use in-memory storage.');
+        logger.warn('⚠️  Redis enabled but REDIS_URL not set. Provisioning tokens will use in-memory storage.');
       }
 
       // Initialize services
@@ -195,36 +265,36 @@ export class StatsMqttLite {
     }
   }
 
-  /** Returns the Redis connection host for production localhost check. */
-  private getRedisConnectionHost(): string | null {
-    return this.config.redis.host ?? null;
-  }
-
   private async initializeRedis(): Promise<void> {
     logger.info('💾 Initializing Redis (Token Persistence)...');
 
-    const redisHost = this.getRedisConnectionHost();
-    const isLocalhost = redisHost === 'localhost' || redisHost === '127.0.0.1' || redisHost === '::1';
-    if (this.config.app.env === 'production' && isLocalhost) {
-      throw new Error(
-        'Redis is configured to use localhost. On Render and other cloud platforms there is no Redis on localhost. ' +
-        'Set REDIS_HOST and REDIS_PORT to your external Redis (e.g. Redis Cloud). To run without Redis, set REDIS_ENABLED=false.'
-      );
+    // Safety: if REDIS_URL points at localhost in production, fail fast.
+    if (this.config.app.env === 'production' && this.config.redis.url) {
+      try {
+        const u = new URL(this.config.redis.url);
+        const h = u.hostname;
+        const isLocalhost = h === 'localhost' || h === '127.0.0.1' || h === '::1';
+        if (isLocalhost) {
+          throw new Error(
+            'REDIS_URL points to localhost. On Render and other cloud platforms there is no Redis on localhost. ' +
+            'Set REDIS_URL to your external Redis (e.g. Upstash). To run without Redis, set REDIS_ENABLED=false.'
+          );
+        }
+      } catch {
+        // ignore parse errors here; RedisService will surface connect errors
+      }
     }
 
     this.redisService = createRedisService({
-      host: this.config.redis.host,
-      port: this.config.redis.port,
-      password: this.config.redis.password,
+      url: this.config.redis.url,
       db: this.config.redis.db,
       keyPrefix: this.config.redis.keyPrefix,
-      tls: this.config.redis.tls
     });
 
     // Check if Redis is configured before attempting connection
     if (!this.redisService.isRedisConfigured()) {
       logger.warn('⚠️  Redis enabled but no connection details provided. Provisioning tokens will use in-memory storage.');
-      logger.warn('   Set REDIS_HOST and REDIS_PORT (and REDIS_PASSWORD if required).');
+      logger.warn('   Set REDIS_URL (recommended, e.g. Upstash).');
       logger.warn('   To disable Redis, set REDIS_ENABLED=false');
       this.config.redis.enabled = false; // Explicitly disable Redis in config if not configured
       return;
@@ -255,7 +325,7 @@ export class StatsMqttLite {
       this.config.redis.enabled = false;
       throw new Error(
         `Redis connection failed (${error?.message ?? 'unknown'}). ` +
-        'Set REDIS_HOST, REDIS_PORT (and REDIS_PASSWORD if required). Fix the connection or set REDIS_ENABLED=false to use in-memory tokens (not persistent).'
+        'Set REDIS_URL (recommended, e.g. Upstash). Fix the connection or set REDIS_ENABLED=false to use in-memory tokens (not persistent).'
       );
     }
   }
@@ -542,6 +612,7 @@ export class StatsMqttLite {
       async (deviceId: string) => {
         logger.warn('⚠️ [LIFECYCLE:PUBACK_TIMEOUT] Device unresponsive — removing from Redis + marking inactive', { deviceId });
         const removed = await this.activeDeviceCache.removeActive(deviceId);
+        await this.redisRemoveDevice(deviceId);
         await this.deviceService.updateDeviceStatus(deviceId, 'inactive');
         logger.info('⚠️ [LIFECYCLE:PUBACK_TIMEOUT] Complete', { deviceId, removedFromRedis: removed });
       },
@@ -549,6 +620,7 @@ export class StatsMqttLite {
       async (deviceId: string) => {
         logger.debug('✅ [LIFECYCLE:PUBACK_OK] Device confirmed message receipt', { deviceId });
         await this.activeDeviceCache.updateLastSeen(deviceId);
+        await this.redisMarkDeviceActive(deviceId);
       }
     );
     
@@ -762,6 +834,7 @@ export class StatsMqttLite {
     // Cache active device in Redis with userId + user preferences (one-time MongoDB read)
     logger.info('📋 [LIFECYCLE:REGISTER] Caching device in Redis active list', { deviceId });
     await this.cacheActiveDevice(deviceId);
+    await this.redisMarkDeviceActive(deviceId);
     logger.info('📋 [LIFECYCLE:REGISTER] Device registration complete', { deviceId });
   }
 
@@ -829,6 +902,13 @@ export class StatsMqttLite {
         brandCanvasEnabled,
         lastSeen: Date.now()
       });
+
+      // Store per-device Meta credentials directly in Redis for the cron worker (best-effort).
+      if (deviceDoc.userId) {
+        await this.redisUpsertDeviceMetaFromMongo(deviceId, deviceDoc.userId.toString());
+      } else {
+        await this.redisUpsertDeviceMetaFromMongo(deviceId, '');
+      }
     } catch (err: unknown) {
       logger.error('❌ [LIFECYCLE:CACHE] Failed to cache active device in Redis', {
         deviceId,
@@ -885,6 +965,7 @@ export class StatsMqttLite {
     // Remove from Redis active cache + mark inactive in MongoDB
     logger.info('💀 [LIFECYCLE:LWT] Removing device from Redis active cache', { deviceId });
     const removed = await this.activeDeviceCache.removeActive(deviceId);
+    await this.redisRemoveDevice(deviceId);
     await this.deviceService.updateDeviceStatus(deviceId, 'inactive');
     logger.info('💀 [LIFECYCLE:LWT] Device disconnect processed', {
       deviceId,

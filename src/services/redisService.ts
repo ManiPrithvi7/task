@@ -8,12 +8,10 @@ import { createClient, RedisClientType } from 'redis';
 import { logger } from '../utils/logger';
 
 export interface RedisConfig {
-  host?: string;
-  port?: number;
-  password?: string;
+  /** Preferred: single URL (Upstash). Example: rediss://default:...@host:6379 */
+  url?: string;
   db?: number;
   keyPrefix?: string;
-  tls?: boolean; // Enable TLS for Redis Cloud (REDIS_TLS=true)
 }
 
 export class RedisService {
@@ -26,15 +24,33 @@ export class RedisService {
     this.config = config;
   }
 
-  /**
-   * Check if Redis is configured (host + port required).
-   */
-  isRedisConfigured(): boolean {
-    return !!(this.config.host && this.config.port !== undefined && this.config.port !== null);
+  private safeTargetForLogs(): { mode: 'url' | 'none'; host?: string; port?: number; tls?: boolean } {
+    const url = this.config.url?.trim();
+    if (url) {
+      try {
+        const u = new URL(url);
+        return {
+          mode: 'url',
+          host: u.hostname,
+          port: u.port ? parseInt(u.port, 10) : undefined,
+          tls: u.protocol === 'rediss:'
+        };
+      } catch {
+        return { mode: 'url' };
+      }
+    }
+    return { mode: 'none' };
   }
 
   /**
-   * Connect to Redis using host, port, password (same format as node-redis / Redis Cloud).
+   * Check if Redis is configured (REDIS_URL).
+   */
+  isRedisConfigured(): boolean {
+    return !!(this.config.url && this.config.url.trim().length > 0);
+  }
+
+  /**
+   * Connect to Redis using REDIS_URL (Upstash).
    */
   async connect(): Promise<void> {
     try {
@@ -44,37 +60,44 @@ export class RedisService {
       }
 
       if (!this.isRedisConfigured()) {
-        logger.warn('Redis is enabled but no connection details provided. Skipping connection.');
+        logger.warn('Redis is enabled but REDIS_URL is not set. Skipping connection.');
         this.isConnected = false;
         return;
       }
 
+      const reconnectStrategy = (retries: number) => {
+        if (retries > 20) {
+          logger.error('Redis reconnect attempts exhausted', { retries });
+          return new Error('Redis reconnect attempts exhausted');
+        }
+        const base = Math.min(1000 * Math.pow(2, retries), 15000);
+        const jitter = Math.floor(Math.random() * 250);
+        return base + jitter;
+      };
+
+      const target = this.safeTargetForLogs();
       logger.info('Connecting to Redis', {
-        host: this.config.host,
-        port: this.config.port,
+        mode: target.mode,
+        host: target.host,
+        port: target.port,
         db: this.config.db ?? 0,
-        tls: this.config.tls ?? false
+        tls: target.tls
       });
 
+      const socketBase = {
+        connectTimeout: 10000,
+        keepAlive: 5000,
+        noDelay: true,
+        reconnectStrategy
+      };
+
+      const url = this.config.url?.trim();
+      // URL contains auth and host. Use rediss:// for TLS (Upstash).
       this.client = createClient({
-        username: 'default', // Redis 6+ ACL / Redis Cloud
-        password: this.config.password,
+        url,
         socket: {
-          host: this.config.host!,
-          port: this.config.port!,
-          connectTimeout: 10000,
-          keepAlive: 5000,
-          noDelay: true,
-          reconnectStrategy: (retries: number) => {
-            if (retries > 20) {
-              logger.error('Redis reconnect attempts exhausted', { retries });
-              return new Error('Redis reconnect attempts exhausted');
-            }
-            const base = Math.min(1000 * Math.pow(2, retries), 15000);
-            const jitter = Math.floor(Math.random() * 250);
-            return base + jitter;
-          },
-          ...(this.config.tls && { tls: true })
+          ...socketBase,
+          ...(url && url.startsWith('rediss://') ? { tls: true } : {})
         },
         database: this.config.db ?? 0
       }) as RedisClientType;
@@ -101,10 +124,10 @@ export class RedisService {
       const isENOTFOUND = errorMessage.includes('ENOTFOUND') || (error instanceof Error && (error as NodeJS.ErrnoException).code === 'ENOTFOUND');
       logger.error('❌ Failed to connect to Redis', {
         error: errorMessage,
-        config: { host: this.config.host, port: this.config.port }
+        config: this.safeTargetForLogs()
       });
       if (isENOTFOUND) {
-        logger.warn('Redis host could not be resolved (DNS). Check REDIS_HOST and REDIS_PORT, and that Redis is reachable. To run without Redis set REDIS_ENABLED=false.');
+        logger.warn('Redis host could not be resolved (DNS). Check REDIS_URL and network reachability. To run without Redis, unset REDIS_URL.');
       }
       throw new Error(`Redis connection failed: ${errorMessage}`);
     }

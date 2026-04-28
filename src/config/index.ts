@@ -313,12 +313,10 @@ export interface MongoDBConfig {
 
 export interface RedisConfig {
   enabled: boolean;
-  host?: string;       // Redis host (REDIS_HOST)
-  port?: number;       // Redis port (REDIS_PORT)
-  password?: string;   // Redis password (REDIS_PASSWORD)
+  /** Preferred single connection string (e.g. Upstash): rediss://default:...@host:6379 */
+  url?: string;
   db?: number;         // Redis database number (default 0)
   keyPrefix?: string;  // Key prefix for namespacing
-  tls?: boolean;       // Enable TLS for Redis Cloud (REDIS_TLS=true)
 }
 
 export interface AppEnvConfig {
@@ -388,6 +386,8 @@ export function loadConfig(): AppConfig {
     !!process.env.MQTT_TLS_CLIENT_CERT_PEM?.trim() ||
     !!process.env.MQTT_TLS_CLIENT_KEY_PEM?.trim();
 
+  const redisUrl = process.env.REDIS_URL?.trim();
+
   const config: AppConfig = {
     mqtt: {
       broker: process.env.MQTT_BROKER || 'broker.emqx.io',
@@ -447,13 +447,10 @@ export function loadConfig(): AppConfig {
       dbName: process.env.MONGODB_DB_NAME || 'statsmqtt'
     },
     redis: {
-      enabled: process.env.REDIS_ENABLED !== 'false',
-      host: process.env.REDIS_HOST?.trim(),
-      port: process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT, 10) : undefined,
-      password: process.env.REDIS_PASSWORD,
+      enabled: Boolean(redisUrl),
+      url: redisUrl,
       db: parseInt(process.env.REDIS_DB || '0', 10),
       keyPrefix: process.env.REDIS_KEY_PREFIX || 'mqtt-lite:',
-      tls: process.env.REDIS_TLS === 'true' || process.env.REDIS_TLS === '1'
     },
     auth: {
       secret: process.env.AUTH_SECRET || ''
@@ -485,8 +482,8 @@ export function loadConfig(): AppConfig {
       dbName: config.mongodb.dbName
     },
     redis: {
-      host: config.redis.host || 'not set',
-      port: config.redis.port ?? 'not set',
+      host: config.redis.url ? '(via REDIS_URL)' : 'not set',
+      port: config.redis.url ? '(via REDIS_URL)' : 'not set',
       keyPrefix: config.redis.keyPrefix
     },
     env: config.app.env
@@ -551,11 +548,30 @@ export function validateConfig(config: AppConfig): void {
       );
     }
   }
-  // Redis: host + port required when enabled (password optional for no-auth Redis).
-  if (config.redis.enabled && (!config.redis.host || config.redis.port === undefined)) {
-    logger.warn('Redis enabled but REDIS_HOST or REDIS_PORT not set. Provisioning tokens will use in-memory storage.');
-    logger.warn('Set REDIS_HOST and REDIS_PORT (and REDIS_PASSWORD if required). To disable Redis, set REDIS_ENABLED=false');
+  // Redis: only one supported config method is REDIS_URL (rediss://...).
+  // if (config.app.env === 'production' && !config.redis.url) {
+  //   throw new Error(
+  //     'REDIS_URL is required in production. Set REDIS_URL to your Upstash Redis TLS endpoint (rediss://...@...upstash.io:6379).'
+  //   );
+  // }
+  if (!config.redis.url) {
+    logger.warn('REDIS_URL not set. Redis features disabled; provisioning tokens will fall back to in-memory storage.');
     config.redis.enabled = false;
+  } else {
+    if (!config.redis.url.startsWith('rediss://')) {
+      throw new Error('REDIS_URL must start with rediss:// (TLS) when connecting to Upstash Redis.');
+    }
+    if (!config.redis.url.includes('upstash.io')) {
+      logger.warn('REDIS_URL does not include upstash.io — are you sure you want non-Upstash Redis?', {
+        redisHostHint: (() => {
+          try {
+            return new URL(config.redis.url!).hostname;
+          } catch {
+            return 'unknown';
+          }
+        })()
+      });
+    }
   }
 
   logger.info('Configuration validated successfully');

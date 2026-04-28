@@ -91,46 +91,44 @@ export class MqttClientManager extends EventEmitter {
         if (this.config.password) options.password = this.config.password;
       }
 
-      let brokerUrl = `mqtt://${this.config.broker}:${this.config.port}`;
       const tlsCfg = this.config.tls;
+      if (!tlsCfg?.enabled) {
+        reject(new Error('mTLS-only MQTT: TLS is required (no plaintext fallback)'));
+        return;
+      }
 
-      if (tlsCfg?.enabled) {
-        try {
-          if (tlsCfg.caPem?.includes('-----BEGIN')) {
-            options.ca = caForBrokerTls(tlsCfg.caPem);
-          }
-
-          if (tlsCfg.clientCertPem?.includes('-----BEGIN')) {
-            options.cert = tlsCfg.clientCertPem;
-          }
-
-          if (tlsCfg.clientKeyPem?.includes('-----BEGIN')) {
-            options.key = tlsCfg.clientKeyPem;
-          }
-
-          options.rejectUnauthorized = tlsCfg.rejectUnauthorized !== false;
-          if (tlsCfg.servername) {
-            (options as any).servername = tlsCfg.servername;
-          }
-          // mqtt.js overwrites servername with the URL hostname in connect/tls.js (buildStream),
-          // so TLS hostname verification uses MQTT_BROKER even when MQTT_TLS_SERVERNAME is set.
-          // Pin verification to the cert identity (e.g. nanomq-broker) when they differ (Railway TCP proxy).
-          const expectedServerName = tlsCfg.servername?.trim();
-          if (
-            expectedServerName &&
-            expectedServerName !== this.config.broker
-          ) {
-            (options as any).checkServerIdentity = (
-              _hostname: string,
-              cert: tls.PeerCertificate
-            ) => tls.checkServerIdentity(expectedServerName, cert);
-          }
-          brokerUrl = `mqtts://${this.config.broker}:${this.config.port}`;
-        } catch (err: any) {
-          logger.warn('Failed to load TLS credentials for MQTT client; falling back to plain MQTT if allowed', {
-            error: err instanceof Error ? err.message : String(err)
-          });
+      // Enforce mTLS-only connection (no fallback to mqtt://)
+      let brokerUrl = `mqtts://${this.config.broker}:${this.config.port}`;
+      try {
+        if (!tlsCfg.caPem?.includes('-----BEGIN')) {
+          throw new Error('mTLS-only MQTT: missing broker CA PEM');
         }
+        if (!tlsCfg.clientCertPem?.includes('-----BEGIN')) {
+          throw new Error('mTLS-only MQTT: missing client certificate PEM');
+        }
+        if (!tlsCfg.clientKeyPem?.includes('-----BEGIN')) {
+          throw new Error('mTLS-only MQTT: missing client private key PEM');
+        }
+
+        options.ca = caForBrokerTls(tlsCfg.caPem);
+        options.cert = tlsCfg.clientCertPem;
+        options.key = tlsCfg.clientKeyPem;
+
+        options.rejectUnauthorized = tlsCfg.rejectUnauthorized !== false;
+        if (tlsCfg.servername) {
+          (options as any).servername = tlsCfg.servername;
+        }
+        // mqtt.js overwrites servername with the URL hostname in connect/tls.js (buildStream),
+        // so TLS hostname verification uses MQTT_BROKER even when MQTT_TLS_SERVERNAME is set.
+        // Pin verification to the cert identity (e.g. nanomq-broker) when they differ (Railway TCP proxy).
+        const expectedServerName = tlsCfg.servername?.trim();
+        if (expectedServerName && expectedServerName !== this.config.broker) {
+          (options as any).checkServerIdentity = (_hostname: string, cert: tls.PeerCertificate) =>
+            tls.checkServerIdentity(expectedServerName, cert);
+        }
+      } catch (err: any) {
+        reject(err instanceof Error ? err : new Error(String(err)));
+        return;
       }
       logger.info('Connecting to MQTT broker...', {
         broker: this.config.broker,

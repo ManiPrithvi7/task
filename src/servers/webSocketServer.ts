@@ -81,33 +81,12 @@ export class WebSocketServerManager {
         break;
 
       case 'publish':
-        // Client wants to publish via WebSocket
-        if (message.topic && message.payload) {
-          this.mqttClient.publish({
-            topic: message.topic,
-            payload: typeof message.payload === 'string' 
-              ? message.payload 
-              : JSON.stringify(message.payload),
-            qos: message.qos || 0,
-            retain: message.retain || false
-          }, {
-            direction: 'server_to_client',
-            source: 'websocket',
-            timestamp: new Date().toISOString()
-          }).then(() => {
-            ws.send(JSON.stringify({
-              type: 'published',
-              topic: message.topic,
-              timestamp: new Date().toISOString()
-            }));
-          }).catch(error => {
-            ws.send(JSON.stringify({
-              type: 'error',
-              error: error.message,
-              timestamp: new Date().toISOString()
-            }));
-          });
-        }
+        // WebSocket-to-MQTT publish is disabled; devices publish only via broker mTLS.
+        ws.send(JSON.stringify({
+          type: 'error',
+          error: 'Publish disabled (410). Use broker mTLS to publish messages.',
+          timestamp: new Date().toISOString()
+        }));
         break;
 
       case 'ping':

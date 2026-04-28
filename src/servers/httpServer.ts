@@ -122,7 +122,6 @@ export class HttpServer {
           health: '/health',
           sessions: '/api/sessions',
           devices: '/api/devices (supports ?status=active or ?status=inactive)',
-          publish: '/api/publish',
           provisioning: {
             onboarding: 'POST /api/v1/onboarding',
             signCSR: 'POST /api/v1/sign-csr',
@@ -217,146 +216,29 @@ export class HttpServer {
       }
     });
 
-    // MQTT publish endpoint
-    this.app.post('/api/publish', async (req: Request, res: Response) => {
-      try {
-        const { topic, payload, qos = 0, retain = false } = req.body;
-        if (!topic || !payload) {
-          return res.status(400).json({ error: 'topic and payload are required' });
-        }
-
-        await this.mqttClient.publish(
-          {
-            topic,
-            payload: typeof payload === 'string' ? payload : JSON.stringify(payload),
-            qos: qos as 0 | 1 | 2,
-            retain
-          },
-          {
-            direction: 'server_to_client',
-            source: 'http_api',
-            timestamp: new Date().toISOString(),
-            initiator: req.ip || 'unknown'
-          }
-        );
-
-        res.json({ success: true, topic, published: new Date().toISOString() });
-      } catch (error: any) {
-        logger.error('Failed to publish message', { error: error.message });
-        res.status(500).json({ error: error.message });
-      }
+    // MQTT publish endpoints removed: publishing is handled only via broker mTLS connections.
+    this.app.post('/api/publish', async (_req: Request, res: Response) => {
+      res.status(410).json({
+        error: 'Endpoint removed',
+        reason: 'HTTP-to-MQTT publish is disabled. Publish only via broker mTLS.',
+        timestamp: new Date().toISOString()
+      });
     });
 
-    // Testing endpoints
-    this.app.post('/api/test/register', async (req: Request, res: Response) => {
-      try {
-        const { deviceId, userId, deviceType = 'mobile', os = 'iOS 17.0', appVersion = '1.0.0' } = req.body;
-
-        if (!deviceId || !userId) {
-          return res.status(400).json({ error: 'deviceId and userId are required' });
-        }
-
-        const registrationMessage = {
-          type: 'device_registration',
-          userId,
-          clientId: deviceId,
-          timestamp: new Date().toISOString(),
-          deviceType,
-          os,
-          appVersion,
-          metadata: {
-            deviceType,
-            os,
-            appVersion,
-            ipAddress: req.ip || '127.0.0.1',
-            userAgent: req.headers['user-agent'] || 'Test-Client'
-          }
-        };
-
-        const topic = `${this.mqttClient.getTopicRoot()}/${deviceId}/active`;
-        await this.mqttClient.publish(
-          {
-            topic,
-            payload: JSON.stringify(registrationMessage),
-            qos: 1,
-            retain: false
-          },
-          {
-            direction: 'server_to_client',
-            source: 'http_api',
-            deviceId,
-            timestamp: new Date().toISOString(),
-            initiator: req.ip || 'unknown'
-          }
-        );
-
-        res.json({
-          success: true,
-          message: 'Device registration message published',
-          topic,
-          deviceId,
-          timestamp: new Date().toISOString()
-        });
-      } catch (error: any) {
-        logger.error('Failed to register test device', { error: error.message });
-        res.status(500).json({ error: error.message });
-      }
+    this.app.post('/api/test/register', async (_req: Request, res: Response) => {
+      res.status(410).json({
+        error: 'Endpoint removed',
+        reason: 'HTTP-based device registration simulation is disabled. Use broker mTLS + device publish to /active.',
+        timestamp: new Date().toISOString()
+      });
     });
 
-    this.app.post('/api/test/unregister', async (req: Request, res: Response) => {
-      try {
-        const { deviceId } = req.body;
-
-        if (!deviceId) {
-          return res.status(400).json({ error: 'deviceId is required' });
-        }
-
-        const clientId = `client-${deviceId.replace('STATSNAPP_US-', '')}`;
-
-        logger.info('💀 Simulating LWT: Device Disconnect (Test)', {
-          deviceId,
-          clientId,
-          note: 'This simulates what the broker would send automatically'
-        });
-
-        await this.deviceService.updateDeviceStatus(deviceId, 'inactive');
-        logger.info('✅ Device marked as inactive (LWT simulation)', { deviceId });
-
-        const lwtMessage = {
-          type: 'un_registration',
-          clientId: clientId
-        };
-
-        const topic = `${this.mqttClient.getTopicRoot()}/${deviceId}/lwt`;
-        await this.mqttClient.publish(
-          {
-            topic,
-            payload: JSON.stringify(lwtMessage),
-            qos: 1,
-            retain: false
-          },
-          {
-            direction: 'broker_to_server',
-            source: 'broker',
-            deviceId,
-            timestamp: new Date().toISOString(),
-            initiator: 'broker-lwt'
-          }
-        );
-
-        res.json({
-          success: true,
-          message: 'Device disconnected (LWT simulation)',
-          topic,
-          deviceId,
-          clientId,
-          note: 'LWT payload is minimal (broker-generated)',
-          timestamp: new Date().toISOString()
-        });
-      } catch (error: any) {
-        logger.error('Failed to simulate LWT disconnect', { error: error.message });
-        res.status(500).json({ error: error.message });
-      }
+    this.app.post('/api/test/unregister', async (_req: Request, res: Response) => {
+      res.status(410).json({
+        error: 'Endpoint removed',
+        reason: 'HTTP-based LWT simulation is disabled. Broker publishes LWT on disconnect.',
+        timestamp: new Date().toISOString()
+      });
     });
 
     this.app.post('/api/test/set-device-status', async (req: Request, res: Response) => {
