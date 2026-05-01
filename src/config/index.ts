@@ -328,6 +328,15 @@ export interface AuthConfig {
   secret: string;  // AUTH_SECRET from environment
 }
 
+export interface KafkaConfig {
+  enabled: boolean;
+  brokers: string[];
+  clientId: string;
+  defaultTopic: string;
+  ssl?: boolean;
+  sasl?: unknown;
+}
+
 export interface AppConfig {
   mqtt: MqttConfig;
   http: HttpConfig;
@@ -337,6 +346,7 @@ export interface AppConfig {
   redis: RedisConfig;
   auth: AuthConfig;
   app: AppEnvConfig;
+  kafka?: KafkaConfig;
 }
 
 export function loadConfig(): AppConfig {
@@ -387,6 +397,11 @@ export function loadConfig(): AppConfig {
     !!process.env.MQTT_TLS_CLIENT_KEY_PEM?.trim();
 
   const redisUrl = process.env.REDIS_URL?.trim();
+  const kafkaEnabled = process.env.KAFKA_ENABLED === 'true' || process.env.KAFKA_ENABLED === '1';
+  const kafkaBrokersRaw = process.env.KAFKA_BROKERS?.trim() ?? '';
+  const kafkaBrokers = kafkaBrokersRaw
+    ? kafkaBrokersRaw.split(',').map(s => s.trim()).filter(Boolean)
+    : [];
 
   const config: AppConfig = {
     mqtt: {
@@ -458,6 +473,13 @@ export function loadConfig(): AppConfig {
     app: {
       env: process.env.NODE_ENV || 'development',
       logLevel: process.env.LOG_LEVEL || 'info'
+    },
+    kafka: {
+      enabled: kafkaEnabled,
+      brokers: kafkaBrokers,
+      clientId: process.env.KAFKA_CLIENT_ID || 'mqtt-publisher-lite',
+      defaultTopic: process.env.KAFKA_DEFAULT_TOPIC || 'social-webhook-events',
+      ssl: process.env.KAFKA_SSL === 'true' || process.env.KAFKA_SSL === '1'
     }
   };
 

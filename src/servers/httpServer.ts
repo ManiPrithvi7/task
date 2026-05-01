@@ -21,17 +21,26 @@ export class HttpServer {
   private sessionService: SessionService;
   private deviceService: DeviceService;
   private mqttClient: MqttClientManager;
+  private handleDeviceAttention?: (
+    deviceId: string,
+    body: { ttlMs?: number; immediateFetch?: boolean }
+  ) => Promise<{ immediateQueued: boolean }>;
 
   constructor(
     config: HttpConfig,
     sessionService: SessionService,
     deviceService: DeviceService,
-    mqttClient: MqttClientManager
+    mqttClient: MqttClientManager,
+    handleDeviceAttention?: (
+      deviceId: string,
+      body: { ttlMs?: number; immediateFetch?: boolean }
+    ) => Promise<{ immediateQueued: boolean }>
   ) {
     this.config = config;
     this.sessionService = sessionService;
     this.deviceService = deviceService;
     this.mqttClient = mqttClient;
+    this.handleDeviceAttention = handleDeviceAttention;
     this.app = express();
     this.setupMiddleware();
     this.setupRoutes();
@@ -216,8 +225,48 @@ export class HttpServer {
       }
     });
 
+    /**
+     * Mark device as priority (recent user attention): updates Redis priority_zset (expiry now + ttl).
+     * Optional one-shot fetch still respects sliding-window backoff + circuit breaker in InstagramPoller.
+     *
+     * POST /api/v1/device/:deviceId/attention
+     * Body: { ttlMs?: number, immediateFetch?: boolean }
+     */
+    this.app.post('/api/v1/device/:deviceId/attention', async (req: Request, res: Response) => {
+      try {
+        if (!this.handleDeviceAttention) {
+          return res.status(503).json({ error: 'Attention handler not enabled on server' });
+        }
+        const deviceId = req.params.deviceId;
+        const ttlMs = typeof req.body?.ttlMs === 'number' ? req.body.ttlMs : undefined;
+        const immediateFetch = req.body?.immediateFetch === true;
+        const { immediateQueued } = await this.handleDeviceAttention(deviceId, { ttlMs, immediateFetch });
+        return res.json({
+          success: true,
+          deviceId,
+          ttlMs: ttlMs ?? null,
+          immediateFetch,
+          immediateQueued,
+          prioritized_at: new Date().toISOString()
+        });
+      } catch (error: unknown) {
+        const statusCode = typeof error === 'object' && error !== null && 'statusCode' in error
+          ? (error as { statusCode?: number }).statusCode
+          : undefined;
+        const msg = error instanceof Error ? error.message : String(error);
+        if (statusCode === 404) {
+          return res.status(404).json({ error: 'Device not found' });
+        }
+        if (statusCode === 503) {
+          return res.status(503).json({ error: msg });
+        }
+        logger.error('Failed to handle device attention', { error: msg });
+        return res.status(500).json({ error: msg });
+      }
+    });
+
     // MQTT publish endpoints removed: publishing is handled only via broker mTLS connections.
-    this.app.post('/api/publish', async (_req: Request, res: Response) => {
+    this.app.post('/api/publish', async (req: Request, res: Response) => {
       res.status(410).json({
         error: 'Endpoint removed',
         reason: 'HTTP-to-MQTT publish is disabled. Publish only via broker mTLS.',

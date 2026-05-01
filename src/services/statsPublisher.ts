@@ -210,7 +210,10 @@ export class StatsPublisher {
     return s;
   }
 
-  /** Instagram: progress (progress < 100) or celebratory (progress 100). */
+  /**
+   * Instagram: mock publish only.
+   * Real Instagram Graph polling is driven by `InstagramPoller` (dual schedulers + backoff + circuit breaker).
+   */
   private async publishInstagram(deviceId: string, root: string): Promise<void> {
     const state = this.ensureDeviceState(deviceId);
     state.instagram.followers += 50 + Math.floor(Math.random() * 100);

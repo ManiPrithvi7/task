@@ -17,6 +17,11 @@ import { UserService } from './services/userService';
 import { MongoService, createMongoService } from './services/mongoService';
 import { RedisService, createRedisService } from './services/redisService';
 import { DeviceService, getActiveDeviceCache, ActiveDeviceCache } from './services/deviceService';
+import { KafkaService } from './services/kafkaService';
+import { InstagramFetchConsumer, createInstagramFetchConsumer } from './services/instagramFetchConsumer';
+import { InstagramResultConsumer, createInstagramResultConsumer } from './services/instagramResultConsumer';
+import { InstagramPoller } from './services/instagramPoller';
+import { REDIS_KEYS } from './services/instagramPollingLua';
 import { SessionService } from './services/sessionService';
 import { Device } from './models/Device';
 import { User } from './models/User';
@@ -64,7 +69,14 @@ export class StatsMqttLite {
   
   // Redis service
   private redisService?: RedisService;
-  
+
+  // Kafka service (external events)
+  private kafkaService?: KafkaService;
+  // Instagram Kafka consumers
+  private instagramFetchConsumer?: InstagramFetchConsumer;
+  private instagramResultConsumer?: InstagramResultConsumer;
+  private instagramPoller?: InstagramPoller;
+
   // Active device cache (Redis-backed)
   private activeDeviceCache!: ActiveDeviceCache;
   
@@ -169,6 +181,12 @@ export class StatsMqttLite {
 
       // Initialize MQTT client
       await this.initializeMqttClient();
+
+      // Initialize Kafka (requires MQTT client for consumers)
+      await this.initializeKafka();
+
+      // Initialize Instagram dual schedulers (Redis + Kafka required)
+      await this.initializeInstagramPoller();
 
       // Initialize HTTP server (includes provisioning routes)
       await this.initializeHttpServer();
@@ -328,6 +346,102 @@ export class StatsMqttLite {
         'Set REDIS_URL (recommended, e.g. Upstash). Fix the connection or set REDIS_ENABLED=false to use in-memory tokens (not persistent).'
       );
     }
+  }
+
+  private async initializeKafka(): Promise<void> {
+    if (!this.config.kafka?.enabled) {
+      logger.info('📦 Kafka disabled (set KAFKA_ENABLED=true to enable)');
+      return;
+    }
+
+    if (!this.config.kafka.brokers.length) {
+      logger.warn('📦 Kafka enabled but KAFKA_BROKERS not set – skipping Kafka initialization');
+      return;
+    }
+
+    try {
+      // ── Producer (KafkaService) ─────────────────────────────────────
+      this.kafkaService = new KafkaService(this.config.kafka);
+      await this.kafkaService.connect();
+
+      // Ensure topics exist before consumers subscribe (avoids "does not host this topic-partition")
+      await this.kafkaService.ensureTopics();
+
+      // ── Instagram Fetch Consumer (instagram-fetch-requests) ─────────
+      this.instagramFetchConsumer = createInstagramFetchConsumer(this.config.kafka);
+      await this.instagramFetchConsumer.start();
+      logger.info('✅ Instagram fetch consumer started');
+
+      // ── Instagram Result Consumer (instagram-fetch-results → MQTT) ───
+      this.instagramResultConsumer = createInstagramResultConsumer(
+        this.config.kafka,
+        this.mqttClient
+      );
+      await this.instagramResultConsumer.start();
+      logger.info('✅ Instagram result consumer started');
+
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error('❌ Failed to initialize Kafka / Instagram consumers', { error: errorMessage });
+      // Non-fatal: app continues without Kafka
+    }
+  }
+
+  private async initializeInstagramPoller(): Promise<void> {
+    // Requires Redis + Kafka. If either is missing, we skip silently.
+    if (!this.redisService?.isRedisConnected()) {
+      logger.info('📉 Instagram poller disabled (Redis not connected)');
+      return;
+    }
+    if (!this.kafkaService?.connected) {
+      logger.info('📉 Instagram poller disabled (Kafka not connected)');
+      return;
+    }
+
+    this.instagramPoller = new InstagramPoller(this.kafkaService, this.redisService, {
+      priorityIntervalMs: 15_000,
+      backgroundIntervalMs: 90_000,
+      priorityTtlMs: 120_000,
+      batchSize: 50,
+      backoffThreshold: 6,
+      backoffWindowMs: 60_000
+    });
+
+    await this.instagramPoller.start();
+    logger.info('✅ Instagram poller initialized (dual schedulers enabled)');
+  }
+
+  /**
+   * User / app “attention” signal: extend priority_zset TTL and optionally enqueue one fetch
+   * (still subject to sliding-window backoff + circuit breaker inside the poller).
+   */
+  private async handleDeviceAttention(
+    deviceId: string,
+    opts: { ttlMs?: number; immediateFetch?: boolean }
+  ): Promise<{ immediateQueued: boolean }> {
+    const mongoDevice = await this.deviceService.getDevice(deviceId);
+    const redisDevice = await this.activeDeviceCache.getActive(deviceId);
+    if (!mongoDevice && !redisDevice) {
+      const err = new Error('Device not found') as Error & { statusCode?: number };
+      err.statusCode = 404;
+      throw err;
+    }
+
+    if (!this.instagramPoller) {
+      const err = new Error('Instagram poller not enabled') as Error & { statusCode?: number };
+      err.statusCode = 503;
+      throw err;
+    }
+
+    const ttlMs = opts.ttlMs ?? 120_000;
+    await this.instagramPoller.markPriority(deviceId, ttlMs);
+
+    let immediateQueued = false;
+    if (opts.immediateFetch === true && this.kafkaService?.connected) {
+      immediateQueued = await this.instagramPoller.requestImmediateFetch(deviceId);
+    }
+
+    return { immediateQueued };
   }
 
   private async initializeProvisioning(): Promise<void> {
@@ -835,6 +949,21 @@ export class StatsMqttLite {
     logger.info('📋 [LIFECYCLE:REGISTER] Caching device in Redis active list', { deviceId });
     await this.cacheActiveDevice(deviceId);
     await this.redisMarkDeviceActive(deviceId);
+
+    // Maintain polling sets for Instagram dual schedulers
+    try {
+      if (this.redisService?.isRedisConnected()) {
+        const client = this.redisService.getClient();
+        await client.sAdd(REDIS_KEYS.fullActiveSet, deviceId);
+        await client.zAdd(REDIS_KEYS.priorityZset, [{ score: Date.now() + 120_000, value: deviceId }]);
+      }
+    } catch (err: unknown) {
+      logger.warn('Failed to update Instagram polling sets on registration', {
+        deviceId,
+        error: err instanceof Error ? err.message : String(err)
+      });
+    }
+
     logger.info('📋 [LIFECYCLE:REGISTER] Device registration complete', { deviceId });
   }
 
@@ -972,7 +1101,24 @@ export class StatsMqttLite {
       removedFromRedis: removed,
       mongoStatus: 'inactive'
     });
-    
+
+    // Maintain polling sets for Instagram dual schedulers
+    try {
+      if (this.redisService?.isRedisConnected()) {
+        const client = this.redisService.getClient();
+        await client.sRem(REDIS_KEYS.fullActiveSet, deviceId);
+        await client.zRem(REDIS_KEYS.priorityZset, deviceId);
+        await client.del(REDIS_KEYS.deviceFetchHistory(deviceId));
+        await client.del(REDIS_KEYS.deviceFollowers(deviceId));
+        await client.del(`instagram:pending:${deviceId}`);
+      }
+    } catch (err: unknown) {
+      logger.warn('Failed to cleanup Instagram polling keys on LWT', {
+        deviceId,
+        error: err instanceof Error ? err.message : String(err)
+      });
+    }
+
     // Note: No acknowledgment is sent for LWT since the device is already disconnected
   }
 
@@ -1078,7 +1224,11 @@ export class StatsMqttLite {
       this.config.http,
       this.sessionService,
       this.deviceService,
-      this.mqttClient
+      this.mqttClient,
+      this.instagramPoller
+        ? (deviceId: string, body: { ttlMs?: number; immediateFetch?: boolean }) =>
+            this.handleDeviceAttention(deviceId, body)
+        : undefined
     );
     
     // Add provisioning routes if enabled
@@ -1190,6 +1340,11 @@ export class StatsMqttLite {
       if (this.keepAliveTimer) {
         clearInterval(this.keepAliveTimer);
         this.keepAliveTimer = null;
+      }
+
+      // Stop Instagram poller
+      if (this.instagramPoller) {
+        this.instagramPoller.stop();
       }
 
       // Stop stats publisher
