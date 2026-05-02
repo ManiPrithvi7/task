@@ -1,0 +1,73 @@
+---
+description: Upcoming iteration phases for attention-based IoT polling (Redis + Kafka Instagram pipeline)
+---
+
+# Attention-based IoT polling — roadmap (upcoming iterations)
+
+This document lists **follow-on phases** for the attention-weighted Instagram polling stack. It assumes the current baseline is in place: dual schedulers (`InstagramPoller`), Redis Lua atomics (`priority_zset`, backoff windows, background minus priority), cross-instance circuit breaker, MQTT lifecycle hooks for active sets, HTTP `POST /api/v1/device/:deviceId/attention`, Kafka fetch triggers (`scheduled`, `attention`, etc.), result-path change detection (`device:followers:{id}`), and optional Influx audit/metrics.
+
+---
+
+## Phase A — Operations and configuration hardening
+
+- **Kafka env consistency:** Runtime loads `KAFKA_BROKERS`; many deployments use a singular `KAFKA_BROKER`. Add an alias or validation warning so pollers/consumers start reliably.
+- **Tunable defaults:** Expose poller intervals, batch size, backoff threshold/window, and default attention TTL as first-class documented env (with safe defaults) so prod/staging can tune without code changes.
+- **Health and readiness:** Extend `/health` (or add `/ready`) to report Redis scripts loaded, Kafka connectivity, and poller running state when Instagram polling is enabled.
+
+---
+
+## Phase B — Attention signals beyond HTTP
+
+- **Device-native attention:** Optional MQTT topic or registration payload so the device can signal “user is viewing stats” (reduces reliance on the mobile app calling HTTP alone).
+- **AuthZ for attention:** Protect `/attention` (API key, mTLS, or signed device tokens) to prevent arbitrary priority inflation.
+- **Rate limits:** Per-device and per-IP limits on attention calls to avoid abuse while preserving burst UX.
+
+---
+
+## Phase C — Fairness, starvation, and multi-device scale
+
+- **Priority semantics:** Move beyond fixed ZSET expiry scores where needed—e.g. decay, caps on simultaneous “priority” devices, or scoring by last user interaction depth.
+- **Background starvation:** Guarantees that long-lived idle devices still receive occasional background checks when the priority queue is always populated.
+- **Per-tenant or per-campaign budgets:** Coordinate Instagram API budget with attention bursts (queue shaping, not just circuit breaker).
+
+---
+
+## Phase D — End-to-end observability
+
+- **Metrics:** Counters/gauges for priority vs background cycles, fetches enqueued, circuit open/close, attention immediate-queue success vs backoff_skip; histogram for attention → first successful fetch latency.
+- **Tracing:** Correlate attention HTTP → Kafka fetch request → consumer → MQTT publish (shared trace or correlation id).
+- **Influx (or metrics backend):** Standardize points for scheduler ticks, circuit events, and attention outcomes (align with existing optional Influx writes in fetch path).
+
+---
+
+## Phase E — Consumer and broker topology
+
+- **Fetch pipeline priority:** Today partition keys order per device; evaluate a dedicated high-priority topic or consumer strategy when circuit is half-open so `attention` triggers are less likely to queue behind bulk `scheduled` work.
+- **Idempotency and deduplication:** Stronger dedupe keys if multiple schedulers or retries publish overlapping requests for the same device/window.
+
+---
+
+## Phase F — Resilience and testing
+
+- **Automated tests:** Lua script contracts (NOSCRIPT reload), scheduler behavior under Redis latency, and Kafka disconnect/reconnect for poller and consumers.
+- **Chaos / load:** Validate circuit breaker and backoff under synthetic 429/5xx from Instagram and broker partitions.
+
+---
+
+## Phase G — IoT and product UX
+
+- **Power modes:** When devices report low battery or infrequent connectivity, lengthen background intervals or defer non-attention work while keeping priority path responsive when attention is explicit.
+- **Pending offline queue:** Already queues MQTT payloads when offline; optional prioritization or TTL policies for attention-driven updates vs routine churn.
+
+---
+
+## Suggested ordering
+
+1. **A** (config + ops) unblocks reliable deployments.  
+2. **D** (observability) makes iteration on tuning and incidents measurable.  
+3. **B** + **C** as product/security needs grow.  
+4. **E**–**G** when scale or Instagram API pressure demands deeper pipeline changes.
+
+---
+
+*Update this file when phases complete or scope shifts.*
