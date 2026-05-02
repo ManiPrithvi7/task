@@ -21,26 +21,20 @@ export class HttpServer {
   private sessionService: SessionService;
   private deviceService: DeviceService;
   private mqttClient: MqttClientManager;
-  private handleDeviceAttention?: (
-    deviceId: string,
-    body: { ttlMs?: number; immediateFetch?: boolean }
-  ) => Promise<{ immediateQueued: boolean }>;
+  private readinessProvider?: () => Promise<Record<string, unknown>>;
 
   constructor(
     config: HttpConfig,
     sessionService: SessionService,
     deviceService: DeviceService,
     mqttClient: MqttClientManager,
-    handleDeviceAttention?: (
-      deviceId: string,
-      body: { ttlMs?: number; immediateFetch?: boolean }
-    ) => Promise<{ immediateQueued: boolean }>
+    readinessProvider?: () => Promise<Record<string, unknown>>
   ) {
     this.config = config;
     this.sessionService = sessionService;
     this.deviceService = deviceService;
     this.mqttClient = mqttClient;
-    this.handleDeviceAttention = handleDeviceAttention;
+    this.readinessProvider = readinessProvider;
     this.app = express();
     this.setupMiddleware();
     this.setupRoutes();
@@ -121,6 +115,20 @@ export class HttpServer {
       res.json(health);
     });
 
+    /** Deep readiness for Instagram polling pipeline (serverless URL + Redis Lua + poller). Returns 503 when not ready. */
+    this.app.get('/ready', async (_req: Request, res: Response) => {
+      try {
+        const payload = this.readinessProvider
+          ? await this.readinessProvider()
+          : { ready: true, note: 'no_readiness_provider' };
+        const ready = payload && typeof payload === 'object' && (payload as { ready?: boolean }).ready === true;
+        res.status(ready ? 200 : 503).json(payload);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        res.status(503).json({ ready: false, error: msg });
+      }
+    });
+
     // Root endpoint
     this.app.get('/api', (req: Request, res: Response) => {
       res.json({
@@ -129,6 +137,7 @@ export class HttpServer {
         description: 'Lightweight MQTT Publisher for firmware testing',
         endpoints: {
           health: '/health',
+          ready: '/ready',
           sessions: '/api/sessions',
           devices: '/api/devices (supports ?status=active or ?status=inactive)',
           provisioning: {
@@ -222,46 +231,6 @@ export class HttpServer {
         }
       } catch (error: any) {
         res.status(500).json({ error: error.message });
-      }
-    });
-
-    /**
-     * Mark device as priority (recent user attention): updates Redis priority_zset (expiry now + ttl).
-     * Optional one-shot fetch still respects sliding-window backoff + circuit breaker in InstagramPoller.
-     *
-     * POST /api/v1/device/:deviceId/attention
-     * Body: { ttlMs?: number, immediateFetch?: boolean }
-     */
-    this.app.post('/api/v1/device/:deviceId/attention', async (req: Request, res: Response) => {
-      try {
-        if (!this.handleDeviceAttention) {
-          return res.status(503).json({ error: 'Attention handler not enabled on server' });
-        }
-        const deviceId = req.params.deviceId;
-        const ttlMs = typeof req.body?.ttlMs === 'number' ? req.body.ttlMs : undefined;
-        const immediateFetch = req.body?.immediateFetch === true;
-        const { immediateQueued } = await this.handleDeviceAttention(deviceId, { ttlMs, immediateFetch });
-        return res.json({
-          success: true,
-          deviceId,
-          ttlMs: ttlMs ?? null,
-          immediateFetch,
-          immediateQueued,
-          prioritized_at: new Date().toISOString()
-        });
-      } catch (error: unknown) {
-        const statusCode = typeof error === 'object' && error !== null && 'statusCode' in error
-          ? (error as { statusCode?: number }).statusCode
-          : undefined;
-        const msg = error instanceof Error ? error.message : String(error);
-        if (statusCode === 404) {
-          return res.status(404).json({ error: 'Device not found' });
-        }
-        if (statusCode === 503) {
-          return res.status(503).json({ error: msg });
-        }
-        logger.error('Failed to handle device attention', { error: msg });
-        return res.status(500).json({ error: msg });
       }
     });
 

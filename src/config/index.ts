@@ -328,13 +328,41 @@ export interface AuthConfig {
   secret: string;  // AUTH_SECRET from environment
 }
 
-export interface KafkaConfig {
-  enabled: boolean;
-  brokers: string[];
-  clientId: string;
-  defaultTopic: string;
-  ssl?: boolean;
-  sasl?: unknown;
+/**
+ * POST target for Instagram metrics (serverless worker, e.g. Vercel). Main server forwards device batches here.
+ */
+export interface InstagramServerlessConfig {
+  fetchUrl: string;
+  apiKey?: string;
+  timeoutMs: number;
+}
+
+/**
+ * Instagram dual-scheduler tuning (Redis Lua + HTTP serverless fetch).
+ */
+export interface InstagramPollingConfig {
+  priorityIntervalMs: number;
+  backgroundIntervalMs: number;
+  priorityTtlMs: number;
+  batchSize: number;
+  backoffThreshold: number;
+  backoffWindowMs: number;
+  /** Max devices processed from priority zset per tick (Phase C fairness). 0 = unlimited. */
+  priorityCapPerCycle: number;
+  /** Trim priority_zset to at most this many members (removes soonest-expiring first). 0 = off. */
+  priorityZsetMaxMembers: number;
+  /** Repeat attention: max ms added to previous expiry per touch (Phase C decay). 0 = off. */
+  priorityRefreshMaxDeltaMs: number;
+  /** Hard ceiling: priority score ≤ now + this. 0 = off. */
+  priorityAbsoluteMaxFutureMs: number;
+  /** Background tick: max devices to consider after fair rotation. 0 = unlimited. */
+  backgroundCapPerCycle: number;
+  /** Rotate background cursor across active devices (Redis `ig:bg:fair_offset`). Default true. */
+  backgroundFairRotate: boolean;
+  /** Max serverless invocations per rolling minute (all poller paths). 0 = off. */
+  globalFetchBudgetPerMinute: number;
+  /** Min interval between fetch requests for same device from poller (0 = off). */
+  fetchDedupeWindowMs: number;
 }
 
 export interface InfluxDBConfig {
@@ -356,8 +384,10 @@ export interface AppConfig {
   redis: RedisConfig;
   auth: AuthConfig;
   app: AppEnvConfig;
-  kafka?: KafkaConfig;
   influxdb?: InfluxDBConfig;
+  instagramPolling?: InstagramPollingConfig;
+  /** When set, Instagram poller POSTs batches to this URL instead of using Kafka. */
+  instagramServerless?: InstagramServerlessConfig;
 }
 
 export function loadConfig(): AppConfig {
@@ -408,11 +438,44 @@ export function loadConfig(): AppConfig {
     !!process.env.MQTT_TLS_CLIENT_KEY_PEM?.trim();
 
   const redisUrl = process.env.REDIS_URL?.trim();
-  const kafkaEnabled = process.env.KAFKA_ENABLED === 'true' || process.env.KAFKA_ENABLED === '1';
-  const kafkaBrokersRaw = process.env.KAFKA_BROKERS?.trim() ?? '';
-  const kafkaBrokers = kafkaBrokersRaw
-    ? kafkaBrokersRaw.split(',').map(s => s.trim()).filter(Boolean)
-    : [];
+
+  const instagramServerless: InstagramServerlessConfig = {
+    fetchUrl: process.env.INSTAGRAM_SERVERLESS_URL?.trim() || process.env.VERCEL_INSTAGRAM_FETCH_URL?.trim() || '',
+    apiKey:
+      process.env.INSTAGRAM_SERVERLESS_API_KEY?.trim() ||
+      process.env.VERCEL_INSTAGRAM_FETCH_API_KEY?.trim() ||
+      undefined,
+    timeoutMs: parseInt(process.env.INSTAGRAM_SERVERLESS_TIMEOUT_MS || '30000', 10)
+  };
+
+  const instagramPolling: InstagramPollingConfig = {
+    priorityIntervalMs: parseInt(process.env.IG_POLL_PRIORITY_INTERVAL_MS || '15000', 10),
+    backgroundIntervalMs: parseInt(process.env.IG_POLL_BACKGROUND_INTERVAL_MS || '90000', 10),
+    priorityTtlMs: parseInt(process.env.IG_POLL_PRIORITY_TTL_MS || '120000', 10),
+    batchSize: parseInt(process.env.IG_POLL_BATCH_SIZE || '50', 10),
+    backoffThreshold: parseInt(process.env.IG_POLL_BACKOFF_THRESHOLD || '6', 10),
+    backoffWindowMs: parseInt(process.env.IG_POLL_BACKOFF_WINDOW_MS || '60000', 10),
+    priorityCapPerCycle: parseInt(process.env.IG_POLL_PRIORITY_CAP_PER_CYCLE || '0', 10),
+    priorityZsetMaxMembers: parseInt(process.env.IG_POLL_PRIORITY_ZSET_MAX_MEMBERS || '0', 10),
+    priorityRefreshMaxDeltaMs: parseInt(process.env.IG_POLL_PRIORITY_REFRESH_MAX_DELTA_MS || '0', 10),
+    priorityAbsoluteMaxFutureMs: parseInt(process.env.IG_POLL_PRIORITY_MAX_FUTURE_MS || '0', 10),
+    backgroundCapPerCycle: parseInt(process.env.IG_POLL_BACKGROUND_CAP_PER_CYCLE || '0', 10),
+    backgroundFairRotate: process.env.IG_POLL_BACKGROUND_FAIR_ROTATE === 'false' ? false : true,
+    globalFetchBudgetPerMinute: parseInt(process.env.IG_GLOBAL_FETCH_BUDGET_PER_MIN || '0', 10),
+    fetchDedupeWindowMs: parseInt(process.env.IG_FETCH_DEDUPE_WINDOW_MS || '45000', 10)
+  };
+
+  const bgMultRaw = process.env.IG_POLL_BACKGROUND_INTERVAL_MULTIPLIER_LOW_POWER?.trim();
+  if (bgMultRaw) {
+    const bgMult = parseFloat(bgMultRaw);
+    if (bgMult > 1 && Number.isFinite(bgMult)) {
+      instagramPolling.backgroundIntervalMs = Math.round(instagramPolling.backgroundIntervalMs * bgMult);
+      logger.info('IG_POLL_BACKGROUND_INTERVAL_MULTIPLIER_LOW_POWER applied to background interval', {
+        multiplier: bgMult,
+        backgroundIntervalMs: instagramPolling.backgroundIntervalMs
+      });
+    }
+  }
   const influxEnabled = process.env.INFLUXDB_ENABLED === 'true' || process.env.INFLUXDB_ENABLED === '1';
   const influxRequired =
     influxEnabled &&
@@ -490,13 +553,7 @@ export function loadConfig(): AppConfig {
       env: process.env.NODE_ENV || 'development',
       logLevel: process.env.LOG_LEVEL || 'info'
     },
-    kafka: {
-      enabled: kafkaEnabled,
-      brokers: kafkaBrokers,
-      clientId: process.env.KAFKA_CLIENT_ID || 'mqtt-publisher-lite',
-      defaultTopic: process.env.KAFKA_DEFAULT_TOPIC || 'social-webhook-events',
-      ssl: process.env.KAFKA_SSL === 'true' || process.env.KAFKA_SSL === '1'
-    },
+    instagramServerless,
     influxdb: {
       enabled: influxEnabled,
       required: influxRequired,
@@ -504,7 +561,8 @@ export function loadConfig(): AppConfig {
       token: process.env.INFLUXDB_TOKEN || '',
       org: process.env.INFLUXDB_ORG || 'statsmqtt',
       bucket: process.env.INFLUXDB_BUCKET || 'statsmqtt'
-    }
+    },
+    instagramPolling
   };
 
   logger.info('Configuration loaded', {

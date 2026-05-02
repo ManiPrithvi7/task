@@ -1,5 +1,6 @@
 import { RedisClientType } from 'redis';
 import { REDIS_KEYS } from './instagramPollingLua';
+import { igPollMetricsInc } from './instagramPollingMetrics';
 
 /**
  * Cross-instance circuit breaker coordinated via Redis.
@@ -45,6 +46,7 @@ export class InstagramCircuitBreaker {
       EX: safeSeconds + 60
     });
 
+    igPollMetricsInc('circuitOpenEvents');
     this.local = { isOpen: true, resetTimeMs };
     this.lastRedisCheckMs = Date.now();
   }

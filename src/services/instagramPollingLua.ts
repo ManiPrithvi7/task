@@ -5,7 +5,11 @@ export const REDIS_KEYS = {
   priorityZset: 'priority_zset',
   circuitBlockedUntil: 'instagram:circuit:blocked_until',
   deviceFollowers: (deviceId: string) => `device:followers:${deviceId}`,
-  deviceFetchHistory: (deviceId: string) => `device:fetch_history:${deviceId}`
+  deviceFetchHistory: (deviceId: string) => `device:fetch_history:${deviceId}`,
+  /** Firmware/device deferred background polling (Phase G); TTL refreshed on MQTT /active payload. */
+  igPowerSave: (deviceId: string) => `ig:power_save:${deviceId}`,
+  /** Round-robin cursor for background device fairness (Phase C). */
+  backgroundFairnessOffset: 'ig:bg:fair_offset'
 } as const;
 
 /**
@@ -53,6 +57,27 @@ return 1
  * ARGV[1] = NOW (ms)
  * Returns: array of background device IDs (active and not in active priority window)
  */
+/**
+ * KEYS[1] = per-minute budget key (e.g. ig:poll:global_fetch_budget:{minute})
+ * ARGV[1] = max allowed count (0 = unlimited, caller should skip script)
+ * Returns: 1 if slot granted, 0 if over limit (INCR rolled back)
+ */
+export const atomicFetchBudgetTryLua = `
+local c = redis.call('INCR', KEYS[1])
+if c == 1 then
+  redis.call('EXPIRE', KEYS[1], 120)
+end
+local lim = tonumber(ARGV[1])
+if lim <= 0 then
+  return 1
+end
+if c > lim then
+  redis.call('DECR', KEYS[1])
+  return 0
+end
+return 1
+`.trim();
+
 export const atomicBackgroundSubtractionLua = `
 local cursor = '0'
 local result = {}

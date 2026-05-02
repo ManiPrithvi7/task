@@ -9,4 +9,3 @@ export { Social, ISocial, Provider } from './Social';
 export { DeviceACL, IDeviceACL, DeviceTier } from './DeviceACL';
 export { DeviceCertificate, IDeviceCertificate, DeviceCertificateStatus } from './DeviceCertificate';
 export { Ad, IAd, AdStatus, AdType } from './Ad';
-export { InstagramFetchAudit, IInstagramFetchAudit } from './InstagramFetchAudit';

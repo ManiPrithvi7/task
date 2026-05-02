@@ -19,7 +19,7 @@ This document lists **follow-on phases** for the attention-weighted Instagram po
 ## Phase B — Attention signals beyond HTTP
 
 - **Device-native attention:** Optional MQTT topic or registration payload so the device can signal “user is viewing stats” (reduces reliance on the mobile app calling HTTP alone).
-- **AuthZ for attention:** Protect `/attention` (API key, mTLS, or signed device tokens) to prevent arbitrary priority inflation.
+- **AuthZ for attention:** Protect `/attention` (List instances in your root compartmentAPI key, mTLS, or signed device tokens) to prevent arbitrary priority inflation.
 - **Rate limits:** Per-device and per-IP limits on attention calls to avoid abuse while preserving burst UX.
 
 ---
@@ -71,3 +71,17 @@ This document lists **follow-on phases** for the attention-weighted Instagram po
 ---
 
 *Update this file when phases complete or scope shifts.*
+
+---
+
+## Implementation status (repo snapshot)
+
+| Phase | Status | Notes |
+|-------|--------|--------|
+| **A** | Mostly done | `KAFKA_BROKER` / `KAFKA_BROKERS` merge; `IG_POLL_*` / `ATTENTION_*` env tuning; **`GET /ready`** aggregates Kafka/Redis/poller/Lua + metrics snapshot (`npm run smoke:attention` when server is running). |
+| **B** | Mostly done | **`{root}/+/attention`** MQTT → same attention path as HTTP; **`ATTENTION_API_KEY`** + rate limits on HTTP; MQTT skips shared per-IP bucket (device limit only). **`power_save` / `power_mode: low`** on `/active` or attention payload sets Redis defer flag. |
+| **C** | Mostly done | Priority cap per tick; **`priorityZsetMaxMembers`** trim (soonest-expiring dropped); **`priorityRefreshMaxDeltaMs`** / **`priorityAbsoluteMaxFutureMs`** for TTL semantics; **`backgroundCapPerCycle`** + Redis **`ig:bg:fair_offset`** rotation; **`IG_GLOBAL_FETCH_BUDGET_PER_MIN`** via atomic Lua (no over-increment on reject). Per-tenant campaign budgets still future work. |
+| **D** | Mostly done | Expanded counters (circuit opens, budget rejects, zset trims, fair-rotate); **`attentionE2eLatencyMs`** histogram (rolling samples, p50/p95 approx) for attention immediate path; Influx **`instagram_attention_e2e`**; **`abandonAttentionCorrelation`** on failed fetch; existing **`correlation_id`** chain. |
+| **E** | Mostly done | Priority fetch topic when enabled; poller-side Redis NX dedupe for immediate fetches. |
+| **F** | Minimal | Smoke script **`scripts/attention-roadmap-smoke.ts`**; full Lua/integration/chaos tests still open. |
+| **G** | Partial | Power-save Redis key consumed by poller background path; pending-queue prioritization not implemented. |

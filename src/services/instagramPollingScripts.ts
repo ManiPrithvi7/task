@@ -3,6 +3,7 @@ import {
   REDIS_KEYS,
   atomicBackoffCheckAndRecordLua,
   atomicBackgroundSubtractionLua,
+  atomicFetchBudgetTryLua,
   atomicPriorityReadAndPruneLua
 } from './instagramPollingLua';
 import { logger } from '../utils/logger';
@@ -12,6 +13,7 @@ export interface InstagramPollingScriptSha {
   priorityReadPrune: string;
   backoffCheckRecord: string;
   backgroundSubtract: string;
+  fetchBudgetTry: string;
 }
 
 let loadedSha: InstagramPollingScriptSha | null = null;
@@ -28,20 +30,26 @@ export async function loadInstagramPollingScripts(
 ): Promise<InstagramPollingScriptSha> {
   if (loadedSha && !force) return loadedSha;
 
-  const [priorityReadPrune, backoffCheckRecord, backgroundSubtract] = await Promise.all([
+  const [priorityReadPrune, backoffCheckRecord, backgroundSubtract, fetchBudgetTry] = await Promise.all([
     redis.scriptLoad(atomicPriorityReadAndPruneLua),
     redis.scriptLoad(atomicBackoffCheckAndRecordLua),
-    redis.scriptLoad(atomicBackgroundSubtractionLua)
+    redis.scriptLoad(atomicBackgroundSubtractionLua),
+    redis.scriptLoad(atomicFetchBudgetTryLua)
   ]);
 
-  loadedSha = { priorityReadPrune, backoffCheckRecord, backgroundSubtract };
+  loadedSha = { priorityReadPrune, backoffCheckRecord, backgroundSubtract, fetchBudgetTry };
   logger.info('[IG_POLLING_SCRIPTS] Loaded Lua scripts for EVALSHA', {
     priorityReadPrune,
     backoffCheckRecord,
     backgroundSubtract,
+    fetchBudgetTry,
     forceReload: force
   });
   return loadedSha;
+}
+
+export function areInstagramPollingScriptsLoaded(): boolean {
+  return loadedSha !== null;
 }
 
 async function evalShaWithFallback(
@@ -101,6 +109,20 @@ export async function evalAtomicBackgroundSubtractionEvalSha(
     [String(nowMs)]
   );
   return Array.isArray(res) ? (res as string[]) : [];
+}
+
+export async function evalAtomicFetchBudgetTryEvalSha(
+  redis: RedisClientType,
+  budgetKey: string,
+  limit: number
+): Promise<boolean> {
+  const res = await evalShaWithFallback(
+    redis,
+    (s) => s.fetchBudgetTry,
+    [budgetKey],
+    [String(limit)]
+  );
+  return String(res) === '1';
 }
 
 /** Tests / tooling: reset cached SHAs so next load hits Redis SCRIPT LOAD again. */

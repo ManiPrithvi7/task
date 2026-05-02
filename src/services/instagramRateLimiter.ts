@@ -1,9 +1,8 @@
 /**
  * Extra safety layer for Instagram API calls.
  *
- * The real queue protection is enforced BEFORE enqueueing Kafka fetch requests
- * (Redis sliding-window backoff in `InstagramPoller`). This limiter exists as a
- * secondary guardrail in the consumer path.
+ * The real queue protection is enforced BEFORE invoking the serverless Instagram fetch
+ * (Redis sliding-window backoff in `InstagramPoller`). This limiter exists as an optional guardrail.
  */
 
 export type InstagramRateLimiter = {
@@ -17,7 +16,7 @@ export function getInstagramRateLimiter(): InstagramRateLimiter {
 
   limiterSingleton = {
     async check(_deviceId: string): Promise<void> {
-      // No-op by default; poller enforces backoff before Kafka enqueue.
+      // No-op by default; poller enforces backoff before serverless invoke.
       return;
     }
   };

@@ -46,6 +46,23 @@ export interface SystemMetrics {
   [key: string]: unknown;
 }
 
+/** One Influx row per Instagram Graph fetch attempt (replaces Mongo `instagram_fetch_audit` collection). */
+export interface InstagramFetchAuditInfluxInput {
+  deviceId: string;
+  success: boolean;
+  triggerType: string;
+  correlationId?: string;
+  instagramAccountId?: string;
+  oldFollowers: number | null;
+  newFollowers: number | null;
+  durationMs: number;
+  errorMessage?: string;
+  errorCode?: string | number;
+  mediaCount?: number;
+  /** Defaults to now */
+  timestamp?: Date;
+}
+
 export class InfluxService {
   private client: InfluxDB;
   private writeApi: WriteApi;
@@ -161,6 +178,93 @@ export class InfluxService {
       logger.error('Failed to write system metrics', { error: errorMessage });
       throw error;
     }
+  }
+
+  /**
+   * Append-only audit trail for Instagram fetch attempts (`instagram_fetch_audit` measurement).
+   * Tags: device_id, success, trigger_type; optional correlation_id, instagram_account_id, error_code.
+   * Fields: duration_ms; optional old_followers, new_followers, media_count, error_message.
+   */
+  async writeInstagramFetchAudit(
+    input: InstagramFetchAuditInfluxInput,
+    opts?: { flush?: boolean }
+  ): Promise<void> {
+    try {
+      const point = new Point('instagram_fetch_audit')
+        .tag('device_id', input.deviceId)
+        .tag('success', input.success ? 'true' : 'false')
+        .tag('trigger_type', input.triggerType);
+
+      if (input.correlationId) point.tag('correlation_id', input.correlationId);
+      if (input.instagramAccountId) point.tag('instagram_account_id', input.instagramAccountId);
+      if (!input.success && input.errorCode !== undefined && input.errorCode !== null && String(input.errorCode) !== '') {
+        point.tag('error_code', String(input.errorCode));
+      }
+
+      point.intField('duration_ms', Math.max(0, Math.round(input.durationMs)));
+
+      if (input.oldFollowers !== null && input.oldFollowers !== undefined && !Number.isNaN(input.oldFollowers)) {
+        point.intField('old_followers', Math.round(input.oldFollowers));
+      }
+      if (input.newFollowers !== null && input.newFollowers !== undefined && !Number.isNaN(input.newFollowers)) {
+        point.intField('new_followers', Math.round(input.newFollowers));
+      }
+      if (typeof input.mediaCount === 'number' && Number.isFinite(input.mediaCount)) {
+        point.intField('media_count', Math.round(input.mediaCount));
+      }
+      if (!input.success && input.errorMessage) {
+        point.stringField('error_message', input.errorMessage.slice(0, 4096));
+      }
+
+      point.timestamp(input.timestamp ?? new Date());
+
+      this.writeApi.writePoint(point);
+      if (opts?.flush !== false) await this.writeApi.flush();
+
+      logger.debug('Instagram fetch audit written to InfluxDB', { deviceId: input.deviceId, success: input.success });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error('Failed to write instagram_fetch_audit', { deviceId: input.deviceId, error: errorMessage });
+      throw error;
+    }
+  }
+
+  /** Snapshot follower count (`instagram_metrics`). */
+  async writeInstagramFollowersGauge(
+    deviceId: string,
+    instagramAccountId: string,
+    followers: number,
+    timestamp?: Date,
+    opts?: { flush?: boolean }
+  ): Promise<void> {
+    const point = new Point('instagram_metrics')
+      .tag('device_id', deviceId)
+      .tag('instagram_account_id', instagramAccountId || 'unknown')
+      .intField('followers', Math.round(followers))
+      .timestamp(timestamp ?? new Date());
+    this.writeApi.writePoint(point);
+    if (opts?.flush !== false) await this.writeApi.flush();
+  }
+
+  async writeInstagramAttentionE2eLatency(
+    deviceId: string,
+    triggerType: string,
+    latencyMs: number,
+    timestamp?: Date,
+    opts?: { flush?: boolean }
+  ): Promise<void> {
+    const point = new Point('instagram_attention_e2e')
+      .tag('device_id', deviceId)
+      .tag('trigger', triggerType)
+      .intField('latency_ms', Math.round(latencyMs))
+      .timestamp(timestamp ?? new Date());
+    this.writeApi.writePoint(point);
+    if (opts?.flush !== false) await this.writeApi.flush();
+  }
+
+  /** Flush buffered writes (use after multiple writes with `{ flush: false }`). */
+  async flushWrites(): Promise<void> {
+    await this.writeApi.flush();
   }
 
   /**

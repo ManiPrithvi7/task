@@ -18,11 +18,11 @@ import { MongoService, createMongoService } from './services/mongoService';
 import { RedisService, createRedisService } from './services/redisService';
 import { DeviceService, getActiveDeviceCache, ActiveDeviceCache } from './services/deviceService';
 import { InfluxService, createInfluxService, resetInfluxService } from './services/influxService';
-import { KafkaService } from './services/kafkaService';
-import { InstagramFetchConsumer, createInstagramFetchConsumer } from './services/instagramFetchConsumer';
-import { InstagramResultConsumer, createInstagramResultConsumer } from './services/instagramResultConsumer';
+import { InstagramServerlessBridge } from './services/instagramServerlessBridge';
 import { InstagramPoller } from './services/instagramPoller';
 import { REDIS_KEYS } from './services/instagramPollingLua';
+import { areInstagramPollingScriptsLoaded } from './services/instagramPollingScripts';
+import { getInstagramPollingMetricsSnapshot } from './services/instagramPollingMetrics';
 import { SessionService } from './services/sessionService';
 import { Device } from './models/Device';
 import { User } from './models/User';
@@ -71,11 +71,7 @@ export class StatsMqttLite {
   // Redis service
   private redisService?: RedisService;
 
-  // Kafka service (external events)
-  private kafkaService?: KafkaService;
-  // Instagram Kafka consumers
-  private instagramFetchConsumer?: InstagramFetchConsumer;
-  private instagramResultConsumer?: InstagramResultConsumer;
+  private instagramServerlessBridge?: InstagramServerlessBridge;
   private instagramPoller?: InstagramPoller;
   private influxService?: InfluxService;
 
@@ -187,10 +183,7 @@ export class StatsMqttLite {
       // Initialize MQTT client
       await this.initializeMqttClient();
 
-      // Initialize Kafka (requires MQTT client for consumers)
-      await this.initializeKafka();
-
-      // Initialize Instagram dual schedulers (Redis + Kafka required)
+      // Initialize Instagram dual schedulers (Redis + serverless worker URL)
       await this.initializeInstagramPoller();
 
       // Initialize HTTP server (includes provisioning routes)
@@ -353,54 +346,23 @@ export class StatsMqttLite {
     }
   }
 
-  private async initializeKafka(): Promise<void> {
-    if (!this.config.kafka?.enabled) {
-      logger.info('📦 Kafka disabled (set KAFKA_ENABLED=true to enable)');
-      return;
-    }
-
-    if (!this.config.kafka.brokers.length) {
-      logger.warn('📦 Kafka enabled but KAFKA_BROKERS not set – skipping Kafka initialization');
-      return;
-    }
-
-    try {
-      // ── Producer (KafkaService) ─────────────────────────────────────
-      this.kafkaService = new KafkaService(this.config.kafka);
-      await this.kafkaService.connect();
-
-      // Ensure topics exist before consumers subscribe (avoids "does not host this topic-partition")
-      await this.kafkaService.ensureTopics();
-
-      // ── Instagram Fetch Consumer (instagram-fetch-requests) ─────────
-      this.instagramFetchConsumer = createInstagramFetchConsumer(this.config.kafka);
-      await this.instagramFetchConsumer.start();
-      logger.info('✅ Instagram fetch consumer started');
-
-      // ── Instagram Result Consumer (instagram-fetch-results → MQTT) ───
-      this.instagramResultConsumer = createInstagramResultConsumer(
-        this.config.kafka,
-        this.mqttClient
-      );
-      await this.instagramResultConsumer.start();
-      logger.info('✅ Instagram result consumer started');
-
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('❌ Failed to initialize Kafka / Instagram consumers', { error: errorMessage });
-      // Non-fatal: app continues without Kafka
-    }
-  }
-
   private async initializeInfluxDB(): Promise<void> {
     if (!this.config.influxdb?.enabled) {
       logger.info('📈 InfluxDB disabled (set INFLUXDB_ENABLED=true to enable)');
       return;
     }
 
-    if (!this.config.influxdb.url || !this.config.influxdb.token) {
+    const influxUrlTrimmed = this.config.influxdb.url?.trim() ?? '';
+    const influxTokenTrimmed = this.config.influxdb.token?.trim() ?? '';
+    if (!influxUrlTrimmed || !influxTokenTrimmed) {
+      const missing: string[] = [];
+      if (!influxUrlTrimmed) missing.push('INFLUXDB_URL');
+      if (!influxTokenTrimmed) missing.push('INFLUXDB_TOKEN');
       const msg =
-        'InfluxDB is enabled but INFLUXDB_URL or INFLUXDB_TOKEN is missing. Set both or disable with INFLUXDB_ENABLED=false.';
+        `InfluxDB is enabled but ${missing.join(' and ')} ${missing.length > 1 ? 'are' : 'is'} missing or empty. ` +
+        'InfluxDB 2.x requires an API token for writes (Influx UI → Load Data → API Tokens). ' +
+        'URL defaults to http://localhost:8086 in config; if your container maps host 8087→8086, set INFLUXDB_URL=http://127.0.0.1:8087. ' +
+        'Alternatives: INFLUXDB_ENABLED=false to disable, or INFLUXDB_REQUIRED=false to continue without time-series writes.';
       if (this.config.influxdb.required) {
         throw new Error(msg);
       }
@@ -444,60 +406,75 @@ export class StatsMqttLite {
   }
 
   private async initializeInstagramPoller(): Promise<void> {
-    // Requires Redis + Kafka. If either is missing, we skip silently.
     if (!this.redisService?.isRedisConnected()) {
       logger.info('📉 Instagram poller disabled (Redis not connected)');
       return;
     }
-    if (!this.kafkaService?.connected) {
-      logger.info('📉 Instagram poller disabled (Kafka not connected)');
+
+    const sl = this.config.instagramServerless;
+    if (!sl?.fetchUrl?.trim()) {
+      logger.info('📉 Instagram poller disabled (set INSTAGRAM_SERVERLESS_URL / VERCEL_INSTAGRAM_FETCH_URL)');
       return;
     }
 
-    this.instagramPoller = new InstagramPoller(this.kafkaService, this.redisService, {
-      priorityIntervalMs: 15_000,
-      backgroundIntervalMs: 90_000,
-      priorityTtlMs: 120_000,
-      batchSize: 50,
-      backoffThreshold: 6,
-      backoffWindowMs: 60_000
+    const igPoll = this.config.instagramPolling!;
+    this.instagramServerlessBridge = new InstagramServerlessBridge(sl, this.mqttClient);
+    this.instagramPoller = new InstagramPoller(this.instagramServerlessBridge, this.redisService, {
+      priorityIntervalMs: igPoll.priorityIntervalMs,
+      backgroundIntervalMs: igPoll.backgroundIntervalMs,
+      priorityTtlMs: igPoll.priorityTtlMs,
+      batchSize: igPoll.batchSize,
+      backoffThreshold: igPoll.backoffThreshold,
+      backoffWindowMs: igPoll.backoffWindowMs,
+      priorityCapPerCycle: igPoll.priorityCapPerCycle,
+      fetchDedupeWindowMs: igPoll.fetchDedupeWindowMs,
+      priorityZsetMaxMembers: igPoll.priorityZsetMaxMembers,
+      priorityRefreshMaxDeltaMs: igPoll.priorityRefreshMaxDeltaMs,
+      priorityAbsoluteMaxFutureMs: igPoll.priorityAbsoluteMaxFutureMs,
+      backgroundCapPerCycle: igPoll.backgroundCapPerCycle,
+      backgroundFairRotate: igPoll.backgroundFairRotate,
+      globalFetchBudgetPerMinute: igPoll.globalFetchBudgetPerMinute
     });
 
     await this.instagramPoller.start();
     logger.info('✅ Instagram poller initialized (dual schedulers enabled)');
   }
 
-  /**
-   * User / app “attention” signal: extend priority_zset TTL and optionally enqueue one fetch
-   * (still subject to sliding-window backoff + circuit breaker inside the poller).
-   */
-  private async handleDeviceAttention(
-    deviceId: string,
-    opts: { ttlMs?: number; immediateFetch?: boolean }
-  ): Promise<{ immediateQueued: boolean }> {
-    const mongoDevice = await this.deviceService.getDevice(deviceId);
-    const redisDevice = await this.activeDeviceCache.getActive(deviceId);
-    if (!mongoDevice && !redisDevice) {
-      const err = new Error('Device not found') as Error & { statusCode?: number };
-      err.statusCode = 404;
-      throw err;
+  /** Readiness when Instagram pipeline is configured (INSTAGRAM_SERVERLESS_URL). */
+  private async buildReadinessPayload(): Promise<Record<string, unknown>> {
+    const pipelineDesired = Boolean(this.config.instagramServerless?.fetchUrl?.trim());
+    const serverlessConfigured = pipelineDesired;
+    const redisOk = this.redisService?.isRedisConnected() === true;
+    const poller = this.instagramPoller;
+    const pollerRunning = poller ? poller.getRunning() : false;
+    const pollerScripts = poller ? poller.getScriptsReady() : false;
+    const luaLoaded = areInstagramPollingScriptsLoaded();
+    const ready =
+      !pipelineDesired ||
+      (serverlessConfigured && redisOk && pollerRunning && pollerScripts && luaLoaded);
+    return {
+      ready,
+      instagram_pipeline_desired: pipelineDesired,
+      instagram_serverless_configured: serverlessConfigured,
+      redis_connected: redisOk,
+      instagram_poller_running: pollerRunning,
+      instagram_poller_scripts_ready: pollerScripts,
+      instagram_polling_lua_loaded: luaLoaded,
+      metrics: getInstagramPollingMetricsSnapshot()
+    };
+  }
+
+  private async setDevicePowerSaveFlag(deviceId: string): Promise<void> {
+    if (!this.redisService?.isRedisConnected()) return;
+    try {
+      await this.redisService.getClient().set(REDIS_KEYS.igPowerSave(deviceId), '1', { EX: 86400 });
+      logger.debug('[IG_POLL] power_save flag set for device', { deviceId });
+    } catch (err: unknown) {
+      logger.warn('[IG_POLL] power_save set failed', {
+        deviceId,
+        error: err instanceof Error ? err.message : String(err)
+      });
     }
-
-    if (!this.instagramPoller) {
-      const err = new Error('Instagram poller not enabled') as Error & { statusCode?: number };
-      err.statusCode = 503;
-      throw err;
-    }
-
-    const ttlMs = opts.ttlMs ?? 120_000;
-    await this.instagramPoller.markPriority(deviceId, ttlMs);
-
-    let immediateQueued = false;
-    if (opts.immediateFetch === true && this.kafkaService?.connected) {
-      immediateQueued = await this.instagramPoller.requestImmediateFetch(deviceId);
-    }
-
-    return { immediateQueued };
   }
 
   private async initializeProvisioning(): Promise<void> {
@@ -806,7 +783,7 @@ export class StatsMqttLite {
     const root = this.config.mqtt.topicRoot;
     // proof.mqtt: device lifecycle + screen topics (Instagram, GMB, POS)
     const topics = [
-      `${root}/+/active`,   // Device registration (connect)
+      `${root}/+/active`,   // Device registration (connect) → priority + serverless fetch
       `${root}/+/lwt`,      // Last Will (broker when device disconnects)
       `${root}/+/status`,   // Device status (e.g. uptime)
       `${root}/+/instagram`, // Instagram screen (device → server if needed)
@@ -970,6 +947,10 @@ export class StatsMqttLite {
       type: message.type
     });
 
+    if (message?.power_save === true || message?.power_mode === 'low') {
+      await this.setDevicePowerSaveFlag(deviceId);
+    }
+
     // Register device if not exists. Use topic-derived deviceId as canonical id so
     // DeviceService lookups and StatsPublisher topics match subscriber topics (e.g. proof.mqtt/<deviceId>/instagram).
     const existingDevice = await this.deviceService.getDevice(deviceId);
@@ -1011,7 +992,10 @@ export class StatsMqttLite {
       if (this.redisService?.isRedisConnected()) {
         const client = this.redisService.getClient();
         await client.sAdd(REDIS_KEYS.fullActiveSet, deviceId);
-        await client.zAdd(REDIS_KEYS.priorityZset, [{ score: Date.now() + 120_000, value: deviceId }]);
+        if (this.instagramPoller && this.config.instagramPolling) {
+          await this.instagramPoller.markPriority(deviceId, this.config.instagramPolling.priorityTtlMs);
+          void this.instagramPoller.requestImmediateFetch(deviceId).catch(() => undefined);
+        }
       }
     } catch (err: unknown) {
       logger.warn('Failed to update Instagram polling sets on registration', {
@@ -1281,10 +1265,7 @@ export class StatsMqttLite {
       this.sessionService,
       this.deviceService,
       this.mqttClient,
-      this.instagramPoller
-        ? (deviceId: string, body: { ttlMs?: number; immediateFetch?: boolean }) =>
-            this.handleDeviceAttention(deviceId, body)
-        : undefined
+      () => this.buildReadinessPayload()
     );
     
     // Add provisioning routes if enabled
