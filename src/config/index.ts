@@ -337,6 +337,16 @@ export interface KafkaConfig {
   sasl?: unknown;
 }
 
+export interface InfluxDBConfig {
+  enabled: boolean;
+  /** When true (default while enabled), startup fails if Influx is unreachable. Set INFLUXDB_REQUIRED=false to skip. */
+  required: boolean;
+  url: string;
+  token: string;
+  org: string;
+  bucket: string;
+}
+
 export interface AppConfig {
   mqtt: MqttConfig;
   http: HttpConfig;
@@ -347,6 +357,7 @@ export interface AppConfig {
   auth: AuthConfig;
   app: AppEnvConfig;
   kafka?: KafkaConfig;
+  influxdb?: InfluxDBConfig;
 }
 
 export function loadConfig(): AppConfig {
@@ -402,6 +413,11 @@ export function loadConfig(): AppConfig {
   const kafkaBrokers = kafkaBrokersRaw
     ? kafkaBrokersRaw.split(',').map(s => s.trim()).filter(Boolean)
     : [];
+  const influxEnabled = process.env.INFLUXDB_ENABLED === 'true' || process.env.INFLUXDB_ENABLED === '1';
+  const influxRequired =
+    influxEnabled &&
+    process.env.INFLUXDB_REQUIRED !== 'false' &&
+    process.env.INFLUXDB_REQUIRED !== '0';
 
   const config: AppConfig = {
     mqtt: {
@@ -480,6 +496,14 @@ export function loadConfig(): AppConfig {
       clientId: process.env.KAFKA_CLIENT_ID || 'mqtt-publisher-lite',
       defaultTopic: process.env.KAFKA_DEFAULT_TOPIC || 'social-webhook-events',
       ssl: process.env.KAFKA_SSL === 'true' || process.env.KAFKA_SSL === '1'
+    },
+    influxdb: {
+      enabled: influxEnabled,
+      required: influxRequired,
+      url: process.env.INFLUXDB_URL || 'http://localhost:8086',
+      token: process.env.INFLUXDB_TOKEN || '',
+      org: process.env.INFLUXDB_ORG || 'statsmqtt',
+      bucket: process.env.INFLUXDB_BUCKET || 'statsmqtt'
     }
   };
 

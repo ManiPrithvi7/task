@@ -22,11 +22,13 @@ import { connectWithRetry } from '../utils/kafkaRetry';
 import { KafkaConfig } from '../config';
 import { Social, Provider } from '../models/Social';
 import { fetchInstagramMetrics, InstagramFetchResult } from './instagramApiClient';
+import { getInfluxService } from './influxService';
 import { getMongoService } from './mongoService';
 import { getRedisService } from './redisService';
 import { InstagramCircuitBreaker } from './instagramCircuitBreaker';
 import { InstagramFetchAudit } from '../models/InstagramFetchAudit';
 import { REDIS_KEYS } from './instagramPollingLua';
+import { Point } from '@influxdata/influxdb-client';
 
 export const FETCH_REQUESTS_TOPIC = 'instagram-fetch-requests';
 export const FETCH_RESULTS_TOPIC = 'instagram-fetch-results';
@@ -294,8 +296,48 @@ export class InstagramFetchConsumer {
             });
         }
 
-        // InfluxDB integration is not present on `main`. Audit trail is stored in MongoDB
-        // (`instagram_fetch_audit`) and per-device change detection is stored in Redis.
+        // ── Optional InfluxDB write (time-series) ─────────────────────────────
+        const influx = getInfluxService();
+        if (influx) {
+            try {
+                const writeApi = (influx as unknown as { writeApi: { writePoint: (p: Point) => void; flush: () => Promise<void> } }).writeApi;
+
+                if (result.success && result.metrics) {
+                    const metricsPoint = new Point('instagram_metrics')
+                        .tag('device_id', deviceId)
+                        .tag('user_id', socialAccount.userId)
+                        .tag('instagram_account_id', result.instagramAccountId)
+                        .intField('followers', result.metrics.followers_count)
+                        .timestamp(new Date());
+
+                    const auditPoint = new Point('instagram_fetch_audit')
+                        .tag('device_id', deviceId)
+                        .tag('status', 'success')
+                        .tag('trigger', trigger)
+                        .intField('response_time_ms', result.apiResponseTimeMs)
+                        .timestamp(new Date());
+
+                    writeApi.writePoint(metricsPoint);
+                    writeApi.writePoint(auditPoint);
+                    await writeApi.flush();
+                } else {
+                    const auditPoint = new Point('instagram_fetch_audit')
+                        .tag('device_id', deviceId)
+                        .tag('status', 'failure')
+                        .tag('trigger', trigger)
+                        .intField('response_time_ms', result.apiResponseTimeMs)
+                        .stringField('error_message', result.error || 'unknown')
+                        .timestamp(new Date());
+                    writeApi.writePoint(auditPoint);
+                    await writeApi.flush();
+                }
+            } catch (err: unknown) {
+                logger.debug('[INSTAGRAM_CONSUMER] Influx write failed (ignored)', {
+                    deviceId,
+                    error: err instanceof Error ? err.message : String(err)
+                });
+            }
+        }
 
         // ── Publish result to instagram-fetch-results ─────────────────────────
         const fetchResult: FetchResult = {

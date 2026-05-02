@@ -17,6 +17,7 @@ import { UserService } from './services/userService';
 import { MongoService, createMongoService } from './services/mongoService';
 import { RedisService, createRedisService } from './services/redisService';
 import { DeviceService, getActiveDeviceCache, ActiveDeviceCache } from './services/deviceService';
+import { InfluxService, createInfluxService, resetInfluxService } from './services/influxService';
 import { KafkaService } from './services/kafkaService';
 import { InstagramFetchConsumer, createInstagramFetchConsumer } from './services/instagramFetchConsumer';
 import { InstagramResultConsumer, createInstagramResultConsumer } from './services/instagramResultConsumer';
@@ -76,6 +77,7 @@ export class StatsMqttLite {
   private instagramFetchConsumer?: InstagramFetchConsumer;
   private instagramResultConsumer?: InstagramResultConsumer;
   private instagramPoller?: InstagramPoller;
+  private influxService?: InfluxService;
 
   // Active device cache (Redis-backed)
   private activeDeviceCache!: ActiveDeviceCache;
@@ -175,6 +177,9 @@ export class StatsMqttLite {
 
       // Initialize services
       await this.initializeServices();
+
+      // Initialize InfluxDB (required when enabled unless INFLUXDB_REQUIRED=false)
+      await this.initializeInfluxDB();
 
       // Initialize provisioning services (if enabled)
       await this.initializeProvisioning();
@@ -384,6 +389,57 @@ export class StatsMqttLite {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logger.error('❌ Failed to initialize Kafka / Instagram consumers', { error: errorMessage });
       // Non-fatal: app continues without Kafka
+    }
+  }
+
+  private async initializeInfluxDB(): Promise<void> {
+    if (!this.config.influxdb?.enabled) {
+      logger.info('📈 InfluxDB disabled (set INFLUXDB_ENABLED=true to enable)');
+      return;
+    }
+
+    if (!this.config.influxdb.url || !this.config.influxdb.token) {
+      const msg =
+        'InfluxDB is enabled but INFLUXDB_URL or INFLUXDB_TOKEN is missing. Set both or disable with INFLUXDB_ENABLED=false.';
+      if (this.config.influxdb.required) {
+        throw new Error(msg);
+      }
+      logger.warn(`📈 ${msg}`);
+      return;
+    }
+
+    try {
+      this.influxService = createInfluxService(this.config.influxdb);
+      const healthy = await this.influxService.healthCheck();
+      const required = this.config.influxdb.required;
+
+      if (healthy) {
+        logger.info('📈 InfluxDB connected', {
+          url: this.config.influxdb.url,
+          org: this.config.influxdb.org,
+          bucket: this.config.influxdb.bucket
+        });
+        return;
+      }
+
+      await resetInfluxService();
+      this.influxService = undefined;
+
+      const hint =
+        'Start InfluxDB 2.x (e.g. docker), verify INFLUXDB_URL, INFLUXDB_TOKEN, INFLUXDB_ORG, INFLUXDB_BUCKET. For local dev without Influx, set INFLUXDB_REQUIRED=false.';
+      if (required) {
+        throw new Error(`InfluxDB unreachable or misconfigured (${hint})`);
+      }
+      logger.warn(`📈 InfluxDB skipped — health check failed (${hint})`);
+    } catch (err: unknown) {
+      await resetInfluxService();
+      this.influxService = undefined;
+      if (this.config.influxdb?.required) {
+        throw err;
+      }
+      logger.warn('📈 InfluxDB initialization failed (continuing without time-series writes)', {
+        error: err instanceof Error ? err.message : String(err)
+      });
     }
   }
 
