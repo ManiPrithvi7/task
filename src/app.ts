@@ -175,6 +175,9 @@ export class StatsMqttLite {
       await this.initializeServices();
 
       // Initialize InfluxDB (required when enabled unless INFLUXDB_REQUIRED=false)
+      if (this.config.influxdb?.enabled) {
+        logger.info('📈 Initializing InfluxDB...');
+      }
       await this.initializeInfluxDB();
 
       // Initialize provisioning services (if enabled)

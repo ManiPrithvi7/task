@@ -668,20 +668,22 @@ export class InfluxService {
   }
 
   /**
-   * Health check — HTTP `/health` first (no bucket needed), then optional Flux probe for read permission.
+   * Health check — HTTP `/health` first (no bucket needed), then Flux probe for token/org/bucket read access.
+   * The Flux step uses the JS client (separate sockets from `/health`) and must be time-bounded — otherwise
+   * a stalled HTTPS connection to a hosted Influx can leave startup hanging forever after "Services initialized".
    */
   async healthCheck(): Promise<boolean> {
-    try {
-      const rawBase = this.config.url.replace(/\/+$/, '');
-      const u = new URL(`${rawBase}/health`);
-      // Avoid IPv6 localhost stalls in some environments: prefer 127.0.0.1
-      if (u.hostname === 'localhost') u.hostname = '127.0.0.1';
+    const rawBase = this.config.url.replace(/\/+$/, '');
+    const u = new URL(`${rawBase}/health`);
+    // Avoid IPv6 localhost stalls in some environments: prefer 127.0.0.1
+    if (u.hostname === 'localhost') u.hostname = '127.0.0.1';
 
+    const isLoopback =
+      u.hostname === '127.0.0.1' || u.hostname === 'localhost';
+
+    try {
       const isHttps = u.protocol === 'https:';
       const mod = isHttps ? https : http;
-      const isLoopback =
-        u.hostname === '127.0.0.1' ||
-        u.hostname === 'localhost';
       // Hosted instances (Render, etc.) may cold-start; local Docker stays fast.
       const timeoutMs = isLoopback ? 3000 : 15000;
 
@@ -734,16 +736,42 @@ export class InfluxService {
       return false;
     }
 
-    try {
-      const query = `
-        from(bucket: "${this.config.bucket}")
+    const bucket = this.config.bucket;
+    const org = this.config.org;
+    const fluxProbeEnv = parseInt(process.env.INFLUXDB_FLUX_PROBE_TIMEOUT_MS?.trim() || '', 10);
+    const fluxTimeoutMs =
+      Number.isFinite(fluxProbeEnv) && fluxProbeEnv > 0 ? fluxProbeEnv : isLoopback ? 8000 : 25000;
+
+    logger.info('📈 InfluxDB /health OK; verifying read API (Flux)', {
+      fluxTimeoutMs,
+      org,
+      bucket
+    });
+
+    const query = `
+        from(bucket: "${bucket}")
           |> range(start: -1m)
           |> limit(n: 1)
       `;
 
-      const bucket = this.config.bucket;
-      const org = this.config.org;
+    try {
       return await new Promise<boolean>((resolve) => {
+        let settled = false;
+        const settle = (value: boolean) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          resolve(value);
+        };
+
+        const timer = setTimeout(() => {
+          logger.warn(
+            'InfluxDB Flux probe timed out — startup was blocking here before this guard. Check network, URL, token, org, bucket.',
+            { fluxTimeoutMs, url: this.config.url, org, bucket }
+          );
+          settle(false);
+        }, fluxTimeoutMs);
+
         let fluxErr: Error | undefined;
         this.queryApi.queryRows(query, {
           next() { /* ok */ },
@@ -757,10 +785,10 @@ export class InfluxService {
                 org,
                 error: fluxErr.message
               });
-              resolve(false);
+              settle(false);
               return;
             }
-            resolve(true);
+            settle(true);
           }
         });
       });
