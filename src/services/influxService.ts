@@ -12,6 +12,7 @@ import http from 'http';
 import https from 'https';
 import { logger } from '../utils/logger';
 import { InfluxDBConfig } from '../config';
+import { InfluxDiskQueue } from './influxDiskQueue';
 
 export interface DeviceMetrics {
   temperature?: number;
@@ -69,6 +70,7 @@ export class InfluxService {
   private writeApi: WriteApi;
   private queryApi: QueryApi;
   private config: InfluxDBConfig;
+  private diskQueue: InfluxDiskQueue | null = null;
 
   constructor(config: InfluxDBConfig) {
     this.config = config;
@@ -82,6 +84,31 @@ export class InfluxService {
     this.queryApi = this.client.getQueryApi(this.config.org);
 
     this.writeApi.useDefaultTags({ service: 'mqtt-publisher-lite' });
+
+    if (config.diskQueueEnabled) {
+      this.diskQueue = new InfluxDiskQueue({
+        queuePath: config.diskQueuePath,
+        flushIntervalMs: config.diskQueueFlushMs,
+        batchMax: config.diskQueueBatchMax,
+        maxLinesPerFile: config.diskQueueMaxLinesPerFile
+      });
+      this.diskQueue.start(async (lines) => {
+        if (lines.length === 0) return;
+        this.writeApi.writeRecords(lines);
+        await this.writeApi.flush();
+      });
+    }
+  }
+
+  /** Direct HTTP write vs disk WAL (HTTP batches on flush worker). */
+  private async submitPoint(point: Point, flushImmediately: boolean): Promise<void> {
+    if (this.diskQueue) {
+      const line = point.toLineProtocol();
+      await this.diskQueue.enqueue(line ?? '');
+      return;
+    }
+    this.writeApi.writePoint(point);
+    if (flushImmediately) await this.writeApi.flush();
   }
 
   /**
@@ -108,8 +135,7 @@ export class InfluxService {
         point.timestamp(new Date());
       }
 
-      this.writeApi.writePoint(point);
-      await this.writeApi.flush();
+      await this.submitPoint(point, true);
 
       logger.debug('Device metrics written to InfluxDB', { deviceId });
     } catch (error) {
@@ -142,8 +168,7 @@ export class InfluxService {
 
       point.timestamp(new Date());
 
-      this.writeApi.writePoint(point);
-      await this.writeApi.flush();
+      await this.submitPoint(point, true);
 
       logger.debug('Social metrics written to InfluxDB', { platform, userId });
     } catch (error) {
@@ -170,8 +195,7 @@ export class InfluxService {
 
       point.timestamp(new Date());
 
-      this.writeApi.writePoint(point);
-      await this.writeApi.flush();
+      await this.submitPoint(point, true);
 
       logger.debug('System metrics written to InfluxDB');
     } catch (error) {
@@ -219,8 +243,7 @@ export class InfluxService {
 
       point.timestamp(input.timestamp ?? new Date());
 
-      this.writeApi.writePoint(point);
-      if (opts?.flush !== false) await this.writeApi.flush();
+      await this.submitPoint(point, opts?.flush !== false);
 
       logger.debug('Instagram fetch audit written to InfluxDB', { deviceId: input.deviceId, success: input.success });
     } catch (error) {
@@ -243,8 +266,7 @@ export class InfluxService {
       .tag('instagram_account_id', instagramAccountId || 'unknown')
       .intField('followers', Math.round(followers))
       .timestamp(timestamp ?? new Date());
-    this.writeApi.writePoint(point);
-    if (opts?.flush !== false) await this.writeApi.flush();
+    await this.submitPoint(point, opts?.flush !== false);
   }
 
   async writeInstagramAttentionE2eLatency(
@@ -259,12 +281,15 @@ export class InfluxService {
       .tag('trigger', triggerType)
       .intField('latency_ms', Math.round(latencyMs))
       .timestamp(timestamp ?? new Date());
-    this.writeApi.writePoint(point);
-    if (opts?.flush !== false) await this.writeApi.flush();
+    await this.submitPoint(point, opts?.flush !== false);
   }
 
   /** Flush buffered writes (use after multiple writes with `{ flush: false }`). */
   async flushWrites(): Promise<void> {
+    if (this.diskQueue) {
+      await this.diskQueue.flushNow();
+      return;
+    }
     await this.writeApi.flush();
   }
 
@@ -424,8 +449,7 @@ export class InfluxService {
       point.intField('count', 1);
       point.timestamp(new Date());
 
-      this.writeApi.writePoint(point);
-      await this.writeApi.flush();
+      await this.submitPoint(point, true);
 
       logger.debug('PKI audit event written to InfluxDB', { event: data.event, deviceId: data.deviceId });
     } catch (error) {
@@ -463,8 +487,7 @@ export class InfluxService {
       if (data.deviceId) point.tag('device_id', data.deviceId);
       point.timestamp(new Date());
 
-      this.writeApi.writePoint(point);
-      await this.writeApi.flush();
+      await this.submitPoint(point, true);
 
       logger.debug('Rate limit event written to InfluxDB', { limitType: data.limitType, endpoint: data.endpoint });
     } catch (error) {
@@ -535,8 +558,7 @@ export class InfluxService {
         .stringField('serial_number', data.serialNumber)
         .timestamp(data.issuedAt);
 
-      this.writeApi.writePoint(point);
-      await this.writeApi.flush();
+      await this.submitPoint(point, true);
 
       logger.debug('CT log entry written to InfluxDB', { index: data.index, deviceId: data.deviceId });
     } catch (error) {
@@ -668,33 +690,54 @@ export class InfluxService {
   }
 
   /**
-   * Health check — HTTP `/health` first (no bucket needed), then Flux probe for token/org/bucket read access.
-   * The Flux step uses the JS client (separate sockets from `/health`) and must be time-bounded — otherwise
-   * a stalled HTTPS connection to a hosted Influx can leave startup hanging forever after "Services initialized".
+   * Health check — HTTP `/health` then authenticated REST `GET /api/v2/buckets` (validates token + org + bucket).
+   * InfluxDB 2 has no long-lived “persistent connection”: writes/queries are HTTP; the JS client batches over HTTP.
+   * We avoid Flux/queryRows for startup readiness — behind some proxies (e.g. Render) `/api/v2/query` can stall
+   * while `/health` and `/api/v2/buckets` respond normally.
+   *
+   * Hosted services may be idle: `/health` and buckets calls retry (default 3) with delay between attempts.
+   * Configure: INFLUXDB_HEALTH_RETRIES, INFLUXDB_HEALTH_RETRY_DELAY_MS, INFLUXDB_HEALTH_TIMEOUT_MS.
    */
   async healthCheck(): Promise<boolean> {
+    const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
     const rawBase = this.config.url.replace(/\/+$/, '');
     const u = new URL(`${rawBase}/health`);
-    // Avoid IPv6 localhost stalls in some environments: prefer 127.0.0.1
     if (u.hostname === 'localhost') u.hostname = '127.0.0.1';
 
-    const isLoopback =
-      u.hostname === '127.0.0.1' || u.hostname === 'localhost';
+    const isLoopback = u.hostname === '127.0.0.1' || u.hostname === 'localhost';
 
-    try {
-      const isHttps = u.protocol === 'https:';
-      const mod = isHttps ? https : http;
-      // Hosted instances (Render, etc.) may cold-start; local Docker stays fast.
-      const timeoutMs = isLoopback ? 3000 : 15000;
+    const retriesEnv = parseInt(process.env.INFLUXDB_HEALTH_RETRIES?.trim() || '', 10);
+    const maxAttempts =
+      Number.isFinite(retriesEnv) && retriesEnv >= 1
+        ? Math.min(retriesEnv, 10)
+        : isLoopback
+          ? 1
+          : 3;
 
-      const body = await new Promise<{ statusCode: number; json: any }>((resolve, reject) => {
+    const delayEnv = parseInt(process.env.INFLUXDB_HEALTH_RETRY_DELAY_MS?.trim() || '', 10);
+    const retryDelayMs = Number.isFinite(delayEnv) && delayEnv >= 0 ? delayEnv : 2500;
+
+    const healthTimeoutEnv = parseInt(process.env.INFLUXDB_HEALTH_TIMEOUT_MS?.trim() || '', 10);
+    const healthTimeoutMs =
+      Number.isFinite(healthTimeoutEnv) && healthTimeoutEnv > 0
+        ? healthTimeoutEnv
+        : isLoopback
+          ? 3000
+          : 20000;
+
+    const isHttps = u.protocol === 'https:';
+    const mod = isHttps ? https : http;
+
+    const oneHealthGet = (): Promise<{ statusCode: number; json: any }> =>
+      new Promise((resolve, reject) => {
         const req = mod.request(
           {
             method: 'GET',
             hostname: u.hostname,
             port: u.port ? Number(u.port) : isHttps ? 443 : 80,
             path: `${u.pathname}${u.search}`,
-            timeout: timeoutMs
+            timeout: healthTimeoutMs
           },
           (res) => {
             let raw = '';
@@ -715,89 +758,177 @@ export class InfluxService {
         req.end();
       });
 
-      const payload = body.json as { status?: string; message?: string };
-      if (body.statusCode < 200 || body.statusCode >= 300) {
-        logger.warn('InfluxDB /health HTTP error', {
-          status: body.statusCode,
-          bodyStatus: payload.status,
-          message: payload.message
+    let healthOk = false;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const body = await oneHealthGet();
+        const payload = body.json as { status?: string; message?: string };
+        if (body.statusCode >= 200 && body.statusCode < 300 && (!payload.status || payload.status === 'pass')) {
+          healthOk = true;
+          if (attempt > 1) {
+            logger.info('📈 InfluxDB /health OK after retry', { attempt, maxAttempts });
+          }
+          break;
+        }
+        const retryableHttp =
+          body.statusCode === 0 || body.statusCode >= 500 || body.statusCode === 429;
+        if (!retryableHttp || attempt === maxAttempts) {
+          logger.warn('InfluxDB /health HTTP error', {
+            status: body.statusCode,
+            bodyStatus: payload.status,
+            message: payload.message
+          });
+          if (body.statusCode >= 200 && body.statusCode < 300 && payload.status && payload.status !== 'pass') {
+            logger.warn('InfluxDB /health reports non-pass', { status: payload.status, message: payload.message });
+          }
+          if (!retryableHttp) return false;
+          if (attempt === maxAttempts) return false;
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.warn('InfluxDB /health attempt failed', {
+          attempt,
+          maxAttempts,
+          url: this.config.url,
+          error: msg
         });
-        return false;
+        if (attempt === maxAttempts) {
+          logger.warn('InfluxDB /health unreachable after retries', { url: this.config.url, error: msg });
+          return false;
+        }
       }
-      if (payload.status && payload.status !== 'pass') {
-        logger.warn('InfluxDB /health reports non-pass', { status: payload.status, message: payload.message });
-        return false;
+      if (!healthOk && attempt < maxAttempts) {
+        await sleep(retryDelayMs);
       }
-    } catch (err: unknown) {
-      logger.warn('InfluxDB /health unreachable', {
-        url: this.config.url,
-        error: err instanceof Error ? err.message : String(err)
-      });
-      return false;
     }
+
+    if (!healthOk) return false;
 
     const bucket = this.config.bucket;
     const org = this.config.org;
-    const fluxProbeEnv = parseInt(process.env.INFLUXDB_FLUX_PROBE_TIMEOUT_MS?.trim() || '', 10);
-    const fluxTimeoutMs =
-      Number.isFinite(fluxProbeEnv) && fluxProbeEnv > 0 ? fluxProbeEnv : isLoopback ? 8000 : 25000;
+    const apiProbeEnv = parseInt(process.env.INFLUXDB_API_PROBE_TIMEOUT_MS?.trim() || '', 10);
+    const fluxFallbackEnv = parseInt(process.env.INFLUXDB_FLUX_PROBE_TIMEOUT_MS?.trim() || '', 10);
+    const apiTimeoutMs =
+      Number.isFinite(apiProbeEnv) && apiProbeEnv > 0
+        ? apiProbeEnv
+        : Number.isFinite(fluxFallbackEnv) && fluxFallbackEnv > 0
+          ? fluxFallbackEnv
+          : isLoopback
+            ? 8000
+            : 20000;
 
-    logger.info('📈 InfluxDB /health OK; verifying read API (Flux)', {
-      fluxTimeoutMs,
+    logger.info('📈 InfluxDB /health OK; verifying API token (GET /api/v2/buckets)', {
+      apiTimeoutMs,
       org,
-      bucket
+      bucket,
+      maxAttempts
     });
 
-    const query = `
-        from(bucket: "${bucket}")
-          |> range(start: -1m)
-          |> limit(n: 1)
-      `;
+    const bucketsUrl = new URL(`${rawBase}/api/v2/buckets`);
+    bucketsUrl.searchParams.set('org', org);
+    if (bucketsUrl.hostname === 'localhost') bucketsUrl.hostname = '127.0.0.1';
 
-    try {
-      return await new Promise<boolean>((resolve) => {
-        let settled = false;
-        const settle = (value: boolean) => {
-          if (settled) return;
-          settled = true;
-          clearTimeout(timer);
-          resolve(value);
-        };
+    const isHttpsBuckets = bucketsUrl.protocol === 'https:';
+    const modBuckets = isHttpsBuckets ? https : http;
+    const token = this.config.token?.trim() ?? '';
 
-        const timer = setTimeout(() => {
-          logger.warn(
-            'InfluxDB Flux probe timed out — startup was blocking here before this guard. Check network, URL, token, org, bucket.',
-            { fluxTimeoutMs, url: this.config.url, org, bucket }
-          );
-          settle(false);
-        }, fluxTimeoutMs);
-
-        let fluxErr: Error | undefined;
-        this.queryApi.queryRows(query, {
-          next() { /* ok */ },
-          error(error: Error) {
-            fluxErr = error;
-          },
-          complete() {
-            if (fluxErr) {
-              logger.warn('InfluxDB Flux probe failed (check org, bucket, token)', {
-                bucket,
-                org,
-                error: fluxErr.message
-              });
-              settle(false);
-              return;
+    const oneBucketsGet = (): Promise<{ statusCode: number; json: any }> =>
+      new Promise((resolve, reject) => {
+        const req = modBuckets.request(
+          {
+            method: 'GET',
+            hostname: bucketsUrl.hostname,
+            port: bucketsUrl.port ? Number(bucketsUrl.port) : isHttpsBuckets ? 443 : 80,
+            path: `${bucketsUrl.pathname}${bucketsUrl.search}`,
+            timeout: apiTimeoutMs,
+            headers: {
+              Authorization: `Token ${token}`,
+              Accept: 'application/json'
             }
-            settle(true);
+          },
+          (incoming) => {
+            let raw = '';
+            incoming.on('data', (c) => (raw += c));
+            incoming.on('end', () => {
+              let json: any = {};
+              try {
+                json = raw ? JSON.parse(raw) : {};
+              } catch {
+                json = {};
+              }
+              resolve({ statusCode: incoming.statusCode ?? 0, json });
+            });
           }
+        );
+        req.on('timeout', () => req.destroy(new Error('timeout')));
+        req.on('error', reject);
+        req.end();
+      });
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const res = await oneBucketsGet();
+
+        if (res.statusCode === 401 || res.statusCode === 403) {
+          logger.warn('InfluxDB buckets API rejected token', { status: res.statusCode, org });
+          return false;
+        }
+
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          const retryable = res.statusCode >= 500 || res.statusCode === 429;
+          if (retryable && attempt < maxAttempts) {
+            logger.warn('InfluxDB buckets API transient error; retrying', {
+              status: res.statusCode,
+              attempt,
+              maxAttempts
+            });
+            await sleep(retryDelayMs);
+            continue;
+          }
+          logger.warn('InfluxDB buckets API HTTP error', {
+            status: res.statusCode,
+            org,
+            message: res.json?.message || res.json?.code
+          });
+          return false;
+        }
+
+        const buckets = Array.isArray(res.json?.buckets) ? res.json.buckets : [];
+        const hasBucket = buckets.some((b: { name?: string }) => b?.name === bucket);
+        if (!hasBucket) {
+          logger.warn('InfluxDB: configured bucket not found for org (check INFLUXDB_BUCKET)', {
+            org,
+            bucket,
+            bucketNames: buckets.map((b: { name?: string }) => b?.name).filter(Boolean)
+          });
+          return false;
+        }
+
+        if (attempt > 1) {
+          logger.info('📈 InfluxDB buckets API OK after retry', { attempt, maxAttempts });
+        }
+        return true;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.warn('InfluxDB buckets API attempt failed', {
+          attempt,
+          maxAttempts,
+          error: msg
         });
-      });
-    } catch (err: unknown) {
-      logger.warn('InfluxDB Flux probe threw', {
-        error: err instanceof Error ? err.message : String(err)
-      });
-      return false;
+        if (attempt === maxAttempts) {
+          logger.warn('InfluxDB buckets API unreachable after retries', {
+            url: this.config.url,
+            org,
+            bucket,
+            error: msg
+          });
+          return false;
+        }
+        await sleep(retryDelayMs);
+      }
     }
+
+    return false;
   }
 
   /**
@@ -805,6 +936,14 @@ export class InfluxService {
    */
   async close(): Promise<void> {
     try {
+      if (this.diskQueue) {
+        await this.diskQueue.shutdown(async (lines) => {
+          if (lines.length === 0) return;
+          this.writeApi.writeRecords(lines);
+          await this.writeApi.flush();
+        });
+        this.diskQueue = null;
+      }
       await this.writeApi.close();
       logger.info('InfluxDB connection closed');
     } catch (error) {

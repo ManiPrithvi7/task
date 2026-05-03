@@ -366,13 +366,22 @@ export interface InstagramPollingConfig {
 }
 
 export interface InfluxDBConfig {
+  /**
+   * Implicit: non-empty INFLUXDB_TOKEN. No INFLUXDB_ENABLED flag — unset token to skip Influx locally.
+   * With disk queue (default): startup continues if HTTP checks fail; writes buffer to DATA_DIR.
+   * With INFLUXDB_DISK_QUEUE=false: startup fails if Influx health fails (legacy strict mode).
+   */
   enabled: boolean;
-  /** When true (default while enabled), startup fails if Influx is unreachable. Set INFLUXDB_REQUIRED=false to skip. */
-  required: boolean;
   url: string;
   token: string;
   org: string;
   bucket: string;
+  /** Default true — append line protocol to disk; background worker POSTs batches over HTTP. */
+  diskQueueEnabled: boolean;
+  diskQueuePath: string;
+  diskQueueFlushMs: number;
+  diskQueueBatchMax: number;
+  diskQueueMaxLinesPerFile: number;
 }
 
 /** Trim and strip trailing slashes for Influx base URL (e.g. https://influx.example.onrender.com — no :8086 behind HTTPS proxies). */
@@ -481,13 +490,31 @@ export function loadConfig(): AppConfig {
       });
     }
   }
-  const influxEnabled = process.env.INFLUXDB_ENABLED === 'true' || process.env.INFLUXDB_ENABLED === '1';
-  const influxRequired =
-    influxEnabled &&
-    process.env.INFLUXDB_REQUIRED !== 'false' &&
-    process.env.INFLUXDB_REQUIRED !== '0';
+  const influxToken = process.env.INFLUXDB_TOKEN?.trim() || '';
   const influxUrlRaw = process.env.INFLUXDB_URL?.trim() || 'http://localhost:8086';
   const influxUrl = normalizeInfluxDbUrl(influxUrlRaw);
+  /** Influx runs whenever an API token is provided (essential mode for that deployment). */
+  const influxEnabled = influxToken.length > 0;
+  const influxDiskQueueDisabled =
+    process.env.INFLUXDB_DISK_QUEUE === 'false' || process.env.INFLUXDB_DISK_QUEUE === '0';
+  const influxDiskQueueEnabled = influxEnabled && !influxDiskQueueDisabled;
+  const influxQueuePathRaw = process.env.INFLUXDB_DISK_QUEUE_PATH?.trim();
+  const influxQueuePath = influxQueuePathRaw
+    ? path.isAbsolute(influxQueuePathRaw)
+      ? influxQueuePathRaw
+      : path.resolve(process.cwd(), influxQueuePathRaw)
+    : path.join(path.resolve(dataDir), 'influx-write-queue.lines');
+  const influxQueueFlushMs = Math.max(
+    1000,
+    parseInt(process.env.INFLUXDB_QUEUE_FLUSH_MS || '5000', 10) || 5000
+  );
+  const influxQueueBatchMax = Math.max(
+    1,
+    parseInt(process.env.INFLUXDB_QUEUE_BATCH_MAX || '500', 10) || 500
+  );
+  const influxQueueMaxLinesRaw = parseInt(process.env.INFLUXDB_QUEUE_MAX_LINES_PER_FILE || '100000', 10);
+  const influxQueueMaxLinesPerFile =
+    Number.isFinite(influxQueueMaxLinesRaw) && influxQueueMaxLinesRaw > 0 ? influxQueueMaxLinesRaw : 100_000;
 
   const config: AppConfig = {
     mqtt: {
@@ -563,12 +590,16 @@ export function loadConfig(): AppConfig {
     instagramServerless,
     influxdb: {
       enabled: influxEnabled,
-      required: influxRequired,
       url: influxUrl,
-      token: process.env.INFLUXDB_TOKEN?.trim() || '',
+      token: influxToken,
       org: process.env.INFLUXDB_ORG?.trim() || 'statsmqtt',
       /** Matches typical Influx 2 Docker init (e.g. DOCKER_INFLUXDB_INIT_BUCKET); override via INFLUXDB_BUCKET. */
-      bucket: process.env.INFLUXDB_BUCKET?.trim() || 'metrics'
+      bucket: process.env.INFLUXDB_BUCKET?.trim() || 'metrics',
+      diskQueueEnabled: influxDiskQueueEnabled,
+      diskQueuePath: influxQueuePath,
+      diskQueueFlushMs: influxQueueFlushMs,
+      diskQueueBatchMax: influxQueueBatchMax,
+      diskQueueMaxLinesPerFile: influxQueueMaxLinesPerFile
     },
     instagramPolling
   };
@@ -603,10 +634,11 @@ export function loadConfig(): AppConfig {
           url: config.influxdb.url,
           org: config.influxdb.org,
           bucket: config.influxdb.bucket,
-          required: config.influxdb.required,
-          token: config.influxdb.token ? '(set)' : '(missing)'
+          diskQueue: config.influxdb.diskQueueEnabled,
+          diskQueuePath: config.influxdb.diskQueueEnabled ? config.influxdb.diskQueuePath : undefined,
+          token: '(set)'
         }
-      : { enabled: false },
+      : { configured: false, hint: 'set INFLUXDB_TOKEN (optional INFLUXDB_URL)' },
     env: config.app.env
   });
 

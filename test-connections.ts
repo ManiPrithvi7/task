@@ -6,6 +6,7 @@
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import { createClient } from 'redis';
+import { mongoDriverTimeouts } from './src/config/mongoConnection';
 
 // Load environment variables
 dotenv.config();
@@ -41,7 +42,9 @@ async function testMongoDB() {
     await mongoose.connect(mongoUri, {
       dbName,
       maxPoolSize: 10,
-      serverSelectionTimeoutMS: 5000
+      ...mongoDriverTimeouts(),
+      socketTimeoutMS: 45000,
+      bufferCommands: false
     });
     
     const connectionTime = Date.now() - startTime;

@@ -5,6 +5,7 @@
  */
 
 import mongoose from 'mongoose';
+import { mongoDriverTimeouts } from '../config/mongoConnection';
 import { logger } from '../utils/logger';
 
 export interface MongoConfig {
@@ -52,13 +53,11 @@ export class MongoService {
         }
       }
 
-      const selectionMs = parseInt(process.env.MONGODB_SERVER_SELECTION_TIMEOUT_MS || '5000', 10);
-      const serverSelectionTimeoutMS =
-        Number.isFinite(selectionMs) && selectionMs > 0 ? selectionMs : 5000;
+      const timeouts = mongoDriverTimeouts();
 
       const options: mongoose.ConnectOptions = {
         maxPoolSize: 10,
-        serverSelectionTimeoutMS,
+        ...timeouts,
         socketTimeoutMS: 45000,
         bufferCommands: false,
         ...this.config.options

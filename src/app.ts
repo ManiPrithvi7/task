@@ -174,7 +174,7 @@ export class StatsMqttLite {
       // Initialize services
       await this.initializeServices();
 
-      // Initialize InfluxDB (required when enabled unless INFLUXDB_REQUIRED=false)
+      // Initialize InfluxDB when INFLUXDB_TOKEN is set (implicit enable)
       if (this.config.influxdb?.enabled) {
         logger.info('📈 Initializing InfluxDB...');
       }
@@ -278,7 +278,7 @@ export class StatsMqttLite {
       logger.error('   Set MONGODB_URI environment variable');
       logger.error(
         '   The MQTT broker is not contacted until MongoDB connects. ' +
-          'If you see "Server selection timed out", check MongoDB Atlas Network Access (IP allowlist), VPN/firewall, and optionally MONGODB_SERVER_SELECTION_TIMEOUT_MS (default 5000).'
+          'If you see "Server selection timed out", check MongoDB Atlas Network Access (IP allowlist), VPN/firewall, and optionally MONGODB_SERVER_SELECTION_TIMEOUT_MS (default 30000).'
       );
       throw error;
     }
@@ -351,32 +351,13 @@ export class StatsMqttLite {
 
   private async initializeInfluxDB(): Promise<void> {
     if (!this.config.influxdb?.enabled) {
-      logger.info('📈 InfluxDB disabled (set INFLUXDB_ENABLED=true to enable)');
-      return;
-    }
-
-    const influxUrlTrimmed = this.config.influxdb.url?.trim() ?? '';
-    const influxTokenTrimmed = this.config.influxdb.token?.trim() ?? '';
-    if (!influxUrlTrimmed || !influxTokenTrimmed) {
-      const missing: string[] = [];
-      if (!influxUrlTrimmed) missing.push('INFLUXDB_URL');
-      if (!influxTokenTrimmed) missing.push('INFLUXDB_TOKEN');
-      const msg =
-        `InfluxDB is enabled but ${missing.join(' and ')} ${missing.length > 1 ? 'are' : 'is'} missing or empty. ` +
-        'InfluxDB 2.x requires an API token for writes (Influx UI → Load Data → API Tokens). ' +
-        'URL defaults to http://localhost:8086 in config; if your container maps host 8087→8086, set INFLUXDB_URL=http://127.0.0.1:8087. ' +
-        'Alternatives: INFLUXDB_ENABLED=false to disable, or INFLUXDB_REQUIRED=false to continue without time-series writes.';
-      if (this.config.influxdb.required) {
-        throw new Error(msg);
-      }
-      logger.warn(`📈 ${msg}`);
+      logger.info('📈 InfluxDB not configured (unset INFLUXDB_TOKEN to skip; set token + URL/org/bucket to enable)');
       return;
     }
 
     try {
       this.influxService = createInfluxService(this.config.influxdb);
       const healthy = await this.influxService.healthCheck();
-      const required = this.config.influxdb.required;
 
       if (healthy) {
         logger.info('📈 InfluxDB connected', {
@@ -387,24 +368,25 @@ export class StatsMqttLite {
         return;
       }
 
+      if (this.config.influxdb.diskQueueEnabled) {
+        logger.warn('📈 InfluxDB HTTP check failed — disk write-ahead queue is active (no persistent socket; batches flush over HTTP)', {
+          url: this.config.influxdb.url,
+          diskQueuePath: this.config.influxdb.diskQueuePath,
+          flushMs: this.config.influxdb.diskQueueFlushMs
+        });
+        return;
+      }
+
       await resetInfluxService();
       this.influxService = undefined;
 
       const hint =
-        'Start InfluxDB 2.x (e.g. docker), verify INFLUXDB_URL, INFLUXDB_TOKEN, INFLUXDB_ORG, INFLUXDB_BUCKET. For local dev without Influx, set INFLUXDB_REQUIRED=false.';
-      if (required) {
-        throw new Error(`InfluxDB unreachable or misconfigured (${hint})`);
-      }
-      logger.warn(`📈 InfluxDB skipped — health check failed (${hint})`);
+        'Verify InfluxDB is up, INFLUXDB_URL, INFLUXDB_TOKEN, INFLUXDB_ORG, INFLUXDB_BUCKET. For strict startup, keep INFLUXDB_DISK_QUEUE=false. To skip Influx, remove INFLUXDB_TOKEN.';
+      throw new Error(`InfluxDB unreachable or misconfigured (${hint})`);
     } catch (err: unknown) {
       await resetInfluxService();
       this.influxService = undefined;
-      if (this.config.influxdb?.required) {
-        throw err;
-      }
-      logger.warn('📈 InfluxDB initialization failed (continuing without time-series writes)', {
-        error: err instanceof Error ? err.message : String(err)
-      });
+      throw err;
     }
   }
 
@@ -1405,6 +1387,12 @@ export class StatsMqttLite {
       // Disconnect MQTT client
       if (this.mqttClient) {
         await this.mqttClient.disconnect();
+      }
+
+      // Flush Influx disk WAL (HTTP batches) and close write API
+      if (this.influxService) {
+        await this.influxService.close();
+        this.influxService = undefined;
       }
 
       // Close storage

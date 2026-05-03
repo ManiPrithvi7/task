@@ -11,6 +11,7 @@
     "test:connections": "ts-node --transpile-only test-connections.ts",
     "smoke:attention": "ts-node --transpile-only scripts/attention-roadmap-smoke.ts",
     "pki:rotate": "ts-node --transpile-only scripts/rotate-pki.ts",
+    "mongo:ping": "ts-node --transpile-only scripts/mongo-ping.ts",
     "db:migrate:cert-slots": "ts-node --transpile-only scripts/migrate-device-certificates-to-slots.ts",
     "clean": "rm -rf dist data/*.json"
   },
