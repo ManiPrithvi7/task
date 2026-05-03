@@ -2,7 +2,8 @@
  * InfluxDB Service for mqtt-publisher-lite
  * Time-series metrics storage for device, social media, and system metrics.
  *
- * Requires: docker compose up -d  (spins up InfluxDB 2.7.4)
+ * Local: docker compose InfluxDB 2.x (e.g. 8086).
+ * Hosted: set INFLUXDB_URL to the public HTTPS origin only — no port when TLS terminates at the proxy (e.g. Render → container :10000).
  * Config via env: INFLUXDB_URL, INFLUXDB_TOKEN, INFLUXDB_ORG, INFLUXDB_BUCKET
  */
 
@@ -678,6 +679,11 @@ export class InfluxService {
 
       const isHttps = u.protocol === 'https:';
       const mod = isHttps ? https : http;
+      const isLoopback =
+        u.hostname === '127.0.0.1' ||
+        u.hostname === 'localhost';
+      // Hosted instances (Render, etc.) may cold-start; local Docker stays fast.
+      const timeoutMs = isLoopback ? 3000 : 15000;
 
       const body = await new Promise<{ statusCode: number; json: any }>((resolve, reject) => {
         const req = mod.request(
@@ -686,7 +692,7 @@ export class InfluxService {
             hostname: u.hostname,
             port: u.port ? Number(u.port) : isHttps ? 443 : 80,
             path: `${u.pathname}${u.search}`,
-            timeout: 3000
+            timeout: timeoutMs
           },
           (res) => {
             let raw = '';

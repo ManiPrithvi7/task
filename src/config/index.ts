@@ -375,6 +375,11 @@ export interface InfluxDBConfig {
   bucket: string;
 }
 
+/** Trim and strip trailing slashes for Influx base URL (e.g. https://influx.example.onrender.com — no :8086 behind HTTPS proxies). */
+export function normalizeInfluxDbUrl(raw: string): string {
+  return raw.trim().replace(/\/+$/, '');
+}
+
 export interface AppConfig {
   mqtt: MqttConfig;
   http: HttpConfig;
@@ -481,6 +486,8 @@ export function loadConfig(): AppConfig {
     influxEnabled &&
     process.env.INFLUXDB_REQUIRED !== 'false' &&
     process.env.INFLUXDB_REQUIRED !== '0';
+  const influxUrlRaw = process.env.INFLUXDB_URL?.trim() || 'http://localhost:8086';
+  const influxUrl = normalizeInfluxDbUrl(influxUrlRaw);
 
   const config: AppConfig = {
     mqtt: {
@@ -557,10 +564,11 @@ export function loadConfig(): AppConfig {
     influxdb: {
       enabled: influxEnabled,
       required: influxRequired,
-      url: process.env.INFLUXDB_URL || 'http://localhost:8086',
-      token: process.env.INFLUXDB_TOKEN || '',
-      org: process.env.INFLUXDB_ORG || 'statsmqtt',
-      bucket: process.env.INFLUXDB_BUCKET || 'statsmqtt'
+      url: influxUrl,
+      token: process.env.INFLUXDB_TOKEN?.trim() || '',
+      org: process.env.INFLUXDB_ORG?.trim() || 'statsmqtt',
+      /** Matches typical Influx 2 Docker init (e.g. DOCKER_INFLUXDB_INIT_BUCKET); override via INFLUXDB_BUCKET. */
+      bucket: process.env.INFLUXDB_BUCKET?.trim() || 'metrics'
     },
     instagramPolling
   };
@@ -590,6 +598,15 @@ export function loadConfig(): AppConfig {
       port: config.redis.url ? '(via REDIS_URL)' : 'not set',
       keyPrefix: config.redis.keyPrefix
     },
+    influxdb: config.influxdb?.enabled
+      ? {
+          url: config.influxdb.url,
+          org: config.influxdb.org,
+          bucket: config.influxdb.bucket,
+          required: config.influxdb.required,
+          token: config.influxdb.token ? '(set)' : '(missing)'
+        }
+      : { enabled: false },
     env: config.app.env
   });
 
