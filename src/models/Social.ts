@@ -68,11 +68,11 @@ const SocialSchema = new Schema<ISocial>({
   }
 }, {
   timestamps: true, // Automatically adds createdAt and updatedAt
-  collection: 'socials'
+  /** Atlas / Prisma uses this exact name (not lowercase `socials`). */
+  collection: 'Social'
 });
 
-// Indexes (matching Prisma schema)
-// Note: socialAccountId already has unique: true (auto-indexed)
+// Indexes (matching Prisma schema). Collection name: `Social`.
 SocialSchema.index({ userId: 1 });
 SocialSchema.index({ provider: 1 });
 

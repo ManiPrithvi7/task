@@ -62,7 +62,8 @@ export interface InstagramPollerConfig {
 }
 
 /**
- * Dual scheduler for Instagram polling (HTTP → serverless Graph fetch).
+ * Dual scheduler for Instagram polling: POST to a serverless worker when configured,
+ * otherwise in-process Graph API fetch via `InstagramDirectFetchInvoker`.
  * Uses SCRIPT LOAD + EVALSHA for Lua atomics (with NOSCRIPT reload fallback).
  */
 export class InstagramPoller {
@@ -162,7 +163,7 @@ export class InstagramPoller {
 
   /**
    * Immediate fetch after device registration / NFC scan path: backoff + dedupe + budget,
-   * then POST to serverless worker (Instagram Graph runs there).
+   * then serverless POST or direct Graph fetch (see `InstagramFetchInvoker`).
    */
   async requestImmediateFetch(deviceId: string): Promise<boolean> {
     if (!this.running || !this.scriptsReady || !this.fetchInvoker?.isConfigured() || !this.redisService.isRedisConnected()) {

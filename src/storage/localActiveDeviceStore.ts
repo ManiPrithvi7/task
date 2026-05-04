@@ -17,6 +17,7 @@ export class LocalActiveDeviceStore {
     this.filePath = path.resolve(dataDir, 'active-devices.json');
   }
 
+  /** Full replace of one device row (caller builds complete `ActiveDevice`). */
   async upsert(device: ActiveDevice): Promise<void> {
     const data = await this.readFileSafe();
     data.devices[device.deviceId] = device;

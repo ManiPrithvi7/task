@@ -400,7 +400,10 @@ export interface AppConfig {
   app: AppEnvConfig;
   influxdb?: InfluxDBConfig;
   instagramPolling?: InstagramPollingConfig;
-  /** When set, Instagram poller POSTs batches to this URL instead of using Kafka. */
+  /**
+   * Optional serverless worker URL. When set, all poller fetches POST here.
+   * When unset, the poller still runs (requires Redis) and calls Instagram Graph from this process.
+   */
   instagramServerless?: InstagramServerlessConfig;
 }
 
@@ -491,7 +494,11 @@ export function loadConfig(): AppConfig {
     }
   }
   const influxToken = process.env.INFLUXDB_TOKEN?.trim() || '';
-  const influxUrlRaw = process.env.INFLUXDB_URL?.trim() || 'http://localhost:8086';
+  /** Prefer INFLUXDB_URL; fall back to INFLUXDB_HOST (many stacks use HOST + PORT). */
+  const influxUrlRaw =
+    process.env.INFLUXDB_URL?.trim() ||
+    process.env.INFLUXDB_HOST?.trim() ||
+    'http://localhost:8086';
   const influxUrl = normalizeInfluxDbUrl(influxUrlRaw);
   /** Influx runs whenever an API token is provided (essential mode for that deployment). */
   const influxEnabled = influxToken.length > 0;

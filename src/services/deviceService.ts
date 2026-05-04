@@ -23,6 +23,10 @@ export interface ActiveDevice {
   adManagementEnabled: boolean;
   brandCanvasEnabled: boolean;
   lastSeen: number;
+  /** Present when `Social` has `INSTAGRAM` for `Device.userId` (written at `/active` registration). */
+  instagramAccountId?: string;
+  /** Same source as Redis `proof.mqtt:device:{id}`. */
+  accessToken?: string;
 }
 
 export class ActiveDeviceCache {
@@ -189,18 +193,11 @@ export class DeviceService {
    */
   async registerDevice(data: DeviceData): Promise<IDevice> {
     try {
+
+      //unwanted db calls  are happening here, Since our device registeration topic will send the enough data to this function
       // Prefer lookup by clientId (topic-derived deviceId), then by macID for legacy records
       let existing = await Device.findOne({ clientId: data.clientId });
-      if (!existing && data.macID) {
-        existing = await Device.findOne({ macID: data.macID });
-        if (existing && existing.clientId !== data.clientId) {
-          const oldClientId = existing.clientId;
-          existing.clientId = data.clientId;
-          logger.debug('Device normalized to topic id', { oldClientId, newClientId: data.clientId });
-        }
-      }
-
-      if (existing) {
+      if (existing && existing.macID === data.macID && existing.clientId ===data.clientId) {
         // Update existing device
         existing.macID = data.macID;
         existing.lastSeenAt = new Date();

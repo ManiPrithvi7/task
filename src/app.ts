@@ -16,15 +16,17 @@ import { AuthService } from './services/authService';
 import { UserService } from './services/userService';
 import { MongoService, createMongoService } from './services/mongoService';
 import { RedisService, createRedisService } from './services/redisService';
-import { DeviceService, getActiveDeviceCache, ActiveDeviceCache } from './services/deviceService';
+import { DeviceService, getActiveDeviceCache, ActiveDeviceCache, type ActiveDevice } from './services/deviceService';
 import { InfluxService, createInfluxService, resetInfluxService } from './services/influxService';
-import { InstagramServerlessBridge } from './services/instagramServerlessBridge';
+import { InstagramServerlessBridge, type InstagramFetchInvoker } from './services/instagramServerlessBridge';
+import { InstagramDirectFetchInvoker } from './services/instagramDirectFetchInvoker';
 import { InstagramPoller } from './services/instagramPoller';
 import { REDIS_KEYS } from './services/instagramPollingLua';
 import { areInstagramPollingScriptsLoaded } from './services/instagramPollingScripts';
-import { getInstagramPollingMetricsSnapshot } from './services/instagramPollingMetrics';
+import { getInstagramPollingMetricsSnapshot, igPollMetricsInc } from './services/instagramPollingMetrics';
 import { SessionService } from './services/sessionService';
-import { Device } from './models/Device';
+import { Device, type IDevice } from './models/Device';
+import { DeviceCertificate, DeviceCertificateStatus } from './models/DeviceCertificate';
 import { User } from './models/User';
 import { Social, Provider as SocialProvider } from './models/Social';
 import { createProvisioningRoutes } from './routes/provisioningRoutes';
@@ -124,37 +126,32 @@ export class StatsMqttLite {
     }
   }
 
-  private async redisUpsertDeviceMetaFromMongo(deviceId: string, userId: string): Promise<void> {
-    const client = this.getRedisClientOrNull();
-    if (!client) return;
+  /** Latest Instagram row for a Mongo User id (`Social` collection, name `Social` in Atlas). */
+  private async loadLatestInstagramSocialForUser(
+    userIdStr: string
+  ): Promise<{ socialAccountId: string; accessToken: string; tokenExp: string } | null> {
+    if (!mongoose.Types.ObjectId.isValid(userIdStr)) return null;
     try {
-      if (!mongoose.Types.ObjectId.isValid(userId)) return;
+      const uid = new mongoose.Types.ObjectId(userIdStr);
       const ig = await Social.findOne({
-        userId: new mongoose.Types.ObjectId(userId),
+        userId: uid,
         provider: SocialProvider.INSTAGRAM
       }).sort({ updatedAt: -1 });
-
-      if (!ig) {
-        // Keep active set membership, but remove stale meta if any.
-        await client.del(`proof.mqtt:device:${deviceId}`);
-        return;
-      }
-
-      const meta = {
-        instagramAccountId: ig.socialAccountId,
+      if (!ig) return null;
+      return {
+        socialAccountId: ig.socialAccountId,
         accessToken: ig.accessToken,
-        tokenExpiresAt: ig.tokenExp || undefined,
-        lastFetchedAt: undefined
+        tokenExp: ig.tokenExp
       };
-      await client.set(`proof.mqtt:device:${deviceId}`, JSON.stringify(meta));
     } catch (err: unknown) {
-      logger.debug('Redis: failed to upsert device meta', {
-        deviceId,
-        userId,
+      logger.debug('Mongo: failed to load Instagram social for user', {
+        userId: userIdStr,
         error: err instanceof Error ? err.message : String(err)
       });
+      return null;
     }
   }
+
 
   async start(): Promise<void> {
     try {
@@ -396,15 +393,24 @@ export class StatsMqttLite {
       return;
     }
 
+    const igPoll = this.config.instagramPolling!;
     const sl = this.config.instagramServerless;
-    if (!sl?.fetchUrl?.trim()) {
-      logger.info('📉 Instagram poller disabled (set INSTAGRAM_SERVERLESS_URL / VERCEL_INSTAGRAM_FETCH_URL)');
-      return;
+    const fetchUrl = sl?.fetchUrl?.trim();
+
+    let fetchInvoker: InstagramFetchInvoker;
+    if (fetchUrl) {
+      this.instagramServerlessBridge = new InstagramServerlessBridge(sl!, this.mqttClient);
+      fetchInvoker = this.instagramServerlessBridge;
+      logger.info('📡 Instagram fetch mode: serverless (INSTAGRAM_SERVERLESS_URL set)');
+    } else {
+      this.instagramServerlessBridge = undefined;
+      fetchInvoker = new InstagramDirectFetchInvoker(this.mqttClient);
+      logger.info(
+        '📡 Instagram fetch mode: direct (Graph API on this server). Set INSTAGRAM_SERVERLESS_URL to offload to a worker.'
+      );
     }
 
-    const igPoll = this.config.instagramPolling!;
-    this.instagramServerlessBridge = new InstagramServerlessBridge(sl, this.mqttClient);
-    this.instagramPoller = new InstagramPoller(this.instagramServerlessBridge, this.redisService, {
+    this.instagramPoller = new InstagramPoller(fetchInvoker, this.redisService, {
       priorityIntervalMs: igPoll.priorityIntervalMs,
       backgroundIntervalMs: igPoll.backgroundIntervalMs,
       priorityTtlMs: igPoll.priorityTtlMs,
@@ -425,21 +431,26 @@ export class StatsMqttLite {
     logger.info('✅ Instagram poller initialized (dual schedulers enabled)');
   }
 
-  /** Readiness when Instagram pipeline is configured (INSTAGRAM_SERVERLESS_URL). */
+  /** Readiness for Instagram polling (Redis + Lua + poller; serverless URL optional). */
   private async buildReadinessPayload(): Promise<Record<string, unknown>> {
-    const pipelineDesired = Boolean(this.config.instagramServerless?.fetchUrl?.trim());
-    const serverlessConfigured = pipelineDesired;
+    const serverlessConfigured = Boolean(this.config.instagramServerless?.fetchUrl?.trim());
     const redisOk = this.redisService?.isRedisConnected() === true;
     const poller = this.instagramPoller;
+    const pollerLive = poller != null;
     const pollerRunning = poller ? poller.getRunning() : false;
     const pollerScripts = poller ? poller.getScriptsReady() : false;
     const luaLoaded = areInstagramPollingScriptsLoaded();
+    const fetchMode: 'serverless' | 'direct' | 'off' = !pollerLive
+      ? 'off'
+      : serverlessConfigured
+        ? 'serverless'
+        : 'direct';
     const ready =
-      !pipelineDesired ||
-      (serverlessConfigured && redisOk && pollerRunning && pollerScripts && luaLoaded);
+      !pollerLive || (redisOk && pollerRunning && pollerScripts && luaLoaded);
     return {
       ready,
-      instagram_pipeline_desired: pipelineDesired,
+      instagram_fetch_mode: fetchMode,
+      instagram_pipeline_desired: serverlessConfigured,
       instagram_serverless_configured: serverlessConfigured,
       redis_connected: redisOk,
       instagram_poller_running: pollerRunning,
@@ -789,10 +800,13 @@ export class StatsMqttLite {
             return;
           }
 
-          // ✅ FILTER 2: Startup grace period (first 3 seconds)
-          // Ignore all messages during first 3 seconds to skip broker buffered messages
+          // ✅ FILTER 2: Startup grace period (first 3 seconds) — skip buffered noise only.
+          // Never drop `/active` or `/lwt`: after a server restart the device often publishes within 3s;
+          // skipping those would skip registration + `cacheActiveDevice` (empty IG in active-devices.json).
           const uptime = Date.now() - this.startupTime;
-          if (uptime < 3000) {
+          const lifecycleTopic =
+            receivedTopic.endsWith('/active') || receivedTopic.endsWith('/lwt');
+          if (!lifecycleTopic && uptime < 3000) {
             logger.debug('Ignoring message during startup grace period', {
               topic: receivedTopic,
               uptime: `${Math.floor(uptime / 1000)}s`,
@@ -932,9 +946,9 @@ export class StatsMqttLite {
       type: message.type
     });
 
-    if (message?.power_save === true || message?.power_mode === 'low') {
-      await this.setDevicePowerSaveFlag(deviceId);
-    }
+    // if (message?.power_save === true || message?.power_mode === 'low') {
+    //   await this.setDevicePowerSaveFlag(deviceId);
+    // }
 
     // Register device if not exists. Use topic-derived deviceId as canonical id so
     // DeviceService lookups and StatsPublisher topics match subscriber topics (e.g. proof.mqtt/<deviceId>/instagram).
@@ -993,15 +1007,15 @@ export class StatsMqttLite {
   }
 
   /**
-   * Cache a device as active in Redis with userId + user preferences.
-   * Called once at registration time — avoids per-cycle MongoDB reads.
+   * Load Device + User prefs from MongoDB, Instagram tokens from `Social` (provider INSTAGRAM),
+   * write one `ActiveDevice` row to local file and mirror IG meta to Redis for pollers/workers.
    */
   private async cacheActiveDevice(deviceId: string): Promise<void> {
     try {
-      logger.info('📋 [LIFECYCLE:CACHE] Step 1/3 — Looking up Device in MongoDB', { deviceId });
+      logger.info('📋 [LIFECYCLE:CACHE] Step 1/2 — Device lookup (MongoDB)', { deviceId });
       const deviceDoc = await Device.findOne({ clientId: deviceId });
       if (!deviceDoc) {
-        logger.warn('📋 [LIFECYCLE:CACHE] Device not found in MongoDB — caching with defaults (no userId)', { deviceId });
+        logger.warn('📋 [LIFECYCLE:CACHE] Device not found in MongoDB — caching defaults only', { deviceId });
         await this.activeDeviceCache.setActive({
           deviceId,
           userId: '',
@@ -1012,7 +1026,7 @@ export class StatsMqttLite {
         return;
       }
 
-      logger.info('📋 [LIFECYCLE:CACHE] Step 2/3 — Device found, looking up User preferences', {
+      logger.info('📋 [LIFECYCLE:CACHE] Step 2/2 — User prefs + Social (Instagram)', {
         deviceId,
         userId: deviceDoc.userId?.toString() || 'none',
         deviceStatus: deviceDoc.status
@@ -1021,50 +1035,82 @@ export class StatsMqttLite {
       let adManagementEnabled = true;
       let brandCanvasEnabled = false;
 
-      if (deviceDoc.userId) {
+      const mongoUserId = deviceDoc.userId?.toString() || '';
+      const hasLinkedMongoUser = Boolean(mongoUserId && mongoose.Types.ObjectId.isValid(mongoUserId));
+console.log({hasLinkedMongoUser})
+      if (hasLinkedMongoUser) {
         const user = await User.findById(deviceDoc.userId);
         if (user) {
           adManagementEnabled = user.adManagementEnabled;
           brandCanvasEnabled = user.brandCanvasEnabled;
-          logger.info('📋 [LIFECYCLE:CACHE] User preferences loaded from MongoDB', {
+          logger.info('📋 [LIFECYCLE:CACHE] User preferences loaded', {
             deviceId,
-            userId: deviceDoc.userId.toString(),
+            userId: mongoUserId,
             adManagementEnabled,
             brandCanvasEnabled
           });
         } else {
           logger.warn('📋 [LIFECYCLE:CACHE] User document not found — using defaults', {
             deviceId,
-            userId: deviceDoc.userId.toString()
+            userId: mongoUserId
           });
         }
       } else {
-        logger.info('📋 [LIFECYCLE:CACHE] Device has no userId assigned — using default preferences', { deviceId });
+        logger.info('📋 [LIFECYCLE:CACHE] Device has no Mongo userId — cannot load Instagram from Social', { deviceId });
       }
 
-      logger.info('📋 [LIFECYCLE:CACHE] Step 3/3 — Writing to Redis', {
-        deviceId,
-        userId: deviceDoc.userId?.toString() || '',
-        adManagementEnabled,
-        brandCanvasEnabled
-      });
+      const igFromSocial = hasLinkedMongoUser ? await this.loadLatestInstagramSocialForUser(mongoUserId) : null;
+console.log({igFromSocial})
+      if (hasLinkedMongoUser && !igFromSocial) {
+        logger.warn('📋 [LIFECYCLE:CACHE] No INSTAGRAM `Social` row for owner — add Instagram for this user in the web app', {
+          deviceId,
+          userId: mongoUserId
+        });
+      }
 
-      await this.activeDeviceCache.setActive({
+      const active: ActiveDevice = {
         deviceId,
-        userId: deviceDoc.userId?.toString() || '',
+        userId: mongoUserId,
         adManagementEnabled,
         brandCanvasEnabled,
-        lastSeen: Date.now()
+        lastSeen: Date.now(),
+        ...(igFromSocial
+          ? { instagramAccountId: igFromSocial.socialAccountId, accessToken: igFromSocial.accessToken }
+          : {})
+      };
+
+      await this.activeDeviceCache.setActive(active);
+
+      logger.info('📋 [LIFECYCLE:CACHE] Active device record written (Mongo → file + Redis IG key)', {
+        deviceId,
+        userId: mongoUserId || '(none)',
+        instagramFromSocial: Boolean(igFromSocial)
       });
 
-      // Store per-device Meta credentials directly in Redis for the cron worker (best-effort).
-      if (deviceDoc.userId) {
-        await this.redisUpsertDeviceMetaFromMongo(deviceId, deviceDoc.userId.toString());
-      } else {
-        await this.redisUpsertDeviceMetaFromMongo(deviceId, '');
+      const client = this.getRedisClientOrNull();
+      if (!client) return;
+
+      try {
+        if (igFromSocial) {
+          await client.set(
+            `proof.mqtt:device:${deviceId}`,
+            JSON.stringify({
+              instagramAccountId: igFromSocial.socialAccountId,
+              accessToken: igFromSocial.accessToken,
+              tokenExpiresAt: igFromSocial.tokenExp || undefined
+            })
+          );
+        } else {
+          await client.del(`proof.mqtt:device:${deviceId}`);
+        }
+      } catch (err: unknown) {
+        logger.debug('Redis: failed to sync proof.mqtt:device meta', {
+          deviceId,
+          error: err instanceof Error ? err.message : String(err)
+        });
       }
     } catch (err: unknown) {
-      logger.error('❌ [LIFECYCLE:CACHE] Failed to cache active device in Redis', {
+      logger.error('❌ [LIFECYCLE:CACHE] Failed to cache active device', {
         deviceId,
         error: err instanceof Error ? err.message : String(err)
       });

@@ -15,6 +15,7 @@ import { CAService, UnsupportedCSRKeyTypeError, DeviceAlreadyHasCertificateError
 import { AuthService } from '../services/authService';
 import { UserService } from '../services/userService';
 import { DeviceCertificateStatus } from '../models/DeviceCertificate';
+import { Device, DeviceStatus } from '../models/Device';
 import mongoose from 'mongoose';
 
 export interface ProvisioningDependencies {
@@ -532,55 +533,63 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
         return;
       }
 
-      // Verify device is associated with user (using userId from token)
-      const deviceVerification = await userService.verifyDeviceUserAssociation(
-        validatedDeviceId,
-        userIdObjectId
-      );
+      // Persist (and enforce) the device↔user association.
+      // This service issues provisioning tokens from an auth_token, binding user_id + device_id.
+      // Therefore, at sign-csr time, the provisioning token is the authoritative proof of association.
+      let deviceDoc = await Device.findOne({ clientId: validatedDeviceId });
+      if (!deviceDoc) {
+        deviceDoc = await Device.findOne({ macID: validatedDeviceId });
+      }
 
-      if (!deviceVerification.found) {
-        // Check if error is a MongoDB connection issue (should be 503, not 404)
-        const isConnectionError = deviceVerification.error?.includes('MongoDB connection') || 
-                                  deviceVerification.error?.includes('connection');
-        
-        if (isConnectionError) {
-          logger.error('MongoDB connection error during device verification', {
+      if (!deviceDoc) {
+        deviceDoc = new Device({
+          userId: userIdObjectId,
+          macID: validatedDeviceId,
+          clientId: validatedDeviceId,
+          status: DeviceStatus.PROVISIONING,
+          allocatedAt: new Date(),
+          tokenUsed: false,
+          lastSeenAt: new Date()
+        });
+        await deviceDoc.save();
+        logger.info('sign-csr: device record created and associated with user', {
+          deviceId: validatedDeviceId,
+          userId: validatedUserId
+        });
+      } else {
+        const existingUserId = deviceDoc.userId?.toString();
+        if (existingUserId && existingUserId !== userIdObjectId.toString()) {
+          logger.warn('sign-csr: device belongs to a different user', {
             deviceId: validatedDeviceId,
-            userId: validatedUserId,
-            error: deviceVerification.error
+            requestedUserId: userIdObjectId.toString(),
+            deviceUserId: existingUserId
           });
-          res.status(503).json({
+          res.status(403).json({
             success: false,
-            error: deviceVerification.error || 'Database service unavailable',
+            error: 'Device is not associated with the authenticated user',
             timestamp: new Date().toISOString()
           });
           return;
         }
 
-        logger.warn('Device not found in database', {
-          deviceId: validatedDeviceId,
-          userId: validatedUserId
-        });
-        res.status(404).json({
-          success: false,
-          error: deviceVerification.error || 'Device not found in database',
-          timestamp: new Date().toISOString()
-        });
-        return;
-      }
+        const needsAssociation = !existingUserId;
+        if (needsAssociation) {
+          deviceDoc.userId = userIdObjectId;
+          if (!deviceDoc.allocatedAt) deviceDoc.allocatedAt = new Date();
+        }
+        // Ensure a provisioning-appropriate state once we start CSR signing
+        if (!deviceDoc.status || deviceDoc.status === DeviceStatus.UNALLOCATED) {
+          deviceDoc.status = DeviceStatus.PROVISIONING;
+        }
+        deviceDoc.lastSeenAt = new Date();
+        await deviceDoc.save();
 
-      if (!deviceVerification.isAssociated) {
-        logger.warn('Device is not associated with the authenticated user', {
-          deviceId: validatedDeviceId,
-          userId: validatedUserId,
-          deviceUserId: deviceVerification.device?.userId?.toString()
-        });
-        res.status(403).json({
-          success: false,
-          error: deviceVerification.error || 'Device is not associated with the authenticated user',
-          timestamp: new Date().toISOString()
-        });
-        return;
+        if (needsAssociation) {
+          logger.info('sign-csr: device record updated with user association', {
+            deviceId: validatedDeviceId,
+            userId: validatedUserId
+          });
+        }
       }
 
       logger.info('All validations passed', {

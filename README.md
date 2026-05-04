@@ -361,6 +361,9 @@ wscat -c ws://localhost:3002/ws
 | `DATA_DIR` | `./data` | Data directory for JSON files |
 | `SESSION_TTL` | `86400` | Session TTL in seconds (24h) |
 | `DEVICE_CLEANUP_INTERVAL` | `3600` | Device cleanup interval in seconds (1h) |
+| `REDIS_URL` | _(unset)_ | **Required** for Instagram dual-scheduler, provisioning tokens in production, device meta |
+| `INSTAGRAM_SERVERLESS_URL` | _(unset)_ | **Optional** — when set, offload all Instagram Graph fetches to this HTTPS POST endpoint; when unset, the server fetches Graph directly |
+| `VERCEL_INSTAGRAM_FETCH_URL` | | Alias for `INSTAGRAM_SERVERLESS_URL` |
 
 ---
 

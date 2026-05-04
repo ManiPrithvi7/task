@@ -115,7 +115,7 @@ export class HttpServer {
       res.json(health);
     });
 
-    /** Deep readiness for Instagram polling pipeline (serverless URL + Redis Lua + poller). Returns 503 when not ready. */
+    /** Deep readiness for Instagram polling (Redis + Lua + poller; serverless URL optional). Returns 503 when not ready. */
     this.app.get('/ready', async (_req: Request, res: Response) => {
       try {
         const payload = this.readinessProvider
