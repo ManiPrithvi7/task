@@ -80,8 +80,8 @@ export class MqttClientManager extends EventEmitter {
         clientId: this.config.clientId,
         clean: true,
         connectTimeout: 30000,
-        reconnectPeriod: 30000,
-        keepalive: 120,
+        reconnectPeriod: 1000,
+        keepalive: 45,
         protocolVersion: 5
       };
 

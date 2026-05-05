@@ -18,12 +18,16 @@ import { MongoService, createMongoService } from './services/mongoService';
 import { RedisService, createRedisService } from './services/redisService';
 import { DeviceService, getActiveDeviceCache, ActiveDeviceCache, type ActiveDevice } from './services/deviceService';
 import { InfluxService, createInfluxService, resetInfluxService } from './services/influxService';
-import { InstagramServerlessBridge, type InstagramFetchInvoker } from './services/instagramServerlessBridge';
-import { InstagramDirectFetchInvoker } from './services/instagramDirectFetchInvoker';
-import { InstagramPoller } from './services/instagramPoller';
-import { REDIS_KEYS } from './services/instagramPollingLua';
-import { areInstagramPollingScriptsLoaded } from './services/instagramPollingScripts';
-import { getInstagramPollingMetricsSnapshot, igPollMetricsInc } from './services/instagramPollingMetrics';
+import {
+  InstagramServerlessBridge,
+  InstagramDirectFetchInvoker,
+  InstagramPoller,
+  REDIS_KEYS,
+  areInstagramPollingScriptsLoaded,
+  getInstagramPollingMetricsSnapshot,
+  igPollMetricsInc,
+  type InstagramFetchInvoker
+} from './services/instagramService';
 import { SessionService } from './services/sessionService';
 import { Device, type IDevice } from './models/Device';
 import { DeviceCertificate, DeviceCertificateStatus } from './models/DeviceCertificate';
@@ -990,7 +994,6 @@ export class StatsMqttLite {
     try {
       if (this.redisService?.isRedisConnected()) {
         const client = this.redisService.getClient();
-        await client.sAdd(REDIS_KEYS.fullActiveSet, deviceId);
         if (this.instagramPoller && this.config.instagramPolling) {
           await this.instagramPoller.markPriority(deviceId, this.config.instagramPolling.priorityTtlMs);
           void this.instagramPoller.requestImmediateFetch(deviceId).catch(() => undefined);
@@ -1177,7 +1180,6 @@ console.log({igFromSocial})
     try {
       if (this.redisService?.isRedisConnected()) {
         const client = this.redisService.getClient();
-        await client.sRem(REDIS_KEYS.fullActiveSet, deviceId);
         await client.zRem(REDIS_KEYS.priorityZset, deviceId);
         await client.del(REDIS_KEYS.deviceFetchHistory(deviceId));
         await client.del(REDIS_KEYS.deviceFollowers(deviceId));
