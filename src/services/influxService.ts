@@ -1,6 +1,7 @@
 /**
  * InfluxDB Service for mqtt-publisher-lite
- * Time-series metrics storage for device, social media, and system metrics.
+ * Time-series metrics storage for device states, social media milestones (Instagram/GMB),
+ * compliance audit data, and PKI certificate lifecycle events.
  *
  * Local: docker compose InfluxDB 2.x (e.g. 8086).
  * Hosted: set INFLUXDB_URL to the public HTTPS origin only — no port when TLS terminates at the proxy (e.g. Render → container :10000).
@@ -14,55 +15,82 @@ import { logger } from '../utils/logger';
 import { InfluxDBConfig } from '../config';
 import { InfluxDiskQueue } from './influxDiskQueue';
 
-export interface DeviceMetrics {
-  temperature?: number;
-  humidity?: number;
-  pressure?: number;
-  battery?: number;
+export interface DeviceStateMetrics {
+  device_id: string;
+  status: 'online' | 'offline' | 'active' | 'inactive';
+  last_seen: Date;
+  battery_level?: number;
   signal_strength?: number;
-  location?: string;
-  status?: string;
-  timestamp?: string | Date;
-  [key: string]: unknown;
+  firmware_version?: string;
 }
 
-export interface SocialMetrics {
-  followers?: number;
-  following?: number;
-  posts?: number;
-  likes?: number;
-  comments?: number;
-  shares?: number;
-  engagement_rate?: number;
-  post_id?: string;
-  content_type?: string;
-  [key: string]: unknown;
-}
-
-export interface SystemMetrics {
-  cpu_usage?: number;
-  memory_usage?: number;
-  connected_clients?: number;
-  mqtt_messages?: number;
-  uptime?: number;
-  [key: string]: unknown;
-}
-
-/** One Influx row per Instagram Graph fetch attempt (replaces Mongo `instagram_fetch_audit` collection). */
-export interface InstagramFetchAuditInfluxInput {
-  deviceId: string;
+export interface InstagramMilestoneMetrics {
+  device_id: string;
+  instagram_account_id: string;
+  followers_count: number;
+  following_count?: number;
+  posts_count?: number;
+  milestone_reached?: {
+    type: 'followers' | 'posts' | 'engagement';
+    threshold: number;
+    achieved_at: Date;
+  };
+  fetch_timestamp: Date;
   success: boolean;
-  triggerType: string;
-  correlationId?: string;
-  instagramAccountId?: string;
-  oldFollowers: number | null;
-  newFollowers: number | null;
-  durationMs: number;
-  errorMessage?: string;
-  errorCode?: string | number;
-  mediaCount?: number;
-  /** Defaults to now */
-  timestamp?: Date;
+  error_message?: string;
+}
+
+export interface GMBMilestoneMetrics {
+  device_id: string;
+  location_id: string;
+  reviews_count: number;
+  average_rating?: number;
+  milestone_reached?: {
+    type: 'reviews' | 'rating';
+    threshold: number;
+    achieved_at: Date;
+  };
+  fetch_timestamp: Date;
+  success: boolean;
+  error_message?: string;
+}
+
+export interface ComplianceAuditData {
+  device_id: string;
+  audit_type: 'certificate_renewal' | 'config_change' | 'firmware_update' | 'security_event';
+  status: 'success' | 'failure' | 'pending';
+  timestamp: Date;
+  details: Record<string, unknown>;
+  hash?: string;
+  previous_hash?: string;
+}
+
+/** PKI Certificate Transparency Log Entry */
+export interface TransparencyLogEntry {
+  index: number;
+  leafHash: string;
+  rootHash: string;
+  inclusionProof: string; // JSON-stringified
+  certFingerprint: string;
+  serialNumber: string;
+  cn: string;
+  deviceId: string;
+  issuedAt: Date;
+}
+
+/** PKI Audit Event (for certificate chain) */
+export interface PKIAuditEvent {
+  event: string;
+  deviceId?: string;
+  userId?: string;
+  orderId?: string;
+  batchId?: string;
+  serialNumber?: string;
+  certificateFingerprint?: string;
+  sequence?: number;
+  hash?: string;
+  previousHash?: string;
+  details?: Record<string, unknown>;
 }
 
 export class InfluxService {
@@ -100,7 +128,6 @@ export class InfluxService {
     }
   }
 
-  /** Direct HTTP write vs disk WAL (HTTP batches on flush worker). */
   private async submitPoint(point: Point, flushImmediately: boolean): Promise<void> {
     if (this.diskQueue) {
       const line = point.toLineProtocol();
@@ -111,300 +138,158 @@ export class InfluxService {
     if (flushImmediately) await this.writeApi.flush();
   }
 
-  /**
-   * Write device metrics to InfluxDB
-   */
-  async writeDeviceMetrics(deviceId: string, metrics: DeviceMetrics): Promise<void> {
+  // ==================== DEVICE STATE METRICS ====================
+
+  async writeDeviceState(metrics: DeviceStateMetrics): Promise<void> {
     try {
-      const point = new Point('device_metrics')
-        .tag('device_id', deviceId)
-        .tag('source', 'mqtt-publisher-lite');
+      const point = new Point('device_state')
+        .tag('device_id', metrics.device_id)
+        .tag('status', metrics.status)
+        .tag('source', 'mqtt-publisher-lite')
+        .timestamp(metrics.last_seen);
 
-      if (typeof metrics.temperature === 'number') point.floatField('temperature', metrics.temperature);
-      if (typeof metrics.humidity === 'number') point.floatField('humidity', metrics.humidity);
-      if (typeof metrics.pressure === 'number') point.floatField('pressure', metrics.pressure);
-      if (typeof metrics.battery === 'number') point.floatField('battery', metrics.battery);
-      if (typeof metrics.signal_strength === 'number') point.floatField('signal_strength', metrics.signal_strength);
+      if (metrics.battery_level !== undefined) {
+        point.floatField('battery_level', metrics.battery_level);
+      }
+      if (metrics.signal_strength !== undefined) {
+        point.intField('signal_strength', metrics.signal_strength);
+      }
+      if (metrics.firmware_version) {
+        point.stringField('firmware_version', metrics.firmware_version);
+      }
 
-      if (metrics.location) point.stringField('location', metrics.location);
-      if (metrics.status) point.stringField('status', metrics.status);
+      point.intField('state_change', 1);
 
-      if (metrics.timestamp) {
-        point.timestamp(new Date(metrics.timestamp as string));
+      await this.submitPoint(point, true);
+      logger.debug('Device state written to InfluxDB', { deviceId: metrics.device_id, status: metrics.status });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error('Failed to write device state', { deviceId: metrics.device_id, error: errorMessage });
+      throw error;
+    }
+  }
+
+  // ==================== INSTAGRAM METRICS ====================
+
+  async writeInstagramMetrics(metrics: InstagramMilestoneMetrics): Promise<void> {
+    try {
+      const point = new Point('instagram_metrics')
+        .tag('device_id', metrics.device_id)
+        .tag('instagram_account_id', metrics.instagram_account_id)
+        .tag('success', metrics.success ? 'true' : 'false')
+        .tag('source', 'mqtt-publisher-lite')
+        .timestamp(metrics.fetch_timestamp);
+
+      point.intField('followers_count', metrics.followers_count);
+
+      if (metrics.following_count !== undefined) {
+        point.intField('following_count', metrics.following_count);
+      }
+      if (metrics.posts_count !== undefined) {
+        point.intField('posts_count', metrics.posts_count);
+      }
+
+      if (metrics.milestone_reached) {
+        point.stringField('milestone_type', metrics.milestone_reached.type);
+        point.intField('milestone_threshold', metrics.milestone_reached.threshold);
+        point.intField('milestone_achieved', 1);
       } else {
-        point.timestamp(new Date());
+        point.intField('milestone_achieved', 0);
+      }
+
+      point.intField('fetch_attempt', 1);
+
+      if (!metrics.success && metrics.error_message) {
+        point.stringField('error_message', metrics.error_message.slice(0, 1024));
       }
 
       await this.submitPoint(point, true);
-
-      logger.debug('Device metrics written to InfluxDB', { deviceId });
+      logger.debug('Instagram metrics written to InfluxDB', {
+        deviceId: metrics.device_id,
+        accountId: metrics.instagram_account_id,
+        followers: metrics.followers_count
+      });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('Failed to write device metrics', { deviceId, error: errorMessage });
+      logger.error('Failed to write Instagram metrics', { deviceId: metrics.device_id, error: errorMessage });
       throw error;
     }
   }
 
-  /**
-   * Write social media metrics (Instagram, GMB, etc.)
-   */
-  async writeSocialMetrics(platform: string, userId: string, metrics: SocialMetrics): Promise<void> {
+  // ==================== GMB METRICS ====================
+
+  async writeGMBMetrics(metrics: GMBMilestoneMetrics): Promise<void> {
     try {
-      const point = new Point('social_metrics')
-        .tag('platform', platform)
-        .tag('user_id', userId)
-        .tag('source', 'mqtt-publisher-lite');
+      const point = new Point('gmb_metrics')
+        .tag('device_id', metrics.device_id)
+        .tag('location_id', metrics.location_id)
+        .tag('success', metrics.success ? 'true' : 'false')
+        .tag('source', 'mqtt-publisher-lite')
+        .timestamp(metrics.fetch_timestamp);
 
-      if (typeof metrics.followers === 'number') point.intField('followers', metrics.followers);
-      if (typeof metrics.following === 'number') point.intField('following', metrics.following);
-      if (typeof metrics.posts === 'number') point.intField('posts', metrics.posts);
-      if (typeof metrics.likes === 'number') point.intField('likes', metrics.likes);
-      if (typeof metrics.comments === 'number') point.intField('comments', metrics.comments);
-      if (typeof metrics.shares === 'number') point.intField('shares', metrics.shares);
-      if (typeof metrics.engagement_rate === 'number') point.floatField('engagement_rate', metrics.engagement_rate);
+      point.intField('reviews_count', metrics.reviews_count);
 
-      if (metrics.post_id) point.stringField('post_id', metrics.post_id);
-      if (metrics.content_type) point.stringField('content_type', metrics.content_type);
+      if (metrics.average_rating !== undefined) {
+        point.floatField('average_rating', metrics.average_rating);
+      }
 
-      point.timestamp(new Date());
+      if (metrics.milestone_reached) {
+        point.stringField('milestone_type', metrics.milestone_reached.type);
+        point.intField('milestone_threshold', metrics.milestone_reached.threshold);
+        point.intField('milestone_achieved', 1);
+      } else {
+        point.intField('milestone_achieved', 0);
+      }
+
+      point.intField('fetch_attempt', 1);
+
+      if (!metrics.success && metrics.error_message) {
+        point.stringField('error_message', metrics.error_message.slice(0, 1024));
+      }
 
       await this.submitPoint(point, true);
-
-      logger.debug('Social metrics written to InfluxDB', { platform, userId });
+      logger.debug('GMB metrics written to InfluxDB', {
+        deviceId: metrics.device_id,
+        locationId: metrics.location_id,
+        reviews: metrics.reviews_count
+      });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('Failed to write social metrics', { platform, userId, error: errorMessage });
+      logger.error('Failed to write GMB metrics', { deviceId: metrics.device_id, error: errorMessage });
       throw error;
     }
   }
 
-  /**
-   * Write system-level metrics (CPU, memory, MQTT stats)
-   */
-  async writeSystemMetrics(metrics: SystemMetrics): Promise<void> {
+  // ==================== COMPLIANCE AUDIT ====================
+
+  async writeComplianceAudit(audit: ComplianceAuditData): Promise<void> {
     try {
-      const point = new Point('system_metrics')
-        .tag('service', 'mqtt-publisher-lite')
-        .tag('host', process.env.HOSTNAME || 'unknown');
+      const point = new Point('compliance_audit')
+        .tag('device_id', audit.device_id)
+        .tag('audit_type', audit.audit_type)
+        .tag('status', audit.status)
+        .tag('source', 'mqtt-publisher-lite')
+        .timestamp(audit.timestamp);
 
-      if (typeof metrics.cpu_usage === 'number') point.floatField('cpu_usage', metrics.cpu_usage);
-      if (typeof metrics.memory_usage === 'number') point.floatField('memory_usage', metrics.memory_usage);
-      if (typeof metrics.connected_clients === 'number') point.intField('connected_clients', metrics.connected_clients);
-      if (typeof metrics.mqtt_messages === 'number') point.intField('mqtt_messages', metrics.mqtt_messages);
-      if (typeof metrics.uptime === 'number') point.floatField('uptime', metrics.uptime);
+      point.stringField('details', JSON.stringify(audit.details));
+      point.intField('audit_event', 1);
 
-      point.timestamp(new Date());
+      if (audit.hash) {
+        point.stringField('hash', audit.hash);
+      }
+      if (audit.previous_hash) {
+        point.stringField('previous_hash', audit.previous_hash);
+      }
 
       await this.submitPoint(point, true);
-
-      logger.debug('System metrics written to InfluxDB');
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('Failed to write system metrics', { error: errorMessage });
-      throw error;
-    }
-  }
-
-  /**
-   * Append-only audit trail for Instagram fetch attempts (`instagram_fetch_audit` measurement).
-   * Tags: device_id, success, trigger_type; optional correlation_id, instagram_account_id, error_code.
-   * Fields: duration_ms; optional old_followers, new_followers, media_count, error_message.
-   */
-  async writeInstagramFetchAudit(
-    input: InstagramFetchAuditInfluxInput,
-    opts?: { flush?: boolean }
-  ): Promise<void> {
-    try {
-      const point = new Point('instagram_fetch_audit')
-        .tag('device_id', input.deviceId)
-        .tag('success', input.success ? 'true' : 'false')
-        .tag('trigger_type', input.triggerType);
-
-      if (input.correlationId) point.tag('correlation_id', input.correlationId);
-      if (input.instagramAccountId) point.tag('instagram_account_id', input.instagramAccountId);
-      if (!input.success && input.errorCode !== undefined && input.errorCode !== null && String(input.errorCode) !== '') {
-        point.tag('error_code', String(input.errorCode));
-      }
-
-      point.intField('duration_ms', Math.max(0, Math.round(input.durationMs)));
-
-      if (input.oldFollowers !== null && input.oldFollowers !== undefined && !Number.isNaN(input.oldFollowers)) {
-        point.intField('old_followers', Math.round(input.oldFollowers));
-      }
-      if (input.newFollowers !== null && input.newFollowers !== undefined && !Number.isNaN(input.newFollowers)) {
-        point.intField('new_followers', Math.round(input.newFollowers));
-      }
-      if (typeof input.mediaCount === 'number' && Number.isFinite(input.mediaCount)) {
-        point.intField('media_count', Math.round(input.mediaCount));
-      }
-      if (!input.success && input.errorMessage) {
-        point.stringField('error_message', input.errorMessage.slice(0, 4096));
-      }
-
-      point.timestamp(input.timestamp ?? new Date());
-
-      await this.submitPoint(point, opts?.flush !== false);
-
-      logger.debug('Instagram fetch audit written to InfluxDB', { deviceId: input.deviceId, success: input.success });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('Failed to write instagram_fetch_audit', { deviceId: input.deviceId, error: errorMessage });
-      throw error;
-    }
-  }
-
-  /** Snapshot follower count (`instagram_metrics`). */
-  async writeInstagramFollowersGauge(
-    deviceId: string,
-    instagramAccountId: string,
-    followers: number,
-    timestamp?: Date,
-    opts?: { flush?: boolean }
-  ): Promise<void> {
-    const point = new Point('instagram_metrics')
-      .tag('device_id', deviceId)
-      .tag('instagram_account_id', instagramAccountId || 'unknown')
-      .intField('followers', Math.round(followers))
-      .timestamp(timestamp ?? new Date());
-    await this.submitPoint(point, opts?.flush !== false);
-  }
-
-  async writeInstagramAttentionE2eLatency(
-    deviceId: string,
-    triggerType: string,
-    latencyMs: number,
-    timestamp?: Date,
-    opts?: { flush?: boolean }
-  ): Promise<void> {
-    const point = new Point('instagram_attention_e2e')
-      .tag('device_id', deviceId)
-      .tag('trigger', triggerType)
-      .intField('latency_ms', Math.round(latencyMs))
-      .timestamp(timestamp ?? new Date());
-    await this.submitPoint(point, opts?.flush !== false);
-  }
-
-  /** Flush buffered writes (use after multiple writes with `{ flush: false }`). */
-  async flushWrites(): Promise<void> {
-    if (this.diskQueue) {
-      await this.diskQueue.flushNow();
-      return;
-    }
-    await this.writeApi.flush();
-  }
-
-  /**
-   * Query device metrics for a time range
-   */
-  async queryDeviceMetrics(deviceId: string, startTime: string, endTime?: string): Promise<Record<string, unknown>[]> {
-    try {
-      const end = endTime || new Date().toISOString();
-
-      const query = `
-        from(bucket: "${this.config.bucket}")
-          |> range(start: ${startTime}, stop: ${end})
-          |> filter(fn: (r) => r._measurement == "device_metrics")
-          |> filter(fn: (r) => r.device_id == "${deviceId}")
-          |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
-      `;
-
-      const results: Record<string, unknown>[] = [];
-
-      return new Promise((resolve, reject) => {
-        this.queryApi.queryRows(query, {
-          next(row, tableMeta) {
-            results.push(tableMeta.toObject(row));
-          },
-          error(error) {
-            logger.error('InfluxDB query error', { error: error.message });
-            reject(error);
-          },
-          complete() {
-            logger.debug('Device metrics query completed', { deviceId, count: results.length });
-            resolve(results);
-          }
-        });
+      logger.debug('Compliance audit written to InfluxDB', {
+        deviceId: audit.device_id,
+        auditType: audit.audit_type,
+        status: audit.status
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('Failed to query device metrics', { deviceId, error: errorMessage });
-      throw error;
-    }
-  }
-
-  /**
-   * Query social media metrics for a time range
-   */
-  async querySocialMetrics(platform: string, userId: string, startTime: string, endTime?: string): Promise<Record<string, unknown>[]> {
-    try {
-      const end = endTime || new Date().toISOString();
-
-      const query = `
-        from(bucket: "${this.config.bucket}")
-          |> range(start: ${startTime}, stop: ${end})
-          |> filter(fn: (r) => r._measurement == "social_metrics")
-          |> filter(fn: (r) => r.platform == "${platform}")
-          |> filter(fn: (r) => r.user_id == "${userId}")
-          |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
-      `;
-
-      const results: Record<string, unknown>[] = [];
-
-      return new Promise((resolve, reject) => {
-        this.queryApi.queryRows(query, {
-          next(row, tableMeta) {
-            results.push(tableMeta.toObject(row));
-          },
-          error(error) {
-            logger.error('InfluxDB query error', { error: error.message });
-            reject(error);
-          },
-          complete() {
-            logger.debug('Social metrics query completed', { platform, userId, count: results.length });
-            resolve(results);
-          }
-        });
-      });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('Failed to query social metrics', { platform, userId, error: errorMessage });
-      throw error;
-    }
-  }
-
-  /**
-   * Get latest metrics for a device (last 1h)
-   */
-  async getLatestDeviceMetrics(deviceId: string): Promise<Record<string, unknown> | null> {
-    try {
-      const query = `
-        from(bucket: "${this.config.bucket}")
-          |> range(start: -1h)
-          |> filter(fn: (r) => r._measurement == "device_metrics")
-          |> filter(fn: (r) => r.device_id == "${deviceId}")
-          |> last()
-          |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
-      `;
-
-      const results: Record<string, unknown>[] = [];
-
-      return new Promise((resolve, reject) => {
-        this.queryApi.queryRows(query, {
-          next(row, tableMeta) {
-            results.push(tableMeta.toObject(row));
-          },
-          error(error) {
-            logger.error('InfluxDB query error', { error: error.message });
-            reject(error);
-          },
-          complete() {
-            resolve(results.length > 0 ? results[0] : null);
-          }
-        });
-      });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('Failed to get latest device metrics', { deviceId, error: errorMessage });
+      logger.error('Failed to write compliance audit', { deviceId: audit.device_id, error: errorMessage });
       throw error;
     }
   }
@@ -417,19 +302,7 @@ export class InfluxService {
    * Tags: event, deviceId, orderId, batchId (high-cardinality filters)
    * Fields: details, hash, sequence (low-cardinality values)
    */
-  async writeAuditEvent(data: {
-    event: string;
-    deviceId?: string;
-    userId?: string;
-    orderId?: string;
-    batchId?: string;
-    serialNumber?: string;
-    certificateFingerprint?: string;
-    sequence?: number;
-    hash?: string;
-    previousHash?: string;
-    details?: Record<string, unknown>;
-  }): Promise<void> {
+  async writePKIAuditEvent(data: PKIAuditEvent): Promise<void> {
     try {
       const point = new Point('pki_audit')
         .tag('event', data.event)
@@ -459,47 +332,9 @@ export class InfluxService {
   }
 
   /**
-   * Write rate limit event to InfluxDB for monitoring dashboards.
-   * 
-   * Measurement: rate_limit_events
-   * Tags: limit_type, endpoint, ip
-   * Fields: count, limit, remaining
-   */
-  async writeRateLimitEvent(data: {
-    limitType: string;
-    endpoint: string;
-    ip: string;
-    count: number;
-    limit: number;
-    deviceId?: string;
-  }): Promise<void> {
-    try {
-      const point = new Point('rate_limit_events')
-        .tag('limit_type', data.limitType)
-        .tag('endpoint', data.endpoint)
-        .tag('ip', data.ip)
-        .tag('source', 'mqtt-publisher-lite')
-        .intField('count', data.count)
-        .intField('limit', data.limit)
-        .intField('remaining', Math.max(0, data.limit - data.count))
-        .intField('exceeded', 1);
-
-      if (data.deviceId) point.tag('device_id', data.deviceId);
-      point.timestamp(new Date());
-
-      await this.submitPoint(point, true);
-
-      logger.debug('Rate limit event written to InfluxDB', { limitType: data.limitType, endpoint: data.endpoint });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.warn('Failed to write rate limit event to InfluxDB', { error: errorMessage });
-    }
-  }
-
-  /**
    * Query PKI audit events for a time range (for monitoring/alerting)
    */
-  async queryAuditEvents(startTime: string, endTime?: string, eventType?: string): Promise<Record<string, unknown>[]> {
+  async queryPKIAuditEvents(startTime: string, endTime?: string, eventType?: string): Promise<Record<string, unknown>[]> {
     try {
       const end = endTime || new Date().toISOString();
       let fluxQuery = `
@@ -534,36 +369,26 @@ export class InfluxService {
    * Tags: device_id, cn
    * Fields: index, leaf_hash, root_hash, inclusion_proof, serial_number, cert_fingerprint
    */
-  async writeTransparencyEntry(data: {
-    index: number;
-    leafHash: string;
-    rootHash: string;
-    inclusionProof: string;  // JSON-stringified
-    certFingerprint: string;
-    serialNumber: string;
-    cn: string;
-    deviceId: string;
-    issuedAt: Date;
-  }): Promise<void> {
+  async writeTransparencyEntry(entry: TransparencyLogEntry): Promise<void> {
     try {
       const point = new Point('ct_log')
-        .tag('device_id', data.deviceId)
-        .tag('cn', data.cn)
+        .tag('device_id', entry.deviceId)
+        .tag('cn', entry.cn)
         .tag('source', 'mqtt-publisher-lite')
-        .intField('index', data.index)
-        .stringField('leaf_hash', data.leafHash)
-        .stringField('root_hash', data.rootHash)
-        .stringField('inclusion_proof', data.inclusionProof)
-        .stringField('cert_fingerprint', data.certFingerprint)
-        .stringField('serial_number', data.serialNumber)
-        .timestamp(data.issuedAt);
+        .intField('index', entry.index)
+        .stringField('leaf_hash', entry.leafHash)
+        .stringField('root_hash', entry.rootHash)
+        .stringField('inclusion_proof', entry.inclusionProof)
+        .stringField('cert_fingerprint', entry.certFingerprint)
+        .stringField('serial_number', entry.serialNumber)
+        .timestamp(entry.issuedAt);
 
       await this.submitPoint(point, true);
 
-      logger.debug('CT log entry written to InfluxDB', { index: data.index, deviceId: data.deviceId });
+      logger.debug('CT log entry written to InfluxDB', { index: entry.index, deviceId: entry.deviceId });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.warn('Failed to write CT log entry to InfluxDB', { index: data.index, error: errorMessage });
+      logger.warn('Failed to write CT log entry to InfluxDB', { index: entry.index, error: errorMessage });
     }
   }
 
@@ -607,7 +432,7 @@ export class InfluxService {
    * Query the latest audit entry (highest sequence) for chain resumption.
    * Used during AuditService initialization.
    */
-  async queryLatestAuditEntry(): Promise<{ sequence: number; hash: string } | null> {
+  async queryLatestPKIAuditEntry(): Promise<{ sequence: number; hash: string } | null> {
     try {
       const fluxQuery = `
         from(bucket: "${this.config.bucket}")
@@ -646,7 +471,7 @@ export class InfluxService {
    * Query all audit entries ordered by time for chain verification.
    * Returns entries in ascending time order with sequence, hash, previousHash.
    */
-  async queryAuditChain(startTime?: string): Promise<Array<{
+  async queryPKIAuditChain(startTime?: string): Promise<Array<{
     sequence: number; hash: string; previousHash: string;
     event: string; timestamp: string;
   }>> {
@@ -687,6 +512,166 @@ export class InfluxService {
       logger.error('Failed to query audit chain from InfluxDB', { error: errorMessage });
       return [];
     }
+  }
+
+  // ==================== QUERY METHODS ====================
+
+  async queryDeviceStateHistory(deviceId: string, startTime: string, endTime?: string): Promise<Record<string, unknown>[]> {
+    try {
+      const end = endTime || new Date().toISOString();
+      const query = `
+        from(bucket: "${this.config.bucket}")
+          |> range(start: ${startTime}, stop: ${end})
+          |> filter(fn: (r) => r._measurement == "device_state")
+          |> filter(fn: (r) => r.device_id == "${deviceId}")
+          |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+          |> sort(columns: ["_time"], desc: true)
+      `;
+
+      const results: Record<string, unknown>[] = [];
+      return new Promise((resolve, reject) => {
+        this.queryApi.queryRows(query, {
+          next(row, tableMeta) { results.push(tableMeta.toObject(row)); },
+          error(error) { reject(error); },
+          complete() { resolve(results); }
+        });
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error('Failed to query device state', { deviceId, error: errorMessage });
+      throw error;
+    }
+  }
+
+  async queryInstagramMilestones(deviceId: string, startTime: string, accountId?: string): Promise<Record<string, unknown>[]> {
+    try {
+      let query = `
+        from(bucket: "${this.config.bucket}")
+          |> range(start: ${startTime})
+          |> filter(fn: (r) => r._measurement == "instagram_metrics")
+          |> filter(fn: (r) => r.device_id == "${deviceId}")
+          |> filter(fn: (r) => r.milestone_achieved == 1)
+      `;
+
+      if (accountId) {
+        query += `  |> filter(fn: (r) => r.instagram_account_id == "${accountId}")\n`;
+      }
+
+      query += `  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")`;
+      query += `  |> sort(columns: ["_time"], desc: true)`;
+
+      const results: Record<string, unknown>[] = [];
+      return new Promise((resolve, reject) => {
+        this.queryApi.queryRows(query, {
+          next(row, tableMeta) { results.push(tableMeta.toObject(row)); },
+          error(error) { reject(error); },
+          complete() { resolve(results); }
+        });
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error('Failed to query Instagram milestones', { deviceId, error: errorMessage });
+      throw error;
+    }
+  }
+
+  async queryGMBMilestones(deviceId: string, startTime: string, locationId?: string): Promise<Record<string, unknown>[]> {
+    try {
+      let query = `
+        from(bucket: "${this.config.bucket}")
+          |> range(start: ${startTime})
+          |> filter(fn: (r) => r._measurement == "gmb_metrics")
+          |> filter(fn: (r) => r.device_id == "${deviceId}")
+          |> filter(fn: (r) => r.milestone_achieved == 1)
+      `;
+
+      if (locationId) {
+        query += `  |> filter(fn: (r) => r.location_id == "${locationId}")\n`;
+      }
+
+      query += `  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")`;
+      query += `  |> sort(columns: ["_time"], desc: true)`;
+
+      const results: Record<string, unknown>[] = [];
+      return new Promise((resolve, reject) => {
+        this.queryApi.queryRows(query, {
+          next(row, tableMeta) { results.push(tableMeta.toObject(row)); },
+          error(error) { reject(error); },
+          complete() { resolve(results); }
+        });
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error('Failed to query GMB milestones', { deviceId, error: errorMessage });
+      throw error;
+    }
+  }
+
+  async queryComplianceAudit(deviceId: string, startTime: string, auditType?: string): Promise<Record<string, unknown>[]> {
+    try {
+      let query = `
+        from(bucket: "${this.config.bucket}")
+          |> range(start: ${startTime})
+          |> filter(fn: (r) => r._measurement == "compliance_audit")
+          |> filter(fn: (r) => r.device_id == "${deviceId}")
+      `;
+
+      if (auditType) {
+        query += `  |> filter(fn: (r) => r.audit_type == "${auditType}")\n`;
+      }
+
+      query += `  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")`;
+      query += `  |> sort(columns: ["_time"], desc: true)`;
+
+      const results: Record<string, unknown>[] = [];
+      return new Promise((resolve, reject) => {
+        this.queryApi.queryRows(query, {
+          next(row, tableMeta) { results.push(tableMeta.toObject(row)); },
+          error(error) { reject(error); },
+          complete() { resolve(results); }
+        });
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error('Failed to query compliance audit', { deviceId, error: errorMessage });
+      throw error;
+    }
+  }
+
+  async getLatestDeviceState(deviceId: string): Promise<Record<string, unknown> | null> {
+    try {
+      const query = `
+        from(bucket: "${this.config.bucket}")
+          |> range(start: -24h)
+          |> filter(fn: (r) => r._measurement == "device_state")
+          |> filter(fn: (r) => r.device_id == "${deviceId}")
+          |> last()
+          |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+      `;
+
+      const results: Record<string, unknown>[] = [];
+      return new Promise((resolve, reject) => {
+        this.queryApi.queryRows(query, {
+          next(row, tableMeta) { results.push(tableMeta.toObject(row)); },
+          error(error) { reject(error); },
+          complete() { resolve(results.length > 0 ? results[0] : null); }
+        });
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error('Failed to get latest device state', { deviceId, error: errorMessage });
+      throw error;
+    }
+  }
+
+  // ==================== UTILITY METHODS ====================
+
+  async flushWrites(): Promise<void> {
+    if (this.diskQueue) {
+      await this.diskQueue.flushNow();
+      return;
+    }
+    await this.writeApi.flush();
   }
 
   /**
