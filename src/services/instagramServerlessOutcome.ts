@@ -19,6 +19,8 @@ export type NormalizedDeviceFetchResult = {
   success: boolean;
   fetched_at: string;
   followers_count?: number;
+  /** IG @handle from Graph or serverless worker (optional). */
+  instagram_username?: string;
   error?: string;
   instagram_account_id?: string;
   api_response_time_ms?: number;
@@ -140,7 +142,14 @@ export async function applyInstagramServerlessDeviceOutcome(
     success: row.success,
     fetched_at: row.fetched_at,
     ...(row.success && row.followers_count != null
-      ? { data: { followers_count: row.followers_count } }
+      ? {
+          data: {
+            followers_count: row.followers_count,
+            ...(row.instagram_username?.trim()
+              ? { instagram_username: row.instagram_username.trim() }
+              : {})
+          }
+        }
       : { error: row.error }),
     ...(cid ? { correlation_id: cid } : {})
   };

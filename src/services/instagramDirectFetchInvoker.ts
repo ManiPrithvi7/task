@@ -35,6 +35,9 @@ function toNormalizedRow(deviceId: string, result: InstagramFetchResult): Normal
   };
   if (result.success && result.metrics) {
     row.followers_count = result.metrics.followers_count;
+    if (result.metrics.username?.trim()) {
+      row.instagram_username = result.metrics.username.trim();
+    }
   }
   if (!result.success && result.error) {
     row.error = result.error;

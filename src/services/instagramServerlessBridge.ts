@@ -37,6 +37,15 @@ function parseDeviceRow(raw: Record<string, unknown>, fallbackDeviceId?: string)
         ? nested.followers_count
         : undefined;
 
+  const igUsernameRaw =
+    typeof raw.instagram_username === 'string'
+      ? raw.instagram_username
+      : nested && typeof nested.username === 'string'
+        ? nested.username
+        : nested && typeof nested.instagram_username === 'string'
+          ? nested.instagram_username
+          : undefined;
+
   const fetched_at =
     typeof raw.fetched_at === 'string'
       ? raw.fetched_at
@@ -49,6 +58,9 @@ function parseDeviceRow(raw: Record<string, unknown>, fallbackDeviceId?: string)
     success,
     fetched_at,
     ...(followers !== undefined ? { followers_count: followers } : {}),
+    ...(typeof igUsernameRaw === 'string' && igUsernameRaw.trim()
+      ? { instagram_username: igUsernameRaw.trim() }
+      : {}),
     ...(typeof raw.error === 'string' ? { error: raw.error } : {}),
     ...(typeof raw.instagram_account_id === 'string' ? { instagram_account_id: raw.instagram_account_id } : {}),
     ...(typeof raw.api_response_time_ms === 'number' ? { api_response_time_ms: raw.api_response_time_ms } : {}),

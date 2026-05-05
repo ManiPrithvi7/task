@@ -178,7 +178,11 @@ export class StatsPublisher {
           }
 
           logger.debug('📤 [PUBLISH_CYCLE] Publishing all screens to device', { deviceId: device.deviceId });
-          await this.publishInstagram(device.deviceId, root);
+          // Instagram: real follower data is published only by InstagramPoller → publishInstagramScreenIfChanged
+          // (Graph API). Mock publishes here would overwrite live metrics every publishInterval.
+          if (process.env.STATS_PUBLISHER_MOCK_INSTAGRAM === 'true') {
+            await this.publishInstagram(device.deviceId, root);
+          }
           await this.publishGmb(device.deviceId, root);
           await this.publishPos(device.deviceId, root);
           await this.publishPromotion(device, root);
@@ -211,8 +215,8 @@ export class StatsPublisher {
   }
 
   /**
-   * Instagram: mock publish only.
-   * Real Instagram Graph polling is driven by `InstagramPoller` (dual schedulers + backoff + circuit breaker).
+   * Instagram: mock publish for demos only (`STATS_PUBLISHER_MOCK_INSTAGRAM=true`).
+   * Production uses `InstagramPoller` → Graph API → `publishInstagramScreenIfChanged`.
    */
   private async publishInstagram(deviceId: string, root: string): Promise<void> {
     const state = this.ensureDeviceState(deviceId);

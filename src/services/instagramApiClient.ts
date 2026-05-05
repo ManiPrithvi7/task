@@ -23,6 +23,8 @@ export interface InstagramAccountInfo {
 
 export interface InstagramMetrics {
     followers_count: number;
+    /** IG handle from Graph `username` field (for profile QR links on device UI). */
+    username?: string;
     followers_delta_24h: number;
     impressions_day: number;
     impressions_week: number;
@@ -89,12 +91,18 @@ function httpsGet(url: string): Promise<Record<string, unknown>> {
 }
 
 /** Fetch basic account fields (followers, media_count) */
-async function fetchAccountFields(accountId: string, accessToken: string): Promise<{ followers_count: number; media_count: number }> {
-    const url = `https://${GRAPH_BASE}/${API_VERSION}/${accountId}?fields=followers_count,media_count&access_token=${accessToken}`;
-    const data = await httpsGet(url) as { followers_count?: number; media_count?: number };
+async function fetchAccountFields(
+    accountId: string,
+    accessToken: string
+): Promise<{ followers_count: number; media_count: number; username?: string }> {
+    const url = `https://${GRAPH_BASE}/${API_VERSION}/${accountId}?fields=followers_count,media_count,username&access_token=${accessToken}`;
+    const data = await httpsGet(url) as { followers_count?: number; media_count?: number; username?: string };
     return {
         followers_count: typeof data.followers_count === 'number' ? data.followers_count : 0,
-        media_count: typeof data.media_count === 'number' ? data.media_count : 0
+        media_count: typeof data.media_count === 'number' ? data.media_count : 0,
+        ...(typeof data.username === 'string' && data.username.trim()
+            ? { username: data.username.trim() }
+            : {})
     };
 }
 
@@ -164,6 +172,7 @@ export async function fetchInstagramMetrics(
 
         const metrics: InstagramMetrics = {
             followers_count: fields.followers_count,
+            ...(fields.username ? { username: fields.username } : {}),
             followers_delta_24h: 0,       // Would need prev value from InfluxDB; defaulting to 0
             // impressions_day: dayInsights.impressions,
             impressions_day: 0,

@@ -384,9 +384,18 @@ export interface InfluxDBConfig {
   diskQueueMaxLinesPerFile: number;
 }
 
-/** Trim and strip trailing slashes for Influx base URL (e.g. https://influx.example.onrender.com — no :8086 behind HTTPS proxies). */
+/**
+ * Trim and strip trailing slashes for Influx base URL.
+ *
+ * Accepts either a full URL (`https://host:port`) or a host[:port] string (common in PaaS dashboards),
+ * in which case we default to `http://` so the Influx client has a valid scheme.
+ */
 export function normalizeInfluxDbUrl(raw: string): string {
-  return raw.trim().replace(/\/+$/, '');
+  const trimmed = raw.trim().replace(/\/+$/, '');
+  if (!/^https?:\/\//i.test(trimmed)) {
+    return `http://${trimmed}`;
+  }
+  return trimmed;
 }
 
 export interface AppConfig {
