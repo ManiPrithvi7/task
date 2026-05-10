@@ -7,6 +7,7 @@ import { logger } from '../utils/logger';
 import { getRedisService } from './redisService';
 import { getActiveDeviceCache } from './deviceService';
 import type { MqttClientManager } from '../servers/mqttClient';
+import { buildScreenEnvelope, instagramFollowerMetrics } from './screenEnvelope';
 
 export type ScreenDeliveryFetchShape = {
   deviceId: string;
@@ -17,14 +18,9 @@ export type ScreenDeliveryFetchShape = {
   correlation_id?: string;
 };
 
-function getNextMilestone(followers: number): number {
-  const milestones = [100, 500, 1000, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000];
-  return milestones.find((m) => m > followers) ?? Math.ceil(followers / 1000) * 1000 + 1000;
-}
-
 /**
- * Same outer shape as `StatsPublisher` mock Instagram (`version` 1.2) so firmware stays compatible.
- * Inner metrics come from Instagram Graph (or serverless worker), not the screen publisher loop.
+ * PROOF Display v6 Instagram: `nextGoal` (+25 milestones), `celebration` on envelope, no `celebration_type` when not celebrating.
+ * Inner metrics from Instagram Graph (or serverless); envelope matches `StatsPublisher` mock Instagram.
  */
 export function formatInstagramScreenMqttPayload(
   result: ScreenDeliveryFetchShape,
@@ -32,25 +28,31 @@ export function formatInstagramScreenMqttPayload(
 ): { topic: string; payload: string } {
   const { deviceId, data } = result;
   const followers = data?.followers_count ?? 0;
-  const achievement = getNextMilestone(followers);
-  const progress = Math.min(100, Math.round((followers / achievement) * 100));
-  const remainingGoal = Math.max(0, achievement - followers);
+  const { nextGoal, remainingGoal, progress } = instagramFollowerMetrics(followers);
   const handle = data?.instagram_username?.trim().replace(/^@/, '') || '';
   const qrText = handle ? `https://instagram.com/${handle}` : 'https://www.instagram.com/';
 
-  const envelope: Record<string, unknown> = {
-    version: '1.2',
-    screen: 'instagram',
-    muted: 'true',
-    timestamp: result.fetched_at,
-    payload: {
+  let fetchedAtMs = Date.parse(result.fetched_at);
+  if (!Number.isFinite(fetchedAtMs)) {
+    fetchedAtMs = Date.now();
+  }
+
+  const base = buildScreenEnvelope(
+    'instagram',
+    {
       followers,
-      achievement,
+      nextGoal,
       remainingGoal,
       progress,
       qrText
+    },
+    {
+      muted: 'true',
+      timestamp: new Date(fetchedAtMs)
     }
-  };
+  );
+
+  const envelope: Record<string, unknown> = { ...base };
   if (result.correlation_id) {
     envelope.correlation_id = result.correlation_id;
   }

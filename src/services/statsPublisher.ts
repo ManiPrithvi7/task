@@ -4,63 +4,82 @@ import { DeviceService, getActiveDeviceCache, ActiveDevice } from './deviceServi
 import { CAService } from './caService';
 import { Ad, AdStatus, AdType } from '../models/Ad';
 import mongoose from 'mongoose';
+import {
+  buildScreenEnvelope,
+  gmbReviewMetrics,
+  instagramFollowerMetrics
+} from './screenEnvelope';
 
-/** Static inner `payload` for topic `.../test-gmb` — alternates each successful publish per device. */
-const TEST_GMB_STATIC_PAYLOAD_A = {
-  google_review: 'Best latte in Portland. This place never misses.',
-  qrText: 'www.youtube.com',
-  smallStars: 5,
-  bigStars: 5,
-  review: 454,
-  verifiedReview: 350,
-  rating: 4.9,
-  remainingGoal: 3,
-  nextGoal: 297,
-  progress: 100
-};
+/**
+ * Canonical PROOF Display v6 GMB payloads for `.../test-gmb` — cycles normal → mini → mega.
+ * Field values match MQTT Payload Reference examples.
+ */
+const TEST_GMB_V6_VARIANTS = [
+  {
+    label: 'v6_normal' as const,
+    muted: 'false' as const,
+    celebration: 'false' as const,
+    payload: {
+      qrText: 'https://g.page/r/...',
+      verifiedReview: 42,
+      rating: 4,
+      nextGoal: 45,
+      remainingGoal: 3,
+      progress: 84,
+      reviews: [
+        { id: 1, googleReview: 'Best latte in Portland.', rating: '4' },
+        { id: 2, googleReview: 'Amazing pastries.', rating: '5' },
+        { id: 3, googleReview: 'Staff always friendly.', rating: '4' }
+      ]
+    }
+  },
+  {
+    label: 'v6_mini' as const,
+    muted: 'false' as const,
+    celebration: 'true' as const,
+    payload: {
+      celebration_type: 'mini',
+      qrText: 'https://g.page/r/...',
+      verifiedReview: 50,
+      rating: 4,
+      nextGoal: 50,
+      remainingGoal: 0,
+      progress: 100,
+      reviews: [
+        { id: 1, googleReview: 'Best latte in Portland.', rating: '4' },
+        { id: 2, googleReview: 'Amazing pastries.', rating: '5' },
+        { id: 3, googleReview: 'Staff always friendly.', rating: '4' }
+      ]
+    }
+  },
+  {
+    label: 'v6_mega' as const,
+    muted: 'false' as const,
+    celebration: 'true' as const,
+    payload: {
+      celebration_type: 'mega',
+      qrText: 'https://g.page/r/...',
+      verifiedReview: 100,
+      rating: 4,
+      nextGoal: 100,
+      remainingGoal: 0,
+      progress: 100,
+      reviews: [
+        { id: 1, googleReview: 'Best latte in Portland.', rating: '5' },
+        { id: 2, googleReview: 'Amazing pastries.', rating: '5' },
+        { id: 3, googleReview: 'Staff always friendly.', rating: '5' }
+      ]
+    }
+  }
+];
 
-const TEST_GMB_STATIC_PAYLOAD_B = {
-  google_review: 'Outstanding service and atmosphere. Five stars every time.',
-  qrText: 'https://maps.google.com/review',
-  smallStars: 5,
-  bigStars: 4,
-  review: 512,
-  verifiedReview: 420,
-  rating: 4.8,
-  remainingGoal: 8,
-  nextGoal: 500,
-  progress: 88
-};
-
-/** Per-device state for Instagram, GMB, POS (for progress/celebratory rotation). */
+/** Per-device state for Instagram, GMB, POS (for mock rotation). */
 interface DeviceScreenState {
   instagram: { followers: number; target: number };
   gmb: { reviews: number; rating: number };
-  /** alternate: legacy thank-you toggle for real /gmb; testGmbCycle: A/B for /test-gmb only */
-  gmbTest: { alternate: boolean; testGmbCycle: number };
+  /** testGmbCycle: index into TEST_GMB_V6_VARIANTS for /test-gmb only */
+  gmbTest: { testGmbCycle: number };
   pos: { customersToday: number };
-}
-
-type ScreenEnvelope<TPayload> = {
-  version: '1.2';
-  screen: 'instagram' | 'gmb' | 'pos' | 'promotion';
-  muted: 'true' | 'false';
-  timestamp: string;
-  payload: TPayload;
-};
-
-function buildScreenEnvelope<TPayload>(
-  screen: ScreenEnvelope<TPayload>['screen'],
-  payload: TPayload,
-  opts?: { muted?: ScreenEnvelope<TPayload>['muted']; timestamp?: Date }
-): ScreenEnvelope<TPayload> {
-  return {
-    version: '1.2',
-    screen,
-    muted: opts?.muted ?? 'true',
-    timestamp: (opts?.timestamp ?? new Date()).toISOString(),
-    payload
-  };
 }
 export class StatsPublisher {
   private mqttClient: MqttClientManager;
@@ -203,7 +222,7 @@ export class StatsPublisher {
       this.deviceState.set(deviceId, {
         instagram: { followers: 7500 + Math.floor(Math.random() * 500), target: 10000 },
         gmb: { reviews: 370 + Math.floor(Math.random() * 30), rating: 4.8 },
-        gmbTest: { alternate: false, testGmbCycle: 0 },
+        gmbTest: { testGmbCycle: 0 },
         pos: { customersToday: 130 + Math.floor(Math.random() * 40) }
       });
     }
@@ -221,17 +240,19 @@ export class StatsPublisher {
   private async publishInstagram(deviceId: string, root: string): Promise<void> {
     const state = this.ensureDeviceState(deviceId);
     state.instagram.followers += 50 + Math.floor(Math.random() * 100);
-    const target = state.instagram.target;
     const followers = state.instagram.followers;
-    const progress = Math.min(100, Math.round((followers / target) * 100));
-    const isCelebratory = progress >= 100;
-    const envelope = buildScreenEnvelope('instagram', {
-      followers,
-      achievement: target,
-      remainingGoal: Math.max(0, target - followers),
-      progress,
-      qrText: 'https://ig.com/handle'
-    });
+    const { nextGoal, remainingGoal, progress } = instagramFollowerMetrics(followers);
+    const envelope = buildScreenEnvelope(
+      'instagram',
+      {
+        followers,
+        nextGoal,
+        remainingGoal,
+        progress,
+        qrText: 'https://ig.com/handle'
+      },
+      { muted: 'true' }
+    );
 
     await this.mqttClient.publish({
       topic: `${root}/${deviceId}/instagram`,
@@ -239,7 +260,7 @@ export class StatsPublisher {
       qos: 1,
       retain: false
     });
-    logger.debug('Published Instagram screen', { deviceId, progress, celebratory: isCelebratory });
+    logger.debug('Published Instagram screen', { deviceId, followers, nextGoal, progress });
   }
 
   /** Google My Business: reviews progress or celebratory milestone. */
@@ -250,24 +271,26 @@ export class StatsPublisher {
     const reviews = state.gmb.reviews;
     state.gmb.rating = Math.max(1, Math.min(5, state.gmb.rating + (Math.random() * 0.2 - 0.1)));
 
-    // Next milestone is every 5 reviews (e.g., 171 → 175, 175 → 180)
-    const nextGoal = Math.floor(reviews / 5) * 5 + 5;
-    const remainingGoal = Math.max(0, nextGoal - reviews);
-    const progress = Math.max(0, Math.min(100, Math.round((reviews / nextGoal) * 100)));
+    const { nextGoal, remainingGoal, progress } = gmbReviewMetrics(reviews);
+    const ratingInt = Math.round(Math.max(1, Math.min(5, state.gmb.rating)));
 
-    const envelope = buildScreenEnvelope('gmb', {
-      qrText: 'https://g.page/r/...',
-      verifiedReview: reviews,
-      rating: Math.round(state.gmb.rating * 10) / 10,
-      remainingGoal,
-      nextGoal,
-      progress,
-      reviews: [
-        { id: 1, googleReview: 'Best latte in Portland.', rating: '4' },
-        { id: 2, googleReview: 'Amazing pastries and welcoming staff.', rating: '4' },
-        { id: 3, googleReview: 'Coffee always hot, staff always friendly.', rating: '5' }
-      ]
-    });
+    const envelope = buildScreenEnvelope(
+      'gmb',
+      {
+        qrText: 'https://g.page/r/...',
+        verifiedReview: reviews,
+        rating: ratingInt,
+        remainingGoal,
+        nextGoal,
+        progress,
+        reviews: [
+          { id: 1, googleReview: 'Best latte in Portland.', rating: '4' },
+          { id: 2, googleReview: 'Amazing pastries and welcoming staff.', rating: '4' },
+          { id: 3, googleReview: 'Coffee always hot, staff always friendly.', rating: '5' }
+        ]
+      },
+      { muted: 'true' }
+    );
 
     await this.mqttClient.publish({
       topic: `${root}/${deviceId}/gmb`,
@@ -444,22 +467,13 @@ export class StatsPublisher {
 
   private async publishTestGmb(deviceId: string, root: string): Promise<void> {
     const state = this.ensureDeviceState(deviceId);
-    const cycle = state.gmbTest.testGmbCycle % 2;
-    const innerPayload = cycle === 0 ? TEST_GMB_STATIC_PAYLOAD_A : TEST_GMB_STATIC_PAYLOAD_B;
-    const variantLabel = cycle === 0 ? 'static_a' : 'static_b';
+    const idx = state.gmbTest.testGmbCycle % TEST_GMB_V6_VARIANTS.length;
+    const variant = TEST_GMB_V6_VARIANTS[idx];
 
-    const envelope = buildScreenEnvelope('gmb', {
-      qrText: innerPayload.qrText,
-      verifiedReview: innerPayload.verifiedReview,
-      rating: innerPayload.rating,
-      remainingGoal: innerPayload.remainingGoal,
-      nextGoal: innerPayload.nextGoal,
-      progress: innerPayload.progress,
-      reviews: [
-        { id: 1, googleReview: innerPayload.google_review, rating: String(innerPayload.bigStars ?? 5) }
-      ],
-      testVariant: variantLabel
-    } as any);
+    const envelope = buildScreenEnvelope('gmb', variant.payload, {
+      muted: variant.muted,
+      celebration: variant.celebration
+    });
 
     await this.mqttClient.publish({
       topic: `${root}/${deviceId}/test-gmb`,
@@ -470,7 +484,11 @@ export class StatsPublisher {
 
     state.gmbTest.testGmbCycle += 1;
 
-    logger.info('Published test GMB screen', { deviceId, testGmbVariant: variantLabel, cycle: state.gmbTest.testGmbCycle });
+    logger.info('Published test GMB screen', {
+      deviceId,
+      testGmbVariant: variant.label,
+      cycle: state.gmbTest.testGmbCycle
+    });
   }
 
   private async cleanupInactiveDeviceState(): Promise<void> {
