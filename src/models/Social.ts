@@ -21,9 +21,14 @@ export interface ISocial extends Document {
   socialAccountId: string;
   provider: Provider;
   url?: string;
+  profilePictureURL?: string;
+  followerCount?: number;
+  lastSyncedAt?: Date;
   accessToken: string;
   refreshToken: string;
   tokenExp: string;
+  nfcCount: number;
+  scanCount: number;
   tokenCreatedAt?: Date;
   updatedAt?: Date;
   createdAt?: Date;
@@ -50,6 +55,18 @@ const SocialSchema = new Schema<ISocial>({
     type: String,
     required: false
   },
+  profilePictureURL: {
+    type: String,
+    required: false
+  },
+  followerCount: {
+    type: Number,
+    required: false
+  },
+  lastSyncedAt: {
+    type: Date,
+    required: false
+  },
   accessToken: {
     type: String,
     required: true
@@ -61,6 +78,16 @@ const SocialSchema = new Schema<ISocial>({
   tokenExp: {
     type: String,
     required: true
+  },
+  nfcCount: {
+    type: Number,
+    required: true,
+    default: 0
+  },
+  scanCount: {
+    type: Number,
+    required: true,
+    default: 0
   },
   tokenCreatedAt: {
     type: Date,

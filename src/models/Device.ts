@@ -12,7 +12,8 @@ export enum DeviceStatus {
   PROVISIONED = 'PROVISIONED',
   ACTIVE = 'ACTIVE',
   OFFLINE = 'OFFLINE',
-  ERROR = 'ERROR'
+  ERROR = 'ERROR',
+  RECOVERY = 'RECOVERY'
 }
 
 export interface IDevice extends Document {

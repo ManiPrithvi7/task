@@ -33,7 +33,6 @@ export interface IAd extends Document {
   creativeUrl: string;
   templateData: Record<string, any>;
   campaignId?: mongoose.Types.ObjectId;
-  deviceId?: mongoose.Types.ObjectId;
   status: AdStatus;
   schedule: Record<string, any>;
   frequency: Record<string, any>;
@@ -79,11 +78,6 @@ const AdSchema = new Schema<IAd>({
     ref: 'Campaign',
     required: false
   },
-  deviceId: {
-    type: Schema.Types.ObjectId,
-    ref: 'Device',
-    required: false
-  },
   status: {
     type: String,
     enum: Object.values(AdStatus),
@@ -108,6 +102,5 @@ AdSchema.index({ userId: 1 });
 AdSchema.index({ status: 1 });
 AdSchema.index({ templateId: 1 });
 AdSchema.index({ campaignId: 1 });
-AdSchema.index({ deviceId: 1 });
 
 export const Ad = mongoose.model<IAd>('Ad', AdSchema);
