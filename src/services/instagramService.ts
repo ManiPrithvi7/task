@@ -22,6 +22,9 @@ import type { RedisService } from './redisService';
 import { getInfluxService } from './influxService';
 import { getActiveDeviceCache } from './deviceService';
 
+const igLocalFollowersCache = new Map<string, number>();
+const igLocalLastPublishMs = new Map<string, number>();
+
 const getCircuitBreaker = (() => {
   let instance: InstagramCircuitBreaker | null = null;
   let boundClient: RedisClientType | null = null;
@@ -625,6 +628,7 @@ export async function publishInstagramScreenIfChanged(
   const nowMs = Date.now();
   const HEARTBEAT_MS = 10 * 60 * 1000;
   let forceHeartbeat = false;
+  let unchanged = false;
 
   const redisSvc = getRedisService();
   if (redisSvc?.isRedisConnected()) {
@@ -640,19 +644,29 @@ export async function publishInstagramScreenIfChanged(
       const lastPubMs = lastPubRaw ? parseInt(lastPubRaw, 10) : 0;
       forceHeartbeat = !lastPubMs || Number.isNaN(lastPubMs) || (nowMs - lastPubMs) > HEARTBEAT_MS;
 
-      const unchanged = typeof cached === 'number' && !Number.isNaN(cached) && cached === next;
+      unchanged = typeof cached === 'number' && !Number.isNaN(cached) && cached === next;
       if (unchanged && !forceHeartbeat) {
         logger.debug('[IG_SCREEN] No follower change, skip MQTT', { deviceId, followers: next });
         return;
       }
-
-      await client.set(cacheKey, String(next), { EX: 86400 });
-      await client.set(lastPubKey, String(nowMs), { EX: 86400 });
     } catch (err: unknown) {
       logger.warn('[IG_SCREEN] Change detection failed (continuing)', {
         deviceId,
         error: err instanceof Error ? err.message : String(err)
       });
+    }
+  } else {
+    // Fallback when Redis isn't available: still avoid spamming unchanged values.
+    const next = result.data.followers_count;
+    const prev = igLocalFollowersCache.get(deviceId);
+    unchanged = typeof prev === 'number' && prev === next;
+
+    const lastPubMs = igLocalLastPublishMs.get(deviceId) ?? 0;
+    forceHeartbeat = !lastPubMs || (nowMs - lastPubMs) > HEARTBEAT_MS;
+
+    if (unchanged && !forceHeartbeat) {
+      logger.debug('[IG_SCREEN] No follower change (local), skip MQTT', { deviceId, followers: next });
+      return;
     }
   }
 
@@ -668,8 +682,25 @@ export async function publishInstagramScreenIfChanged(
       deviceId,
       topic,
       followers: result.data.followers_count,
-      heartbeat: forceHeartbeat && redisSvc?.isRedisConnected() === true
+      heartbeat: forceHeartbeat && unchanged
     });
+
+    // Update "last published" markers only after successful publish.
+    if (redisSvc?.isRedisConnected()) {
+      try {
+        const client = redisSvc.getClient();
+        await client.set(`device:followers:${deviceId}`, String(result.data.followers_count), { EX: 86400 });
+        await client.set(`ig:last_pub:${deviceId}`, String(nowMs), { EX: 86400 });
+      } catch (e: unknown) {
+        logger.debug('[IG_SCREEN] Redis publish markers update failed (ignored)', {
+          deviceId,
+          error: e instanceof Error ? e.message : String(e)
+        });
+      }
+    } else {
+      igLocalFollowersCache.set(deviceId, result.data.followers_count);
+      igLocalLastPublishMs.set(deviceId, nowMs);
+    }
   } catch (err: unknown) {
     logger.error('[IG_SCREEN] MQTT publish failed', { deviceId, error: err instanceof Error ? err.message : String(err) });
   }
