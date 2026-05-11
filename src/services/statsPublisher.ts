@@ -11,8 +11,8 @@ import {
 } from './screenEnvelope';
 
 /**
- * Canonical PROOF Display v6 GMB payloads for `.../test-gmb` — cycles normal → mini → mega.
- * Field values match MQTT Payload Reference examples.
+ * Canonical PROOF Display v6 GMB payloads for `.../gmb` (firmware listens here for celebration flows).
+ * Cycles normal → mini → mega. `.../test-gmb` uses a separate muted progression publish — see `publishTestGmb`.
  */
 const TEST_GMB_V6_VARIANTS = [
   {
@@ -77,7 +77,7 @@ const TEST_GMB_V6_VARIANTS = [
 interface DeviceScreenState {
   instagram: { followers: number; target: number };
   gmb: { reviews: number; rating: number };
-  /** testGmbCycle: index into TEST_GMB_V6_VARIANTS for /test-gmb only */
+  /** testGmbCycle: index into TEST_GMB_V6_VARIANTS for canonical /gmb publishes (variant rotation). */
   gmbTest: { testGmbCycle: number };
   pos: { customersToday: number };
 }
@@ -167,8 +167,8 @@ export class StatsPublisher {
 
       for (const device of activeDevices) {
         try {
-          // Always publish test-gmb to every active device in Redis
-          // (independent of device status/provisioning gates used for other screens).
+          // test-gmb: muted progression only (no celebration) — all Redis-active devices, no provisioning gate.
+          // gmb: canonical v6 + celebrations — published later only for active + provisioned devices.
           try {
             await this.publishTestGmb(device.deviceId, root);
           } catch (err: unknown) {
@@ -263,8 +263,10 @@ export class StatsPublisher {
     logger.debug('Published Instagram screen', { deviceId, followers, nextGoal, progress });
   }
 
-  /** Google My Business: reviews progress or celebratory milestone. */
- 
+  /**
+   * `.../test-gmb`: lightweight GMB-shaped screen for dev/QA (muted, no celebration envelope).
+   * Firmware milestone/celebration handling is exercised on `.../gmb` via `publishGmb`.
+   */
   private async publishTestGmb(deviceId: string, root: string): Promise<void> {
     const state = this.ensureDeviceState(deviceId);
     state.gmb.reviews += 5 + Math.floor(Math.random() * 15);
@@ -289,7 +291,7 @@ export class StatsPublisher {
           { id: 3, googleReview: 'Coffee always hot, staff always friendly.', rating: '5' }
         ]
       },
-      { muted: 'true' }
+      { muted: 'true', celebration: 'false' }
     );
 
     await this.mqttClient.publish({
@@ -298,7 +300,7 @@ export class StatsPublisher {
       qos: 1,
       retain: false
     });
-    logger.debug('Published GMB screen', { deviceId, reviews, milestone:nextGoal });
+    logger.debug('Published test-gmb screen', { deviceId, reviews, milestone: nextGoal });
   }
 
   /** POS: screen_update with must_try, customers_today, provider (square/shopify). */
@@ -465,6 +467,7 @@ export class StatsPublisher {
 
   }
 
+  /** `.../gmb`: canonical v6 payload rotation including mini/mega celebration envelopes. */
   private async publishGmb(deviceId: string, root: string): Promise<void> {
     const state = this.ensureDeviceState(deviceId);
     const idx = state.gmbTest.testGmbCycle % TEST_GMB_V6_VARIANTS.length;
@@ -484,7 +487,7 @@ export class StatsPublisher {
 
     state.gmbTest.testGmbCycle += 1;
 
-    logger.info('Published test GMB screen', {
+    logger.info('Published GMB screen (v6 variant cycle)', {
       deviceId,
       testGmbVariant: variant.label,
       cycle: state.gmbTest.testGmbCycle
