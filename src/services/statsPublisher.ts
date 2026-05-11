@@ -265,7 +265,7 @@ export class StatsPublisher {
 
   /** Google My Business: reviews progress or celebratory milestone. */
  
-  private async publishGmb(deviceId: string, root: string): Promise<void> {
+  private async publishTestGmb(deviceId: string, root: string): Promise<void> {
     const state = this.ensureDeviceState(deviceId);
     state.gmb.reviews += 5 + Math.floor(Math.random() * 15);
     const reviews = state.gmb.reviews;
@@ -293,7 +293,7 @@ export class StatsPublisher {
     );
 
     await this.mqttClient.publish({
-      topic: `${root}/${deviceId}/gmb`,
+      topic: `${root}/${deviceId}/test-gmb`,
       payload: JSON.stringify(envelope),
       qos: 1,
       retain: false
@@ -465,7 +465,7 @@ export class StatsPublisher {
 
   }
 
-  private async publishTestGmb(deviceId: string, root: string): Promise<void> {
+  private async publishGmb(deviceId: string, root: string): Promise<void> {
     const state = this.ensureDeviceState(deviceId);
     const idx = state.gmbTest.testGmbCycle % TEST_GMB_V6_VARIANTS.length;
     const variant = TEST_GMB_V6_VARIANTS[idx];
@@ -476,7 +476,7 @@ export class StatsPublisher {
     });
 
     await this.mqttClient.publish({
-      topic: `${root}/${deviceId}/test-gmb`,
+      topic: `${root}/${deviceId}/gmb`,
       payload: JSON.stringify(envelope),
       qos: 1,
       retain: false
