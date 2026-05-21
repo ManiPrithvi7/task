@@ -3,6 +3,13 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from '../utils/logger';
+import {
+  loadWebhookConfig,
+  validateWebhookConfig,
+  type WebhookConfig
+} from './webhookConfig';
+
+export type { WebhookConfig };
 
 // Load environment variables
 dotenv.config();
@@ -407,6 +414,7 @@ export interface AppConfig {
   redis: RedisConfig;
   auth: AuthConfig;
   app: AppEnvConfig;
+  webhooks: WebhookConfig;
   influxdb?: InfluxDBConfig;
   instagramPolling?: InstagramPollingConfig;
   /**
@@ -603,6 +611,7 @@ export function loadConfig(): AppConfig {
       env: process.env.NODE_ENV || 'development',
       logLevel: process.env.LOG_LEVEL || 'info'
     },
+    webhooks: loadWebhookConfig(),
     instagramServerless,
     influxdb: {
       enabled: influxEnabled,
@@ -742,6 +751,8 @@ export function validateConfig(config: AppConfig): void {
       });
     }
   }
+
+  validateWebhookConfig(config.webhooks, config.app.env);
 
   logger.info('Configuration validated successfully');
 }

@@ -33,6 +33,7 @@ import { createProvisioningRoutes } from './routes/provisioningRoutes';
 import { createConfigRoutes } from './routes/configRoutes';
 import { createLifecycleRoutes } from './routes/lifecycleRoutes';
 import { createRecoveryRoutes } from './routes/recoveryRoutes';
+import { createWebhookRoutes } from './routes/webhookRoutes';
 import { createRecoveryCodeService } from './services/recoveryCodeService';
 import { getTokenStore } from './storage/tokenStore';
 import * as dns from 'dns';
@@ -1290,13 +1291,21 @@ console.log({igFromSocial})
 
   private async initializeHttpServer(): Promise<void> {
     logger.info('🌐 Initializing HTTP server...');
-    
+
+    const webhookRoutes = createWebhookRoutes({
+      mqttClient: this.mqttClient,
+      topicRoot: this.config.mqtt.topicRoot,
+      webhookConfig: this.config.webhooks,
+      appEnv: this.config.app.env
+    });
+
     this.httpServer = new HttpServer(
       this.config.http,
       this.sessionService,
       this.deviceService,
       this.mqttClient,
-      () => this.buildReadinessPayload()
+      () => this.buildReadinessPayload(),
+      [webhookRoutes]
     );
     
     // Add provisioning routes if enabled

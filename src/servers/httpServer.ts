@@ -1,4 +1,4 @@
-import express, { Express, Request, Response, NextFunction } from 'express';
+import express, { Express, Request, Response, NextFunction, Router } from 'express';
 import { createServer, Server } from 'http';
 import { join } from 'path';
 import cors from 'cors';
@@ -22,19 +22,22 @@ export class HttpServer {
   private deviceService: DeviceService;
   private mqttClient: MqttClientManager;
   private readinessProvider?: () => Promise<Record<string, unknown>>;
+  private earlyRouters: Router[];
 
   constructor(
     config: HttpConfig,
     sessionService: SessionService,
     deviceService: DeviceService,
     mqttClient: MqttClientManager,
-    readinessProvider?: () => Promise<Record<string, unknown>>
+    readinessProvider?: () => Promise<Record<string, unknown>>,
+    earlyRouters: Router[] = []
   ) {
     this.config = config;
     this.sessionService = sessionService;
     this.deviceService = deviceService;
     this.mqttClient = mqttClient;
     this.readinessProvider = readinessProvider;
+    this.earlyRouters = earlyRouters;
     this.app = express();
     this.setupMiddleware();
     this.setupRoutes();
@@ -46,6 +49,12 @@ export class HttpServer {
       contentSecurityPolicy: false
     }));
     this.app.use(compression());
+
+    // Webhook HMAC routes must run before express.json() (raw body preserved).
+    for (const router of this.earlyRouters) {
+      this.app.use(router);
+    }
+
     // Increase limit for sign-csr body (PEM CSR + token can be ~4–8kb)
     this.app.use(express.json({ limit: '512kb' }));
     this.app.use(express.urlencoded({ extended: true, limit: '512kb' }));
@@ -149,6 +158,11 @@ export class HttpServer {
             recoveryGenerateCode: 'POST /api/v1/recovery/generate-code',
             reissueWithRecovery:
               'POST /api/v1/certificates/reissue (body: device_id, csr, recovery_code — requires prior generate-code)'
+          },
+          webhooks: {
+            shopify: 'POST /api/pos-promotions/webhooks/shopify',
+            square: 'POST /api/pos-promotions/webhooks/square',
+            gmb: 'POST /api/webhooks/google-business-reviews'
           },
           note: 'User management is handled by Next.js web app'
         }

@@ -9,3 +9,23 @@ export { Social, ISocial, Provider } from './Social';
 export { DeviceACL, IDeviceACL, DeviceTier } from './DeviceACL';
 export { DeviceCertificate, IDeviceCertificate, DeviceCertificateStatus } from './DeviceCertificate';
 export { Ad, IAd, AdStatus, AdType } from './Ad';
+export { ShopifyProfile, IShopifyProfile } from './ShopifyProfile';
+export { SquareProfile, ISquareProfile } from './SquareProfile';
+export {
+  GoogleBusinessProfile,
+  IGoogleBusinessProfile
+} from './GoogleBusinessProfile';
+export {
+  GoogleBusinessLocation,
+  IGoogleBusinessLocation
+} from './GoogleBusinessLocation';
+export {
+  GoogleBusinessReview,
+  IGoogleBusinessReview
+} from './GoogleBusinessReview';
+export {
+  DeviceTransactionLog,
+  IDeviceTransactionLog
+} from './DeviceTransactionLog';
+export { Campaign, ICampaign, CampaignStatus } from './Campaign';
+export { Redemption, IRedemption } from './Redemption';
