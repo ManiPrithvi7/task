@@ -58,7 +58,7 @@ export async function incrementCampaignUsage(params: {
 
     if (!campaign) return;
 
-    await Redemption.findOneAndUpdate(
+    const upsert = await Redemption.updateOne(
       { campaignId: campaign._id, orderId: checkoutId },
       {
         $setOnInsert: {
@@ -73,6 +73,10 @@ export async function incrementCampaignUsage(params: {
       },
       { upsert: true }
     );
+
+    if (upsert.upsertedCount === 1) {
+      await Campaign.updateOne({ _id: campaign._id }, { $inc: { redemptionCount: 1 } });
+    }
 
     logger.debug('[CAMPAIGN_METRICS] Redemption recorded', {
       userId: params.userId,

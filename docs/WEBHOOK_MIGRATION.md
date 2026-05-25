@@ -1,38 +1,35 @@
 # Webhook → MQTT migration (ops)
 
-## Phase 1b (implemented in statsmqtt)
+## Production cutover (statsmqtt only)
 
-- **Shopify async:** `processDailyMetrics` (Redis Lua) + `incrementCampaignUsage` after hot-path 200 via `shopifyAsyncMetrics.ts`. Set `ENABLE_DAILY_METRICS=false` to disable.
-- **GMB enrichment:** `gmbEnrichmentWorker.ts` fetches review via GBP v4 API, upserts `GoogleBusinessReview`, optional enriched republish. Set `WEBHOOK_GMB_FAST_PATH_ONLY=true` to skip.
+1. **Deploy** with shadow first:
+   ```bash
+   WEBHOOK_ENABLED=true
+   WEBHOOK_PUBLIC_BASE_URL=https://<mqtt-public-host>
+   WEBHOOK_MQTT_PUBLISH_ENABLED=false
+   REDIS_URL=... MONGODB_URI=...
+   SHOPIFY_CLIENT_SECRET=...
+   SQUARE_WEBHOOK_SIGNATURE_KEY=...   # or SQUARE_WEBHOOK_SIGNATURE_KEY_<merchantId>
+   GMB_PUBSUB_AUDIENCE=https://<mqtt-public-host>/api/webhooks/google-business-reviews
+   ```
+2. **Validate:** `GET https://<host>/health/webhooks` → `ready: true`; send test webhooks; grep `webhook_latency` (expect `dedupeHit` on retries).
+3. **Point platforms** (order): Shopify → Square → GMB Pub/Sub push URL (same paths on mqtt host).
+4. **Go live:** `WEBHOOK_MQTT_PUBLISH_ENABLED=true`; confirm devices on `proof.mqtt/{clientId}/pos|gmb`.
+5. **Statsnapp** (after stable): stub/remove webhook routes + outbox cron; archive pending outbox jobs — do not dual-deliver.
 
-Requires `GOOGLE_BUSINESS_CLIENT_ID`, `GOOGLE_BUSINESS_CLIENT_SECRET`, and valid `Social` tokens in Mongo.
+LB: route webhook paths only when `/health/webhooks` is 200.
+
+## Implemented (dev complete)
+
+- Square: `x-square-hmacsha256-signature`, HMAC `url+body`, POS MQTT on `payment.created|updated`
+- Shopify/GMB: verify, dedupe, MQTT screen publish, async metrics/enrichment
+- `redemptionCount` $inc on new Redemption
+- `GET /health/webhooks` — redis + mongo + mqtt
 
 ## Shadow mode
 
-Set on statsmqtt before platform URL cutover:
+`WEBHOOK_MQTT_PUBLISH_ENABLED=false` — verify, dedupe, `webhook_latency`; no broker publish.
 
-```bash
-WEBHOOK_MQTT_PUBLISH_ENABLED=false
-```
+## Env reference
 
-Handlers still verify, dedupe, and log `webhook_latency`; no broker publish.
-
-## Staged cutover order
-
-1. **Shopify** — `POST /api/pos-promotions/webhooks/shopify` → mqtt host; validate `.../pos` on devices.
-2. **Square** — verify + dedupe + 200 only (no POS in Phase 1a).
-3. **GMB** — update Pub/Sub push URL and `GMB_PUBSUB_AUDIENCE` in GCP.
-
-Keep Statsnapp routes returning 200 for 7 days (dual-ack) or use `WEBHOOK_INGRESS_DISABLED` on Statsnapp after cutover.
-
-## ACL check
-
-Devices must subscribe to `{MQTT_TOPIC_ROOT}/{clientId}/#` (e.g. `proof.mqtt/{clientId}/gmb`, `.../pos`). Confirm in `device_acls` / provisioning seed before cutover.
-
-## Statsnapp registrar
-
-Set `WEBHOOK_PUBLIC_BASE_URL` to the mqtt public HTTPS origin. Square HMAC uses that base + `/api/pos-promotions/webhooks/square` exactly.
-
-## Outbox drain (Statsnapp)
-
-One-time: process or mark `webhook_outbox_jobs` with `status IN (PENDING, PROCESSING)` as `FAILED` with `lastError: migrated_to_mqtt`, then remove Vercel cron `/api/webhooks/outbox`.
+See `.env.example` (Webhook ingress section).

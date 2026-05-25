@@ -6,6 +6,8 @@ import type { WebhookHandlerDeps } from '../webhooks/types';
 import { handleShopifyWebhook } from '../webhooks/shopifyHandler';
 import { handleSquareWebhook } from '../webhooks/squareHandler';
 import { handleGmbWebhook } from '../webhooks/gmbHandler';
+import mongoose from 'mongoose';
+import { getRedisService } from '../services/redisService';
 import { logger } from '../utils/logger';
 
 const WEBHOOK_RAW_LIMIT = '1mb';
@@ -74,6 +76,25 @@ export function createWebhookRoutes(deps: WebhookRoutesDeps): Router {
     (req: Request, res: Response) => {
       void fn(req, res, handlerDeps);
     };
+
+  router.get('/health/webhooks', (_req, res) => {
+    const redis = getRedisService();
+    const redisOk = redis?.isRedisConnected() === true;
+    const mongoOk = mongoose.connection.readyState === 1;
+    const mqttOk = deps.mqttClient.isConnected();
+    const ready = redisOk && mongoOk && mqttOk;
+    res.status(ready ? 200 : 503).json({
+      ready,
+      webhooks: {
+        enabled: true,
+        mqttPublish: deps.webhookConfig.mqttPublishEnabled,
+        publicBaseUrl: deps.webhookConfig.publicBaseUrl || null
+      },
+      redis: redisOk,
+      mongo: mongoOk,
+      mqtt: mqttOk
+    });
+  });
 
   router.post(
     '/api/pos-promotions/webhooks/shopify',

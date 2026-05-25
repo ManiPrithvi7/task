@@ -24,7 +24,12 @@ export async function handleShopifyWebhook(req: Request, res: Response, deps: We
     }
 
     const rawBody = req.rawBody?.toString('utf8') ?? '';
-    const verification = await verifyShopifyIngress(rawBody, signature ?? null, shop, isProduction);
+    const verification = await verifyShopifyIngress(
+      rawBody,
+      signature ?? null,
+      deps.webhookConfig,
+      isProduction
+    );
     tracker.markVerified();
 
     if (!verification.valid) {
@@ -35,7 +40,7 @@ export async function handleShopifyWebhook(req: Request, res: Response, deps: We
     const dedupeKey = buildShopifyDedupeKey(shop, topic, rawBody);
     const isNew = await tryClaimWebhookDedupe(dedupeKey);
     if (!isNew) {
-      tracker.finish('shopify', { dedupeKey, skippedPublish: true });
+      tracker.finish('shopify', { dedupeKey, dedupeHit: true, skippedPublish: true });
       res.status(200).json({ acknowledged: true, duplicate: true });
       return;
     }

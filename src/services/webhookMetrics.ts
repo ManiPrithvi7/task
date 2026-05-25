@@ -12,6 +12,7 @@ export type WebhookLatencyStages = {
   clientId?: string;
   topic?: string;
   dedupeKey?: string;
+  dedupeHit?: boolean;
   skippedPublish?: boolean;
 };
 

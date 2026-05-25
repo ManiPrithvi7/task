@@ -68,9 +68,9 @@ async function runGmbEnrichment(
   );
 
   const reviewPayload = await resolveGmbReviewPayload(
-    oauth2Client,
+    oauth2Client as Parameters<typeof resolveGmbReviewPayload>[0],
     notification,
-    locationResourceName
+    { locationResourceName }
   );
 
   if (!reviewPayload) {

@@ -3,8 +3,11 @@ import type { WebhookHandlerDeps } from './types';
 import { verifySquareIngress } from './verify/shopifySquare';
 import { buildSquareDedupeKey, tryClaimWebhookDedupe } from './dedupe/redisDedupe';
 import { resolveSquareUserId } from './resolve/squareMerchant';
+import { resolveDevicesForUser } from './resolve/resolveDevices';
+import { publishPosScreen } from './delivery/publishPosScreen';
 import { getSquareWebhookUrl } from '../config/webhookConfig';
 import { WebhookLatencyTracker } from '../services/webhookMetrics';
+import { isSquarePaymentEvent } from '../lib/socials/integrations';
 import { logger } from '../utils/logger';
 
 export async function handleSquareWebhook(req: Request, res: Response, deps: WebhookHandlerDeps): Promise<void> {
@@ -12,7 +15,9 @@ export async function handleSquareWebhook(req: Request, res: Response, deps: Web
   const isProduction = deps.appEnv === 'production';
 
   try {
-    const signature = req.headers['x-square-signature'] as string | undefined;
+    const signature =
+      (req.headers['x-square-hmacsha256-signature'] as string | undefined) ??
+      (req.headers['x-square-signature'] as string | undefined);
     const rawBody = req.rawBody?.toString('utf8') ?? '';
 
     let parsedBody: Record<string, unknown>;
@@ -40,6 +45,7 @@ export async function handleSquareWebhook(req: Request, res: Response, deps: Web
       signature ?? null,
       merchantId,
       webhookUrl,
+      deps.webhookConfig,
       isProduction
     );
     tracker.markVerified();
@@ -53,7 +59,7 @@ export async function handleSquareWebhook(req: Request, res: Response, deps: Web
     const dedupeKey = buildSquareDedupeKey(merchantId, eventType, eventId, rawBody);
     const isNew = await tryClaimWebhookDedupe(dedupeKey);
     if (!isNew) {
-      tracker.finish('square', { dedupeKey, skippedPublish: true });
+      tracker.finish('square', { dedupeKey, dedupeHit: true, skippedPublish: true });
       res.status(200).json({ acknowledged: true, duplicate: true });
       return;
     }
@@ -61,12 +67,35 @@ export async function handleSquareWebhook(req: Request, res: Response, deps: Web
     const userId = await resolveSquareUserId(merchantId);
     tracker.markResolved();
 
-    if (!userId) {
+    let published = false;
+    let lastTopic: string | undefined;
+    let lastClientId: string | undefined;
+
+    if (userId && isSquarePaymentEvent(eventType)) {
+      const devices = await resolveDevicesForUser(userId, deps.webhookConfig.deviceTarget);
+      for (const device of devices) {
+        const result = await publishPosScreen(
+          deps.mqttClient,
+          deps.topicRoot,
+          device.clientId,
+          { platform: 'square', orderCount: 1 },
+          deps.webhookConfig.mqttPublishEnabled
+        );
+        lastTopic = result.topic;
+        lastClientId = device.clientId;
+        published = published || result.published;
+      }
+    } else if (!userId) {
       logger.info('[SQUARE_WEBHOOK] Unknown merchant — ack', { merchantId });
     }
 
     tracker.markPublished();
-    tracker.finish('square', { dedupeKey, skippedPublish: true });
+    tracker.finish('square', {
+      dedupeKey,
+      clientId: lastClientId,
+      topic: lastTopic,
+      skippedPublish: !published && deps.webhookConfig.mqttPublishEnabled
+    });
 
     res.status(200).json({ acknowledged: true });
   } catch (error) {

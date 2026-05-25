@@ -20,7 +20,7 @@ describe('shopifySquare verifiers', () => {
     const crypto = require('crypto');
     const sig = crypto
       .createHmac('sha256', key)
-      .update(body + url, 'utf8')
+      .update(url + body, 'utf8')
       .digest('base64');
     expect(verifySquareWebhook(body, sig, key, url)).toBe(true);
     expect(verifySquareWebhook(body, 'bad', key, url)).toBe(false);

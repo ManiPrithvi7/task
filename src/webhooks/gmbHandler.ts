@@ -45,7 +45,11 @@ export async function handleGmbWebhook(req: Request, res: Response, deps: Webhoo
     const authHeader = req.headers.authorization ?? null;
     const verification = await verifyPubSubPushRequest(
       authHeader,
-      deps.webhookConfig,
+      {
+        audience: deps.webhookConfig.gmbPubsubAudience ?? null,
+        serviceAccountEmail: deps.webhookConfig.gmbPubsubServiceAccountEmail,
+        skipAuthVerify: deps.webhookConfig.gmbPubsubSkipAuthVerify
+      },
       isProduction
     );
 
@@ -90,7 +94,7 @@ export async function handleGmbWebhook(req: Request, res: Response, deps: Webhoo
     const dedupeKey = buildGmbDedupeKey(account, location, notification.review);
     const isNew = await tryClaimWebhookDedupe(dedupeKey);
     if (!isNew) {
-      tracker.finish('gmb', { dedupeKey, skippedPublish: true });
+      tracker.finish('gmb', { dedupeKey, dedupeHit: true, skippedPublish: true });
       return ack(res, 'Duplicate — acknowledged', { dedupeKey });
     }
 
