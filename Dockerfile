@@ -12,19 +12,11 @@ RUN npm ci --only=production && npm cache clean --force
 FROM node:18-alpine AS builder
 WORKDIR /app
 
-# Copy dependencies from deps stage
-COPY --from=deps /app/node_modules ./node_modules
-
-# Copy source files
-COPY package*.json ./
-COPY tsconfig.json ./
+COPY package*.json tsconfig.json ./
 COPY src/ ./src/
 
-# Install TypeScript and build tools
-RUN npm install typescript @types/node --save-dev
-
-# Build the application
-RUN npm run build
+# Use lockfile TypeScript (not latest npm install — TS 6 breaks node resolution)
+RUN npm ci && npm run build
 
 # Stage 3: Production
 FROM node:18-alpine AS production
