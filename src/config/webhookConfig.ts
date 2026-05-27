@@ -25,15 +25,20 @@ const SQUARE_WEBHOOK_PATH = '/api/pos-promotions/webhooks/square';
 
 export function loadWebhookConfig(): WebhookConfig {
   const publicBaseUrl = (
-    process.env.WEBHOOK_PUBLIC_BASE_URL ||
-    process.env.NEXT_PUBLIC_MQTT_PUBLIC_URL ||
-    ''
-  ).replace(/\/$/, '');
+    process.env.PUBLIC_APP_URL || "https://server.withproof.io"
+  ).replace(/\/+$/, '');
 
-  const explicitAudience = process.env.GMB_PUBSUB_AUDIENCE?.trim();
-  const gmbPubsubAudience =
-    explicitAudience ||
-    (publicBaseUrl ? `${publicBaseUrl}${GMB_WEBHOOK_PATH}` : undefined);
+  // Prefer base URL + path (mirrors statsnapp's NEXT_PUBLIC_APP_URL + /api/webhooks/google-business-reviews).
+  // GMB_PUBSUB_AUDIENCE is a fallback for when no base URL env var is set.
+  let gmbPubsubAudience: string | undefined;
+  if (publicBaseUrl) {
+    const base = publicBaseUrl.endsWith(GMB_WEBHOOK_PATH)
+      ? publicBaseUrl
+      : `${publicBaseUrl}${GMB_WEBHOOK_PATH}`;
+    gmbPubsubAudience = base;
+  } else {
+    gmbPubsubAudience = process.env.GMB_PUBSUB_AUDIENCE?.trim() || undefined;
+  }
 
   const deviceTargetRaw = (process.env.WEBHOOK_DEVICE_TARGET || 'primary').toLowerCase();
   const deviceTarget: WebhookDeviceTarget =
