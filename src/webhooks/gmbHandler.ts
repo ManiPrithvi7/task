@@ -43,6 +43,7 @@ export async function handleGmbWebhook(req: Request, res: Response, deps: Webhoo
 
   try {
     const authHeader = req.headers.authorization ?? null;
+    console.log({authHeader})
     const verification = await verifyPubSubPushRequest(
       authHeader,
       {
@@ -52,6 +53,7 @@ export async function handleGmbWebhook(req: Request, res: Response, deps: Webhoo
       },
       isProduction
     );
+console.log({verification})
 
     if (!verification.valid) {
       if (isProduction) {
@@ -107,9 +109,10 @@ export async function handleGmbWebhook(req: Request, res: Response, deps: Webhoo
     }
 
     const devices = await resolveDevicesForUser(ctx.userId, deps.webhookConfig.deviceTarget);
+  
     const rating = parseStarRating(notification.starRating);
     const verifiedReview = ctx.verifiedReviewCount + (eventType === 'NEW_REVIEW' ? 1 : 0);
-
+    console.log({devices,rating,verifiedReview})
     let published = false;
     let lastTopic: string | undefined;
     let lastClientId: string | undefined;

@@ -44,6 +44,7 @@ export class HttpServer {
   }
 
   private setupMiddleware(): void {
+    this.app.set('trust proxy', 1);
     this.app.use(cors());
     this.app.use(helmet({
       contentSecurityPolicy: false
