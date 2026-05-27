@@ -43,7 +43,6 @@ export async function handleGmbWebhook(req: Request, res: Response, deps: Webhoo
 
   try {
     const authHeader = req.headers.authorization ?? null;
-    console.log({authHeader})
     const verification = await verifyPubSubPushRequest(
       authHeader,
       {
@@ -53,15 +52,22 @@ export async function handleGmbWebhook(req: Request, res: Response, deps: Webhoo
       },
       isProduction
     );
-console.log({verification})
 
     if (!verification.valid) {
+      logger.warn('[GMB_WEBHOOK] verify_failed', {
+        error: verification.error,
+        audience: deps.webhookConfig.gmbPubsubAudience
+      });
       if (isProduction) {
         res.status(401).json({ error: verification.error ?? 'Unauthorized' });
         return;
       }
       return ack(res, 'Auth skipped in non-production', { error: verification.error });
     }
+    logger.info('[GMB_WEBHOOK] verify_ok', {
+      email: verification.payload?.email,
+      sub: verification.payload?.sub
+    });
     tracker.markVerified();
 
     const rawBody = req.rawBody?.toString('utf8') ?? '';
@@ -69,10 +75,12 @@ console.log({verification})
     try {
       envelope = JSON.parse(rawBody) as { message?: { data?: string } };
     } catch {
+      logger.warn('[GMB_WEBHOOK] invalid_envelope_json');
       return ack(res, 'Invalid JSON — acknowledged to prevent retry');
     }
 
     if (!envelope.message?.data) {
+      logger.info('[GMB_WEBHOOK] no_message_data');
       return ack(res, 'No message data — acknowledged');
     }
 
@@ -81,21 +89,32 @@ console.log({verification})
       const decoded = Buffer.from(envelope.message.data, 'base64').toString('utf-8');
       notification = JSON.parse(decoded) as GmbReviewNotification;
     } catch {
+      logger.warn('[GMB_WEBHOOK] invalid_notification_payload');
       return ack(res, 'Invalid notification payload — acknowledged');
     }
 
     const { account, location, eventType } = notification;
+    logger.info('[GMB_WEBHOOK] notification', {
+      eventType: eventType ?? null,
+      account: account ?? null,
+      location: location ?? null,
+      review: notification.review ?? null
+    });
+
     if (!eventType || !SUPPORTED_GMB_EVENT_TYPES.has(eventType)) {
+      logger.info('[GMB_WEBHOOK] ignored_event_type', { eventType });
       return ack(res, 'Ignored event type', { eventType });
     }
 
     if (!account || !location || !notification.review) {
+      logger.info('[GMB_WEBHOOK] incomplete_notification', { eventType, account, location });
       return ack(res, 'Incomplete notification — acknowledged');
     }
 
     const dedupeKey = buildGmbDedupeKey(account, location, notification.review);
     const isNew = await tryClaimWebhookDedupe(dedupeKey);
     if (!isNew) {
+      logger.info('[GMB_WEBHOOK] duplicate', { dedupeKey, eventType });
       tracker.finish('gmb', { dedupeKey, dedupeHit: true, skippedPublish: true });
       return ack(res, 'Duplicate — acknowledged', { dedupeKey });
     }
@@ -104,15 +123,23 @@ console.log({verification})
     tracker.markResolved();
 
     if (!ctx) {
+      logger.info('[GMB_WEBHOOK] no_linked_location', { account, location, eventType });
       tracker.finish('gmb', { dedupeKey, skippedPublish: true });
       return ack(res, 'No linked social/location — acknowledged', { account, location });
     }
 
     const devices = await resolveDevicesForUser(ctx.userId, deps.webhookConfig.deviceTarget);
-  
+
     const rating = parseStarRating(notification.starRating);
     const verifiedReview = ctx.verifiedReviewCount + (eventType === 'NEW_REVIEW' ? 1 : 0);
-    console.log({devices,rating,verifiedReview})
+    logger.info('[GMB_WEBHOOK] processing', {
+      eventType,
+      userId: ctx.userId,
+      deviceCount: devices.length,
+      rating,
+      verifiedReview,
+      mqttPublish: deps.webhookConfig.mqttPublishEnabled
+    });
     let published = false;
     let lastTopic: string | undefined;
     let lastClientId: string | undefined;
@@ -170,7 +197,16 @@ console.log({verification})
       topic: lastTopic,
       skippedPublish: !published && deps.webhookConfig.mqttPublishEnabled
     });
-console.log({tracker})
+    logger.info('[GMB_WEBHOOK] enqueued', {
+      eventType,
+      account,
+      location,
+      review: notification.review,
+      published,
+      clientId: lastClientId,
+      topic: lastTopic,
+      dedupeKey
+    });
     return ack(res, 'Enqueued review notification', {
       account,
       location,
