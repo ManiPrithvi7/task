@@ -23,9 +23,16 @@ export interface WebhookConfig {
 const GMB_WEBHOOK_PATH = '/api/webhooks/google-business-reviews';
 const SQUARE_WEBHOOK_PATH = '/api/pos-promotions/webhooks/square';
 
+const PUBLIC_BASE_URL_ENV_HINT =
+  'WEBHOOK_PUBLIC_BASE_URL (or NEXT_PUBLIC_MQTT_PUBLIC_URL, NEXT_PUBLIC_APP_URL, PUBLIC_APP_URL)';
+
 export function loadWebhookConfig(): WebhookConfig {
   const publicBaseUrl = (
-    process.env.PUBLIC_APP_URL || "https://server.withproof.io"
+    process.env.WEBHOOK_PUBLIC_BASE_URL ||
+    process.env.NEXT_PUBLIC_MQTT_PUBLIC_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.PUBLIC_APP_URL ||
+    ''
   ).replace(/\/+$/, '');
 
   // Prefer base URL + path (mirrors statsnapp's NEXT_PUBLIC_APP_URL + /api/webhooks/google-business-reviews).
@@ -74,7 +81,7 @@ export function validateWebhookConfig(config: WebhookConfig, env: string): void 
   if (env === 'production') {
     if (!config.publicBaseUrl) {
       throw new Error(
-        'WEBHOOK_PUBLIC_BASE_URL is required in production when webhooks are enabled (Square HMAC canonical URL).'
+        `${PUBLIC_BASE_URL_ENV_HINT} is required in production when webhooks are enabled (Square HMAC canonical URL).`
       );
     }
     if (!config.shopifyClientSecret) {
@@ -89,7 +96,7 @@ export function validateWebhookConfig(config: WebhookConfig, env: string): void 
     }
     if (!config.gmbPubsubAudience) {
       throw new Error(
-        'GMB_PUBSUB_AUDIENCE or WEBHOOK_PUBLIC_BASE_URL is required in production for GMB Pub/Sub push.'
+        `GMB_PUBSUB_AUDIENCE or ${PUBLIC_BASE_URL_ENV_HINT} is required in production for GMB Pub/Sub push.`
       );
     }
   }
