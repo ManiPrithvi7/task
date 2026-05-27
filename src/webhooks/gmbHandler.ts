@@ -170,7 +170,7 @@ console.log({verification})
       topic: lastTopic,
       skippedPublish: !published && deps.webhookConfig.mqttPublishEnabled
     });
-
+console.log({tracker})
     return ack(res, 'Enqueued review notification', {
       account,
       location,
