@@ -27,7 +27,7 @@ export function scheduleShopifyAsyncMetrics(
   });
 }
 
-async function runShopifyAsyncMetrics(userId: string, rawBody: string): Promise<void> {
+export async function runShopifyAsyncMetrics(userId: string, rawBody: string): Promise<void> {
   const body = JSON.parse(rawBody) as Record<string, unknown>;
 
   const financialStatus =

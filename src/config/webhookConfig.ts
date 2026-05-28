@@ -28,9 +28,6 @@ const PUBLIC_BASE_URL_ENV_HINT =
 
 export function loadWebhookConfig(): WebhookConfig {
   const publicBaseUrl = (
-    process.env.WEBHOOK_PUBLIC_BASE_URL ||
-    process.env.NEXT_PUBLIC_MQTT_PUBLIC_URL ||
-    process.env.NEXT_PUBLIC_APP_URL ||
     process.env.PUBLIC_APP_URL ||
     ''
   ).replace(/\/+$/, '');

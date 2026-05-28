@@ -13,6 +13,7 @@ jest.mock('./resolve/squareMerchant', () => ({ resolveSquareUserId: jest.fn() })
 jest.mock('./resolve/resolveDevices', () => ({ resolveDevicesForUser: jest.fn().mockResolvedValue([]) }));
 jest.mock('./delivery/publishPosScreen', () => ({ publishPosScreen: jest.fn() }));
 jest.mock('./shopifyAsyncMetrics', () => ({ scheduleShopifyAsyncMetrics: jest.fn() }));
+jest.mock('./squareAsyncMetrics', () => ({ scheduleSquareAsyncMetrics: jest.fn() }));
 
 const mockVerifyShopify = shopifySquare.verifyShopifyIngress as jest.MockedFunction<
   typeof shopifySquare.verifyShopifyIngress
