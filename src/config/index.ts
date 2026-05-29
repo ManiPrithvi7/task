@@ -296,6 +296,17 @@ export interface ProvisioningConfig {
   requireMtlsForRegistration: boolean;
   /** Certificate Common Name (CN) prefix for devices (e.g. 'PROOF_') */
   cnPrefix: string;
+  /** CN format: legacy (PROOF-deviceId) or structured (PROOF-order-batch-device) */
+  cnFormat: 'legacy' | 'structured';
+  /** PKI governance: hash-chained audit log (AuditService) */
+  auditLogEnabled: boolean;
+  /** PKI governance: certificate transparency Merkle log (requires Influx at runtime) */
+  transparencyLogEnabled: boolean;
+  /** Deferred enforce mode — default false (audit-only rollout) */
+  enforceRuntimeKuEku: boolean;
+  /** Validate cert chains to root CA at registration (default true) */
+  chainValidationEnabled: boolean;
+  intermediateCAEnabled: boolean;
   /** Certificate profile for signing and validation */
   certProfile?: {
     validityDays: number;
@@ -576,8 +587,13 @@ export function loadConfig(): AppConfig {
       deviceCertValidityDays: parseInt(process.env.DEVICE_CERT_VALIDITY_DAYS || '90'),
       certificateDbPath: process.env.CERTIFICATE_DB_PATH || `${dataDir}/certificates.db`,
       requireMtlsForRegistration: process.env.REQUIRE_MTLS_FOR_REGISTRATION !== 'false',  // Default true: only provisioned devices can register
-      cnPrefix: process.env.CERT_CN_PREFIX || 'PROOF_'
-      ,
+      cnPrefix: process.env.CERT_CN_PREFIX || 'PROOF_',
+      cnFormat: process.env.CERT_CN_FORMAT === 'structured' ? 'structured' : 'legacy',
+      auditLogEnabled: process.env.PKI_AUDIT_LOG_ENABLED !== 'false',
+      transparencyLogEnabled: process.env.TRANSPARENCY_LOG_ENABLED !== 'false',
+      enforceRuntimeKuEku: process.env.ENFORCE_RUNTIME_KU_EKU !== 'false',
+      chainValidationEnabled: process.env.CHAIN_VALIDATION_ENABLED !== 'false',
+      intermediateCAEnabled: process.env.INTERMEDIATE_CA_ENABLED === 'true',
       certProfile: {
         validityDays: parseInt(process.env.CERT_VALIDITY_DAYS || String(process.env.DEVICE_CERT_VALIDITY_DAYS || '90'), 10),
         keyUsage: (process.env.CERT_KEY_USAGE || 'digitalSignature,keyEncipherment').split(',').map(s => s.trim()).filter(Boolean),

@@ -359,10 +359,29 @@ export class CAService {
 
       const fingerprint = this.generateCertificateFingerprint(certificatePem);
 
-      // Audit helper: record certificate events to DB collection or append to audit log file
-      const audit = async (event: string, details: any) => {
+      const audit = async (event: string, details: Record<string, unknown>) => {
         try {
-          const mongooseConnected = mongoose.connection && (mongoose.connection.readyState === 1);
+          const { getAuditService, AuditEventType } = await import('./auditService');
+          const auditService = getAuditService();
+          if (auditService) {
+            const eventMap: Record<string, (typeof AuditEventType)[keyof typeof AuditEventType]> = {
+              CERT_ISSUED_IN_MEMORY: AuditEventType.CERTIFICATE_ISSUED_IN_MEMORY,
+              CERT_REPLACED: AuditEventType.CERTIFICATE_REPLACED,
+              CERT_ISSUED: AuditEventType.CERTIFICATE_ISSUED
+            };
+            await auditService.logEvent({
+              event: eventMap[event] ?? AuditEventType.CERTIFICATE_ISSUED,
+              deviceId,
+              userId,
+              serialNumber: typeof details.serialNumber === 'string' ? details.serialNumber : undefined,
+              certificateFingerprint:
+                typeof details.fingerprint === 'string' ? details.fingerprint : fingerprint,
+              details
+            });
+            return;
+          }
+
+          const mongooseConnected = mongoose.connection && mongoose.connection.readyState === 1;
           const entry = {
             event,
             deviceId,
@@ -377,9 +396,63 @@ export class CAService {
             fs.mkdirSync(path.dirname(logPath), { recursive: true });
             fs.appendFileSync(logPath, JSON.stringify(entry) + '\n', { encoding: 'utf8' });
           }
-        } catch (err: any) {
-          logger.warn('Failed to write audit log', { error: err?.message ?? String(err) });
+        } catch (err: unknown) {
+          logger.warn('Failed to write audit log', {
+            error: err instanceof Error ? err.message : String(err)
+          });
         }
+      };
+
+      const recordTransparency = async (issuedAt: Date) => {
+        const { getTransparencyLog } = await import('./transparencyLog');
+        const transparencyLog = getTransparencyLog();
+        if (!transparencyLog) return;
+
+        const ctResult = await transparencyLog.addEntry(
+          fingerprint,
+          cert.serialNumber,
+          cn,
+          deviceId,
+          issuedAt
+        );
+
+        const { getAuditService, AuditEventType } = await import('./auditService');
+        const auditServiceForCt = getAuditService();
+        if (!auditServiceForCt) return;
+
+        if (ctResult === null) {
+          logger.warn(
+            `[PKI] CT transparency entry FAILED for device=${deviceId} serial=${cert.serialNumber}. Certificate issued but ct_log not updated.`
+          );
+          await auditServiceForCt.logEvent({
+            event: AuditEventType.TRANSPARENCY_ENTRY_FAILED,
+            deviceId,
+            serialNumber: cert.serialNumber,
+            certificateFingerprint: fingerprint,
+            details: {
+              serialNumber: cert.serialNumber,
+              fingerprint,
+              cn,
+              reason: 'addEntry() returned null'
+            }
+          });
+          return;
+        }
+
+        await auditServiceForCt.logEvent({
+          event: AuditEventType.TRANSPARENCY_ENTRY_ADDED,
+          deviceId,
+          serialNumber: cert.serialNumber,
+          certificateFingerprint: fingerprint,
+          details: {
+            serialNumber: cert.serialNumber,
+            fingerprint,
+            cn,
+            ctIndex: ctResult.index,
+            rootHash: ctResult.rootHash,
+            inclusionProof: ctResult.inclusionProof
+          }
+        });
       };
       
       const slot = this.normalizeSlot(opts?.slot);
@@ -413,7 +486,13 @@ export class CAService {
           serialNumber: cert.serialNumber,
           expiresAt: notAfter.toISOString()
         });
-        await audit('CERT_ISSUED_IN_MEMORY', { serialNumber: cert.serialNumber, cn, expiresAt: notAfter.toISOString() });
+        await audit('CERT_ISSUED_IN_MEMORY', {
+          serialNumber: cert.serialNumber,
+          cn,
+          fingerprint,
+          expiresAt: notAfter.toISOString()
+        });
+        await recordTransparency(notBefore);
         return mockDoc as IDeviceCertificate;
       }
 
@@ -476,7 +555,14 @@ export class CAService {
         }
       }
 
-      await audit('CERT_ISSUED', { certificateId: certDoc._id, serialNumber: cert.serialNumber, cn, expiresAt: notAfter.toISOString() });
+      await audit('CERT_ISSUED', {
+        certificateId: certDoc._id,
+        serialNumber: cert.serialNumber,
+        cn,
+        fingerprint,
+        expiresAt: notAfter.toISOString()
+      });
+      await recordTransparency(notBefore);
 
       logger.info('CSR signed and certificate stored in MongoDB', {
         deviceId,

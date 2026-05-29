@@ -18,6 +18,8 @@ import { MongoService, createMongoService } from './services/mongoService';
 import { RedisService, createRedisService } from './services/redisService';
 import { DeviceService, getActiveDeviceCache, ActiveDeviceCache, type ActiveDevice } from './services/deviceService';
 import { InfluxService, createInfluxService, resetInfluxService } from './services/influxService';
+import { AuditService, createAuditService } from './services/auditService';
+import { TransparencyLog, createTransparencyLog } from './services/transparencyLog';
 import {
   InstagramServerlessBridge,
   InstagramDirectFetchInvoker,
@@ -46,6 +48,9 @@ import * as path from 'path';
 import * as forge from 'node-forge';
 import mongoose from 'mongoose';
 import { caForBrokerTls } from './utils/tlsBrokerCa';
+import { validateKeyUsageAndEKU } from './utils/certValidator';
+import { validateCertificateChain } from './services/chainValidator';
+import { getAuditService, AuditEventType } from './services/auditService';
 
 export class StatsMqttLite {
   private config: AppConfig;
@@ -80,6 +85,8 @@ export class StatsMqttLite {
   private instagramServerlessBridge?: InstagramServerlessBridge;
   private instagramPoller?: InstagramPoller;
   private influxService?: InfluxService;
+  private auditService?: AuditService;
+  private transparencyLog?: TransparencyLog;
 
   // Active device cache (Redis-backed)
   private activeDeviceCache!: ActiveDeviceCache;
@@ -180,6 +187,7 @@ export class StatsMqttLite {
         logger.info('📈 Initializing InfluxDB...');
       }
       await this.initializeInfluxDB();
+      await this.initializePkiGovernance();
 
       // Initialize provisioning services (if enabled)
       await this.initializeProvisioning();
@@ -389,6 +397,42 @@ export class StatsMqttLite {
       this.influxService = undefined;
       throw err;
     }
+  }
+
+  /**
+   * PKI governance (audit-only rollout): hash-chained audit log + optional CT log.
+   * Rollback: set PKI_AUDIT_LOG_ENABLED=false and TRANSPARENCY_LOG_ENABLED=false, redeploy.
+   */
+  private async initializePkiGovernance(): Promise<void> {
+    if (!this.config.provisioning.auditLogEnabled) {
+      logger.info('PKI audit log disabled (PKI_AUDIT_LOG_ENABLED=false)');
+      return;
+    }
+
+    const fallbackLogPath = path.join(
+      this.config.provisioning.caStoragePath,
+      'audit.log'
+    );
+
+    this.auditService = createAuditService({ fallbackLogPath });
+    await this.auditService.initialize();
+    logger.info('PKI AuditService initialized (hash-chain)');
+
+    if (!this.config.provisioning.transparencyLogEnabled) {
+      logger.info('PKI transparency log disabled (TRANSPARENCY_LOG_ENABLED=false)');
+      return;
+    }
+
+    if (!this.influxService) {
+      logger.warn(
+        'TRANSPARENCY_LOG_ENABLED=true but InfluxDB unavailable — CT log disabled (audit log still active via file fallback)'
+      );
+      return;
+    }
+
+    this.transparencyLog = createTransparencyLog({ enabled: true });
+    await this.transparencyLog.initialize();
+    logger.info('PKI TransparencyLog initialized (Merkle tree → Influx ct_log)');
   }
 
   private async initializeInstagramPoller(): Promise<void> {
@@ -886,40 +930,160 @@ export class StatsMqttLite {
 
   /**
    * Validates that the device is allowed for mTLS-aligned registration (has active provisioned certificate).
-   * When requireMtlsForRegistration is true and caService is available, only devices with an active cert can register.
-   * @returns true if registration/request is allowed, false if device must be rejected
+   * Enforces CN match, optional KU/EKU, and chain validation when enabled in config.
    */
   private async ensureDeviceProvisioned(deviceId: string): Promise<boolean> {
     if (!this.config.provisioning.requireMtlsForRegistration) {
       return true;
     }
     if (!this.caService) {
-      return true; // No CA service: cannot enforce; allow (e.g. provisioning disabled)
+      return true;
     }
-    // Renewal overlap: allow either primary or staging to be treated as provisioned.
-    const cert = await this.caService.findActiveCertificateByDeviceId(deviceId, { slots: ['primary', 'staging'] });
-    if (!cert) return false;
 
-    // Validate certificate CN matches expected prefix + deviceId
+    const cert = await this.caService.findActiveCertificateByDeviceId(deviceId, {
+      slots: ['primary', 'staging']
+    });
+    if (!cert) {
+      const auditSvc = getAuditService();
+      if (auditSvc) {
+        await auditSvc
+          .logEvent({
+            event: AuditEventType.DEVICE_AUTH_FAILED,
+            deviceId,
+            details: { reason: 'NO_ACTIVE_CERTIFICATE' }
+          })
+          .catch(() => undefined);
+      }
+      return false;
+    }
+
+    const certSlot = cert.slot ?? 'primary';
+
     let expectedCN: string;
     try {
-      expectedCN = this.caService ? (this.caService as any).formatExpectedCN(deviceId) : (() => {
-        const prefix = this.config.provisioning.cnPrefix || process.env.CERT_CN_PREFIX || 'PROOF';
-        const normalizedPrefix = String(prefix).trim().replace(/[-_]+$/g, '');
-        const device = String(deviceId).replace(new RegExp(`^${normalizedPrefix}[-_]*`), '');
-        return `${normalizedPrefix}-${device}`;
-      })();
+      expectedCN = this.caService.formatExpectedCN(deviceId);
     } catch {
       const prefix = this.config.provisioning.cnPrefix || process.env.CERT_CN_PREFIX || 'PROOF';
       expectedCN = `${String(prefix).trim()}-${deviceId}`;
     }
+
     if (cert.cn !== expectedCN) {
       logger.warn('Certificate CN mismatch for device - provisioning rejected', {
         deviceId,
         expectedCN,
         certCN: cert.cn
       });
+      const auditSvc = getAuditService();
+      if (auditSvc) {
+        await auditSvc
+          .logEvent({
+            event: AuditEventType.DEVICE_AUTH_FAILED,
+            deviceId,
+            certificateFingerprint: cert.fingerprint,
+            details: { reason: 'CN_MISMATCH', expectedCN, certCN: cert.cn }
+          })
+          .catch(() => undefined);
+      }
       return false;
+    }
+
+    if (this.config.provisioning.enforceRuntimeKuEku && cert.certificate) {
+      const kuResult = validateKeyUsageAndEKU(cert.certificate);
+      if (!kuResult.valid) {
+        logger.warn('[PKI:KU_EKU] Certificate validation failed — rejecting', {
+          deviceId,
+          errors: kuResult.errors
+        });
+        const auditSvc = getAuditService();
+        if (auditSvc) {
+          await auditSvc
+            .logEvent({
+              event: AuditEventType.KU_EKU_VALIDATION_FAILED,
+              deviceId,
+              certificateFingerprint: cert.fingerprint,
+              details: {
+                reason: 'KU_EKU_INVALID',
+                errors: kuResult.errors,
+                missingExtensions: kuResult.errors.filter((e) => e.includes('missing')),
+                hasDigitalSignature: kuResult.hasDigitalSignature,
+                hasClientAuth: kuResult.hasClientAuth,
+                hasProhibitedKeyCertSign: kuResult.hasProhibitedKeyCertSign,
+                slot: certSlot
+              }
+            })
+            .catch(() => undefined);
+        }
+        return false;
+      }
+    }
+
+    if (
+      this.config.provisioning.chainValidationEnabled &&
+      cert.certificate &&
+      cert.ca_certificate
+    ) {
+      try {
+        const rootCAPem = this.caService.getRootCACertificate();
+        const chainResult = validateCertificateChain(cert.certificate, [], rootCAPem);
+        if (!chainResult.valid) {
+          logger.warn('[PKI:CHAIN] Certificate chain validation failed — rejecting', {
+            deviceId,
+            errors: chainResult.errors
+          });
+          const auditSvc = getAuditService();
+          if (auditSvc) {
+            await auditSvc
+              .logEvent({
+                event: AuditEventType.CHAIN_VALIDATION_FAILED,
+                deviceId,
+                certificateFingerprint: cert.fingerprint,
+                details: {
+                  reason: 'CHAIN_INVALID',
+                  failurePoint: chainResult.errors[0] ?? 'unknown',
+                  errors: chainResult.errors,
+                  chainSubjects: chainResult.chainSubjects,
+                  slot: certSlot
+                }
+              })
+              .catch(() => undefined);
+          }
+          return false;
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.error('[PKI:CHAIN] Chain validation error — rejecting', {
+          deviceId,
+          error: msg
+        });
+        const auditSvc = getAuditService();
+        if (auditSvc) {
+          await auditSvc
+            .logEvent({
+              event: AuditEventType.CHAIN_VALIDATION_FAILED,
+              deviceId,
+              certificateFingerprint: cert.fingerprint,
+              details: { reason: 'CHAIN_VALIDATION_ERROR', failurePoint: msg, slot: certSlot }
+            })
+            .catch(() => undefined);
+        }
+        return false;
+      }
+    }
+
+    const auditSvc = getAuditService();
+    if (auditSvc) {
+      await auditSvc
+        .logEvent({
+          event: AuditEventType.DEVICE_AUTH_SUCCESS,
+          deviceId,
+          certificateFingerprint: cert.fingerprint,
+          details: {
+            slot: certSlot,
+            cn: cert.cn,
+            expiresAt: cert.expires_at?.toISOString?.() ?? String(cert.expires_at)
+          }
+        })
+        .catch(() => undefined);
     }
 
     return true;
