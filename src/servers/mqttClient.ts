@@ -1,4 +1,5 @@
 import mqtt, { MqttClient, IClientOptions, IPublishPacket } from 'mqtt';
+import * as dns from 'dns';
 import * as tls from 'tls';
 import { EventEmitter } from 'events';
 import { logger } from '../utils/logger';
@@ -13,6 +14,15 @@ export interface MqttConfig {
   password?: string;
   topicPrefix: string;
   topicRoot: string;
+  /** mqtt.js reconnect interval in ms (default 2000). */
+  reconnectPeriod?: number;
+  /**
+   * Custom reconnect cap before calling client.end(true).
+   * 0 = infinite retries (cap bypassed entirely; mqtt.js keeps reconnecting).
+   */
+  maxReconnectAttempts?: number;
+  /** Pre-resolve broker hostname before connect (adds startup latency). */
+  dnsPreflightEnabled?: boolean;
   tls?: {
     enabled?: boolean;
     /** Filled from env → DATA_DIR/.mqtt-tls/ at config load (see config/index.ts). */
@@ -53,7 +63,7 @@ export class MqttClientManager extends EventEmitter {
   private config: MqttConfig;
   private messageHandlers: Map<string, MessageHandler> = new Map();
   private reconnectAttempts: number = 0;
-  private maxReconnectAttempts: number = 10;
+  private maxReconnectAttempts: number;
   private pendingAcks: Map<number, PendingAck> = new Map();
   private recentPublishes: Map<string, { timestamp: number; metadata: PublishMetadata }> = new Map();
   private readonly ECHO_WINDOW_MS = 2000;
@@ -64,6 +74,8 @@ export class MqttClientManager extends EventEmitter {
   constructor(config: MqttConfig) {
     super();
     this.config = config;
+    // 0 = infinite — custom reconnect cap in `reconnect` handler is bypassed when 0.
+    this.maxReconnectAttempts = config.maxReconnectAttempts ?? 0;
   }
 
   setDeviceCallbacks(
@@ -75,12 +87,16 @@ export class MqttClientManager extends EventEmitter {
   }
 
   async connect(): Promise<void> {
+    if (this.config.dnsPreflightEnabled) {
+      await this.resolveBrokerDns();
+    }
+
     return new Promise((resolve, reject) => {
       const options: IClientOptions = {
         clientId: this.config.clientId,
         clean: true,
         connectTimeout: 30000,
-        reconnectPeriod: 1000,
+        reconnectPeriod: this.config.reconnectPeriod ?? 2000,
         keepalive: 45,
         protocolVersion: 5
       };
@@ -157,22 +173,28 @@ export class MqttClientManager extends EventEmitter {
 
       this.client.on('reconnect', () => {
         this.reconnectAttempts++;
-        if (this.reconnectAttempts > this.maxReconnectAttempts) {
-          logger.error('Max reconnect attempts reached - stopping reconnect');
+        // maxReconnectAttempts === 0 means infinite — never call client.end(true).
+        if (this.maxReconnectAttempts > 0 && this.reconnectAttempts > this.maxReconnectAttempts) {
+          logger.warn('Max reconnect attempts reached - stopping reconnect', {
+            attempt: this.reconnectAttempts,
+            maxAttempts: this.maxReconnectAttempts
+          });
           this.client?.end(true);
         } else {
           logger.debug('Attempting to reconnect to MQTT broker...', {
             attempt: this.reconnectAttempts,
-            maxAttempts: this.maxReconnectAttempts
+            maxAttempts: this.maxReconnectAttempts === 0 ? 'infinite' : this.maxReconnectAttempts
           });
         }
       });
 
       this.client.on('close', () => {
+        this.clearPendingAcks('close');
         logger.debug('MQTT connection closed - will reconnect automatically');
       });
 
       this.client.on('offline', () => {
+        this.clearPendingAcks('offline');
         logger.debug('MQTT client is offline - reconnecting...');
       });
 
@@ -277,7 +299,7 @@ export class MqttClientManager extends EventEmitter {
 
   async publish(message: MqttMessage, metadata?: PublishMetadata): Promise<void> {
     return new Promise((resolve, reject) => {
-      if (!this.client) {
+      if (!this.client || !this.isConnected()) {
         reject(new Error('MQTT client not connected'));
         return;
       }
@@ -409,10 +431,7 @@ export class MqttClientManager extends EventEmitter {
 
   async disconnect(): Promise<void> {
     return new Promise((resolve) => {
-      for (const pending of this.pendingAcks.values()) {
-        clearTimeout(pending.timeout);
-      }
-      this.pendingAcks.clear();
+      this.clearPendingAcks('disconnect');
       this.recentPublishes.clear();
 
       if (this.client) {
@@ -426,6 +445,39 @@ export class MqttClientManager extends EventEmitter {
     });
   }
 
+  private clearPendingAcks(reason: string): void {
+    for (const [messageId, pending] of this.pendingAcks.entries()) {
+      clearTimeout(pending.timeout);
+      logger.debug('Cleared pending PUBACK timer', { messageId, reason });
+    }
+    this.pendingAcks.clear();
+  }
+
+  private async resolveBrokerDns(maxAttempts = 5): Promise<void> {
+    const hostname = this.config.broker;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        await dns.promises.lookup(hostname);
+        logger.debug('MQTT broker DNS preflight succeeded', { hostname, attempt });
+        return;
+      } catch (err: unknown) {
+        const code = (err as NodeJS.ErrnoException)?.code;
+        if (code === 'EAI_AGAIN' && attempt < maxAttempts) {
+          const delayMs = 1000 * Math.pow(2, attempt);
+          logger.warn('MQTT broker DNS lookup failed, retrying', {
+            hostname,
+            attempt,
+            maxAttempts,
+            delayMs
+          });
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+          continue;
+        }
+        throw err;
+      }
+    }
+  }
+
   private trackQoS1Message(packet: any): void {
     const deviceId = this.extractDeviceIdFromTopic(packet.topic);
     if (!deviceId) return;
@@ -433,6 +485,16 @@ export class MqttClientManager extends EventEmitter {
     const messageId = packet.messageId;
 
     const timeout = setTimeout(() => {
+      if (!this.isConnected()) {
+        logger.debug('QoS1 PUBACK pending but MQTT offline — skip inactive mark', {
+          deviceId,
+          messageId,
+          topic: packet.topic
+        });
+        this.pendingAcks.delete(messageId);
+        return;
+      }
+
       logger.warn('QoS 1 PUBACK timeout - marking device inactive', {
         deviceId,
         topic: packet.topic,

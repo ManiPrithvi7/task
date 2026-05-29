@@ -123,6 +123,11 @@ export class StatsPublisher {
 
   private async publishAllScreens(): Promise<void> {
     try {
+      if (!this.mqttClient.isConnected()) {
+        logger.debug('Skipping stats publish cycle — MQTT not connected');
+        return;
+      }
+
       await this.cleanupInactiveDeviceState();
 
       // Read active devices from Redis (zero MongoDB queries)
@@ -468,6 +473,11 @@ export class StatsPublisher {
   }
 
   private async publishTestGmb(deviceId: string, root: string): Promise<void> {
+    if (!this.mqttClient.isConnected()) {
+      logger.debug('Skipping test-gmb publish — MQTT not connected', { deviceId });
+      return;
+    }
+
     const state = this.ensureDeviceState(deviceId);
     const cycle = state.gmbTest.testGmbCycle % 2;
     const innerPayload = cycle === 0 ? TEST_GMB_STATIC_PAYLOAD_A : TEST_GMB_STATIC_PAYLOAD_B;

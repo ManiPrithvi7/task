@@ -257,6 +257,12 @@ export interface MqttConfig {
   topicPrefix: string;
   /** Topic root for device topics (e.g. proof.mqtt). Used for proof.mqtt/device_123/active, instagram, gmb, pos. */
   topicRoot: string;
+  /** mqtt.js reconnect interval in ms (default 2000). */
+  reconnectPeriod?: number;
+  /** Custom reconnect cap; 0 = infinite (see mqttClient.ts). */
+  maxReconnectAttempts?: number;
+  /** Pre-resolve broker hostname before connect (MQTT_DNS_PREFLIGHT_ENABLED=true). */
+  dnsPreflightEnabled?: boolean;
   /** TLS / mTLS configuration for connecting to MQTT broker (optional) */
   tls?: {
     enabled?: boolean;
@@ -551,6 +557,9 @@ export function loadConfig(): AppConfig {
       authX509Only,
       topicPrefix: process.env.MQTT_TOPIC_PREFIX || '',
       topicRoot: process.env.MQTT_TOPIC_ROOT || 'proof.mqtt',
+      reconnectPeriod: parseInt(process.env.MQTT_RECONNECT_PERIOD || '2000', 10),
+      maxReconnectAttempts: parseInt(process.env.MQTT_MAX_RECONNECT_ATTEMPTS ?? '0', 10),
+      dnsPreflightEnabled: process.env.MQTT_DNS_PREFLIGHT_ENABLED === 'true',
       tls: {
         enabled: tlsEnabled,
         caPem: caPemResolved,

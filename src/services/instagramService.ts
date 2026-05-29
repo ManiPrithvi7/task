@@ -1477,8 +1477,45 @@ export class InstagramPoller {
     return this.running && this.scriptsReady && this.redisService.isRedisConnected();
   }
 
+  private isRedisReady(): boolean {
+    return this.redisService.isRedisConnected();
+  }
+
+  private isTransientRedisError(err: unknown): boolean {
+    const code = (err as NodeJS.ErrnoException)?.code;
+    return code === 'ECONNRESET' || code === 'NR_CLOSED' || code === 'ECONNREFUSED';
+  }
+
+  private logSchedulerError(scope: string, err: unknown): void {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (this.isTransientRedisError(err)) {
+      logger.debug(`[IG_POLLER] ${scope} transient Redis error`, {
+        error: msg,
+        code: (err as NodeJS.ErrnoException)?.code
+      });
+    } else {
+      logger.error(`[IG_POLLER] ${scope} error`, { error: msg });
+    }
+  }
+
+  private async safeRedisCall<T>(label: string, fn: () => Promise<T>, fallback: T): Promise<T> {
+    try {
+      return await fn();
+    } catch (err: unknown) {
+      if (this.isTransientRedisError(err)) {
+        logger.debug('[IG_POLLER] Redis transient error, using fallback', {
+          label,
+          code: (err as NodeJS.ErrnoException)?.code
+        });
+        return fallback;
+      }
+      throw err;
+    }
+  }
+
   private async priorityScheduler(): Promise<void> {
     if (!this.canRun()) return;
+    if (!this.isRedisReady()) return;
     const fetchInvoker = this.fetchInvoker;
     if (!fetchInvoker?.isConfigured()) return;
 
@@ -1491,7 +1528,11 @@ export class InstagramPoller {
       }
 
       const redis = this.redisService.getClient();
-      let active = await evalAtomicPriorityReadAndPruneEvalSha(redis, Date.now());
+      let active = await this.safeRedisCall(
+        'priorityReadPrune',
+        () => evalAtomicPriorityReadAndPruneEvalSha(redis, Date.now()),
+        [] as string[]
+      );
       if (active.length === 0) return;
       const cap = this.config.priorityCapPerCycle;
       if (cap > 0 && active.length > cap) {
@@ -1526,12 +1567,13 @@ export class InstagramPoller {
         }
       }
     } catch (err: unknown) {
-      logger.error('[IG_POLLER] Priority scheduler error', { error: err instanceof Error ? err.message : String(err) });
+      this.logSchedulerError('Priority scheduler', err);
     }
   }
 
   private async backgroundScheduler(): Promise<void> {
     if (!this.canRun()) return;
+    if (!this.isRedisReady()) return;
     const fetchInvoker = this.fetchInvoker;
     if (!fetchInvoker?.isConfigured()) return;
 
@@ -1553,7 +1595,11 @@ export class InstagramPoller {
 
       // Subtract devices currently in the active priority window (Redis zset).
       // IMPORTANT: do NOT use evalAtomicPriorityReadAndPruneEvalSha here; it is destructive (prunes the zset).
-      const priorityActive = await redis.zRangeByScore(REDIS_KEYS.priorityZset, nowMs, '+inf');
+      const priorityActive = await this.safeRedisCall(
+        'priorityZset',
+        () => redis.zRangeByScore(REDIS_KEYS.priorityZset, nowMs, '+inf'),
+        [] as string[]
+      );
       const prioritySet = new Set(priorityActive);
       const devicesRaw = allDeviceIds.filter((id) => !prioritySet.has(id));
 
@@ -1587,7 +1633,7 @@ export class InstagramPoller {
         }
       }
     } catch (err: unknown) {
-      logger.error('[IG_POLLER] Background scheduler error', { error: err instanceof Error ? err.message : String(err) });
+      this.logSchedulerError('Background scheduler', err);
     }
   }
 }
