@@ -1,9 +1,13 @@
 import mqtt, { MqttClient, IClientOptions, IPublishPacket } from 'mqtt';
 import * as dns from 'dns';
-import * as tls from 'tls';
 import { EventEmitter } from 'events';
 import { logger } from '../utils/logger';
-import { caForBrokerTls } from '../utils/tlsBrokerCa';
+import {
+  applyMqttJsTlsOptions,
+  normalizeTlsPem,
+  resolveMqttTcpHost,
+  type MqttTlsConnectMaterial
+} from '../utils/mqttTlsOptions';
 
 export interface MqttConfig {
   broker: string;
@@ -91,6 +95,33 @@ export class MqttClientManager extends EventEmitter {
       await this.resolveBrokerDns();
     }
 
+    const tlsCfg = this.config.tls;
+    if (!tlsCfg?.enabled) {
+      throw new Error('mTLS-only MQTT: TLS is required (no plaintext fallback)');
+    }
+    const caPem = tlsCfg.caPem;
+    const clientCertPem = tlsCfg.clientCertPem;
+    const clientKeyPem = tlsCfg.clientKeyPem;
+    if (!caPem?.includes('-----BEGIN')) {
+      throw new Error('mTLS-only MQTT: missing broker CA PEM');
+    }
+    if (!clientCertPem?.includes('-----BEGIN')) {
+      throw new Error('mTLS-only MQTT: missing client certificate PEM');
+    }
+    if (!clientKeyPem?.includes('-----BEGIN')) {
+      throw new Error('mTLS-only MQTT: missing client private key PEM');
+    }
+
+    const servername = tlsCfg.servername || this.config.broker;
+    const { connectHost, brokerHost } = await resolveMqttTcpHost(this.config.broker, servername);
+    const tlsMaterial: MqttTlsConnectMaterial = {
+      caPem,
+      clientCertPem,
+      clientKeyPem,
+      rejectUnauthorized: tlsCfg.rejectUnauthorized !== false,
+      servername
+    };
+
     return new Promise((resolve, reject) => {
       const options: IClientOptions = {
         clientId: this.config.clientId,
@@ -107,53 +138,34 @@ export class MqttClientManager extends EventEmitter {
         if (this.config.password) options.password = this.config.password;
       }
 
-      const tlsCfg = this.config.tls;
-      if (!tlsCfg?.enabled) {
-        reject(new Error('mTLS-only MQTT: TLS is required (no plaintext fallback)'));
-        return;
-      }
-
-      // Enforce mTLS-only connection (no fallback to mqtt://)
-      let brokerUrl = `mqtts://${this.config.broker}:${this.config.port}`;
       try {
-        if (!tlsCfg.caPem?.includes('-----BEGIN')) {
-          throw new Error('mTLS-only MQTT: missing broker CA PEM');
-        }
-        if (!tlsCfg.clientCertPem?.includes('-----BEGIN')) {
-          throw new Error('mTLS-only MQTT: missing client certificate PEM');
-        }
-        if (!tlsCfg.clientKeyPem?.includes('-----BEGIN')) {
-          throw new Error('mTLS-only MQTT: missing client private key PEM');
-        }
-
-        options.ca = caForBrokerTls(tlsCfg.caPem);
-        options.cert = tlsCfg.clientCertPem;
-        options.key = tlsCfg.clientKeyPem;
-
-        options.rejectUnauthorized = tlsCfg.rejectUnauthorized !== false;
-        if (tlsCfg.servername) {
-          (options as any).servername = tlsCfg.servername;
-        }
-        // mqtt.js overwrites servername with the URL hostname in connect/tls.js (buildStream),
-        // so TLS hostname verification uses MQTT_BROKER even when MQTT_TLS_SERVERNAME is set.
-        // Pin verification to the cert identity (e.g. nanomq-broker) when they differ (Railway TCP proxy).
-        const expectedServerName = tlsCfg.servername?.trim();
-        if (expectedServerName && expectedServerName !== this.config.broker) {
-          (options as any).checkServerIdentity = (_hostname: string, cert: tls.PeerCertificate) =>
-            tls.checkServerIdentity(expectedServerName, cert);
-        }
-      } catch (err: any) {
+        applyMqttJsTlsOptions(options, tlsMaterial, connectHost, brokerHost);
+      } catch (err: unknown) {
         reject(err instanceof Error ? err : new Error(String(err)));
         return;
       }
+
+      const brokerUrl = `mqtts://${connectHost}:${this.config.port}`;
       logger.info('Connecting to MQTT broker...', {
-        broker: this.config.broker,
+        broker: brokerHost,
+        connectHost,
         port: this.config.port,
+        tlsServername: servername,
         clientId: this.config.clientId,
+        caPemBytes: normalizeTlsPem(caPem).length,
+        clientCertPemBytes: normalizeTlsPem(clientCertPem).length,
         mqttAuth: x509Only ? 'X.509 only (no CONNECT username/password)' : 'username/password if configured'
       });
 
       this.client = mqtt.connect(brokerUrl, options);
+
+      const deferStartup = process.env.MQTT_CONNECT_DEFERRED === 'true';
+      let settled = false;
+      const finishConnect = () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
 
       this.client.on('connect', () => {
         this.reconnectAttempts = 0;
@@ -161,12 +173,20 @@ export class MqttClientManager extends EventEmitter {
           broker: this.config.broker,
           clientId: this.config.clientId
         });
-        resolve();
+        finishConnect();
       });
+
+      if (deferStartup) {
+        logger.warn(
+          'MQTT_CONNECT_DEFERRED=true — HTTP/API will start; MQTT keeps retrying in background (Railway proxy TLS may need broker.withproof.io:8883 or NanoMQ cert redeploy).'
+        );
+        setTimeout(finishConnect, 500);
+      }
 
       this.client.on('error', (error) => {
         logger.error('MQTT client error', { error: error.message });
-        if (this.reconnectAttempts === 0) {
+        const deferStartup = process.env.MQTT_CONNECT_DEFERRED === 'true';
+        if (this.reconnectAttempts === 0 && !deferStartup) {
           reject(error);
         }
       });

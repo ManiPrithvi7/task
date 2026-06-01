@@ -48,7 +48,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as forge from 'node-forge';
 import mongoose from 'mongoose';
-import { caForBrokerTls } from './utils/tlsBrokerCa';
+import {
+  buildNodeTlsConnectOptions,
+  normalizeTlsPem,
+  resolveMqttTcpHost,
+  type MqttTlsConnectMaterial
+} from './utils/mqttTlsOptions';
 import { validateKeyUsageAndEKU } from './utils/certValidator';
 import { validateCertificateChain } from './services/chainValidator';
 import { getAuditService, AuditEventType } from './services/auditService';
@@ -599,10 +604,14 @@ export class StatsMqttLite {
    * to validate server certificate and CA. Throws on failure.
    */
   private async verifyBrokerConnectivity(): Promise<void> {
+    if (process.env.MQTT_TLS_SKIP_PRECHECK === 'true') {
+      logger.warn('MQTT TLS pre-check skipped (MQTT_TLS_SKIP_PRECHECK=true)');
+      return;
+    }
+
     const broker = this.config.mqtt.broker;
     const port = this.config.mqtt.port;
 
-    // DNS lookup
     try {
       const lookup = await dns.promises.lookup(broker);
       logger.info('Broker DNS resolved', { broker, address: lookup.address });
@@ -617,79 +626,81 @@ export class StatsMqttLite {
       return;
     }
 
-    const caPem = tlsCfg.caPem?.includes('-----BEGIN') ? tlsCfg.caPem : undefined;
-
-    if (!caPem?.includes('-----BEGIN')) {
+    const caPem = tlsCfg.caPem?.includes('-----BEGIN') ? normalizeTlsPem(tlsCfg.caPem) : undefined;
+    if (!caPem) {
       logger.warn('MQTT TLS enabled but no usable CA PEM; skipping TLS pre-check');
       return;
     }
 
-    const clientCert =
-      tlsCfg.clientCertPem?.includes('-----BEGIN') ? tlsCfg.clientCertPem : undefined;
-    const clientKey =
-      tlsCfg.clientKeyPem?.includes('-----BEGIN') ? tlsCfg.clientKeyPem : undefined;
+    const servername = tlsCfg.servername || broker;
+    const { connectHost, brokerHost } = await resolveMqttTcpHost(broker, servername);
+    const includeClientCert = process.env.MQTT_TLS_PRECHECK_CLIENT_CERT === 'true';
+    const tlsMaterial: MqttTlsConnectMaterial = {
+      caPem,
+      clientCertPem: includeClientCert ? tlsCfg.clientCertPem : undefined,
+      clientKeyPem: includeClientCert ? tlsCfg.clientKeyPem : undefined,
+      rejectUnauthorized: tlsCfg.rejectUnauthorized !== false,
+      servername
+    };
 
-    const x509Only = this.config.mqtt.authX509Only === true;
-    if (x509Only && (!clientCert || !clientKey)) {
-      throw new Error(
-        'mTLS-only MQTT: provide client cert and key via MQTT_TLS_CLIENT_*_PEM or MQTT_TLS_CLIENT_*_BASE64 for broker pre-check'
-      );
+    if (servername !== brokerHost) {
+      logger.info('MQTT TLS pre-check uses cert SNI distinct from TCP host (Railway proxy)', {
+        broker: brokerHost,
+        connectHost,
+        servername
+      });
     }
 
     try {
-      const tlsServerName = tlsCfg.servername || broker;
-      if (!tlsCfg.servername && /\.proxy\.rlwy\.net$/i.test(broker)) {
-        logger.warn(
-          'MQTT_BROKER looks like a Railway TCP proxy host; TLS hostname check uses SNI. If the broker certificate CN/SAN is different (e.g. nanomq-broker), set MQTT_TLS_SERVERNAME to that name.',
-          { broker, tlsServerNameUsed: tlsServerName }
-        );
-      }
-      logger.info('MQTT TLS pre-check', { broker, port, servername: tlsServerName });
+      logger.info('MQTT TLS pre-check', { broker: brokerHost, connectHost, port, servername });
       await new Promise<void>((resolve, reject) => {
         const socket = tls.connect(
-          {
-            host: broker,
-            port,
-            ca: caForBrokerTls(caPem),
-            cert: clientCert,
-            key: clientKey,
-            servername: tlsServerName,
-            rejectUnauthorized: tlsCfg.rejectUnauthorized !== false,
-            timeout: 5000
-          },
+          buildNodeTlsConnectOptions(tlsMaterial, connectHost, port),
           () => {
             if (!socket.authorized) {
-              const errMsg = socket.authorizationError || 'TLS authorization failed';
+              const authErr = socket.authorizationError || 'TLS authorization failed';
               socket.end();
-              reject(errMsg);
+              reject(new Error(String(authErr)));
               return;
             }
-            const peer = socket.getPeerCertificate(true) as any;
-            logger.info('TLS handshake succeeded', { broker, subject: peer?.subject || null });
+            const peer = socket.getPeerCertificate(true) as tls.PeerCertificate | undefined;
+            logger.info('TLS handshake succeeded', {
+              broker: brokerHost,
+              protocol: socket.getProtocol(),
+              cipher: socket.getCipher()?.name,
+              subject: peer?.subject || null
+            });
             socket.end();
             resolve();
           }
         );
 
         socket.on('error', (e) => {
-          const msg = e instanceof Error ? e.message : String(e);
-          reject(msg);
+          reject(e instanceof Error ? e : new Error(String(e)));
         });
 
         setTimeout(() => {
           socket.destroy();
-          reject('TLS handshake timeout');
-        }, 5000);
+          reject(new Error('TLS handshake timeout'));
+        }, 10000);
       });
     } catch (err: any) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      logger.error('TLS handshake/check failed', { broker, error: errMsg });
+      logger.error('TLS handshake/check failed', { broker: brokerHost, connectHost, servername, error: errMsg });
       const nameMismatch =
         /altnames|Hostname\/IP does not match|does not match certificate/i.test(errMsg);
-      const hint = nameMismatch
-        ? ' Set MQTT_TLS_SERVERNAME to the broker certificate CN or a matching SAN (often nanomq-broker for NanoMQ dev certs) when MQTT_BROKER is a proxy hostname.'
-        : '';
-      throw new Error(`TLS validation failed for broker ${broker}: ${errMsg}${hint}`);
+      const earlyDisconnect = /disconnected before secure TLS connection|UNEXPECTED_EOF|decode_error/i.test(
+        errMsg
+      );
+      let hint = '';
+      if (nameMismatch) {
+        hint =
+          ' Set MQTT_TLS_SERVERNAME to a broker cert SAN (e.g. broker.withproof.io) when MQTT_BROKER is a Railway proxy hostname.';
+      } else if (earlyDisconnect) {
+        hint =
+          ' Broker may be sending a malformed TLS ServerHello (NanoMQ cert/key on Railway). Re-run npm run pki:broker, update NANOMQ_TLS_* on the broker service, or set MQTT_TLS_SKIP_PRECHECK=true after verifying with npm run pki:verify.';
+      }
+      throw new Error(`TLS validation failed for broker ${brokerHost}: ${errMsg}${hint}`);
     }
   }
 
@@ -817,9 +828,18 @@ export class StatsMqttLite {
     );
     
     await this.mqttClient.connect();
-    
-    // Subscribe to test topics for firmware testing
-    await this.subscribeToTopics();
+
+    if (this.mqttClient.isConnected()) {
+      await this.subscribeToTopics();
+    } else {
+      this.mqttClient.once('connect', () => {
+        this.subscribeToTopics().catch((err) => {
+          logger.error('MQTT subscribe failed after deferred connect', {
+            error: err instanceof Error ? err.message : String(err)
+          });
+        });
+      });
+    }
     
     logger.info('✅ MQTT client initialized with QoS 1 tracking');
   }

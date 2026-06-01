@@ -10,6 +10,7 @@
     "test": "npm run test:unit && npm run test:connections",
     "test:unit": "jest --passWithNoTests",
     "test:connections": "ts-node --transpile-only test-connections.ts",
+    "test:mqtt-mtls": "ts-node --transpile-only scripts/test-mqtt-mtls.ts",
     "smoke:attention": "ts-node --transpile-only scripts/attention-roadmap-smoke.ts",
     "pki": "ts-node --transpile-only scripts/pki/pki.ts",
     "pki:broker": "./scripts/pki/generate-broker-cert.sh",

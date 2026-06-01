@@ -8,6 +8,7 @@ import {
   validateWebhookConfig,
   type WebhookConfig
 } from './webhookConfig';
+import { normalizeTlsPem, resolveMqttTlsServername } from '../utils/mqttTlsOptions';
 
 export type { WebhookConfig };
 
@@ -122,24 +123,12 @@ function writeAndReadMqttTlsRuntime(dataDir: string): {
 
   const dir = getMqttTlsRuntimeDir(dataDir);
   fs.mkdirSync(dir, { recursive: true });
-  if (caPem) {
-    const p = path.join(dir, 'ca.pem');
-    fs.writeFileSync(p, caPem.endsWith('\n') ? caPem : `${caPem}\n`, { encoding: 'utf8', mode: 0o644 });
-  }
-  if (clientCertPem) {
-    const p = path.join(dir, 'client.crt');
-    fs.writeFileSync(p, clientCertPem.endsWith('\n') ? clientCertPem : `${clientCertPem}\n`, {
-      encoding: 'utf8',
-      mode: 0o644
-    });
-  }
-  if (clientKeyPem) {
-    const p = path.join(dir, 'client.key');
-    fs.writeFileSync(p, clientKeyPem.endsWith('\n') ? clientKeyPem : `${clientKeyPem}\n`, {
-      encoding: 'utf8',
-      mode: 0o600
-    });
-  }
+  const writePem = (filename: string, pem: string, mode: number) => {
+    fs.writeFileSync(path.join(dir, filename), normalizeTlsPem(pem), { encoding: 'utf8', mode });
+  };
+  if (caPem) writePem('ca.pem', caPem, 0o644);
+  if (clientCertPem) writePem('client.crt', clientCertPem, 0o644);
+  if (clientKeyPem) writePem('client.key', clientKeyPem, 0o600);
 
   const out: { caPem?: string; clientCertPem?: string; clientKeyPem?: string } = {};
   if (caPem) out.caPem = fs.readFileSync(path.join(dir, 'ca.pem'), 'utf8');
@@ -574,10 +563,10 @@ export function loadConfig(): AppConfig {
         clientCertPem: clientCertPemResolved,
         clientKeyPem: clientKeyPemResolved,
         rejectUnauthorized: process.env.MQTT_TLS_REJECT_UNAUTHORIZED !== 'false',
-        servername:
-          process.env.MQTT_TLS_SERVERNAME?.trim() ||
-          process.env.MQTT_TLS_VERIFY_HOST?.trim() ||
-          undefined
+        servername: resolveMqttTlsServername(
+          process.env.MQTT_BROKER || 'broker.emqx.io',
+          process.env.MQTT_TLS_SERVERNAME?.trim() || process.env.MQTT_TLS_VERIFY_HOST?.trim()
+        )
       }
     },
     http: {

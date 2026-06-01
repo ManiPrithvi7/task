@@ -25,14 +25,14 @@ if [[ ! -f "$CA_CRT" || ! -f "$CA_KEY" ]]; then
   exit 1
 fi
 
-echo "[pki] Generating broker key + CSR + cert (SAN: nanomq-broker, broker.withproof.io, Railway proxy, localhost)..."
+echo "[pki] Generating broker key + CSR + cert (CN/SAN: broker.withproof.io + Railway proxy/internal)..."
 openssl genrsa -out "$OUT_DIR/broker.key" 2048
 chmod 600 "$OUT_DIR/broker.key"
 
 openssl req -new \
   -key "$OUT_DIR/broker.key" \
   -out "$OUT_DIR/broker.csr" \
-  -subj "/CN=nanomq-broker/O=Proof"
+  -subj "/CN=broker.withproof.io/O=Proof"
 
 cat >"$EXT" <<'EOF'
 [v3_req]
@@ -42,10 +42,11 @@ extendedKeyUsage = serverAuth
 subjectAltName = @alt_names
 
 [alt_names]
-DNS.1 = nanomq-broker
-DNS.2 = broker.withproof.io
-DNS.3 = switchback.proxy.rlwy.net
-DNS.4 = localhost
+DNS.1 = broker.withproof.io
+DNS.2 = nanomq-broker
+DNS.3 = zephyr.proxy.rlwy.net
+DNS.4 = adequate-appreciation.railway.internal
+DNS.5 = localhost
 IP.1  = 127.0.0.1
 EOF
 
@@ -74,4 +75,5 @@ openssl x509 -in "$OUT_DIR/broker.crt" -noout -text | grep -A4 "Subject Alternat
 
 echo "[pki] Done: $OUT_DIR/broker.crt + $OUT_DIR/broker.key"
 echo "[pki] Update Railway broker TLS (see ./scripts/pki/print-railway-broker-env.sh for base64 + PEM). Root CA unchanged."
-echo "[pki] Clients: MQTT_TLS_SERVERNAME=nanomq-broker (Option A) or broker.withproof.io (Option B after cutover)."
+echo "[pki] Clients: MQTT_BROKER=broker.withproof.io MQTT_PORT=8883 MQTT_TLS_SERVERNAME=broker.withproof.io"
+echo "[pki] Legacy proxy: switchback.proxy.rlwy.net:12359 → :8883 (SNI broker.withproof.io or nanomq-broker)."

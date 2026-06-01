@@ -160,7 +160,7 @@ Commands:
 Broker server cert (OpenSSL, separate):
   ./scripts/pki/generate-broker-cert.sh
   ./scripts/pki/print-railway-broker-env.sh
-  ./scripts/pki/verify-broker-tls.sh --compare-both
+  ./scripts/pki/verify-broker-tls.sh --compare-both   # broker.withproof.io:8883 + proxy:12359
 `);
   process.exit(1);
 }
