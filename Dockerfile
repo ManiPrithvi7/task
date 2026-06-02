@@ -1,24 +1,17 @@
 # Multi-stage build for mqtt-publisher-lite
-# Stage 1: Dependencies
-FROM node:18-alpine AS deps
+# Stage 1: Builder
+FROM node:18-alpine AS builder
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
-# Copy package files
 COPY package*.json ./
-RUN npm ci --only=production && npm cache clean --force
+RUN npm ci
 
-# Stage 2: Builder
-FROM node:18-alpine AS builder
-WORKDIR /app
-
-COPY package*.json tsconfig.json ./
+COPY tsconfig.json ./
 COPY src/ ./src/
+RUN npm run build
 
-# Use lockfile TypeScript (not latest npm install — TS 6 breaks node resolution)
-RUN npm ci && npm run build
-
-# Stage 3: Production
+# Stage 2: Production
 FROM node:18-alpine AS production
 
 # Install dumb-init for proper signal handling

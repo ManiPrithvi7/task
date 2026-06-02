@@ -60,6 +60,8 @@ export class MongoService {
         ...timeouts,
         socketTimeoutMS: 45000,
         bufferCommands: false,
+        retryWrites: true,
+        retryReads: true,
         ...this.config.options
       };
 

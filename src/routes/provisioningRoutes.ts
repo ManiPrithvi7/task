@@ -17,6 +17,7 @@ import { UserService } from '../services/userService';
 import { DeviceCertificateStatus } from '../models/DeviceCertificate';
 import { Device, DeviceStatus } from '../models/Device';
 import mongoose from 'mongoose';
+import { csrRateLimiter } from '../middleware/csrRateLimiter';
 
 export interface ProvisioningDependencies {
   provisioningService: ProvisioningService;
@@ -376,7 +377,7 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
    * Stage 2: CSR Signing
    * Validates provisioning token and signs CSR to create device certificate
    */
-  router.post('/sign-csr', async (req: Request, res: Response): Promise<void> => {
+  router.post('/sign-csr', csrRateLimiter(), async (req: Request, res: Response): Promise<void> => {
     // Declare variables outside try block for error handling
     let provisioningToken: string | undefined;
     let deviceId: string | undefined;

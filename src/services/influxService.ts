@@ -51,6 +51,8 @@ export interface SystemMetrics {
 /** One Influx row per Instagram Graph fetch attempt (replaces Mongo `instagram_fetch_audit` collection). */
 export interface InstagramFetchAuditInfluxInput {
   deviceId: string;
+  /** PKI traceability; use `'unknown'` when absent. Stored as tag for GROUP BY. */
+  userId: string;
   success: boolean;
   triggerType: string;
   correlationId?: string;
@@ -60,8 +62,41 @@ export interface InstagramFetchAuditInfluxInput {
   durationMs: number;
   errorMessage?: string;
   errorCode?: string | number;
+  httpStatus?: number;
+  retryAfterSeconds?: number;
+  cacheHit?: boolean;
   mediaCount?: number;
   /** Defaults to now */
+  timestamp?: Date;
+}
+
+export interface InstagramMilestoneCrossedInfluxInput {
+  deviceId: string;
+  userId: string;
+  instagramAccountId: string;
+  trigger: string;
+  milestone: number;
+  oldFollowers: number;
+  newFollowers: number;
+  timestamp?: Date;
+}
+
+export interface InstagramMqttDeliveryInfluxInput {
+  deviceId: string;
+  userId: string;
+  instagramAccountId?: string;
+  correlationId?: string;
+  success: boolean;
+  wasHeartbeat: boolean;
+  payloadSizeBytes: number;
+  errorMessage?: string;
+  timestamp?: Date;
+}
+
+export interface InstagramCircuitEventInfluxInput {
+  state: 'open' | 'closed';
+  reason: string;
+  retryAfterSeconds?: number;
   timestamp?: Date;
 }
 
@@ -207,8 +242,8 @@ export class InfluxService {
 
   /**
    * Append-only audit trail for Instagram fetch attempts (`instagram_fetch_audit` measurement).
-   * Tags: device_id, success, trigger_type; optional correlation_id, instagram_account_id, error_code.
-   * Fields: duration_ms; optional old_followers, new_followers, media_count, error_message.
+   * Tags: device_id, user_id, success, trigger_type; optional correlation_id, instagram_account_id, error_code.
+   * Fields: duration_ms; optional old_followers, new_followers, media_count, http_status, error_message.
    */
   async writeInstagramFetchAudit(
     input: InstagramFetchAuditInfluxInput,
@@ -217,6 +252,7 @@ export class InfluxService {
     try {
       const point = new Point('instagram_fetch_audit')
         .tag('device_id', input.deviceId)
+        .tag('user_id', input.userId || 'unknown')
         .tag('success', input.success ? 'true' : 'false')
         .tag('trigger_type', input.triggerType);
 
@@ -233,6 +269,15 @@ export class InfluxService {
       }
       if (input.newFollowers !== null && input.newFollowers !== undefined && !Number.isNaN(input.newFollowers)) {
         point.intField('new_followers', Math.round(input.newFollowers));
+      }
+      if (typeof input.httpStatus === 'number' && Number.isFinite(input.httpStatus)) {
+        point.intField('http_status', Math.round(input.httpStatus));
+      }
+      if (typeof input.retryAfterSeconds === 'number' && Number.isFinite(input.retryAfterSeconds)) {
+        point.intField('retry_after_seconds', Math.round(input.retryAfterSeconds));
+      }
+      if (typeof input.cacheHit === 'boolean') {
+        point.booleanField('cache_hit', input.cacheHit);
       }
       if (typeof input.mediaCount === 'number' && Number.isFinite(input.mediaCount)) {
         point.intField('media_count', Math.round(input.mediaCount));
@@ -259,13 +304,69 @@ export class InfluxService {
     instagramAccountId: string,
     followers: number,
     timestamp?: Date,
-    opts?: { flush?: boolean }
+    opts?: { flush?: boolean; mediaCount?: number }
   ): Promise<void> {
     const point = new Point('instagram_metrics')
       .tag('device_id', deviceId)
       .tag('instagram_account_id', instagramAccountId || 'unknown')
-      .intField('followers', Math.round(followers))
-      .timestamp(timestamp ?? new Date());
+      .intField('followers', Math.round(followers));
+    if (typeof opts?.mediaCount === 'number' && Number.isFinite(opts.mediaCount)) {
+      point.intField('media_count', Math.round(opts.mediaCount));
+    }
+    point.timestamp(timestamp ?? new Date());
+    await this.submitPoint(point, opts?.flush !== false);
+  }
+
+  /** Emitted when follower count crosses a fixed milestone threshold. */
+  async writeInstagramMilestoneCrossed(
+    input: InstagramMilestoneCrossedInfluxInput,
+    opts?: { flush?: boolean }
+  ): Promise<void> {
+    const point = new Point('instagram_milestone_crossed')
+      .tag('device_id', input.deviceId)
+      .tag('user_id', input.userId || 'unknown')
+      .tag('instagram_account_id', input.instagramAccountId || 'unknown')
+      .tag('trigger', input.trigger)
+      .intField('milestone', Math.round(input.milestone))
+      .intField('old_followers', Math.round(input.oldFollowers))
+      .intField('new_followers', Math.round(input.newFollowers))
+      .timestamp(input.timestamp ?? new Date());
+    await this.submitPoint(point, opts?.flush !== false);
+  }
+
+  /** Proof of MQTT screen publish attempt (success or broker failure). */
+  async writeInstagramMqttDelivery(
+    input: InstagramMqttDeliveryInfluxInput,
+    opts?: { flush?: boolean }
+  ): Promise<void> {
+    const point = new Point('instagram_mqtt_delivery')
+      .tag('device_id', input.deviceId)
+      .tag('user_id', input.userId || 'unknown');
+    if (input.instagramAccountId) point.tag('instagram_account_id', input.instagramAccountId);
+    if (input.correlationId) point.tag('correlation_id', input.correlationId);
+    point
+      .booleanField('success', input.success)
+      .booleanField('was_heartbeat', input.wasHeartbeat)
+      .intField('payload_size_bytes', Math.max(0, Math.round(input.payloadSizeBytes)));
+    if (!input.success && input.errorMessage) {
+      point.stringField('error_message', input.errorMessage.slice(0, 4096));
+    }
+    point.timestamp(input.timestamp ?? new Date());
+    await this.submitPoint(point, opts?.flush !== false);
+  }
+
+  /** Circuit breaker state transitions (open / closed). */
+  async writeInstagramCircuitEvent(
+    input: InstagramCircuitEventInfluxInput,
+    opts?: { flush?: boolean }
+  ): Promise<void> {
+    const point = new Point('instagram_circuit_event')
+      .tag('state', input.state)
+      .tag('reason', input.reason);
+    if (input.state === 'open' && typeof input.retryAfterSeconds === 'number' && Number.isFinite(input.retryAfterSeconds)) {
+      point.intField('retry_after_seconds', Math.max(1, Math.round(input.retryAfterSeconds)));
+    }
+    point.timestamp(input.timestamp ?? new Date());
     await this.submitPoint(point, opts?.flush !== false);
   }
 

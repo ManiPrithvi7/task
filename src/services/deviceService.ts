@@ -8,6 +8,7 @@
 
 import { Device, IDevice, DeviceStatus } from '../models/Device';
 import { logger } from '../utils/logger';
+import { withMongoRetry } from '../utils/mongoRetry';
 import mongoose from 'mongoose';
 import { LocalActiveDeviceStore } from '../storage/localActiveDeviceStore';
 
@@ -255,7 +256,10 @@ export class DeviceService {
    */
   async getDevice(clientId: string): Promise<DeviceData | null> {
     try {
-      const device = await Device.findOne({ clientId });
+      const device = await withMongoRetry(
+        () => Device.findOne({ clientId }),
+        { label: 'getDevice' }
+      );
       
       if (!device) {
         return null;
@@ -316,22 +320,24 @@ export class DeviceService {
    */
   async updateDeviceStatus(clientId: string, status: 'active' | 'inactive'): Promise<void> {
     try {
-      const device = await Device.findOne({ clientId });
-      
-      if (device) {
-        // Map to DeviceStatus enum
-        if (status === 'active') {
-          device.status = DeviceStatus.ACTIVE;
-        } else if (status === 'inactive') {
-          device.status = DeviceStatus.OFFLINE;
+      await withMongoRetry(async () => {
+        const device = await Device.findOne({ clientId });
+        
+        if (device) {
+          // Map to DeviceStatus enum
+          if (status === 'active') {
+            device.status = DeviceStatus.ACTIVE;
+          } else if (status === 'inactive') {
+            device.status = DeviceStatus.OFFLINE;
+          }
+          
+          device.lastSeenAt = new Date();
+          device.updatedAt = new Date();
+          await device.save();
+          
+          logger.debug('Device status updated', { clientId, status: device.status });
         }
-        
-        device.lastSeenAt = new Date();
-        device.updatedAt = new Date();
-        await device.save();
-        
-        logger.debug('Device status updated', { clientId, status: device.status });
-      }
+      }, { label: 'updateDeviceStatus' });
     } catch (error) {
       logger.error('Failed to update device status', { clientId, status, error });
     }

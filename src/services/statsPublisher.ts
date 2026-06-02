@@ -9,6 +9,7 @@ import {
   gmbReviewMetrics,
   instagramFollowerMetrics
 } from './screenEnvelope';
+import { publishIfChanged } from './mqttChangeDetection';
 
 /**
  * Canonical PROOF Display v6 GMB payloads for `.../gmb` (firmware listens here for celebration flows).
@@ -316,9 +317,13 @@ export class StatsPublisher {
       top_seller: 'Caramel Latte'
     });
 
-    await this.mqttClient.publish({
-      topic: `${root}/${deviceId}/pos`,
+    const topic = `${root}/${deviceId}/pos`;
+    await publishIfChanged({
+      deviceId,
+      topic,
+      hashInput: envelope.payload,
       payload: JSON.stringify(envelope),
+      mqttClient: this.mqttClient,
       qos: 1,
       retain: false
     });
@@ -431,7 +436,15 @@ export class StatsPublisher {
       });
 
       const topic = `${root}/${deviceId}/promotion`;
-      await this.mqttClient.publish({ topic, payload: JSON.stringify(envelope), qos: 1, retain: false });
+      await publishIfChanged({
+        deviceId,
+        topic,
+        hashInput: envelope.payload,
+        payload: JSON.stringify(envelope),
+        mqttClient: this.mqttClient,
+        qos: 1,
+        retain: false
+      });
 
       logger.info(`🎨 [${canvasMode}:PUBLISHED] Canvas sent`, {
         deviceId,
@@ -462,7 +475,15 @@ export class StatsPublisher {
     });
 
     const topic = `${root}/${deviceId}/promotion`;
-    await this.mqttClient.publish({ topic, payload: JSON.stringify(envelope), qos: 1, retain: false });
+    await publishIfChanged({
+      deviceId,
+      topic,
+      hashInput: envelope.payload,
+      payload: JSON.stringify(envelope),
+      mqttClient: this.mqttClient,
+      qos: 1,
+      retain: false
+    });
     logger.info('🎨 [DEFAULT:PUBLISHED] Empty default canvas sent', { deviceId, topic });
 
   }
@@ -478,9 +499,13 @@ export class StatsPublisher {
       celebration: variant.celebration
     });
 
-    await this.mqttClient.publish({
-      topic: `${root}/${deviceId}/gmb`,
+    const topic = `${root}/${deviceId}/gmb`;
+    await publishIfChanged({
+      deviceId,
+      topic,
+      hashInput: envelope.payload,
       payload: JSON.stringify(envelope),
+      mqttClient: this.mqttClient,
       qos: 1,
       retain: false
     });
