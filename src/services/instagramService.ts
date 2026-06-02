@@ -339,32 +339,82 @@ export class InstagramCircuitBreaker {
   private redis: RedisClientType;
   private local: { isOpen: boolean; resetTimeMs: number } = { isOpen: false, resetTimeMs: 0 };
   private lastRedisCheckMs = 0;
+  /** Dedupe concurrent close events within this window (ms). */
+  private lastEmittedClosedAtMs = 0;
+  private static readonly CLOSE_EVENT_DEDUPE_MS = 10_000;
 
   constructor(redis: RedisClientType, private readonly cacheTtlMs = 5000) {
     this.redis = redis;
   }
 
+  private async emitCircuitEvent(
+    state: 'open' | 'closed',
+    reason: string,
+    retryAfterSeconds?: number
+  ): Promise<void> {
+    const influx = getInfluxService();
+    if (!influx) return;
+    try {
+      await influx.writeInstagramCircuitEvent(
+        {
+          state,
+          reason,
+          ...(state === 'open' && retryAfterSeconds !== undefined ? { retryAfterSeconds } : {}),
+          timestamp: new Date()
+        },
+        { flush: true }
+      );
+    } catch (err: unknown) {
+      logger.debug('[IG_CIRCUIT] Influx circuit event write failed (ignored)', {
+        state,
+        reason,
+        error: err instanceof Error ? err.message : String(err)
+      });
+    }
+  }
+
+  private maybeEmitClosed(reason: string): void {
+    const now = Date.now();
+    if (now - this.lastEmittedClosedAtMs < InstagramCircuitBreaker.CLOSE_EVENT_DEDUPE_MS) {
+      return;
+    }
+    this.lastEmittedClosedAtMs = now;
+    void this.emitCircuitEvent('closed', reason);
+  }
+
   async isOpen(): Promise<boolean> {
     const now = Date.now();
+    const wasOpenLocally = this.local.isOpen;
 
     if (now - this.lastRedisCheckMs < this.cacheTtlMs) {
-      return this.local.isOpen && now < this.local.resetTimeMs;
+      const open = this.local.isOpen && now < this.local.resetTimeMs;
+      if (wasOpenLocally && !open) {
+        // Close may lag Redis TTL by up to cacheTtlMs — acceptable for audit.
+        this.maybeEmitClosed('ttl_expired');
+      }
+      return open;
     }
 
     const blockedUntilRaw = await this.redis.get(REDIS_KEYS.circuitBlockedUntil);
     this.lastRedisCheckMs = now;
 
     const blockedUntil = blockedUntilRaw ? parseInt(blockedUntilRaw, 10) : 0;
+    let nowOpen: boolean;
     if (blockedUntil && blockedUntil > now) {
       this.local = { isOpen: true, resetTimeMs: blockedUntil };
-      return true;
+      nowOpen = true;
+    } else {
+      this.local = { isOpen: false, resetTimeMs: 0 };
+      nowOpen = false;
     }
 
-    this.local = { isOpen: false, resetTimeMs: 0 };
-    return false;
+    if (wasOpenLocally && !nowOpen) {
+      this.maybeEmitClosed('ttl_expired');
+    }
+    return nowOpen;
   }
 
-  async open(retryAfterSeconds: number): Promise<void> {
+  async open(retryAfterSeconds: number, reason: string): Promise<void> {
     const safeSeconds = Math.max(1, Math.floor(retryAfterSeconds));
     const resetTimeMs = Date.now() + safeSeconds * 1000;
 
@@ -375,12 +425,18 @@ export class InstagramCircuitBreaker {
     igPollMetricsInc('circuitOpenEvents');
     this.local = { isOpen: true, resetTimeMs };
     this.lastRedisCheckMs = Date.now();
+
+    await this.emitCircuitEvent('open', reason, safeSeconds);
   }
 
   async reset(): Promise<void> {
+    const wasOpen = this.local.isOpen;
     await this.redis.del(REDIS_KEYS.circuitBlockedUntil);
     this.local = { isOpen: false, resetTimeMs: 0 };
     this.lastRedisCheckMs = Date.now();
+    if (wasOpen) {
+      this.maybeEmitClosed('manual_reset');
+    }
   }
 
   getLocalState(): { isOpen: boolean; resetTimeMs: number } {
@@ -423,6 +479,7 @@ export interface InstagramFetchResult {
   retryAfterSeconds?: number;
   apiResponseTimeMs: number;
   instagramAccountId: string;
+  userId?: string;
   cacheHit: boolean;
 }
 
@@ -515,6 +572,7 @@ export async function fetchInstagramMetrics(
       metrics,
       apiResponseTimeMs,
       instagramAccountId: account.instagramAccountId,
+      userId: account.userId || undefined,
       cacheHit: false
     };
   } catch (error: unknown) {
@@ -535,6 +593,7 @@ export async function fetchInstagramMetrics(
         retryAfterSeconds,
         apiResponseTimeMs,
         instagramAccountId: account.instagramAccountId,
+        userId: account.userId || undefined,
         cacheHit: false
       };
     }
@@ -556,6 +615,7 @@ export async function fetchInstagramMetrics(
       errorCode,
       apiResponseTimeMs,
       instagramAccountId: account.instagramAccountId,
+      userId: account.userId || undefined,
       cacheHit: false
     };
   }
@@ -572,11 +632,19 @@ export type ScreenDeliveryFetchShape = {
   data?: { followers_count: number; instagram_username?: string };
   error?: string;
   correlation_id?: string;
+  user_id?: string;
+  instagram_account_id?: string;
 };
 
+const MILESTONE_THRESHOLDS = [100, 500, 1000, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000];
+
+function getCrossedMilestones(oldF: number, newF: number): number[] {
+  if (oldF >= newF) return [];
+  return MILESTONE_THRESHOLDS.filter((m) => oldF < m && m <= newF);
+}
+
 function getNextMilestone(followers: number): number {
-  const milestones = [100, 500, 1000, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000];
-  return milestones.find((m) => m > followers) ?? Math.ceil(followers / 1000) * 1000 + 1000;
+  return MILESTONE_THRESHOLDS.find((m) => m > followers) ?? Math.ceil(followers / 1000) * 1000 + 1000;
 }
 
 export function formatInstagramScreenMqttPayload(
@@ -685,6 +753,30 @@ export async function publishInstagramScreenIfChanged(
       heartbeat: forceHeartbeat && unchanged
     });
 
+    const influx = getInfluxService();
+    if (influx) {
+      try {
+        await influx.writeInstagramMqttDelivery(
+          {
+            deviceId,
+            userId: result.user_id?.trim() || 'unknown',
+            instagramAccountId: result.instagram_account_id,
+            correlationId: result.correlation_id,
+            success: true,
+            wasHeartbeat: forceHeartbeat && unchanged,
+            payloadSizeBytes: Buffer.byteLength(payload, 'utf8'),
+            timestamp: new Date()
+          },
+          { flush: false }
+        );
+      } catch (influxErr: unknown) {
+        logger.debug('[IG_SCREEN] Influx MQTT delivery write failed (ignored)', {
+          deviceId,
+          error: influxErr instanceof Error ? influxErr.message : String(influxErr)
+        });
+      }
+    }
+
     // Update "last published" markers only after successful publish.
     if (redisSvc?.isRedisConnected()) {
       try {
@@ -702,7 +794,33 @@ export async function publishInstagramScreenIfChanged(
       igLocalLastPublishMs.set(deviceId, nowMs);
     }
   } catch (err: unknown) {
-    logger.error('[IG_SCREEN] MQTT publish failed', { deviceId, error: err instanceof Error ? err.message : String(err) });
+    const errMsg = err instanceof Error ? err.message : String(err);
+    logger.error('[IG_SCREEN] MQTT publish failed', { deviceId, error: errMsg });
+
+    const influx = getInfluxService();
+    if (influx) {
+      try {
+        await influx.writeInstagramMqttDelivery(
+          {
+            deviceId,
+            userId: result.user_id?.trim() || 'unknown',
+            instagramAccountId: result.instagram_account_id,
+            correlationId: result.correlation_id,
+            success: false,
+            wasHeartbeat: forceHeartbeat && unchanged,
+            payloadSizeBytes: Buffer.byteLength(payload, 'utf8'),
+            errorMessage: errMsg,
+            timestamp: new Date()
+          },
+          { flush: false }
+        );
+      } catch (influxErr: unknown) {
+        logger.debug('[IG_SCREEN] Influx MQTT delivery write failed (ignored)', {
+          deviceId,
+          error: influxErr instanceof Error ? influxErr.message : String(influxErr)
+        });
+      }
+    }
   }
 
   if (!isActive) {
@@ -722,6 +840,8 @@ export type NormalizedDeviceFetchResult = {
   instagram_username?: string;
   error?: string;
   instagram_account_id?: string;
+  userId?: string;
+  media_count?: number;
   api_response_time_ms?: number;
   cache_hit?: boolean;
   http_status?: number;
@@ -750,7 +870,7 @@ async function maybeOpenCircuitFromOutcome(row: NormalizedDeviceFetchResult): Pr
 
     if (!row.success && row.http_status === 429 && row.retry_after_seconds != null) {
       const secs = Math.max(1, Math.floor(row.retry_after_seconds));
-      await breaker.open(secs);
+      await breaker.open(secs, 'http_429');
       logger.warn('[IG_SERVERLESS] Circuit opened (429 Retry-After)', { deviceId: row.deviceId, secs });
       return;
     }
@@ -758,7 +878,7 @@ async function maybeOpenCircuitFromOutcome(row: NormalizedDeviceFetchResult): Pr
     const rateLimitCodes = new Set<string>(['4', '17', '32', 'RATE_LIMIT_GLOBAL', 'RATE_LIMIT_DEVICE', 'RATE_LIMIT_BURST']);
     const code = row.error_code !== undefined ? String(row.error_code) : null;
     if (!row.success && code && rateLimitCodes.has(code)) {
-      await breaker.open(60);
+      await breaker.open(60, 'api_throttle_code');
       logger.warn('[IG_SERVERLESS] Circuit opened (API throttle code)', { deviceId: row.deviceId, code });
     }
   } catch (err: unknown) {
@@ -792,41 +912,8 @@ export async function applyInstagramServerlessDeviceOutcome(
 
   const apiMs = row.api_response_time_ms ?? 0;
   const igAccount = row.instagram_account_id ?? '';
+  const userId = row.userId?.trim() || 'unknown';
   const auditTs = new Date(row.fetched_at);
-
-  const influx = getInfluxService();
-  if (influx) {
-    try {
-      await influx.writeInstagramFetchAudit(
-        {
-          deviceId,
-          success: row.success,
-          triggerType: trigger,
-          correlationId: cid,
-          instagramAccountId: igAccount || undefined,
-          oldFollowers,
-          newFollowers,
-          durationMs: apiMs,
-          errorMessage: row.success ? undefined : (row.error || 'unknown'),
-          errorCode: row.success ? undefined : row.error_code,
-          timestamp: auditTs
-        },
-        { flush: false }
-      );
-
-      if (row.success && row.followers_count != null) {
-        await influx.writeInstagramFollowersGauge(deviceId, igAccount, row.followers_count, auditTs, { flush: false });
-      }
-
-      if (e2eMs !== undefined && cid) {
-        await influx.writeInstagramAttentionE2eLatency(deviceId, trigger, e2eMs, auditTs, { flush: false });
-      }
-
-      await influx.flushWrites();
-    } catch (err: unknown) {
-      logger.debug('[IG_SERVERLESS] Influx write failed (ignored)', { deviceId, error: err instanceof Error ? err.message : String(err) });
-    }
-  }
 
   const screenShape: ScreenDeliveryFetchShape = {
     deviceId,
@@ -840,10 +927,78 @@ export async function applyInstagramServerlessDeviceOutcome(
           }
         }
       : { error: row.error }),
-    ...(cid ? { correlation_id: cid } : {})
+    ...(cid ? { correlation_id: cid } : {}),
+    ...(row.userId?.trim() ? { user_id: row.userId.trim() } : {}),
+    ...(igAccount ? { instagram_account_id: igAccount } : {})
   };
 
+  const influx = getInfluxService();
+  if (influx) {
+    try {
+      await influx.writeInstagramFetchAudit(
+        {
+          deviceId,
+          userId,
+          success: row.success,
+          triggerType: trigger,
+          correlationId: cid,
+          instagramAccountId: igAccount || undefined,
+          oldFollowers,
+          newFollowers,
+          durationMs: apiMs,
+          httpStatus: row.http_status,
+          retryAfterSeconds: row.retry_after_seconds,
+          cacheHit: row.cache_hit,
+          mediaCount: row.media_count,
+          errorMessage: row.success ? undefined : (row.error || 'unknown'),
+          errorCode: row.success ? undefined : row.error_code,
+          timestamp: auditTs
+        },
+        { flush: false }
+      );
+
+      if (row.success && row.followers_count != null) {
+        await influx.writeInstagramFollowersGauge(deviceId, igAccount, row.followers_count, auditTs, {
+          flush: false,
+          mediaCount: row.media_count
+        });
+      }
+
+      if (row.success && newFollowers !== null && oldFollowers !== null && igAccount) {
+        for (const milestone of getCrossedMilestones(oldFollowers, newFollowers)) {
+          await influx.writeInstagramMilestoneCrossed(
+            {
+              deviceId,
+              userId,
+              instagramAccountId: igAccount,
+              trigger,
+              milestone,
+              oldFollowers,
+              newFollowers,
+              timestamp: auditTs
+            },
+            { flush: false }
+          );
+        }
+      }
+
+      if (e2eMs !== undefined && cid) {
+        await influx.writeInstagramAttentionE2eLatency(deviceId, trigger, e2eMs, auditTs, { flush: false });
+      }
+    } catch (err: unknown) {
+      logger.debug('[IG_SERVERLESS] Influx write failed (ignored)', { deviceId, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
   await publishInstagramScreenIfChanged(mqttClient, topicRoot, screenShape);
+
+  if (influx) {
+    try {
+      await influx.flushWrites();
+    } catch (err: unknown) {
+      logger.debug('[IG_SERVERLESS] Influx flush failed (ignored)', { deviceId, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
 }
 
 // ============================================================
@@ -887,12 +1042,32 @@ function parseDeviceRow(raw: Record<string, unknown>, fallbackDeviceId?: string)
         ? raw.timestamp
         : new Date().toISOString();
 
+  const userIdRaw =
+    typeof raw.userId === 'string'
+      ? raw.userId
+      : typeof raw.user_id === 'string'
+        ? raw.user_id
+        : nested && typeof nested.userId === 'string'
+          ? nested.userId
+          : nested && typeof nested.user_id === 'string'
+            ? nested.user_id
+            : undefined;
+
+  const mediaCount =
+    typeof raw.media_count === 'number'
+      ? raw.media_count
+      : nested && typeof nested.media_count === 'number'
+        ? nested.media_count
+        : undefined;
+
   return {
     deviceId,
     success,
     fetched_at,
     ...(followers !== undefined ? { followers_count: followers } : {}),
     ...(typeof igUsernameRaw === 'string' && igUsernameRaw.trim() ? { instagram_username: igUsernameRaw.trim() } : {}),
+    ...(typeof userIdRaw === 'string' && userIdRaw.trim() ? { userId: userIdRaw.trim() } : {}),
+    ...(mediaCount !== undefined ? { media_count: mediaCount } : {}),
     ...(typeof raw.error === 'string' ? { error: raw.error } : {}),
     ...(typeof raw.instagram_account_id === 'string' ? { instagram_account_id: raw.instagram_account_id } : {}),
     ...(typeof raw.api_response_time_ms === 'number' ? { api_response_time_ms: raw.api_response_time_ms } : {}),
@@ -946,7 +1121,7 @@ async function maybeApplyGlobalCircuit(body: unknown): Promise<void> {
     const redisSvc = getRedisService();
     if (!redisSvc?.isRedisConnected()) return;
     const breaker = getCircuitBreaker(redisSvc.getClient());
-    await breaker.open(Math.ceil(secs));
+    await breaker.open(Math.ceil(secs), 'serverless_circuit_open');
     logger.warn('[IG_SERVERLESS] Circuit opened from response payload', { seconds: secs });
   } catch {
     /* ignore */
@@ -1017,7 +1192,7 @@ export class InstagramServerlessBridge implements InstagramFetchInvoker {
       try {
         const redisSvc = getRedisService();
         if (redisSvc?.isRedisConnected()) {
-          await new InstagramCircuitBreaker(redisSvc.getClient()).open(retryAfter);
+          await new InstagramCircuitBreaker(redisSvc.getClient()).open(retryAfter, 'http_429');
         }
       } catch {
         /* ignore */
@@ -1087,9 +1262,13 @@ function toNormalizedRow(deviceId: string, result: InstagramFetchResult): Normal
   };
   if (result.success && result.metrics) {
     row.followers_count = result.metrics.followers_count;
+    row.media_count = result.metrics.media_count;
     if (result.metrics.username?.trim()) {
       row.instagram_username = result.metrics.username.trim();
     }
+  }
+  if (result.userId?.trim()) {
+    row.userId = result.userId.trim();
   }
   if (!result.success && result.error) {
     row.error = result.error;
@@ -1116,10 +1295,30 @@ async function loadMetaFromRedis(deviceId: string): Promise<ResolvedMeta | null>
     const instagramAccountId = typeof o.instagramAccountId === 'string' ? o.instagramAccountId.trim() : '';
     const accessToken = typeof o.accessToken === 'string' ? o.accessToken.trim() : '';
     if (!instagramAccountId || !accessToken) return null;
-    return { instagramAccountId, accessToken };
+    const userId =
+      typeof o.userId === 'string'
+        ? o.userId.trim()
+        : typeof o.user_id === 'string'
+          ? o.user_id.trim()
+          : undefined;
+    return { instagramAccountId, accessToken, ...(userId ? { userId } : {}) };
   } catch {
     return null;
   }
+}
+
+async function resolveDeviceMeta(deviceId: string): Promise<ResolvedMeta | null> {
+  const fromRedis = await loadMetaFromRedis(deviceId);
+  if (fromRedis) {
+    if (!fromRedis.userId) {
+      const local = await loadMetaFromLocalCache(deviceId);
+      if (local?.userId) {
+        fromRedis.userId = local.userId;
+      }
+    }
+    return fromRedis;
+  }
+  return loadMetaFromLocalCache(deviceId);
 }
 
 async function loadMetaFromLocalCache(deviceId: string): Promise<ResolvedMeta | null> {
@@ -1150,8 +1349,7 @@ export class InstagramDirectFetchInvoker implements InstagramFetchInvoker {
     const queue = [...deviceIds];
 
     const runOne = async (deviceId: string): Promise<void> => {
-      const fromRedis = await loadMetaFromRedis(deviceId);
-      const meta = fromRedis ?? (await loadMetaFromLocalCache(deviceId));
+      const meta = await resolveDeviceMeta(deviceId);
 
       if (!meta) {
         const level = opts.trigger === 'attention' ? 'info' : 'debug';
