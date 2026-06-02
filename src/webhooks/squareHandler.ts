@@ -4,8 +4,11 @@ import { verifySquareIngress } from './verify/shopifySquare';
 import { buildSquareDedupeKey, tryClaimWebhookDedupe } from './dedupe/redisDedupe';
 import { getSquareWebhookUrl } from '../config/webhookConfig';
 import { resolveSquareUserId } from './resolve/squareMerchant';
+import { resolveDevicesForUser } from './resolve/resolveDevices';
 import { scheduleSquareAsyncMetrics } from './squareAsyncMetrics';
 import { deliverPosScreenToUser } from './posWebhookDelivery';
+import { parseSquareOrderAudit } from './parseWebhookOrder';
+import { webhookInfluxBatch, flushWebhookInflux } from './influxAudit';
 import { isSquareInvoiceEvent, isSquarePaymentEvent } from '../lib/socials/integrations';
 import { WebhookLatencyTracker } from '../services/webhookMetrics';
 import { logger } from '../utils/logger';
@@ -70,7 +73,22 @@ export async function handleSquareWebhook(req: Request, res: Response, deps: Web
       isProduction
     );
 
-    if (!verification.valid) {
+    const verified = verification.valid;
+
+    await webhookInfluxBatch((influx) =>
+      influx.writeWebhookReceived(
+        {
+          platform: 'square',
+          eventType,
+          verified,
+          merchantId,
+          timestamp: new Date()
+        },
+        { flush: false }
+      )
+    );
+
+    if (!verified) {
       if (!isProduction) {
         logger.warn('[SQUARE_WEBHOOK] verify_failed_dev_continue', {
           merchantId,
@@ -83,19 +101,21 @@ export async function handleSquareWebhook(req: Request, res: Response, deps: Web
           eventType,
           error: verification.error
         });
+        await flushWebhookInflux();
         res.status(401).json({ error: verification.error || 'Invalid webhook signature' });
         return;
       }
     } else {
       logger.info('[SQUARE_WEBHOOK] verify_ok', { merchantId, eventType });
+      tracker.markVerified();
     }
-    tracker.markVerified();
 
     const dedupeKey = buildSquareDedupeKey(merchantId, eventType, eventId, rawBody);
     const isNew = await tryClaimWebhookDedupe(dedupeKey);
     if (!isNew) {
       logger.info('[SQUARE_WEBHOOK] duplicate', { merchantId, eventType, dedupeKey });
       tracker.finish('square', { dedupeKey, dedupeHit: true, skippedPublish: true });
+      await flushWebhookInflux();
       res.status(200).json({ acknowledged: true, duplicate: true });
       return;
     }
@@ -103,6 +123,7 @@ export async function handleSquareWebhook(req: Request, res: Response, deps: Web
     if (isSquareInvoiceEvent(eventType)) {
       logger.info('[SQUARE WEBHOOK][invoice]', { merchantId, eventType, eventId });
       tracker.finish('square', { dedupeKey, skippedPublish: true });
+      await flushWebhookInflux();
       res.status(200).json({ acknowledged: true });
       return;
     }
@@ -110,23 +131,40 @@ export async function handleSquareWebhook(req: Request, res: Response, deps: Web
     if (!isSquarePaymentEvent(eventType)) {
       logger.info('[SQUARE WEBHOOK][ignored]', { merchantId, eventType, eventId });
       tracker.finish('square', { dedupeKey, skippedPublish: true });
+      await flushWebhookInflux();
       res.status(200).json({ acknowledged: true });
       return;
     }
 
     const userId = await resolveSquareUserId(merchantId);
+    const devices = userId ? await resolveDevicesForUser(userId, deps.webhookConfig.deviceTarget) : [];
     tracker.markResolved();
+
+    await webhookInfluxBatch((influx) =>
+      influx.writeWebhookDeviceResolution(
+        {
+          platform: 'square',
+          externalId: merchantId,
+          userId: userId ?? undefined,
+          resolvedDeviceCount: devices.length,
+          timestamp: new Date()
+        },
+        { flush: false }
+      )
+    );
 
     if (!userId) {
       logger.info('[SQUARE_WEBHOOK] unknown_merchant', { merchantId, eventType });
       tracker.finish('square', { dedupeKey, skippedPublish: true });
+      await flushWebhookInflux();
       res.status(200).json({ acknowledged: true });
       return;
     }
 
     scheduleSquareAsyncMetrics(userId, eventType, rawBody, deps.webhookConfig.enableDailyMetrics);
 
-    const delivery = await deliverPosScreenToUser(deps, userId, 'square');
+    const orderAudit = parseSquareOrderAudit(rawBody);
+    const delivery = await deliverPosScreenToUser(deps, userId, 'square', devices, orderAudit);
     tracker.markPublished();
 
     logger.info('[SQUARE WEBHOOK][payment]', {
@@ -144,6 +182,7 @@ export async function handleSquareWebhook(req: Request, res: Response, deps: Web
       topic: delivery.topic,
       skippedPublish: !delivery.published && deps.webhookConfig.mqttPublishEnabled
     });
+    await flushWebhookInflux();
     res.status(200).json({ acknowledged: true });
   } catch (error) {
     logger.error('[SQUARE_WEBHOOK] Error', {

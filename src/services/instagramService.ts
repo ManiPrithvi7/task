@@ -966,15 +966,16 @@ export async function applyInstagramServerlessDeviceOutcome(
 
       if (row.success && newFollowers !== null && oldFollowers !== null && igAccount) {
         for (const milestone of getCrossedMilestones(oldFollowers, newFollowers)) {
-          await influx.writeInstagramMilestoneCrossed(
+          await influx.writeMilestoneCrossed(
             {
+              platform: 'instagram',
               deviceId,
               userId,
               instagramAccountId: igAccount,
               trigger,
               milestone,
-              oldFollowers,
-              newFollowers,
+              oldValue: oldFollowers,
+              newValue: newFollowers,
               timestamp: auditTs
             },
             { flush: false }

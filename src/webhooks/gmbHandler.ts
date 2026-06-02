@@ -11,12 +11,19 @@ import { resolveGmbSocialContext } from './resolve/gmbSocial';
 import { resolveDevicesForUser } from './resolve/resolveDevices';
 import { publishGmbScreen } from './delivery/publishGmbScreen';
 import { scheduleGmbEnrichment } from './gmbEnrichmentWorker';
+import {
+  getGmbCrossedMilestones,
+  getGmbReviewCount,
+  setGmbReviewCount
+} from './gmbReviewCache';
+import { webhookInfluxBatch, flushWebhookInflux } from './influxAudit';
 import { WebhookLatencyTracker } from '../services/webhookMetrics';
 import { logger } from '../utils/logger';
 import { DeviceTransactionLog } from '../models/DeviceTransactionLog';
 import mongoose from 'mongoose';
 
-const ack = (res: Response, message: string, extra?: Record<string, unknown>) => {
+const ack = async (res: Response, message: string, extra?: Record<string, unknown>) => {
+  await flushWebhookInflux();
   res.status(200).json({ message, acknowledged: true, ...extra });
 };
 
@@ -53,12 +60,25 @@ export async function handleGmbWebhook(req: Request, res: Response, deps: Webhoo
       isProduction
     );
 
+    await webhookInfluxBatch((influx) =>
+      influx.writeWebhookReceived(
+        {
+          platform: 'gmb',
+          eventType: 'pubsub_push',
+          verified: verification.valid,
+          timestamp: new Date()
+        },
+        { flush: false }
+      )
+    );
+
     if (!verification.valid) {
       logger.warn('[GMB_WEBHOOK] verify_failed', {
         error: verification.error,
         audience: deps.webhookConfig.gmbPubsubAudience
       });
       if (isProduction) {
+        await flushWebhookInflux();
         res.status(401).json({ error: verification.error ?? 'Unauthorized' });
         return;
       }
@@ -122,13 +142,26 @@ export async function handleGmbWebhook(req: Request, res: Response, deps: Webhoo
     const ctx = await resolveGmbSocialContext(account, location);
     tracker.markResolved();
 
+    const devices = ctx ? await resolveDevicesForUser(ctx.userId, deps.webhookConfig.deviceTarget) : [];
+
+    await webhookInfluxBatch((influx) =>
+      influx.writeWebhookDeviceResolution(
+        {
+          platform: 'gmb',
+          externalId: location,
+          userId: ctx?.userId,
+          resolvedDeviceCount: devices.length,
+          timestamp: new Date()
+        },
+        { flush: false }
+      )
+    );
+
     if (!ctx) {
       logger.info('[GMB_WEBHOOK] no_linked_location', { account, location, eventType });
       tracker.finish('gmb', { dedupeKey, skippedPublish: true });
       return ack(res, 'No linked social/location — acknowledged', { account, location });
     }
-
-    const devices = await resolveDevicesForUser(ctx.userId, deps.webhookConfig.deviceTarget);
 
     const rating = parseStarRating(notification.starRating);
     const verifiedReview = ctx.verifiedReviewCount + (eventType === 'NEW_REVIEW' ? 1 : 0);
@@ -140,6 +173,36 @@ export async function handleGmbWebhook(req: Request, res: Response, deps: Webhoo
       verifiedReview,
       mqttPublish: deps.webhookConfig.mqttPublishEnabled
     });
+
+    // Milestone state from Redis cache — first event per location seeds baseline, not a crossing.
+    const cachedOldCount = await getGmbReviewCount(location);
+    if (cachedOldCount === null) {
+      await setGmbReviewCount(location, verifiedReview);
+    } else {
+      const auditTs = new Date();
+      for (const device of devices) {
+        for (const milestone of getGmbCrossedMilestones(cachedOldCount, verifiedReview)) {
+          await webhookInfluxBatch((influx) =>
+            influx.writeMilestoneCrossed(
+              {
+                platform: 'gmb',
+                deviceId: device.clientId,
+                userId: ctx.userId,
+                trigger: eventType,
+                milestone,
+                oldValue: cachedOldCount,
+                newValue: verifiedReview,
+                locationId: location,
+                timestamp: auditTs
+              },
+              { flush: false }
+            )
+          );
+        }
+      }
+      await setGmbReviewCount(location, verifiedReview);
+    }
+
     let published = false;
     let lastTopic: string | undefined;
     let lastClientId: string | undefined;
@@ -156,7 +219,8 @@ export async function handleGmbWebhook(req: Request, res: Response, deps: Webhoo
           reviewId: notification.review,
           qrText: 'https://g.page/r/review'
         },
-        deps.webhookConfig.mqttPublishEnabled
+        deps.webhookConfig.mqttPublishEnabled,
+        { userId: ctx.userId, deviceId: device.clientId }
       );
       lastTopic = result.topic;
       lastClientId = device.clientId;

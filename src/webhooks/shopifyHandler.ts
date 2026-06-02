@@ -3,8 +3,11 @@ import type { WebhookHandlerDeps } from './types';
 import { verifyShopifyIngress } from './verify/shopifySquare';
 import { buildShopifyDedupeKey, tryClaimWebhookDedupe } from './dedupe/redisDedupe';
 import { resolveShopifyUserId } from './resolve/shopifyUser';
+import { resolveDevicesForUser } from './resolve/resolveDevices';
 import { scheduleShopifyAsyncMetrics } from './shopifyAsyncMetrics';
 import { deliverPosScreenToUser, isShopifyPaidOrder } from './posWebhookDelivery';
+import { parseShopifyOrderAudit } from './parseWebhookOrder';
+import { webhookInfluxBatch, flushWebhookInflux } from './influxAudit';
 import { WebhookLatencyTracker } from '../services/webhookMetrics';
 import { logger } from '../utils/logger';
 
@@ -38,8 +41,22 @@ export async function handleShopifyWebhook(req: Request, res: Response, deps: We
       isProduction
     );
 
+    await webhookInfluxBatch((influx) =>
+      influx.writeWebhookReceived(
+        {
+          platform: 'shopify',
+          eventType: topic,
+          verified: verification.valid,
+          shopDomain: shop,
+          timestamp: new Date()
+        },
+        { flush: false }
+      )
+    );
+
     if (!verification.valid) {
       logger.warn('[SHOPIFY_WEBHOOK] verify_failed', { shop, topic, error: verification.error });
+      await flushWebhookInflux();
       res.status(401).json({ error: verification.error || 'Invalid webhook signature' });
       return;
     }
@@ -51,16 +68,32 @@ export async function handleShopifyWebhook(req: Request, res: Response, deps: We
     if (!isNew) {
       logger.info('[SHOPIFY_WEBHOOK] duplicate', { shop, topic, dedupeKey });
       tracker.finish('shopify', { dedupeKey, dedupeHit: true, skippedPublish: true });
+      await flushWebhookInflux();
       res.status(200).json({ acknowledged: true, duplicate: true });
       return;
     }
 
     const userId = await resolveShopifyUserId(shop);
+    const devices = userId ? await resolveDevicesForUser(userId, deps.webhookConfig.deviceTarget) : [];
     tracker.markResolved();
+
+    await webhookInfluxBatch((influx) =>
+      influx.writeWebhookDeviceResolution(
+        {
+          platform: 'shopify',
+          externalId: shop,
+          userId: userId ?? undefined,
+          resolvedDeviceCount: devices.length,
+          timestamp: new Date()
+        },
+        { flush: false }
+      )
+    );
 
     if (!userId) {
       logger.info('[SHOPIFY_WEBHOOK] unknown_shop', { shop, topic });
       tracker.finish('shopify', { dedupeKey, skippedPublish: true });
+      await flushWebhookInflux();
       res.status(200).json({ acknowledged: true });
       return;
     }
@@ -72,7 +105,8 @@ export async function handleShopifyWebhook(req: Request, res: Response, deps: We
     let lastClientId: string | undefined;
 
     if (isShopifyPaidOrder(topic, rawBody)) {
-      const delivery = await deliverPosScreenToUser(deps, userId, 'shopify');
+      const orderAudit = parseShopifyOrderAudit(rawBody);
+      const delivery = await deliverPosScreenToUser(deps, userId, 'shopify', devices, orderAudit);
       published = delivery.published;
       lastTopic = delivery.topic;
       lastClientId = delivery.clientId;
@@ -93,6 +127,7 @@ export async function handleShopifyWebhook(req: Request, res: Response, deps: We
       topic: lastTopic,
       skippedPublish: !published && deps.webhookConfig.mqttPublishEnabled
     });
+    await flushWebhookInflux();
     res.status(200).json({ acknowledged: true });
   } catch (error) {
     logger.error('[SHOPIFY_WEBHOOK] Error', {

@@ -100,6 +100,63 @@ export interface InstagramCircuitEventInfluxInput {
   timestamp?: Date;
 }
 
+export type WebhookPlatform = 'shopify' | 'square' | 'gmb';
+
+export interface WebhookReceivedInfluxInput {
+  platform: WebhookPlatform;
+  eventType: string;
+  verified: boolean;
+  shopDomain?: string;
+  merchantId?: string;
+  locationId?: string;
+  timestamp?: Date;
+}
+
+export interface WebhookOrderInfluxInput {
+  platform: 'shopify' | 'square';
+  deviceId: string;
+  userId: string;
+  orderId: string;
+  totalAmount?: number;
+  currency?: string;
+  itemCount?: number;
+  timestamp?: Date;
+}
+
+export interface WebhookDeviceResolutionInfluxInput {
+  platform: WebhookPlatform;
+  externalId: string;
+  userId?: string;
+  resolvedDeviceCount: number;
+  errorMessage?: string;
+  timestamp?: Date;
+}
+
+export interface WebhookMqttDeliveryInfluxInput {
+  platform: WebhookPlatform;
+  deviceId: string;
+  userId?: string;
+  success: boolean;
+  published: boolean;
+  payloadSizeBytes: number;
+  payloadSha256: string;
+  errorMessage?: string;
+  timestamp?: Date;
+}
+
+export interface MilestoneCrossedInfluxInput {
+  platform: 'instagram' | 'gmb';
+  deviceId: string;
+  userId: string;
+  trigger: string;
+  milestone: number;
+  oldValue: number;
+  newValue: number;
+  instagramAccountId?: string;
+  locationId?: string;
+  timestamp?: Date;
+}
+
 export class InfluxService {
   private client: InfluxDB;
   private writeApi: WriteApi;
@@ -317,20 +374,121 @@ export class InfluxService {
     await this.submitPoint(point, opts?.flush !== false);
   }
 
-  /** Emitted when follower count crosses a fixed milestone threshold. */
+  /** Unified milestone crossing (Instagram followers or GMB review count). */
+  async writeMilestoneCrossed(
+    input: MilestoneCrossedInfluxInput,
+    opts?: { flush?: boolean }
+  ): Promise<void> {
+    const point = new Point('milestone_crossed')
+      .tag('platform', input.platform)
+      .tag('device_id', input.deviceId)
+      .tag('user_id', input.userId || 'unknown')
+      .tag('trigger', input.trigger)
+      .intField('milestone', Math.round(input.milestone))
+      .intField('old_value', Math.round(input.oldValue))
+      .intField('new_value', Math.round(input.newValue));
+    if (input.platform === 'instagram' && input.instagramAccountId) {
+      point.tag('instagram_account_id', input.instagramAccountId);
+    }
+    if (input.platform === 'gmb' && input.locationId) {
+      point.tag('location_id', input.locationId);
+    }
+    point.timestamp(input.timestamp ?? new Date());
+    await this.submitPoint(point, opts?.flush !== false);
+  }
+
+  /** @deprecated Use writeMilestoneCrossed with platform=instagram */
   async writeInstagramMilestoneCrossed(
     input: InstagramMilestoneCrossedInfluxInput,
     opts?: { flush?: boolean }
   ): Promise<void> {
-    const point = new Point('instagram_milestone_crossed')
+    await this.writeMilestoneCrossed(
+      {
+        platform: 'instagram',
+        deviceId: input.deviceId,
+        userId: input.userId,
+        trigger: input.trigger,
+        milestone: input.milestone,
+        oldValue: input.oldFollowers,
+        newValue: input.newFollowers,
+        instagramAccountId: input.instagramAccountId,
+        timestamp: input.timestamp
+      },
+      opts
+    );
+  }
+
+  /** Proof of webhook ingress (before business dedupe). */
+  async writeWebhookReceived(
+    input: WebhookReceivedInfluxInput,
+    opts?: { flush?: boolean }
+  ): Promise<void> {
+    const point = new Point('webhook_received')
+      .tag('platform', input.platform)
+      .tag('event_type', input.eventType || 'unknown')
+      .tag('verified', input.verified ? 'true' : 'false');
+    if (input.shopDomain) point.tag('shop_domain', input.shopDomain);
+    if (input.merchantId) point.tag('merchant_id', input.merchantId);
+    if (input.locationId) point.tag('location_id', input.locationId);
+    point.timestamp(input.timestamp ?? new Date());
+    await this.submitPoint(point, opts?.flush !== false);
+  }
+
+  /** Transaction audit for paid POS webhooks. */
+  async writeWebhookOrder(
+    input: WebhookOrderInfluxInput,
+    opts?: { flush?: boolean }
+  ): Promise<void> {
+    const point = new Point('webhook_order')
+      .tag('platform', input.platform)
       .tag('device_id', input.deviceId)
-      .tag('user_id', input.userId || 'unknown')
-      .tag('instagram_account_id', input.instagramAccountId || 'unknown')
-      .tag('trigger', input.trigger)
-      .intField('milestone', Math.round(input.milestone))
-      .intField('old_followers', Math.round(input.oldFollowers))
-      .intField('new_followers', Math.round(input.newFollowers))
-      .timestamp(input.timestamp ?? new Date());
+      .tag('user_id', input.userId)
+      .tag('order_id', input.orderId);
+    if (typeof input.totalAmount === 'number' && Number.isFinite(input.totalAmount)) {
+      point.floatField('total_amount', input.totalAmount);
+    }
+    if (input.currency) point.stringField('currency', input.currency);
+    if (typeof input.itemCount === 'number' && Number.isFinite(input.itemCount)) {
+      point.intField('item_count', Math.max(0, Math.round(input.itemCount)));
+    }
+    point.timestamp(input.timestamp ?? new Date());
+    await this.submitPoint(point, opts?.flush !== false);
+  }
+
+  /** User/device mapping traceability after resolve attempt. */
+  async writeWebhookDeviceResolution(
+    input: WebhookDeviceResolutionInfluxInput,
+    opts?: { flush?: boolean }
+  ): Promise<void> {
+    const point = new Point('webhook_device_resolution')
+      .tag('platform', input.platform)
+      .tag('external_id', input.externalId)
+      .tag('user_id', input.userId?.trim() || 'unknown')
+      .intField('resolved_device_count', Math.max(0, Math.round(input.resolvedDeviceCount)));
+    if (input.errorMessage) {
+      point.stringField('error_message', input.errorMessage.slice(0, 4096));
+    }
+    point.timestamp(input.timestamp ?? new Date());
+    await this.submitPoint(point, opts?.flush !== false);
+  }
+
+  /** Proof of MQTT screen publish attempt (success, shadow skip, or broker failure). */
+  async writeWebhookMqttDelivery(
+    input: WebhookMqttDeliveryInfluxInput,
+    opts?: { flush?: boolean }
+  ): Promise<void> {
+    const point = new Point('webhook_mqtt_delivery')
+      .tag('platform', input.platform)
+      .tag('device_id', input.deviceId)
+      .tag('user_id', input.userId?.trim() || 'unknown')
+      .booleanField('success', input.success)
+      .booleanField('published', input.published)
+      .intField('payload_size_bytes', Math.max(0, Math.round(input.payloadSizeBytes)))
+      .stringField('payload_sha256', input.payloadSha256);
+    if (!input.success && input.errorMessage) {
+      point.stringField('error_message', input.errorMessage.slice(0, 4096));
+    }
+    point.timestamp(input.timestamp ?? new Date());
     await this.submitPoint(point, opts?.flush !== false);
   }
 

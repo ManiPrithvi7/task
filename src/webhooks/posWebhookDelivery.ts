@@ -1,24 +1,46 @@
 import type { WebhookHandlerDeps } from './types';
-import { resolveDevicesForUser } from './resolve/resolveDevices';
+import type { ResolvedDeviceTarget } from './resolve/resolveDevices';
 import { publishPosScreen } from './delivery/publishPosScreen';
+import type { WebhookOrderAudit } from './parseWebhookOrder';
+import { webhookInfluxBatch } from './influxAudit';
 
 export async function deliverPosScreenToUser(
   deps: WebhookHandlerDeps,
   userId: string,
-  platform: 'shopify' | 'square'
+  platform: 'shopify' | 'square',
+  devices: ResolvedDeviceTarget[],
+  orderAudit?: WebhookOrderAudit | null
 ): Promise<{ published: boolean; clientId?: string; topic?: string }> {
-  const devices = await resolveDevicesForUser(userId, deps.webhookConfig.deviceTarget);
   let published = false;
   let lastTopic: string | undefined;
   let lastClientId: string | undefined;
 
   for (const device of devices) {
+    if (orderAudit) {
+      await webhookInfluxBatch((influx) =>
+        influx.writeWebhookOrder(
+          {
+            platform,
+            deviceId: device.clientId,
+            userId,
+            orderId: orderAudit.orderId,
+            totalAmount: orderAudit.totalAmount,
+            currency: orderAudit.currency,
+            itemCount: orderAudit.itemCount,
+            timestamp: new Date()
+          },
+          { flush: false }
+        )
+      );
+    }
+
     const result = await publishPosScreen(
       deps.mqttClient,
       deps.topicRoot,
       device.clientId,
       { platform, orderCount: 1 },
-      deps.webhookConfig.mqttPublishEnabled
+      deps.webhookConfig.mqttPublishEnabled,
+      { userId, deviceId: device.clientId }
     );
     lastTopic = result.topic;
     lastClientId = device.clientId;

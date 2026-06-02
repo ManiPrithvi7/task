@@ -1,6 +1,8 @@
 import type { MqttClientManager } from '../../servers/mqttClient';
 import { buildScreenEnvelope, gmbReviewMetrics } from '../../services/screenEnvelope';
+import { sha256Payload } from '../../utils/payloadHash';
 import { logger } from '../../utils/logger';
+import { webhookInfluxBatch } from '../influxAudit';
 
 export type GmbFastScreenInput = {
   verifiedReview: number;
@@ -11,13 +13,27 @@ export type GmbFastScreenInput = {
   celebration?: 'true' | 'false';
 };
 
+export type GmbScreenAuditContext = {
+  userId?: string;
+  deviceId: string;
+};
+
+export type GmbScreenPublishResult = {
+  topic: string;
+  published: boolean;
+  payload: string;
+  success: boolean;
+  errorMessage?: string;
+};
+
 export async function publishGmbScreen(
   mqttClient: MqttClientManager,
   topicRoot: string,
   clientId: string,
   input: GmbFastScreenInput,
-  mqttPublishEnabled: boolean
-): Promise<{ topic: string; published: boolean }> {
+  mqttPublishEnabled: boolean,
+  audit?: GmbScreenAuditContext
+): Promise<GmbScreenPublishResult> {
   const { nextGoal, remainingGoal, progress } = gmbReviewMetrics(input.verifiedReview);
   const rating = input.rating ?? 4;
 
@@ -49,22 +65,51 @@ export async function publishGmbScreen(
     }
   );
 
+  const payload = JSON.stringify(envelope);
   const topic = `${topicRoot}/${clientId}/gmb`;
+  let published = false;
+  let success = true;
+  let errorMessage: string | undefined;
 
   if (!mqttPublishEnabled) {
     logger.info('[WEBHOOK_GMB] Publish skipped (WEBHOOK_MQTT_PUBLISH_ENABLED=false)', {
       clientId,
       topic
     });
-    return { topic, published: false };
+  } else {
+    try {
+      await mqttClient.publish({
+        topic,
+        payload,
+        qos: 1,
+        retain: false
+      });
+      published = true;
+    } catch (err: unknown) {
+      success = false;
+      errorMessage = err instanceof Error ? err.message : String(err);
+      logger.warn('[WEBHOOK_GMB] Publish failed', { clientId, topic, error: errorMessage });
+    }
   }
 
-  await mqttClient.publish({
-    topic,
-    payload: JSON.stringify(envelope),
-    qos: 1,
-    retain: false
-  });
+  if (audit) {
+    await webhookInfluxBatch((influx) =>
+      influx.writeWebhookMqttDelivery(
+        {
+          platform: 'gmb',
+          deviceId: audit.deviceId,
+          userId: audit.userId,
+          success,
+          published,
+          payloadSizeBytes: Buffer.byteLength(payload, 'utf8'),
+          payloadSha256: sha256Payload(payload),
+          errorMessage,
+          timestamp: new Date()
+        },
+        { flush: false }
+      )
+    );
+  }
 
-  return { topic, published: true };
+  return { topic, published, payload, success, errorMessage };
 }
