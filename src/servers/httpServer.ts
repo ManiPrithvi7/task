@@ -12,6 +12,8 @@ import { MqttClientManager } from './mqttClient';
 export interface HttpConfig {
   port: number;
   host: string;
+  requestLogging?: boolean;
+  healthChecksEnabled?: boolean;
 }
 
 export class HttpServer {
@@ -68,39 +70,43 @@ export class HttpServer {
       cwd: process.cwd()
     });
 
-    this.app.use((req: Request, res: Response, next: NextFunction) => {
-      const start = Date.now();
-      res.on('finish', () => {
-        const duration = Date.now() - start;
-        
-        // Health checks are logged at debug level to reduce log spam
-        // (Render.com and other platforms ping /health every 5-10 seconds)
-        const isHealthCheck = req.path === '/health' || req.path === '/health/';
-        const logLevel = isHealthCheck ? 'debug' : 'info';
-        
-        if (logLevel === 'debug') {
-          logger.debug('HTTP request', {
-            method: req.method,
-            path: req.path,
-            status: res.statusCode,
-            duration: `${duration}ms`
-          });
-        } else {
-        logger.info('HTTP request', {
-          method: req.method,
-          path: req.path,
-          status: res.statusCode,
-          duration: `${duration}ms`
+    if (this.config.requestLogging !== false) {
+      this.app.use((req: Request, res: Response, next: NextFunction) => {
+        const start = Date.now();
+        res.on('finish', () => {
+          const duration = Date.now() - start;
+          const isHealthCheck = req.path === '/health' || req.path === '/health/';
+          const logLevel = isHealthCheck ? 'debug' : 'info';
+
+          if (logLevel === 'debug') {
+            logger.debug('HTTP request', {
+              method: req.method,
+              path: req.path,
+              status: res.statusCode,
+              duration: `${duration}ms`
+            });
+          } else {
+            logger.info('HTTP request', {
+              method: req.method,
+              path: req.path,
+              status: res.statusCode,
+              duration: `${duration}ms`
+            });
+          }
         });
-        }
+        next();
       });
-      next();
-    });
+    }
   }
 
   private setupRoutes(): void {
     // Health check
     this.app.get('/health', async (req: Request, res: Response) => {
+      if (this.config.healthChecksEnabled === false) {
+        res.json({ status: 'ok', timestamp: new Date().toISOString() });
+        return;
+      }
+
       const allDevices = await this.deviceService.getAllDevices();
       const activeDevices = Array.from(allDevices.values()).filter(d => d.status === 'active');
       const inactiveDevices = allDevices.size - activeDevices.length;

@@ -1,11 +1,5 @@
 import { logger } from './utils/logger';
-import {
-  loadConfig,
-  validateConfig,
-  AppConfig,
-  getMqttTlsRuntimeDir,
-  reloadMqttTlsClientPemFromRuntime
-} from './config';
+import { loadConfig, validateConfig, AppConfig, setMqttTlsClientPem } from './config';
 import { HttpServer } from './servers/httpServer';
 import { WebSocketServerManager } from './servers/webSocketServer';
 import { MqttClientManager } from './servers/mqttClient';
@@ -49,9 +43,9 @@ import * as path from 'path';
 import * as forge from 'node-forge';
 import mongoose from 'mongoose';
 import {
-  buildNodeTlsConnectOptions,
+  buildMqttTlsPrecheckOptions,
   normalizeTlsPem,
-  resolveMqttTcpHost,
+  resolveMqttTlsServername,
   type MqttTlsConnectMaterial
 } from './utils/mqttTlsOptions';
 import { validateKeyUsageAndEKU } from './utils/certValidator';
@@ -275,7 +269,9 @@ export class StatsMqttLite {
     try {
       this.mongoService = createMongoService({
         uri: this.config.mongodb.uri,
-        dbName: this.config.mongodb.dbName
+        dbName: this.config.mongodb.dbName,
+        maxPoolSize: this.config.mongodb.maxPoolSize,
+        minPoolSize: this.config.mongodb.minPoolSize
       });
 
       await this.mongoService.connect();
@@ -632,30 +628,24 @@ export class StatsMqttLite {
       return;
     }
 
-    const servername = tlsCfg.servername || broker;
-    const { connectHost, brokerHost } = await resolveMqttTcpHost(broker, servername);
-    const includeClientCert = process.env.MQTT_TLS_PRECHECK_CLIENT_CERT === 'true';
+    const servername = tlsCfg.servername || resolveMqttTlsServername(broker);
     const tlsMaterial: MqttTlsConnectMaterial = {
       caPem,
-      clientCertPem: includeClientCert ? tlsCfg.clientCertPem : undefined,
-      clientKeyPem: includeClientCert ? tlsCfg.clientKeyPem : undefined,
+      clientCertPem: tlsCfg.clientCertPem,
+      clientKeyPem: tlsCfg.clientKeyPem,
       rejectUnauthorized: tlsCfg.rejectUnauthorized !== false,
       servername
     };
 
-    if (servername !== brokerHost) {
-      logger.info('MQTT TLS pre-check uses cert SNI distinct from TCP host (Railway proxy)', {
-        broker: brokerHost,
-        connectHost,
-        servername
-      });
+    if (servername !== broker) {
+      logger.info('MQTT TLS pre-check: TCP host differs from cert SNI', { broker, servername });
     }
 
     try {
-      logger.info('MQTT TLS pre-check', { broker: brokerHost, connectHost, port, servername });
+      logger.info('MQTT TLS pre-check', { broker, port, servername, mTLS: !!(tlsCfg.clientCertPem && tlsCfg.clientKeyPem) });
       await new Promise<void>((resolve, reject) => {
         const socket = tls.connect(
-          buildNodeTlsConnectOptions(tlsMaterial, connectHost, port),
+          buildMqttTlsPrecheckOptions(tlsMaterial, broker, port),
           () => {
             if (!socket.authorized) {
               const authErr = socket.authorizationError || 'TLS authorization failed';
@@ -665,7 +655,7 @@ export class StatsMqttLite {
             }
             const peer = socket.getPeerCertificate(true) as tls.PeerCertificate | undefined;
             logger.info('TLS handshake succeeded', {
-              broker: brokerHost,
+              broker,
               protocol: socket.getProtocol(),
               cipher: socket.getCipher()?.name,
               subject: peer?.subject || null
@@ -686,7 +676,7 @@ export class StatsMqttLite {
       });
     } catch (err: any) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      logger.error('TLS handshake/check failed', { broker: brokerHost, connectHost, servername, error: errMsg });
+      logger.error('TLS handshake/check failed', { broker, servername, error: errMsg });
       const nameMismatch =
         /altnames|Hostname\/IP does not match|does not match certificate/i.test(errMsg);
       const earlyDisconnect = /disconnected before secure TLS connection|UNEXPECTED_EOF|decode_error/i.test(
@@ -700,7 +690,7 @@ export class StatsMqttLite {
         hint =
           ' Broker may be sending a malformed TLS ServerHello (NanoMQ cert/key on Railway). Re-run npm run pki:broker, update NANOMQ_TLS_* on the broker service, or set MQTT_TLS_SKIP_PRECHECK=true after verifying with npm run pki:verify.';
       }
-      throw new Error(`TLS validation failed for broker ${brokerHost}: ${errMsg}${hint}`);
+      throw new Error(`TLS validation failed for broker ${broker}: ${errMsg}${hint}`);
     }
   }
 
@@ -719,40 +709,12 @@ export class StatsMqttLite {
       return;
     }
 
-    const runtimeDir = getMqttTlsRuntimeDir(this.config.storage.dataDir);
-    const certPath = path.join(runtimeDir, 'client.crt');
-    const keyPath = path.join(runtimeDir, 'client.key');
-
-    // Optional skip if this run already has valid PEMs in the runtime dir (e.g. from env at startup).
-    let certExists = fs.existsSync(certPath);
-    let keyExists = fs.existsSync(keyPath);
-    const isPemLike = (p: string) => {
-      try {
-        const c = fs.readFileSync(p, 'utf8');
-        return c.includes('-----BEGIN') && c.includes('-----END');
-      } catch {
-        return false;
-      }
-    };
-    if (certExists && keyExists) {
-      const certValid = isPemLike(certPath);
-      const keyValid = isPemLike(keyPath);
-      if (certValid && keyValid) {
-        logger.info('MQTT client cert/key already present in runtime dir; skipping generation', {
-          certPath,
-          keyPath
-        });
-        reloadMqttTlsClientPemFromRuntime(this.config);
-        return;
-      }
-      logger.warn('Existing client cert/key in runtime dir are not valid PEM; regenerating', {
-        certPath,
-        keyPath,
-        certValid,
-        keyValid
-      });
-      certExists = false;
-      keyExists = false;
+    if (
+      this.config.mqtt.tls.clientCertPem?.includes('-----BEGIN') &&
+      this.config.mqtt.tls.clientKeyPem?.includes('-----BEGIN')
+    ) {
+      logger.info('MQTT client cert/key already loaded from env; skipping CREATE_MQTT_CLIENT_CERT generation');
+      return;
     }
 
     if (!this.caService || !this.caService.isInitialized()) {
@@ -780,18 +742,11 @@ export class StatsMqttLite {
         throw new Error('CAService.signCSR did not return certificate PEM');
       }
 
-      // Ensure directories
-      fs.mkdirSync(path.dirname(certPath), { recursive: true });
-      fs.mkdirSync(path.dirname(keyPath), { recursive: true });
-
-      // Write certificate and private key (private key is generated here; never stored in DB).
-      // Overwrite existing files to ensure cert/key pair match.
       const privateKeyPem = forge.pki.privateKeyToPem(keys.privateKey);
-      fs.writeFileSync(certPath, certificatePem, { encoding: 'utf8', mode: 0o644 });
-      logger.info('Wrote generated client certificate', { certPath });
-      fs.writeFileSync(keyPath, privateKeyPem, { encoding: 'utf8', mode: 0o600 });
-      logger.info('Wrote generated client private key', { keyPath });
-      reloadMqttTlsClientPemFromRuntime(this.config);
+      setMqttTlsClientPem(this.config, certificatePem, privateKeyPem);
+      logger.info('MQTT client certificate loaded in-memory (set MQTT_TLS_CLIENT_*_BASE64 to persist across restarts)', {
+        deviceId
+      });
     } catch (err: any) {
       logger.error('Failed to generate client certificate', { error: err instanceof Error ? err.message : String(err) });
       throw err;

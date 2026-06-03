@@ -81,6 +81,40 @@ export function buildNodeTlsConnectOptions(
 }
 
 /**
+ * TLS pre-check: connect to MQTT_BROKER hostname (not resolved IP), env CA only, mTLS when PEMs present.
+ * Matches a direct `tls.connect({ host: broker, servername, ca, cert, key })` smoke test.
+ */
+export function buildMqttTlsPrecheckOptions(
+  material: MqttTlsConnectMaterial,
+  brokerHost: string,
+  port: number
+): tls.ConnectionOptions {
+  const servername = material.servername;
+  const opts: tls.ConnectionOptions = {
+    host: brokerHost,
+    port,
+    ca: normalizeTlsPem(material.caPem),
+    servername,
+    rejectUnauthorized: material.rejectUnauthorized !== false,
+    ...readMqttTlsVersionOptions()
+  };
+
+  if (material.clientCertPem?.includes('-----BEGIN')) {
+    opts.cert = normalizeTlsPem(material.clientCertPem);
+  }
+  if (material.clientKeyPem?.includes('-----BEGIN')) {
+    opts.key = normalizeTlsPem(material.clientKeyPem);
+  }
+
+  if (servername !== brokerHost) {
+    opts.checkServerIdentity = (_hostname: string, cert: tls.PeerCertificate) =>
+      tls.checkServerIdentity(servername, cert);
+  }
+
+  return opts;
+}
+
+/**
  * When SNI (cert identity) differs from MQTT_BROKER, resolve broker to IP so mqtt.js
  * does not overwrite `servername` with the proxy hostname (see mqtt/build/lib/connect/tls.js).
  */

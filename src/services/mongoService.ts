@@ -11,6 +11,8 @@ import { logger } from '../utils/logger';
 export interface MongoConfig {
   uri: string;
   dbName?: string;
+  maxPoolSize?: number;
+  minPoolSize?: number;
   options?: mongoose.ConnectOptions;
 }
 
@@ -56,7 +58,8 @@ export class MongoService {
       const timeouts = mongoDriverTimeouts();
 
       const options: mongoose.ConnectOptions = {
-        maxPoolSize: 10,
+        maxPoolSize: this.config.maxPoolSize ?? 10,
+        minPoolSize: this.config.minPoolSize ?? 2,
         ...timeouts,
         socketTimeoutMS: 45000,
         bufferCommands: false,

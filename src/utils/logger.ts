@@ -1,9 +1,9 @@
 import winston from 'winston';
 
-const logLevel = process.env.LOG_LEVEL || 'info';
+const defaultLogLevel = process.env.LOG_LEVEL || 'info';
 
 export const logger = winston.createLogger({
-  level: logLevel,
+  level: defaultLogLevel,
   format: winston.format.combine(
     winston.format.timestamp(),
     winston.format.errors({ stack: true }),
@@ -22,3 +22,12 @@ export const logger = winston.createLogger({
     })
   ]
 });
+
+/** Apply log level from AppConfig after loadConfig() (canonical source: config.app.logLevel). */
+export function configureLogger(level: string): void {
+  const normalized = level?.trim() || 'info';
+  logger.level = normalized;
+  for (const transport of logger.transports) {
+    transport.level = normalized;
+  }
+}

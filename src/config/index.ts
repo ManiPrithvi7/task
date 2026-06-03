@@ -9,6 +9,8 @@ import {
   type WebhookConfig
 } from './webhookConfig';
 import { normalizeTlsPem, resolveMqttTlsServername } from '../utils/mqttTlsOptions';
+import { configureLogger } from '../utils/logger';
+import { envBool, envInt, envString } from './envHelpers';
 
 export type { WebhookConfig };
 
@@ -77,14 +79,7 @@ function getProvisioningRootCaKeyFromEnv(): string | undefined {
 /** Default Root CA directory (env decode + auto-generated CA). Override with `CA_STORAGE_PATH` or `PROVISIONING_CA_DIR` (e.g. in Docker use `/data/provisioning-ca`). */
 export const DEFAULT_PROVISIONING_CA_STORAGE_PATH = path.resolve(process.cwd(), 'src', 'certs');
 
-/** Runtime directory for MQTT TLS PEMs (written from env each process start; not for committing). */
-const MQTT_TLS_RUNTIME_SUB = '.mqtt-tls';
-
-export function getMqttTlsRuntimeDir(dataDir: string): string {
-  return path.join(path.resolve(dataDir), MQTT_TLS_RUNTIME_SUB);
-}
-
-/** MQTT TLS: env-only (BASE64 or *_PEM). No MQTT_TLS_CA / MQTT_TLS_CLIENT_* generic PEM, no loading pre-existing files. */
+/** MQTT TLS: env-only (BASE64 or *_PEM). Never read or write data/.mqtt-tls/ for broker/client PEMs. */
 function resolveMqttTlsPemFromEnv(): {
   caPem?: string;
   clientCertPem?: string;
@@ -100,17 +95,16 @@ function resolveMqttTlsPemFromEnv(): {
     firstPemEnv('MQTT_TLS_CLIENT_KEY_PEM') ||
     decodeBase64ToUtf8(process.env.MQTT_TLS_CLIENT_KEY_BASE64);
   return {
-    caPem: caPem && looksLikeCertificatePem(caPem) ? caPem : undefined,
-    clientCertPem: clientCertPem && looksLikeCertificatePem(clientCertPem) ? clientCertPem : undefined,
-    clientKeyPem: clientKeyPem && looksLikePrivateKeyPem(clientKeyPem) ? clientKeyPem : undefined
+    caPem: caPem && looksLikeCertificatePem(caPem) ? normalizeTlsPem(caPem) : undefined,
+    clientCertPem:
+      clientCertPem && looksLikeCertificatePem(clientCertPem) ? normalizeTlsPem(clientCertPem) : undefined,
+    clientKeyPem:
+      clientKeyPem && looksLikePrivateKeyPem(clientKeyPem) ? normalizeTlsPem(clientKeyPem) : undefined
   };
 }
 
-/**
- * Write MQTT TLS PEMs from env to dataDir/.mqtt-tls/ and read them back (single source for this run).
- * Does not read stale files if env is empty.
- */
-function writeAndReadMqttTlsRuntime(dataDir: string): {
+/** Load MQTT TLS PEMs from env into memory only (no disk persistence). */
+function loadMqttTlsFromEnv(): {
   caPem?: string;
   clientCertPem?: string;
   clientKeyPem?: string;
@@ -120,35 +114,22 @@ function writeAndReadMqttTlsRuntime(dataDir: string): {
   if (!caPem && !clientCertPem && !clientKeyPem) {
     return {};
   }
-
-  const dir = getMqttTlsRuntimeDir(dataDir);
-  fs.mkdirSync(dir, { recursive: true });
-  const writePem = (filename: string, pem: string, mode: number) => {
-    fs.writeFileSync(path.join(dir, filename), normalizeTlsPem(pem), { encoding: 'utf8', mode });
-  };
-  if (caPem) writePem('ca.pem', caPem, 0o644);
-  if (clientCertPem) writePem('client.crt', clientCertPem, 0o644);
-  if (clientKeyPem) writePem('client.key', clientKeyPem, 0o600);
-
-  const out: { caPem?: string; clientCertPem?: string; clientKeyPem?: string } = {};
-  if (caPem) out.caPem = fs.readFileSync(path.join(dir, 'ca.pem'), 'utf8');
-  if (clientCertPem) out.clientCertPem = fs.readFileSync(path.join(dir, 'client.crt'), 'utf8');
-  if (clientKeyPem) out.clientKeyPem = fs.readFileSync(path.join(dir, 'client.key'), 'utf8');
-  logger.info('MQTT TLS credentials loaded from environment via runtime directory', { mqttTlsRuntimeDir: dir });
-  return out;
+  logger.info('MQTT TLS credentials loaded from environment (in-memory only)', {
+    hasCa: !!caPem,
+    hasClientCert: !!clientCertPem,
+    hasClientKey: !!clientKeyPem
+  });
+  return resolved;
 }
 
-/** After CREATE_MQTT_CLIENT_CERT writes client.crt/key under .mqtt-tls/, refresh in-memory TLS for the MQTT client. */
-export function reloadMqttTlsClientPemFromRuntime(config: AppConfig): void {
-  const tls = config.mqtt.tls;
-  if (!tls) return;
-  const dir = getMqttTlsRuntimeDir(config.storage.dataDir);
-  const certPath = path.join(dir, 'client.crt');
-  const keyPath = path.join(dir, 'client.key');
-  if (!fs.existsSync(certPath) || !fs.existsSync(keyPath)) return;
-  tls.clientCertPem = fs.readFileSync(certPath, 'utf8');
-  tls.clientKeyPem = fs.readFileSync(keyPath, 'utf8');
-  tls.enabled = true;
+/** Update in-memory MQTT client cert/key (e.g. after CREATE_MQTT_CLIENT_CERT). */
+export function setMqttTlsClientPem(config: AppConfig, clientCertPem: string, clientKeyPem: string): void {
+  if (!config.mqtt.tls) {
+    config.mqtt.tls = { enabled: true };
+  }
+  config.mqtt.tls.clientCertPem = normalizeTlsPem(clientCertPem);
+  config.mqtt.tls.clientKeyPem = normalizeTlsPem(clientKeyPem);
+  config.mqtt.tls.enabled = true;
 }
 
 /**
@@ -262,10 +243,7 @@ export interface MqttConfig {
   /** TLS / mTLS configuration for connecting to MQTT broker (optional) */
   tls?: {
     enabled?: boolean;
-    /**
-     * Broker CA + client cert/key: only from MQTT_TLS_*_BASE64 / MQTT_TLS_*_PEM env.
-     * Startup writes PEMs under dataDir/.mqtt-tls/ and these fields are read back from disk.
-     */
+    /** Broker CA + client cert/key: only from MQTT_TLS_*_BASE64 / MQTT_TLS_*_PEM env (in-memory). */
     caPem?: string;
     clientCertPem?: string;
     clientKeyPem?: string;
@@ -278,6 +256,8 @@ export interface MqttConfig {
 export interface HttpConfig {
   port: number;
   host: string;
+  requestLogging: boolean;
+  healthChecksEnabled: boolean;
 }
 
 export interface StorageConfig {
@@ -322,6 +302,10 @@ export interface ProvisioningConfig {
 export interface MongoDBConfig {
   uri: string;
   dbName: string;
+  /** Mongoose maxPoolSize (default 10). Env: MONGODB_MAX_POOL_SIZE */
+  maxPoolSize: number;
+  /** Mongoose minPoolSize (default 2). Env: MONGODB_MIN_POOL_SIZE */
+  minPoolSize: number;
 }
 
 export interface RedisConfig {
@@ -335,6 +319,22 @@ export interface RedisConfig {
 export interface AppEnvConfig {
   env: string;
   logLevel: string;
+  /** Influx startup health probe retries (default 3). Env: INFLUXDB_HEALTH_RETRIES */
+  maxRetries: number;
+  /** Reserved for metrics collectors; default 10000 ms. Env: METRICS_INTERVAL_MS */
+  metricsIntervalMs: number;
+  /** Reserved for retention policy hints; default 30 days. Env: METRICS_RETENTION_DAYS */
+  metricsRetentionDays: number;
+}
+
+/** Runtime feature toggles (all default on). Override only to disable behavior. */
+export interface AppFeaturesConfig {
+  autoStart: boolean;
+  errorReporting: boolean;
+  gracefulShutdown: boolean;
+  healthChecks: boolean;
+  metricsCollection: boolean;
+  requestLogging: boolean;
 }
 
 export interface AuthConfig {
@@ -420,6 +420,7 @@ export interface AppConfig {
   redis: RedisConfig;
   auth: AuthConfig;
   app: AppEnvConfig;
+  features: AppFeaturesConfig;
   webhooks: WebhookConfig;
   influxdb?: InfluxDBConfig;
   instagramPolling?: InstagramPollingConfig;
@@ -435,29 +436,37 @@ export function loadConfig(): AppConfig {
 
   const provisioningCaDirFromEnv = writeProvisioningRootCaFromEnv();
 
-  const mtlsOnlyEnv =
+  const mqttUsername = process.env.MQTT_USERNAME?.trim() || '';
+  const mqttPassword = process.env.MQTT_PASSWORD?.trim() || '';
+  const hasMqttUserPass = mqttUsername.length > 0 && mqttPassword.length > 0;
+  const mtlsOnlyExplicitOff =
+    process.env.MQTT_MTLS_ONLY === 'false' ||
+    process.env.MQTT_MTLS_ONLY === '0' ||
+    process.env.MQTT_AUTH_X509_ONLY === 'false';
+  const mtlsOnlyExplicitOn =
     process.env.MQTT_MTLS_ONLY === 'true' ||
     process.env.MQTT_MTLS_ONLY === '1' ||
     process.env.MQTT_AUTH_X509_ONLY === 'true';
-  const authX509Only = mtlsOnlyEnv || true;
+  /** Default: X.509-only when username/password are not both set (production mTLS path). */
+  const authX509Only = !mtlsOnlyExplicitOff && (mtlsOnlyExplicitOn || !hasMqttUserPass);
 
   if (process.env.MQTT_TLS_CA?.trim()) {
     logger.warn(
-      'MQTT_TLS_CA is ignored; use MQTT_TLS_CA_BASE64 or MQTT_TLS_CA_PEM / MQTT_TLS_CA_CERT. Material is written to DATA_DIR/.mqtt-tls/ at startup.'
+      'MQTT_TLS_CA is ignored; use MQTT_TLS_CA_BASE64 or MQTT_TLS_CA_PEM / MQTT_TLS_CA_CERT (in-memory only).'
     );
   }
   if (process.env.MQTT_TLS_CLIENT_CERT?.trim()) {
     logger.warn(
-      'MQTT_TLS_CLIENT_CERT is ignored; use MQTT_TLS_CLIENT_CERT_BASE64 or MQTT_TLS_CLIENT_CERT_PEM. Material is written to DATA_DIR/.mqtt-tls/ at startup.'
+      'MQTT_TLS_CLIENT_CERT is ignored; use MQTT_TLS_CLIENT_CERT_BASE64 or MQTT_TLS_CLIENT_CERT_PEM (in-memory only).'
     );
   }
   if (process.env.MQTT_TLS_CLIENT_KEY?.trim()) {
     logger.warn(
-      'MQTT_TLS_CLIENT_KEY is ignored; use MQTT_TLS_CLIENT_KEY_BASE64 or MQTT_TLS_CLIENT_KEY_PEM. Material is written to DATA_DIR/.mqtt-tls/ at startup.'
+      'MQTT_TLS_CLIENT_KEY is ignored; use MQTT_TLS_CLIENT_KEY_BASE64 or MQTT_TLS_CLIENT_KEY_PEM (in-memory only).'
     );
   }
 
-  const mqttRuntimeTls = writeAndReadMqttTlsRuntime(dataDir);
+  const mqttRuntimeTls = loadMqttTlsFromEnv();
   const caPemResolved = mqttRuntimeTls.caPem;
   const clientCertPemResolved = mqttRuntimeTls.clientCertPem;
   const clientKeyPemResolved = mqttRuntimeTls.clientKeyPem;
@@ -492,7 +501,7 @@ export function loadConfig(): AppConfig {
     priorityIntervalMs: parseInt(process.env.IG_POLL_PRIORITY_INTERVAL_MS || '15000', 10),
     backgroundIntervalMs: parseInt(process.env.IG_POLL_BACKGROUND_INTERVAL_MS || '90000', 10),
     priorityTtlMs: parseInt(process.env.IG_POLL_PRIORITY_TTL_MS || '120000', 10),
-    batchSize: parseInt(process.env.IG_POLL_BATCH_SIZE || '50', 10),
+    batchSize: envInt('IG_POLL_BATCH_SIZE', 50, ['BATCH_SIZE']),
     backoffThreshold: parseInt(process.env.IG_POLL_BACKOFF_THRESHOLD || '6', 10),
     backoffWindowMs: parseInt(process.env.IG_POLL_BACKOFF_WINDOW_MS || '60000', 10),
     priorityCapPerCycle: parseInt(process.env.IG_POLL_PRIORITY_CAP_PER_CYCLE || '0', 10),
@@ -516,6 +525,10 @@ export function loadConfig(): AppConfig {
       });
     }
   }
+  const metricsCollectionEnabled = envBool('ENABLE_METRICS_COLLECTION', true);
+  const influxHealthRetries = envInt('INFLUXDB_HEALTH_RETRIES', 3, ['MAX_RETRIES']);
+  process.env.INFLUXDB_HEALTH_RETRIES = String(influxHealthRetries);
+
   const influxToken = process.env.INFLUXDB_TOKEN?.trim() || '';
   /** Prefer INFLUXDB_URL; fall back to INFLUXDB_HOST (many stacks use HOST + PORT). */
   const influxUrlRaw =
@@ -523,8 +536,8 @@ export function loadConfig(): AppConfig {
     process.env.INFLUXDB_HOST?.trim() ||
     'http://localhost:8086';
   const influxUrl = normalizeInfluxDbUrl(influxUrlRaw);
-  /** Influx runs whenever an API token is provided (essential mode for that deployment). */
-  const influxEnabled = influxToken.length > 0;
+  /** Influx runs when a token is set and metrics collection is not disabled. */
+  const influxEnabled = metricsCollectionEnabled && influxToken.length > 0;
   const influxDiskQueueDisabled =
     process.env.INFLUXDB_DISK_QUEUE === 'false' || process.env.INFLUXDB_DISK_QUEUE === '0';
   const influxDiskQueueEnabled = influxEnabled && !influxDiskQueueDisabled;
@@ -536,7 +549,7 @@ export function loadConfig(): AppConfig {
     : path.join(path.resolve(dataDir), 'influx-write-queue.lines');
   const influxQueueFlushMs = Math.max(
     1000,
-    parseInt(process.env.INFLUXDB_QUEUE_FLUSH_MS || '5000', 10) || 5000
+    envInt('INFLUXDB_QUEUE_FLUSH_MS', 5000, ['BATCH_TIMEOUT'])
   );
   const influxQueueBatchMax = Math.max(
     1,
@@ -548,10 +561,12 @@ export function loadConfig(): AppConfig {
 
   const config: AppConfig = {
     mqtt: {
-      broker: process.env.MQTT_BROKER || 'broker.emqx.io',
-      port: parseInt(process.env.MQTT_PORT || '1883'),
-      clientId: process.env.MQTT_CLIENT_ID || `firmware-test-1234`,
+      broker: process.env.MQTT_BROKER || 'broker.withproof.io',
+      port: parseInt(process.env.MQTT_PORT || '8883', 10),
+      clientId: process.env.MQTT_CLIENT_ID || 'proof-server',
       authX509Only,
+      username: hasMqttUserPass ? mqttUsername : undefined,
+      password: hasMqttUserPass ? mqttPassword : undefined,
       topicPrefix: process.env.MQTT_TOPIC_PREFIX || '',
       topicRoot: process.env.MQTT_TOPIC_ROOT || 'proof.mqtt',
       reconnectPeriod: parseInt(process.env.MQTT_RECONNECT_PERIOD || '2000', 10),
@@ -564,14 +579,16 @@ export function loadConfig(): AppConfig {
         clientKeyPem: clientKeyPemResolved,
         rejectUnauthorized: process.env.MQTT_TLS_REJECT_UNAUTHORIZED !== 'false',
         servername: resolveMqttTlsServername(
-          process.env.MQTT_BROKER || 'broker.emqx.io',
+          process.env.MQTT_BROKER || 'broker.withproof.io',
           process.env.MQTT_TLS_SERVERNAME?.trim() || process.env.MQTT_TLS_VERIFY_HOST?.trim()
         )
       }
     },
     http: {
       port: parseInt(process.env.PORT || process.env.HTTP_PORT || '3002'),  // Render uses PORT
-      host: process.env.HTTP_HOST || '0.0.0.0'
+      host: process.env.HTTP_HOST || '0.0.0.0',
+      requestLogging: envBool('ENABLE_REQUEST_LOGGING', true),
+      healthChecksEnabled: envBool('ENABLE_HEALTH_CHECKS', true)
     },
     storage: {
       dataDir,
@@ -610,7 +627,9 @@ export function loadConfig(): AppConfig {
     },
     mongodb: {
       uri: process.env.MONGODB_URI || process.env.MONGO_URI || '',
-      dbName: process.env.MONGODB_DB_NAME || 'statsmqtt'
+      dbName: process.env.MONGODB_DB_NAME || 'statsmqtt',
+      maxPoolSize: envInt('MONGODB_MAX_POOL_SIZE', 10, ['CONNECTION_POOL_MAX']),
+      minPoolSize: envInt('MONGODB_MIN_POOL_SIZE', 2, ['CONNECTION_POOL_MIN'])
     },
     redis: {
       enabled: Boolean(redisUrl),
@@ -622,8 +641,19 @@ export function loadConfig(): AppConfig {
       secret: process.env.AUTH_SECRET || ''
     },
     app: {
-      env: process.env.NODE_ENV || 'development',
-      logLevel: process.env.LOG_LEVEL || 'info'
+      env: envString('NODE_ENV', 'development'),
+      logLevel: envString('LOG_LEVEL', 'info'),
+      maxRetries: influxHealthRetries,
+      metricsIntervalMs: envInt('METRICS_INTERVAL_MS', 10_000, ['METRICS_INTERVAL']),
+      metricsRetentionDays: envInt('METRICS_RETENTION_DAYS', 30)
+    },
+    features: {
+      autoStart: envBool('ENABLE_AUTO_START', true),
+      errorReporting: envBool('ENABLE_ERROR_REPORTING', true),
+      gracefulShutdown: envBool('ENABLE_GRACEFUL_SHUTDOWN', true),
+      healthChecks: envBool('ENABLE_HEALTH_CHECKS', true),
+      metricsCollection: metricsCollectionEnabled,
+      requestLogging: envBool('ENABLE_REQUEST_LOGGING', true)
     },
     webhooks: loadWebhookConfig(),
     instagramServerless,
@@ -678,8 +708,11 @@ export function loadConfig(): AppConfig {
           token: '(set)'
         }
       : { configured: false, hint: 'set INFLUXDB_TOKEN (optional INFLUXDB_URL)' },
-    env: config.app.env
+    env: config.app.env,
+    logLevel: config.app.logLevel
   });
+
+  configureLogger(config.app.logLevel);
 
   return config;
 }
@@ -723,7 +756,7 @@ export function validateConfig(config: AppConfig): void {
     const tls = config.mqtt.tls;
     if (!tls?.enabled) {
       throw new Error(
-        'mTLS-only MQTT: set MQTT_TLS_ENABLED=true and provide CA + client cert/key via MQTT_TLS_*_BASE64 or MQTT_TLS_*_PEM (env only; app writes DATA_DIR/.mqtt-tls/ at startup — not broker/certs).'
+        'mTLS-only MQTT: set MQTT_TLS_ENABLED=true and provide CA + client cert/key via MQTT_TLS_*_BASE64 or MQTT_TLS_*_PEM (env only, in-memory — not broker/certs or data/.mqtt-tls/).'
       );
     }
     const hasCa = !!(tls.caPem && tls.caPem.includes('-----BEGIN'));

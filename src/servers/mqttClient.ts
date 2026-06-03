@@ -29,7 +29,7 @@ export interface MqttConfig {
   dnsPreflightEnabled?: boolean;
   tls?: {
     enabled?: boolean;
-    /** Filled from env → DATA_DIR/.mqtt-tls/ at config load (see config/index.ts). */
+    /** Filled from MQTT_TLS_* env at config load (in-memory only; see config/index.ts). */
     caPem?: string;
     clientCertPem?: string;
     clientKeyPem?: string;

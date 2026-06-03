@@ -8,7 +8,7 @@
 - ✅ **File-Based Storage** - All data in simple JSON files
 - ✅ **Fast Startup** - Ready in 2-3 seconds
 - ✅ **Small Footprint** - ~50MB RAM usage
-- ✅ **Public MQTT Broker** - Uses broker.emqx.io (no hosting needed)
+- ✅ **Self-hosted MQTT broker** - Production: `broker.withproof.io:8883` (mTLS / X.509)
 - ✅ **HTTP API** - Full REST API for device/session management
 - ✅ **WebSocket Support** - Real-time MQTT message streaming
 - ✅ **Docker Ready** - Single container deployment
@@ -27,7 +27,7 @@ npm install
 ### 2. Configure
 ```bash
 cp .env.example .env
-# Edit .env if needed (defaults work out of the box)
+# Edit .env only for secrets and overrides (see Configuration — defaults in src/config/index.ts)
 ```
 
 ### 3. Run
@@ -73,7 +73,8 @@ curl http://localhost:3002/health
 │                                         │
 │  ┌──────────────────────────────────┐  │
 │  │  MQTT Client                     │  │
-│  │  → broker.emqx.io:1883          │  │
+│  │  → broker.withproof.io:8883    │  │
+│  │     (mqtts + client cert)      │  │
 │  └──────────────────────────────────┘  │
 │                                         │
 │  ┌──────────────────────────────────┐  │
@@ -285,10 +286,11 @@ docker build -t mqtt-publisher-lite .
 ```bash
 docker run -p 3002:3002 \
   -v $(pwd)/data:/app/data \
-  -e MQTT_BROKER=broker.emqx.io \
-  -e LOG_LEVEL=debug \
+  --env-file .env \
   mqtt-publisher-lite
 ```
+
+Production `.env` must include `MQTT_BROKER=broker.withproof.io`, `MQTT_PORT=8883`, and `MQTT_TLS_*_BASE64` client/CA material (see [MQTT TLS / mTLS](#mqtt-tls--mtls-production)).
 
 ### Docker Compose
 ```yaml
@@ -300,9 +302,12 @@ services:
       - "3002:3002"
     volumes:
       - ./data:/app/data
+    env_file:
+      - .env
     environment:
-      - MQTT_BROKER=broker.emqx.io
-      - MQTT_PORT=1883
+      - MQTT_BROKER=broker.withproof.io
+      - MQTT_PORT=8883
+      - MQTT_CLIENT_ID=proof-server
       - HTTP_PORT=3002
       - LOG_LEVEL=info
 ```
@@ -320,10 +325,10 @@ npm test
 
 #### Test MQTT Connection
 ```bash
-# Subscribe to test topic
-mosquitto_sub -h broker.emqx.io -t "firmware-dev/#" -v
+# mTLS smoke test (same TLS path as the running app)
+npm run test:mqtt-mtls
 
-# Publish via API
+# Publish via HTTP API (app connects to broker.withproof.io:8883)
 curl -X POST http://localhost:3002/api/publish \
   -H "Content-Type: application/json" \
   -d '{"topic":"test/hello","payload":{"msg":"hello"},"qos":0}'
@@ -346,24 +351,127 @@ wscat -c ws://localhost:3002/ws
 
 ## 🔧 Configuration
 
-### Environment Variables
+Defaults are defined in `src/config/index.ts` and applied at startup. Copy `.env.example` to `.env` and set only what you need — most values can be omitted.
+
+### Production MQTT broker
+
+Self-hosted NanoMQ (or compatible) on the Proof domain:
+
+| Setting | Value |
+|---------|-------|
+| Host | `broker.withproof.io` |
+| Port | `8883` |
+| URL | `mqtts://broker.withproof.io:8883` |
+| Auth | Client X.509 (mTLS); no MQTT CONNECT username/password |
+| Typical client ID | `proof-server` |
+
+Required in `.env` for this deployment:
+
+```bash
+MQTT_BROKER=broker.withproof.io
+MQTT_PORT=8883
+MQTT_CLIENT_ID=proof-server
+MQTT_TLS_CA_BASE64=...
+MQTT_TLS_CLIENT_CERT_BASE64=...
+MQTT_TLS_CLIENT_KEY_BASE64=...
+```
+
+Generate client material: `npm run pki -- app-client` (see `scripts/pki/README.md`). If `MQTT_BROKER` is a Railway TCP proxy (`*.proxy.rlwy.net`), set `MQTT_TLS_SERVERNAME=broker.withproof.io`.
+
+### Core (MQTT & HTTP)
+
+| Variable | Default (production) | Description |
+|----------|----------------------|-------------|
+| `MQTT_BROKER` | `broker.withproof.io` | Self-hosted MQTT broker hostname |
+| `MQTT_PORT` | `8883` | mTLS port (`mqtts://`) |
+| `MQTT_CLIENT_ID` | `proof-server` | Service MQTT client ID |
+| `MQTT_TOPIC_PREFIX` | _(empty)_ | Optional prefix for all topics |
+| `MQTT_TOPIC_ROOT` | `proof.mqtt` | Topic root for device paths |
+| `MQTT_RECONNECT_PERIOD` | `2000` | mqtt.js reconnect interval (ms) |
+| `MQTT_MAX_RECONNECT_ATTEMPTS` | `0` | Reconnect cap (`0` = infinite) |
+| `PORT` / `HTTP_PORT` | `3002` | HTTP server port (`PORT` used on Render) |
+| `HTTP_HOST` | `0.0.0.0` | HTTP bind address |
+| `NODE_ENV` | `development` | Runtime environment |
+| `LOG_LEVEL` | `info` | Winston log level (`debug`, `info`, `warn`, `error`) |
+| `DATA_DIR` | `./data` | Local data directory |
+| `SESSION_TTL` | `86400` | Session TTL (seconds) |
+| `DEVICE_CLEANUP_INTERVAL` | `3600` | Device cleanup interval (seconds) |
+
+### MongoDB connection pool
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `MQTT_BROKER` | `broker.emqx.io` | MQTT broker hostname |
-| `MQTT_PORT` | `1883` | MQTT broker port |
-| `MQTT_CLIENT_ID` | `firmware-test-lite` | MQTT client ID |
-| `MQTT_TOPIC_PREFIX` | `firmware-dev` | Topic prefix for all messages |
-| `HTTP_PORT` | `3002` | HTTP server port |
-| `HTTP_HOST` | `0.0.0.0` | HTTP server host |
-| `NODE_ENV` | `development` | Environment (development/production) |
-| `LOG_LEVEL` | `debug` | Log level (debug/info/warn/error) |
-| `DATA_DIR` | `./data` | Data directory for JSON files |
-| `SESSION_TTL` | `86400` | Session TTL in seconds (24h) |
-| `DEVICE_CLEANUP_INTERVAL` | `3600` | Device cleanup interval in seconds (1h) |
-| `REDIS_URL` | _(unset)_ | **Required** for Instagram dual-scheduler, provisioning tokens in production, device meta |
-| `INSTAGRAM_SERVERLESS_URL` | _(unset)_ | **Optional** — when set, offload all Instagram Graph fetches to this HTTPS POST endpoint; when unset, the server fetches Graph directly |
+| `MONGODB_URI` | _(required)_ | MongoDB connection string |
+| `MONGODB_DB_NAME` | `statsmqtt` | Database name |
+| `MONGODB_MAX_POOL_SIZE` | `10` | Mongoose `maxPoolSize` |
+| `MONGODB_MIN_POOL_SIZE` | `2` | Mongoose `minPoolSize` |
+| `MONGODB_SERVER_SELECTION_TIMEOUT_MS` | `30000` | Atlas / DNS selection timeout |
+| `MONGODB_CONNECT_TIMEOUT_MS` | `20000` | Initial connect timeout |
+
+### App runtime & metrics
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `INFLUXDB_HEALTH_RETRIES` | `3` | Influx startup health probe attempts |
+| `METRICS_INTERVAL_MS` | `10000` | Reserved metrics poll interval (ms) |
+| `METRICS_RETENTION_DAYS` | `30` | Reserved retention hint (days) |
+| `INFLUXDB_QUEUE_FLUSH_MS` | `5000` | Influx disk queue flush interval (ms) |
+| `INFLUXDB_QUEUE_BATCH_MAX` | `500` | Max lines per Influx batch POST |
+| `IG_POLL_BATCH_SIZE` | `50` | Instagram poller devices per batch |
+
+### Feature flags (all default `true`)
+
+Set to `false` only when you need to disable behavior. Loaded into `config.features` and HTTP/Influx wiring.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ENABLE_AUTO_START` | `true` | Reserved — app starts normally |
+| `ENABLE_ERROR_REPORTING` | `true` | Reserved — error reporting hooks |
+| `ENABLE_GRACEFUL_SHUTDOWN` | `true` | SIGINT/SIGTERM shutdown handlers |
+| `ENABLE_HEALTH_CHECKS` | `true` | Full `/health` payload; `false` = minimal JSON |
+| `ENABLE_METRICS_COLLECTION` | `true` | `false` disables Influx even if `INFLUXDB_TOKEN` is set |
+| `ENABLE_REQUEST_LOGGING` | `true` | HTTP access logs; `false` disables request middleware logging |
+
+### MQTT TLS / mTLS (production)
+
+Broker and client PEMs are **env-only, in-memory** — not read from `data/.mqtt-tls/` or committed cert files.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MQTT_TLS_CA_BASE64` | _(unset)_ | Broker trust CA (base64 PEM) |
+| `MQTT_TLS_CLIENT_CERT_BASE64` | _(unset)_ | Client certificate (base64 PEM) |
+| `MQTT_TLS_CLIENT_KEY_BASE64` | _(unset)_ | Client private key (base64 PEM) |
+| `MQTT_TLS_SERVERNAME` | _(auto)_ | SNI / cert verify host; for `*.proxy.rlwy.net` use `broker.withproof.io` |
+| `MQTT_TLS_SKIP_PRECHECK` | `false` | Skip startup TLS handshake probe |
+| mTLS auth mode | **on** | X.509-only when `MQTT_USERNAME` + `MQTT_PASSWORD` are not both set; no `MQTT_MTLS_ONLY` required |
+
+Aliases: `MQTT_TLS_*_PEM`, `MQTT_TLS_CA_PEM`, `MQTT_TLS_CA_CERT`. Provisioning root CA: `MQTT_TLS_CA_BASE64` + `MQTT_TLS_CA_KEY_BASE64` (written under `src/certs/` for CAService).
+
+### Integrations
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `REDIS_URL` | _(unset)_ | Upstash / Redis (`rediss://`); required for Instagram poller & token persistence in production |
+| `INSTAGRAM_SERVERLESS_URL` | _(unset)_ | Offload Instagram Graph fetches to this URL; unset = fetch in-process |
 | `VERCEL_INSTAGRAM_FETCH_URL` | | Alias for `INSTAGRAM_SERVERLESS_URL` |
+| `INFLUXDB_TOKEN` | _(unset)_ | Enables Influx when set (with `ENABLE_METRICS_COLLECTION=true`) |
+| `INFLUXDB_URL` / `INFLUXDB_HOST` | `http://localhost:8086` | Influx 2.x base URL |
+
+### Legacy environment names (deprecated)
+
+Still accepted once per process with a log warning — prefer the canonical name:
+
+| Legacy | Use instead |
+|--------|-------------|
+| `BATCH_SIZE` | `IG_POLL_BATCH_SIZE` |
+| `BATCH_TIMEOUT` | `INFLUXDB_QUEUE_FLUSH_MS` |
+| `CONNECTION_POOL_MAX` | `MONGODB_MAX_POOL_SIZE` |
+| `CONNECTION_POOL_MIN` | `MONGODB_MIN_POOL_SIZE` |
+| `MAX_RETRIES` | `INFLUXDB_HEALTH_RETRIES` |
+| `METRICS_INTERVAL` | `METRICS_INTERVAL_MS` |
+| `MQTT_MTLS_ONLY` | _(omit)_ — mTLS is default without username/password |
+
+See `.env.example` for production broker (`broker.withproof.io:8883`), PKI scripts, and webhook URLs.
 
 ---
 
@@ -405,12 +513,17 @@ wscat -c ws://localhost:3002/ws
 
 ### Can't connect to MQTT broker
 ```bash
-# Test broker connectivity
-telnet broker.emqx.io 1883
+# TLS handshake + mTLS (matches app startup pre-check)
+npm run test:mqtt-mtls
 
-# Or use mosquitto
-mosquitto_pub -h broker.emqx.io -t "test" -m "hello"
+# TCP reachability on mTLS port
+openssl s_client -connect broker.withproof.io:8883 -servername broker.withproof.io </dev/null
+
+# App logs should show:
+# broker=broker.withproof.io port=8883 tlsServername=broker.withproof.io mqttAuth=X.509 only
 ```
+
+Ensure `MQTT_TLS_*_BASE64` PEMs match the broker trust chain (`npm run pki:verify`). Plain `mosquitto_pub` on port 1883 does not apply to this deployment.
 
 ### Port 3002 already in use
 ```bash
