@@ -162,9 +162,9 @@ export class HttpServer {
             downloadCert: 'GET /api/v1/certificates/:id/download',
             certStatus: 'GET /api/v1/certificates/:deviceId/status',
             revokeCert: 'DELETE /api/v1/certificates/:deviceId',
-            recoveryGenerateCode: 'POST /api/v1/recovery/generate-code',
+            recoveryGenerateSession: 'POST /api/v1/recovery/generate-session',
             reissueWithRecovery:
-              'POST /api/v1/certificates/reissue (body: device_id, csr, recovery_code — requires prior generate-code)'
+              'POST /api/v1/certificates/reissue (body: device_id, csr, recovery_token — requires prior generate-session)'
           },
           webhooks: {
             shopify: 'POST /api/pos-promotions/webhooks/shopify',

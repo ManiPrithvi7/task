@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import { logger } from '../utils/logger';
 import { CAService, DeviceAlreadyHasCertificateError, UnsupportedCSRKeyTypeError } from '../services/caService';
-import { RecoveryCodeService } from '../services/recoveryCodeService';
+import { RecoverySessionService } from '../services/recoverySessionService';
 import { requireMtlsDeviceCert } from '../middleware/mtlsAuth';
 import { DeviceCertificate, DeviceCertificateStatus } from '../models/DeviceCertificate';
 import { Device, DeviceStatus } from '../models/Device';
@@ -10,7 +10,7 @@ import { decodeCsrToPem } from '../utils/csr';
 
 export interface LifecycleDeps {
   caService: CAService;
-  recoveryCodeService: RecoveryCodeService;
+  recoverySessionService: RecoverySessionService;
 }
 
 const reissueLimiter = rateLimit({
@@ -23,6 +23,7 @@ const reissueLimiter = rateLimit({
 
 function httpStatusForRecoveryError(code: string): number {
   switch (code) {
+    case 'SESSION_EXPIRED':
     case 'CODE_EXPIRED':
       return 410;
     case 'RATE_LIMITED':
@@ -71,7 +72,7 @@ async function postRecoveryWebhook(deviceId: string): Promise<void> {
 
 export function createLifecycleRoutes(deps: LifecycleDeps): Router {
   const router = Router();
-  const { caService, recoveryCodeService } = deps;
+  const { caService, recoverySessionService } = deps;
 
   /**
    * Flow 2.2: POST /api/v1/certificates/renewAuth
@@ -174,33 +175,40 @@ export function createLifecycleRoutes(deps: LifecycleDeps): Router {
 
   /**
    * POST /api/v1/certificates/reissue
-   * Body: { device_id: string, csr: string, recovery_code: string }
-   * Requires a valid recovery code (from POST /api/v1/recovery/generate-code). No user JWT.
+   * Body: { device_id, csr, recovery_token | token }
+   * Requires a valid recovery session (POST /api/v1/recovery/generate-session). No user JWT.
    */
   router.post('/certificates/reissue', reissueLimiter, async (req: Request, res: Response) => {
     try {
-      const rawDeviceId = (req.body as any)?.device_id;
+      const body = req.body as {
+        device_id?: string;
+        csr?: string;
+        CSR?: string;
+        recovery_token?: string;
+        token?: string;
+      };
+      const rawDeviceId = body?.device_id;
       if (typeof rawDeviceId !== 'string' || rawDeviceId.trim().length === 0) {
         res.status(400).json({ success: false, error: 'device_id is required', code: 'DEVICE_ID_REQUIRED', timestamp: new Date().toISOString() });
         return;
       }
 
-      const rawCode = (req.body as any)?.recovery_code;
-      if (typeof rawCode !== 'string' || rawCode.trim().length === 0) {
+      const rawToken = body?.recovery_token ?? body?.token;
+      if (typeof rawToken !== 'string' || rawToken.trim().length === 0) {
         res.status(400).json({
           success: false,
-          error: 'recovery_code is required to obtain a certificate from this endpoint',
-          code: 'RECOVERY_CODE_REQUIRED',
+          error: 'recovery_token is required to obtain a certificate from this endpoint',
+          code: 'RECOVERY_TOKEN_REQUIRED',
           timestamp: new Date().toISOString()
         });
         return;
       }
 
       const requestedDeviceId = rawDeviceId.trim();
-      const recoveryCode = rawCode.replace(/\s+/g, '').trim();
+      const recoveryToken = rawToken.trim();
       logger.info('recovery reissue request received', { requestedDeviceId });
 
-      if (!recoveryCodeService.isAvailable()) {
+      if (!recoverySessionService.isAvailable()) {
         res.status(503).json({
           success: false,
           error: 'Recovery storage unavailable',
@@ -232,9 +240,9 @@ export function createLifecycleRoutes(deps: LifecycleDeps): Router {
 
       const userId = String(device.userId);
 
-      const v = await recoveryCodeService.verifyCode(deviceId, recoveryCode);
+      const v = await recoverySessionService.verifySession(deviceId, recoveryToken);
       if (!v.ok) {
-        logger.warn('recovery reissue: code validation failed', { deviceId, error: v.error });
+        logger.warn('recovery reissue: session validation failed', { deviceId, error: v.error });
         res.status(httpStatusForRecoveryError(v.error)).json({
           success: false,
           error: v.message,
@@ -246,7 +254,7 @@ export function createLifecycleRoutes(deps: LifecycleDeps): Router {
 
       let csrPem: string;
       try {
-        csrPem = decodeCsrToPem((req.body as any)?.csr ?? (req.body as any)?.CSR);
+        csrPem = decodeCsrToPem(body?.csr ?? body?.CSR);
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
         res.status(400).json({ success: false, error: msg, code: 'CSR_INVALID', timestamp: new Date().toISOString() });
@@ -257,7 +265,7 @@ export function createLifecycleRoutes(deps: LifecycleDeps): Router {
         await caService.revokeAllDeviceCertificates(deviceId);
         const certDoc = await caService.signCSR(csrPem, deviceId, userId, { slot: 'primary', allowReplacePrimary: true });
 
-        await recoveryCodeService.markUsed(deviceId);
+        await recoverySessionService.consumeSession(deviceId);
 
         await Device.updateOne(
           { clientId: deviceId },

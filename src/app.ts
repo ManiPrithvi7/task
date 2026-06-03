@@ -34,7 +34,7 @@ import { createConfigRoutes } from './routes/configRoutes';
 import { createLifecycleRoutes } from './routes/lifecycleRoutes';
 import { createRecoveryRoutes } from './routes/recoveryRoutes';
 import { createWebhookRoutes } from './routes/webhookRoutes';
-import { createRecoveryCodeService } from './services/recoveryCodeService';
+import { createRecoverySessionService } from './services/recoverySessionService';
 import { getTokenStore } from './storage/tokenStore';
 import * as dns from 'dns';
 import * as tls from 'tls';
@@ -1460,16 +1460,22 @@ console.log({igFromSocial})
       this.httpServer.getApp().use('/api/v1', provisioningRoutes);
       logger.info('✅ Provisioning routes registered at /api/v1');
 
-      const recoveryCodeService = createRecoveryCodeService(this.config.redis.keyPrefix || 'mqtt-lite:');
+      const recoverySessionService = createRecoverySessionService(
+        this.config.redis.keyPrefix || 'mqtt-lite:',
+        this.config.auth.secret
+      );
 
       const lifecycleRoutes = createLifecycleRoutes({
         caService: this.caService,
-        recoveryCodeService
+        recoverySessionService
       });
       this.httpServer.getApp().use('/api/v1', lifecycleRoutes);
       logger.info('✅ Lifecycle routes registered at /api/v1');
 
-      const recoveryRoutes = createRecoveryRoutes({ recoveryCodeService });
+      const recoveryRoutes = createRecoveryRoutes({
+        recoverySessionService,
+        authService: this.authService
+      });
       this.httpServer.getApp().use('/api/v1', recoveryRoutes);
       logger.info('✅ Recovery routes registered at /api/v1/recovery');
 

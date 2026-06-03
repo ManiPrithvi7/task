@@ -487,6 +487,74 @@
 			"description": "Utility requests for testing"
 		},
 		{
+			"name": "Factory Reset Recovery",
+			"item": [
+				{
+					"name": "Register recovery session (MQTT)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const j = pm.response.json();",
+									"    if (j.expires_in) pm.collectionVariables.set('recovery_expires_in', String(j.expires_in));",
+									"}",
+									"pm.test('Status 200', () => pm.response.to.have.status(200));"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}",
+								"description": "User session JWT (same AUTH_SECRET as Next.js)"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"device_id\": \"{{device_id}}\",\n    \"token\": \"{{recovery_token}}\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/recovery/generate-session",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "recovery", "generate-session"]
+						},
+						"description": "Registers device recovery JWT in Redis. Normally called by Next.js POST /api/recovery/generate-session after minting the token."
+					},
+					"response": []
+				},
+				{
+					"name": "Reissue certificate (recovery_token)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"device_id\": \"{{device_id}}\",\n    \"csr\": \"{{sample_csr}}\",\n    \"recovery_token\": \"{{recovery_token}}\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/certificates/reissue",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "certificates", "reissue"]
+						},
+						"description": "Device firmware path: no user Bearer. Requires prior generate-session. Body alias: token instead of recovery_token."
+					},
+					"response": []
+				}
+			],
+			"description": "JWT recovery session flow (replaces legacy generate-code / recovery_code)."
+		},
+		{
 			"name": "Error Scenarios",
 			"item": [
 				{
@@ -738,6 +806,17 @@
 			"value": "",
 			"type": "string",
 			"description": "Session cookie from browser (copy from DevTools Network tab)"
+		},
+		{
+			"key": "recovery_token",
+			"value": "",
+			"type": "string",
+			"description": "Device recovery JWT from POST /api/recovery/generate-session (purpose: device-reset-recovery)"
+		},
+		{
+			"key": "recovery_expires_in",
+			"value": "900",
+			"type": "string"
 		}
 	]
 }

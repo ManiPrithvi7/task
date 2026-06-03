@@ -583,11 +583,19 @@ This section is the **firmware-facing contract** for the V5.0 flows (Boot Audit,
 
 Firmware rule: **Do not delete the old cert until MQTT connect succeeds with staging** and `confirm` returns 200.
 
-#### Flow 4: Identity Re-Binding (reissue)
+#### Flow 4: Factory reset recovery (JWT session + reissue)
+
+1. Dashboard (authenticated): `POST /api/recovery/generate-session` (Next.js) → `POST /api/v1/recovery/generate-session` (MQTT)
+   - Body: `{ "device_id": "<device_id>", "token": "<device_recovery_jwt>" }`
+   - Registers Redis session `mqtt-lite:recovery:session:{device_id}` (15 min TTL, single-use)
+2. Device AP portal: user opens `http://192.168.4.1/?token=<jwt>` and submits Wi‑Fi + token to device `POST /api/recovery/restore`
+3. Device calls MQTT: `POST /api/v1/certificates/reissue`
+   - Body: `{ "device_id", "csr", "recovery_token" }` (alias: `token`)
+   - No user Bearer; validates JWT + Redis session, then consumes session
+
+Firmware payload details: [`docs/DEVICE_RECOVERY_FIRMWARE.md`](docs/DEVICE_RECOVERY_FIRMWARE.md).
 
 - `POST /api/v1/certificates/reissue`
-  - Auth: `Authorization: Bearer <user_auth_token>`
-  - Body: `{ "device_id": "<device_id>", "csr": "<PEM CSR or base64(PEM CSR)>" }`
   - Effect: revoke all active certs for device, issue a fresh **primary** cert
 
 ### Firmware flow mapping (V5.0)
@@ -613,8 +621,9 @@ Firmware rule: **Do not delete the old cert until MQTT connect succeeds with sta
   - commit WiFi + reboot → Flow 1
 
 - **Flow 4 (Reissue)**:
-  - AP portal: user submits `user_auth_token` (+ WiFi if empty)
-  - generate staging keypair + CSR
+  - Dashboard: `generate-session` → copy portal URL with `?token=`
+  - AP portal: Wi‑Fi + `token` → device restore → MQTT reissue with `recovery_token`
+  - generate keypair + CSR on device
   - `POST /certificates/reissue`
   - MQTT connect using new cert/key (timeout 15s)
   - commit staging → primary; re-sign integrity; wipe old flags; reboot → Flow 1

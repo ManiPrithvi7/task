@@ -1,36 +1,35 @@
 import { Router, Request, Response } from 'express';
 import { Device } from '../models/Device';
-import { RecoveryCodeService } from '../services/recoveryCodeService';
+import { RecoverySessionService } from '../services/recoverySessionService';
+import { AuthService } from '../services/authService';
 import { logger } from '../utils/logger';
 
-// function alternateDeviceId(raw: string): string | null {
-//   const v = raw.trim();
-//   if (!v) return null;
-//   const prefix = String(process.env.CERT_CN_PREFIX || 'PROOF').trim().replace(/[-_]+$/g, '');
-//   const stripped = v.replace(new RegExp(`^${prefix}[-_]*`), '');
-//   if (stripped !== v) return stripped;
-//   // Only add prefix if it doesn't already have it.
-//   return `${prefix}-${v}`;
-// }
-
 export interface RecoveryRoutesDeps {
-  recoveryCodeService: RecoveryCodeService;
+  recoverySessionService: RecoverySessionService;
+  authService: AuthService;
+}
+
+function bearerToken(req: Request): string | null {
+  const h = req.headers.authorization;
+  if (!h || typeof h !== 'string') return null;
+  const m = /^Bearer\s+(.+)$/i.exec(h.trim());
+  return m?.[1]?.trim() || null;
 }
 
 /**
- * POST /api/v1/recovery/generate-code
- * Body: { device_id: string }
+ * POST /api/v1/recovery/generate-session
+ * Body: { device_id: string, token: string } — device recovery JWT from dashboard.
+ * Authorization: Bearer <user session JWT>
  */
 export function createRecoveryRoutes(deps: RecoveryRoutesDeps): Router {
   const router = Router();
-  const { recoveryCodeService } = deps;
+  const { recoverySessionService, authService } = deps;
 
-  router.post('/recovery/generate-code', async (req: Request, res: Response) => {
+  router.post('/recovery/generate-session', async (req: Request, res: Response) => {
     try {
-      // Ensure consistent JSON responses (even if upstream middleware changes defaults).
       res.type('application/json');
 
-      if (!recoveryCodeService.isAvailable()) {
+      if (!recoverySessionService.isAvailable()) {
         res.status(503).json({
           success: false,
           error: 'Recovery storage unavailable',
@@ -40,7 +39,30 @@ export function createRecoveryRoutes(deps: RecoveryRoutesDeps): Router {
         return;
       }
 
-      const raw = (req.body as any)?.device_id;
+      const userBearer = bearerToken(req);
+      if (!userBearer) {
+        res.status(401).json({
+          success: false,
+          error: 'Authorization Bearer token required',
+          code: 'UNAUTHORIZED',
+          timestamp: new Date().toISOString()
+        });
+        return;
+      }
+
+      const userAuth = await authService.verifyAuthToken(userBearer);
+      if (!userAuth.valid || !userAuth.userId) {
+        res.status(401).json({
+          success: false,
+          error: userAuth.error || 'Invalid authorization',
+          code: 'UNAUTHORIZED',
+          timestamp: new Date().toISOString()
+        });
+        return;
+      }
+
+      const raw = (req.body as { device_id?: string; token?: string })?.device_id;
+      const rawToken = (req.body as { device_id?: string; token?: string })?.token;
       if (typeof raw !== 'string' || raw.trim().length === 0) {
         res.status(400).json({
           success: false,
@@ -50,17 +72,20 @@ export function createRecoveryRoutes(deps: RecoveryRoutesDeps): Router {
         });
         return;
       }
-      const requestedDeviceId = raw.trim();
-      logger.info('recovery generate-code request received', { requestedDeviceId });
+      if (typeof rawToken !== 'string' || rawToken.trim().length === 0) {
+        res.status(400).json({
+          success: false,
+          error: 'token is required',
+          code: 'TOKEN_REQUIRED',
+          timestamp: new Date().toISOString()
+        });
+        return;
+      }
 
-      // Canonicalize to the exact device id stored in MongoDB (Device.clientId).
-      let device = await Device.findOne({ clientId: requestedDeviceId });
-      // if (!device) {
-      //   const alt = alternateDeviceId(requestedDeviceId);
-      //   if (alt) {
-      //     device = await Device.findOne({ clientId: alt });
-      //   }
-      // }
+      const requestedDeviceId = raw.trim();
+      logger.info('recovery generate-session request received', { requestedDeviceId });
+
+      const device = await Device.findOne({ clientId: requestedDeviceId });
       if (!device) {
         res.status(404).json({
           success: false,
@@ -72,36 +97,30 @@ export function createRecoveryRoutes(deps: RecoveryRoutesDeps): Router {
       }
 
       const deviceId = device.clientId;
-      logger.info('recovery generate-code resolved device', { requestedDeviceId, deviceId });
-
-      const active = await recoveryCodeService.getActiveCodeTtl(deviceId);
-      if ('error' in active) {
-        res.status(503).json({
+      if (device.userId && String(device.userId) !== userAuth.userId) {
+        res.status(403).json({
           success: false,
-          error: 'Recovery storage unavailable',
-          code: 'REDIS_UNAVAILABLE',
-          timestamp: new Date().toISOString()
-        });
-        return;
-      }
-      if (active.exists) {
-        res.status(429).json({
-          success: false,
-          error: 'Recovery code already issued for this device. Please wait until it expires.',
-          code: 'GENERATE_RATE_LIMITED',
-          expires_in: active.ttlSec,
+          error: 'Device does not belong to authenticated user',
+          code: 'FORBIDDEN',
           timestamp: new Date().toISOString()
         });
         return;
       }
 
-      const result = await recoveryCodeService.generateCode(deviceId);
+      const result = await recoverySessionService.registerSession(
+        deviceId,
+        rawToken.trim(),
+        userAuth.userId
+      );
+
       if ('error' in result) {
         if (result.error === 'GENERATE_RATE_LIMITED') {
+          const active = await recoverySessionService.getActiveSessionTtl(deviceId);
           res.status(429).json({
             success: false,
-            error: 'Recovery code already issued for this device. Please wait until it expires.',
+            error: 'Recovery session already issued for this device. Please wait until it expires.',
             code: 'GENERATE_RATE_LIMITED',
+            expires_in: 'exists' in active && active.exists ? active.ttlSec : undefined,
             timestamp: new Date().toISOString()
           });
           return;
@@ -115,28 +134,34 @@ export function createRecoveryRoutes(deps: RecoveryRoutesDeps): Router {
           });
           return;
         }
-        res.status(503).json({
+        const clientErrors = new Set([
+          'TOKEN_INVALID',
+          'TOKEN_CLAIM_MISMATCH',
+          'SESSION_EXPIRED'
+        ]);
+        res.status(clientErrors.has(result.error) ? 400 : 503).json({
           success: false,
-          error: 'Failed to generate recovery code',
+          error: 'Failed to register recovery session',
           code: result.error,
           timestamp: new Date().toISOString()
         });
         return;
       }
 
-      logger.info('recovery code generated', { deviceId });
+      logger.info('recovery session registered', {
+        deviceId,
+        jtiPrefix: result.jti.slice(0, 8)
+      });
 
       res.status(200).json({
         success: true,
-        code: result.code,
         expires_in: result.expiresIn,
-        // Echo the exact keying device_id so the caller can reuse it for /certificates/reissue.
         device_id: deviceId,
         timestamp: new Date().toISOString()
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      logger.error('recovery generate-code failed', { error: msg });
+      logger.error('recovery generate-session failed', { error: msg });
       res.status(500).json({
         success: false,
         error: 'Internal server error',
