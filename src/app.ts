@@ -766,12 +766,11 @@ export class StatsMqttLite {
     
     // Set up QoS 1 tracking callbacks for device liveness
     this.mqttClient.setDeviceCallbacks(
-      // On device inactive (PUBACK timeout)
+      // On device inactive (PUBACK timeout) — Redis only; Mongo status unchanged (presence → Influx later)
       async (deviceId: string) => {
-        logger.warn('⚠️ [LIFECYCLE:PUBACK_TIMEOUT] Device unresponsive — removing from Redis + marking inactive', { deviceId });
+        logger.warn('⚠️ [LIFECYCLE:PUBACK_TIMEOUT] Device unresponsive — removing from Redis active cache', { deviceId });
         const removed = await this.activeDeviceCache.removeActive(deviceId);
         await this.redisRemoveDevice(deviceId);
-        await this.deviceService.updateDeviceStatus(deviceId, 'inactive');
         logger.info('⚠️ [LIFECYCLE:PUBACK_TIMEOUT] Complete', { deviceId, removedFromRedis: removed });
       },
       // On device active (PUBACK received) — update lastSeen in Redis
@@ -1118,8 +1117,7 @@ export class StatsMqttLite {
       // Send registration confirmation for new device
       await this.sendRegistrationResponse(deviceId, true, 'Device registered successfully', true);
     } else {
-      await this.deviceService.updateDeviceStatus(deviceId, 'active');
-      logger.info('✅ Existing device reconnected', { deviceId });
+      logger.info('✅ Existing device reconnected (Redis cache only; Mongo status unchanged)', { deviceId });
       
       // Send registration confirmation for existing device
       await this.sendRegistrationResponse(deviceId, true, 'Device reconnected successfully', false);
@@ -1270,7 +1268,7 @@ console.log({igFromSocial})
    *    1. Client configures LWT at connection time
    *    2. Broker stores LWT in memory
    *    3. When client disconnects (any reason), broker publishes LWT
-   *    4. Server receives LWT and marks device as inactive
+   *    4. Server receives LWT and clears Redis active cache (Mongo status unchanged)
    * 
    * Payload is minimal: {"type":"un_registration","clientId":"client-XXX"}
    */
@@ -1305,15 +1303,13 @@ console.log({igFromSocial})
       mechanism: 'Last Will and Testament'
     });
     
-    // Remove from Redis active cache + mark inactive in MongoDB
+    // Remove from Redis active cache only; Mongo status unchanged (presence → Influx later)
     logger.info('💀 [LIFECYCLE:LWT] Removing device from Redis active cache', { deviceId });
     const removed = await this.activeDeviceCache.removeActive(deviceId);
     await this.redisRemoveDevice(deviceId);
-    await this.deviceService.updateDeviceStatus(deviceId, 'inactive');
     logger.info('💀 [LIFECYCLE:LWT] Device disconnect processed', {
       deviceId,
-      removedFromRedis: removed,
-      mongoStatus: 'inactive'
+      removedFromRedis: removed
     });
 
     // Maintain polling sets for Instagram dual schedulers
