@@ -2,16 +2,24 @@ import express from 'express';
 import request from 'supertest';
 import { createPromotionRoutes } from './promotionRoutes';
 
-jest.mock('../config/promotionConfig', () => ({
-  resolvePromotionInvalidateApiKey: () => 'test-promo-key'
+jest.mock('../config/connectionsConfig', () => ({
+  resolveConnectionsValidateApiKey: () => 'test-promo-key'
 }));
 jest.mock('../services/promotionService', () => ({
-  invalidateAndFanout: jest.fn().mockResolvedValue({ invalidated: true, devicesNotified: 2 })
+  handleConnectionValidateEvent: jest.fn().mockResolvedValue({
+    ok: true,
+    event: 'campaign.updated',
+    userId: '68d3753f9f99d6b73ae2d991',
+    integrationsCached: false,
+    devicesNotified: 2
+  })
 }));
 
-import { invalidateAndFanout } from '../services/promotionService';
+import { handleConnectionValidateEvent } from '../services/promotionService';
 
-const mockFanout = invalidateAndFanout as jest.MockedFunction<typeof invalidateAndFanout>;
+const mockHandler = handleConnectionValidateEvent as jest.MockedFunction<
+  typeof handleConnectionValidateEvent
+>;
 
 function buildApp() {
   const app = express();
@@ -38,7 +46,7 @@ describe('promotionRoutes', () => {
       .post('/api/v1/promotions/invalidate-cache')
       .send({ userId: 'user-1' });
     expect(res.status).toBe(401);
-    expect(mockFanout).not.toHaveBeenCalled();
+    expect(mockHandler).not.toHaveBeenCalled();
   });
 
   it('returns 400 when userId missing', async () => {
@@ -47,17 +55,19 @@ describe('promotionRoutes', () => {
       .set('x-api-key', 'test-promo-key')
       .send({});
     expect(res.status).toBe(400);
-    expect(mockFanout).not.toHaveBeenCalled();
+    expect(mockHandler).not.toHaveBeenCalled();
   });
 
-  it('returns 200 and fanout result with valid key', async () => {
+  it('returns 200 via deprecated alias (campaign.updated)', async () => {
     const res = await request(buildApp())
       .post('/api/v1/promotions/invalidate-cache')
       .set('x-api-key', 'test-promo-key')
       .send({ userId: '68d3753f9f99d6b73ae2d991' });
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ invalidated: true, devicesNotified: 2 });
-    expect(mockFanout).toHaveBeenCalledWith(
+    expect(res.body.devicesNotified).toBe(2);
+    expect(res.body.deprecated).toBe(true);
+    expect(mockHandler).toHaveBeenCalledWith(
+      'campaign.updated',
       '68d3753f9f99d6b73ae2d991',
       expect.objectContaining({ topicRoot: 'proof.mqtt' })
     );

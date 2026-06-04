@@ -1,5 +1,6 @@
 import { Device } from '../../models/Device';
 import { Social, Provider } from '../../models/Social';
+import { getUserIntegrations } from '../../services/userIntegrationCache';
 import { logger } from '../../utils/logger';
 
 export type DevicePosContext = {
@@ -9,8 +10,8 @@ export type DevicePosContext = {
 };
 
 /**
- * Resolve POS platform for a display device from Mongo.
- * SHOPIFY social takes precedence over SQUARE when both exist.
+ * Resolve POS platform for a display device.
+ * Prefers 24h user integration cache; falls back to Mongo Social query.
  */
 export async function resolvePosContextForDevice(deviceId: string): Promise<DevicePosContext | null> {
   try {
@@ -21,6 +22,11 @@ export async function resolvePosContextForDevice(deviceId: string): Promise<Devi
     }
 
     const userId = String(deviceDoc.userId);
+    const integrations = await getUserIntegrations(userId);
+    if (integrations?.pos?.platform) {
+      return { userId, deviceId, platform: integrations.pos.platform };
+    }
+
     const shopify = await Social.findOne({
       userId: deviceDoc.userId,
       provider: Provider.SHOPIFY

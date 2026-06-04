@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
-import { resolvePromotionInvalidateApiKey } from '../config/promotionConfig';
-import { invalidateAndFanout } from '../services/promotionService';
+import { resolveConnectionsValidateApiKey } from '../config/connectionsConfig';
+import { handleConnectionValidateEvent } from '../services/promotionService';
 import type { StatsPublisher } from '../services/statsPublisher';
 import { logger } from '../utils/logger';
 
@@ -9,11 +9,16 @@ export type PromotionRoutesDeps = {
   topicRoot: string;
 };
 
+/** @deprecated Use POST /api/v1/connections/validate with event campaign.updated */
 export function createPromotionRoutes(deps: PromotionRoutesDeps): Router {
   const router = Router();
 
   router.post('/promotions/invalidate-cache', async (req: Request, res: Response) => {
-    const expectedKey = resolvePromotionInvalidateApiKey();
+    logger.warn('[PROMO_INVALIDATE] Deprecated route — use POST /api/v1/connections/validate', {
+      event: 'campaign.updated'
+    });
+
+    const expectedKey = resolveConnectionsValidateApiKey();
     const providedKey = req.headers['x-api-key'];
     const keyStr = typeof providedKey === 'string' ? providedKey : '';
 
@@ -29,12 +34,12 @@ export function createPromotionRoutes(deps: PromotionRoutesDeps): Router {
     }
 
     try {
-      const result = await invalidateAndFanout(userId, {
+      const result = await handleConnectionValidateEvent('campaign.updated', userId, {
         topicRoot: deps.topicRoot,
-        publishForDevice: (deviceId, topicRoot) =>
-          deps.statsPublisher.publishPromotionForDevice(deviceId, topicRoot)
+        publishForDevice: (deviceId, topicRoot, opts) =>
+          deps.statsPublisher.publishPromotionForDevice(deviceId, topicRoot, opts)
       });
-      res.status(200).json(result);
+      res.status(200).json({ ...result, deprecated: true });
     } catch (err: unknown) {
       logger.error('[PROMO_INVALIDATE] Handler failed', {
         userId,

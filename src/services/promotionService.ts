@@ -1,24 +1,34 @@
 import mongoose from 'mongoose';
 import { Ad, AdStatus, AdType } from '../models/Ad';
+import {
+  Campaign,
+  CampaignStatus,
+  DiscountType,
+  type ICampaign
+} from '../models/Campaign';
+import { Provider } from '../models/Social';
+import { getClaimBaseUrl } from '../config/connectionsConfig';
 import { getActiveDeviceCache } from './deviceService';
 import { getRedisService } from './redisService';
+import {
+  getUserIntegrations,
+  invalidateUserIntegrations,
+  cacheUserIntegrations,
+  applySocialDisconnected,
+  type UserIntegrationCache
+} from './userIntegrationCache';
+import { isCampaignActive } from './campaignSchedule';
 import { logger } from '../utils/logger';
 
 const PROMO_ACTIVE_KEY_PREFIX = 'promo:active:';
 const PROMO_ROTATION_KEY_PREFIX = 'promo:rotation:';
 
-export function getPromotionCacheTtlSec(): number {
-  const n = Number(process.env.PROMOTION_CACHE_TTL_SEC);
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 3600;
-}
-
-export type CachedPromotion = {
-  _id: string;
-  name: string;
-  templateData: Record<string, unknown>;
-  campaignId?: string;
-  createdAt: string;
-};
+export type ConnectionValidateEvent =
+  | 'social.connected'
+  | 'social.disconnected'
+  | 'campaign.updated'
+  | 'campaign.deleted'
+  | 'integrations.refresh';
 
 export type PromotionScreenPayload = {
   platform: string;
@@ -27,10 +37,27 @@ export type PromotionScreenPayload = {
   qrText: string;
 };
 
+export type CachedCampaignDto = {
+  _id: string;
+  name: string;
+  offerCode: string;
+  platform: string;
+  discountType: string;
+  discountValue: number;
+  description?: string;
+  redemptionUrl?: string;
+  socialId?: string;
+};
+
 export type PromotionFanoutDeps = {
   topicRoot: string;
-  publishForDevice: (deviceId: string, topicRoot: string) => Promise<void>;
+  publishForDevice: (deviceId: string, topicRoot: string, opts?: { force?: boolean }) => Promise<void>;
 };
+
+export function getPromotionCacheTtlSec(): number {
+  const n = Number(process.env.PROMOTION_CACHE_TTL_SEC);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 3600;
+}
 
 function promoActiveKey(userId: string): string {
   return `${PROMO_ACTIVE_KEY_PREFIX}${userId}`;
@@ -40,19 +67,52 @@ function promoRotationKey(deviceId: string): string {
   return `${PROMO_ROTATION_KEY_PREFIX}${deviceId}`;
 }
 
+export function buildCampaignPayload(campaign: ICampaign | CachedCampaignDto): PromotionScreenPayload {
+  const discountType =
+    'discountType' in campaign && campaign.discountType
+      ? campaign.discountType
+      : DiscountType.PERCENTAGE;
+  const discountValue =
+    'discountValue' in campaign && typeof campaign.discountValue === 'number'
+      ? campaign.discountValue
+      : 0;
+
+  const Offer =
+    discountType === DiscountType.FIXED_AMOUNT
+      ? `$${discountValue}`
+      : `${discountValue}%`;
+
+  const message =
+    ('description' in campaign && campaign.description?.trim()) ||
+    campaign.name ||
+    'Promotion';
+
+  const offerCode = 'offerCode' in campaign ? campaign.offerCode : '';
+  const qrText =
+    ('redemptionUrl' in campaign && campaign.redemptionUrl?.trim()) ||
+    `${getClaimBaseUrl()}/claim/${offerCode}`;
+
+  const platformRaw = 'platform' in campaign ? String(campaign.platform) : 'shopify';
+
+  return {
+    platform: platformRaw.toLowerCase(),
+    Offer,
+    message,
+    qrText
+  };
+}
+
+/** @deprecated Use buildCampaignPayload — kept for tests migrating from Ad templateData */
 export function buildPromotionPayload(
   tplData: Record<string, unknown>,
   campaignId?: string
 ): PromotionScreenPayload {
-  const claimUrl = campaignId
-    ? `https://statsnapp.vercel.app/claim/${campaignId}`
-    : undefined;
-
+  const claimUrl = campaignId ? `${getClaimBaseUrl()}/claim/${campaignId}` : undefined;
   const qrText =
     (typeof tplData.qrText === 'string' && tplData.qrText.trim() ? tplData.qrText.trim() : undefined) ??
     claimUrl ??
     (typeof tplData.url === 'string' && tplData.url.trim() ? tplData.url.trim() : undefined) ??
-    'https://promo.link/coldbrew';
+    `${getClaimBaseUrl()}/claim/default`;
 
   return {
     platform: (typeof tplData.provider === 'string' && tplData.provider.trim()
@@ -72,27 +132,65 @@ export function buildPromotionPayload(
   };
 }
 
-async function queryRunningPromotions(userId: string): Promise<CachedPromotion[]> {
+function posProviderFromCache(integrations: UserIntegrationCache): Provider | null {
+  if (!integrations.pos) return null;
+  return integrations.pos.platform === 'shopify' ? Provider.SHOPIFY : Provider.SQUARE;
+}
+
+function campaignSocialIdFilter(posSocialId: string) {
+  const oid = mongoose.Types.ObjectId.isValid(posSocialId)
+    ? new mongoose.Types.ObjectId(posSocialId)
+    : posSocialId;
+
+  return {
+    $or: [{ socialId: { $exists: false } }, { socialId: null }, { socialId: oid }]
+  };
+}
+
+async function queryEligibleCampaigns(
+  userId: string,
+  integrations: UserIntegrationCache
+): Promise<ICampaign[]> {
+  const posProvider = posProviderFromCache(integrations);
+  if (!posProvider || !integrations.pos) return [];
+
   const userOid = new mongoose.Types.ObjectId(userId);
-  const promos = await Ad.find({
+  const campaigns = await Campaign.find({
     userId: userOid,
-    type: AdType.PROMOTION,
-    status: AdStatus.RUNNING
+    status: CampaignStatus.ACTIVE,
+    platform: posProvider,
+    ...campaignSocialIdFilter(integrations.pos.socialId)
   })
     .sort({ createdAt: -1 })
     .limit(3)
     .lean();
 
-  return promos.map((p) => ({
-    _id: String(p._id),
-    name: p.name,
-    templateData: (p.templateData || {}) as Record<string, unknown>,
-    campaignId: p.campaignId ? String(p.campaignId) : undefined,
-    createdAt: p.createdAt instanceof Date ? p.createdAt.toISOString() : String(p.createdAt)
-  }));
+  return campaigns as unknown as ICampaign[];
 }
 
-export async function getActivePromotions(userId: string): Promise<CachedPromotion[]> {
+function toCachedDto(c: ICampaign): CachedCampaignDto {
+  return {
+    _id: String(c._id),
+    name: c.name,
+    offerCode: c.offerCode,
+    platform: String(c.platform),
+    discountType: c.discountType,
+    discountValue: c.discountValue,
+    description: c.description,
+    redemptionUrl: c.redemptionUrl,
+    socialId: c.socialId ? String(c.socialId) : undefined
+  };
+}
+
+export async function getEligibleCampaignsForUser(
+  userId: string,
+  integrations?: UserIntegrationCache | null
+): Promise<{ campaigns: ICampaign[]; integrations: UserIntegrationCache | null }> {
+  const ints = integrations ?? (await getUserIntegrations(userId));
+  if (!ints?.pos) {
+    return { campaigns: [], integrations: ints };
+  }
+
   const redis = getRedisService();
   const key = promoActiveKey(userId);
 
@@ -100,28 +198,58 @@ export async function getActivePromotions(userId: string): Promise<CachedPromoti
     try {
       const cached = await redis.getClient().get(key);
       if (cached) {
-        const parsed = JSON.parse(cached) as CachedPromotion[];
-        if (Array.isArray(parsed)) return parsed;
+        const parsed = JSON.parse(cached) as CachedCampaignDto[];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return { campaigns: parsed as unknown as ICampaign[], integrations: ints };
+        }
       }
-    } catch (err: unknown) {
-      logger.debug('[PROMO_CACHE] Redis read failed — querying Mongo', {
-        userId,
-        error: err instanceof Error ? err.message : String(err)
-      });
+    } catch {
+      /* fall through */
     }
   }
 
-  const dto = await queryRunningPromotions(userId);
+  const campaigns = await queryEligibleCampaigns(userId, ints);
+  const dto = campaigns.map(toCachedDto);
 
-  if (redis?.isRedisConnected()) {
+  if (redis?.isRedisConnected() && dto.length > 0) {
     try {
       await redis.getClient().set(key, JSON.stringify(dto), { EX: getPromotionCacheTtlSec() });
     } catch {
-      /* best-effort cache write */
+      /* best-effort */
     }
   }
 
-  return dto;
+  return { campaigns, integrations: ints };
+}
+
+export async function applyAdTemplateOverrides(
+  payload: PromotionScreenPayload,
+  campaignId: string
+): Promise<PromotionScreenPayload> {
+  if (!mongoose.Types.ObjectId.isValid(campaignId)) return payload;
+
+  try {
+    const ad = await Ad.findOne({
+      campaignId: new mongoose.Types.ObjectId(campaignId),
+      type: AdType.PROMOTION,
+      status: AdStatus.RUNNING
+    })
+      .sort({ updatedAt: -1 })
+      .lean();
+
+    if (!ad?.templateData) return payload;
+
+    const tpl = ad.templateData as Record<string, unknown>;
+    const merged = buildPromotionPayload(tpl, campaignId);
+    return {
+      platform: merged.platform || payload.platform,
+      Offer: merged.Offer || payload.Offer,
+      message: merged.message || payload.message,
+      qrText: merged.qrText || payload.qrText
+    };
+  } catch {
+    return payload;
+  }
 }
 
 export async function getNextPromotionIndex(deviceId: string, total: number): Promise<number> {
@@ -132,9 +260,7 @@ export async function getNextPromotionIndex(deviceId: string, total: number): Pr
   const key = promoRotationKey(deviceId);
   const ttl = getPromotionCacheTtlSec();
 
-  if (!redis?.isRedisConnected()) {
-    return 0;
-  }
+  if (!redis?.isRedisConnected()) return 0;
 
   try {
     const currentRaw = await redis.getClient().get(key);
@@ -143,28 +269,8 @@ export async function getNextPromotionIndex(deviceId: string, total: number): Pr
     const next = (safeIndex + 1) % total;
     await redis.getClient().set(key, String(next), { EX: ttl });
     return safeIndex;
-  } catch (err: unknown) {
-    logger.debug('[PROMO_ROTATION] Redis failed — using index 0', {
-      deviceId,
-      error: err instanceof Error ? err.message : String(err)
-    });
+  } catch {
     return 0;
-  }
-}
-
-export async function resetRotationForUser(userId: string): Promise<void> {
-  const redis = getRedisService();
-  if (!redis?.isRedisConnected()) return;
-
-  const devices = (await getActiveDeviceCache().getAllActive()).filter((d) => d.userId === userId);
-  try {
-    const client = redis.getClient();
-    await Promise.all(devices.map((d) => client.del(promoRotationKey(d.deviceId))));
-  } catch (err: unknown) {
-    logger.debug('[PROMO_ROTATION] reset failed', {
-      userId,
-      error: err instanceof Error ? err.message : String(err)
-    });
   }
 }
 
@@ -182,31 +288,127 @@ export async function invalidatePromotionCache(userId: string): Promise<void> {
   }
 }
 
+export async function resetRotationForUser(userId: string): Promise<void> {
+  const redis = getRedisService();
+  if (!redis?.isRedisConnected()) return;
+
+  const devices = (await getActiveDeviceCache().getAllActive()).filter((d) => d.userId === userId);
+  try {
+    const client = redis.getClient();
+    await Promise.all(devices.map((d) => client.del(promoRotationKey(d.deviceId))));
+  } catch {
+    /* best-effort */
+  }
+}
+
+export async function fanoutPromotionToUserDevices(
+  userId: string,
+  deps: PromotionFanoutDeps,
+  opts?: { force?: boolean }
+): Promise<number> {
+  const devices = (await getActiveDeviceCache().getAllActive()).filter((d) => d.userId === userId);
+  const force = opts?.force ?? false;
+
+  await Promise.allSettled(
+    devices.map((d) => deps.publishForDevice(d.deviceId, deps.topicRoot, { force }))
+  );
+
+  return devices.length;
+}
+
 export async function invalidateAndFanout(
   userId: string,
-  deps: PromotionFanoutDeps
+  deps: PromotionFanoutDeps,
+  opts?: { force?: boolean }
 ): Promise<{ invalidated: boolean; devicesNotified: number }> {
   await invalidatePromotionCache(userId);
   await resetRotationForUser(userId);
 
-  const devices = (await getActiveDeviceCache().getAllActive()).filter((d) => d.userId === userId);
-
-  for (const device of devices) {
-    try {
-      await deps.publishForDevice(device.deviceId, deps.topicRoot);
-    } catch (err: unknown) {
-      logger.warn('[PROMO_FANOUT] publish failed for device', {
-        userId,
-        deviceId: device.deviceId,
-        error: err instanceof Error ? err.message : String(err)
-      });
-    }
-  }
+  const devicesNotified = await fanoutPromotionToUserDevices(userId, deps, opts);
 
   logger.info('[PROMO_FANOUT] Invalidated cache and notified devices', {
     userId,
-    devicesNotified: devices.length
+    devicesNotified
   });
 
-  return { invalidated: true, devicesNotified: devices.length };
+  return { invalidated: true, devicesNotified };
+}
+
+export type HandleConnectionValidateOpts = {
+  fanout?: boolean;
+  force?: boolean;
+  provider?: Provider;
+};
+
+export async function handleConnectionValidateEvent(
+  event: ConnectionValidateEvent,
+  userId: string,
+  deps: PromotionFanoutDeps,
+  opts?: HandleConnectionValidateOpts
+): Promise<{
+  ok: boolean;
+  event: ConnectionValidateEvent;
+  userId: string;
+  integrationsCached: boolean;
+  devicesNotified: number;
+}> {
+  const fanout = opts?.fanout !== false;
+  const force = opts?.force ?? fanout;
+  let integrationsCached = false;
+  let devicesNotified = 0;
+
+  switch (event) {
+    case 'social.connected':
+      await invalidateUserIntegrations(userId);
+      integrationsCached = (await cacheUserIntegrations(userId)) !== null;
+      await invalidatePromotionCache(userId);
+      await resetRotationForUser(userId);
+      if (fanout) {
+        devicesNotified = await fanoutPromotionToUserDevices(userId, deps, { force: true });
+      }
+      break;
+
+    case 'social.disconnected':
+      if (opts?.provider) {
+        integrationsCached = (await applySocialDisconnected(userId, opts.provider)) !== null;
+      } else {
+        await invalidateUserIntegrations(userId);
+        integrationsCached = (await cacheUserIntegrations(userId)) !== null;
+      }
+      await invalidatePromotionCache(userId);
+      await resetRotationForUser(userId);
+      if (fanout) {
+        devicesNotified = await fanoutPromotionToUserDevices(userId, deps, { force: true });
+      }
+      break;
+
+    case 'campaign.updated':
+    case 'campaign.deleted':
+      await invalidatePromotionCache(userId);
+      await resetRotationForUser(userId);
+      if (fanout) {
+        devicesNotified = await fanoutPromotionToUserDevices(userId, deps, { force });
+      }
+      break;
+
+    case 'integrations.refresh':
+      await invalidateUserIntegrations(userId);
+      integrationsCached = (await cacheUserIntegrations(userId)) !== null;
+      if (fanout) {
+        await invalidatePromotionCache(userId);
+        devicesNotified = await fanoutPromotionToUserDevices(userId, deps, { force });
+      }
+      break;
+
+    default:
+      logger.warn('[CONNECTIONS_VALIDATE] Unknown event', { event, userId });
+  }
+
+  return {
+    ok: true,
+    event,
+    userId,
+    integrationsCached,
+    devicesNotified
+  };
 }

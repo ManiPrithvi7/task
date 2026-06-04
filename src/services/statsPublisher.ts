@@ -7,12 +7,14 @@ import {
   gmbReviewMetrics,
   instagramFollowerMetrics
 } from './screenEnvelope';
-import { publishIfChanged } from './mqttChangeDetection';
+import { publishForce, publishIfChanged } from './mqttChangeDetection';
 import {
-  buildPromotionPayload,
-  getActivePromotions,
+  buildCampaignPayload,
+  applyAdTemplateOverrides,
+  getEligibleCampaignsForUser,
   getNextPromotionIndex
 } from './promotionService';
+import { getUserIntegrations } from './userIntegrationCache';
 
 /**
  * Canonical PROOF Display v6 GMB payloads for `.../gmb` (firmware listens here for celebration flows).
@@ -163,8 +165,6 @@ export class StatsPublisher {
         devices: activeDevices.map(d => ({
           id: d.deviceId,
           userId: d.userId || '(none)',
-          adMgmt: d.adManagementEnabled,
-          brand: d.brandCanvasEnabled,
           lastSeen: new Date(d.lastSeen).toISOString()
         }))
       });
@@ -342,52 +342,71 @@ export class StatsPublisher {
    * Canvas/Promotion screen — reads preferences from Redis cache (zero MongoDB for prefs).
    * Used by the 60s publish cycle and connect-refresh coordinator (same hash dedupe path).
    */
-  async publishPromotionForDevice(deviceId: string, root: string): Promise<void> {
+  async publishPromotionForDevice(
+    deviceId: string,
+    root: string,
+    opts?: { force?: boolean }
+  ): Promise<void> {
     const cache = getActiveDeviceCache();
     const device = await cache.getActive(deviceId);
     if (!device) {
-      logger.debug('[PROMOTION] Device not in active cache — skip', { deviceId });
+      logger.warn('[PROMOTION] Device not in active cache — skip', { deviceId, force: opts?.force === true });
       return;
     }
 
-    const { userId, adManagementEnabled } = device;
+    const { userId } = device;
 
     try {
-      if (!userId || !adManagementEnabled) {
-        await this.publishDefaultCanvas(deviceId, root);
+      const force = opts?.force === true;
+
+      if (!userId) {
+        await this.publishDefaultCanvas(deviceId, root, force);
         return;
       }
 
-      const promos = await getActivePromotions(userId);
-      if (promos.length === 0) {
-        logger.info('[PROMOTION] No RUNNING promos — default canvas', { deviceId, userId });
-        await this.publishDefaultCanvas(deviceId, root);
+      const integrations = await getUserIntegrations(userId);
+      if (!integrations?.pos?.platform) {
+        logger.info('[PROMOTION] No POS integration — default canvas', { deviceId, userId });
+        await this.publishDefaultCanvas(deviceId, root, force);
         return;
       }
 
-      const index = await getNextPromotionIndex(deviceId, promos.length);
-      const promo = promos[index];
-      const screenPayload = buildPromotionPayload(promo.templateData, promo.campaignId);
-      const envelope = buildScreenEnvelope('promotion', screenPayload);
-
-      const result = await this.publishPromotionEnvelope(deviceId, root, envelope, promo._id);
-
-      if (result.published) {
-        logger.info('[PROMOTION] Published rotated promo', {
+      const { campaigns } = await getEligibleCampaignsForUser(userId, integrations);
+      if (campaigns.length === 0) {
+        logger.info('[PROMOTION] No eligible campaigns — default canvas', {
           deviceId,
           userId,
-          adId: promo._id,
-          adName: promo.name,
+          posPlatform: integrations.pos.platform
+        });
+        await this.publishDefaultCanvas(deviceId, root, force);
+        return;
+      }
+
+      const index = await getNextPromotionIndex(deviceId, campaigns.length);
+      const campaign = campaigns[index];
+      const campaignId = String((campaign as { _id: unknown })._id);
+      let screenPayload = buildCampaignPayload(campaign);
+      screenPayload = await applyAdTemplateOverrides(screenPayload, campaignId);
+      const envelope = buildScreenEnvelope('promotion', screenPayload);
+
+      const result = await this.publishPromotionEnvelope(deviceId, root, envelope, campaignId, force);
+
+      if (result.published) {
+        logger.info('[PROMOTION] Published campaign', {
+          deviceId,
+          userId,
+          campaignId,
+          campaignName: (campaign as { name?: string }).name,
           rotationIndex: index,
-          totalPromos: promos.length,
+          totalCampaigns: campaigns.length,
           topic: `${root}/${deviceId}/promotion`,
           Offer: screenPayload.Offer,
           message: screenPayload.message
         });
       } else {
-        logger.debug('[PROMOTION] Skipped unchanged payload', {
+        logger.info('[PROMOTION] Skipped unchanged payload', {
           deviceId,
-          adId: promo._id,
+          campaignId,
           reason: result.reason
         });
       }
@@ -397,15 +416,15 @@ export class StatsPublisher {
         error: err instanceof Error ? err.message : String(err)
       });
       try {
-        await this.publishDefaultCanvas(deviceId, root);
+        await this.publishDefaultCanvas(deviceId, root, opts?.force === true);
       } catch (_) {
         /* swallow nested error */
       }
     }
   }
 
-  /** 4.3 Default canvas — both prefs disabled or no ad found */
-  private async publishDefaultCanvas(deviceId: string, root: string): Promise<void> {
+  /** 4.3 Default canvas — no POS, no eligible campaigns, or error fallback */
+  private async publishDefaultCanvas(deviceId: string, root: string, force = false): Promise<void> {
     const envelope = buildScreenEnvelope('promotion', {
       platform: 'shopify',
       Offer: '20%',
@@ -413,11 +432,17 @@ export class StatsPublisher {
       qrText: 'https://promo.link/coldbrew'
     });
 
-    await this.publishPromotionEnvelope(deviceId, root, envelope);
-    logger.info('🎨 [DEFAULT:PUBLISHED] Empty default canvas sent', {
-      deviceId,
-      topic: `${root}/${deviceId}/promotion`
-    });
+    const result = await this.publishPromotionEnvelope(deviceId, root, envelope, undefined, force);
+    const topic = `${root}/${deviceId}/promotion`;
+    if (result.published) {
+      logger.info('🎨 [DEFAULT:PUBLISHED] Empty default canvas sent', { deviceId, topic });
+    } else {
+      logger.info('[PROMOTION] Default canvas not published', {
+        deviceId,
+        topic,
+        reason: result.reason
+      });
+    }
   }
 
   /** Shared MQTT publish + payload-hash dedupe for promotion (cycle + connect pull). */
@@ -425,12 +450,29 @@ export class StatsPublisher {
     deviceId: string,
     root: string,
     envelope: ReturnType<typeof buildScreenEnvelope>,
-    adId?: string
+    campaignId?: string,
+    force = false
   ): Promise<{ published: boolean; reason: 'changed' | 'unchanged' | 'no_redis' }> {
     const topic = `${root}/${deviceId}/promotion`;
-    const hashInput = adId
-      ? { ...(envelope.payload as Record<string, unknown>), adId }
+    const hashInput = campaignId
+      ? { ...(envelope.payload as Record<string, unknown>), campaignId }
       : envelope.payload;
+    const payload = JSON.stringify(envelope);
+
+    if (force) {
+      await publishForce({
+        deviceId,
+        topic,
+        hashInput,
+        payload,
+        mqttClient: this.mqttClient,
+        qos: 1,
+        retain: false,
+        source: 'promotion_connect_force'
+      });
+      return { published: true, reason: 'changed' };
+    }
+
     return publishIfChanged({
       deviceId,
       topic,

@@ -5,8 +5,11 @@ import { WebSocketServerManager } from './servers/webSocketServer';
 import { MqttClientManager } from './servers/mqttClient';
 import { StatsPublisher } from './services/statsPublisher';
 import { ConnectRefreshCoordinator } from './services/connectRefreshCoordinator';
+import { clearAllPublishHashesForDevice } from './services/mqttChangeDetection';
 import { PosConnectPull } from './services/posConnectPull';
 import { createPromotionRoutes } from './routes/promotionRoutes';
+import { createConnectionsRoutes } from './routes/connectionsRoutes';
+import { cacheUserIntegrations } from './services/userIntegrationCache';
 import { GmbConnectPull } from './services/gmbConnectPull';
 import { ProvisioningService } from './services/provisioningService';
 import { CAService } from './services/caService';
@@ -1135,6 +1138,12 @@ export class StatsMqttLite {
     await this.cacheActiveDevice(deviceId);
     await this.redisMarkDeviceActive(deviceId);
 
+    const mongoUserId = (await Device.findOne({ clientId: deviceId }).select({ userId: 1 }).lean())?.userId
+      ?.toString();
+    if (mongoUserId) {
+      void cacheUserIntegrations(mongoUserId).catch(() => undefined);
+    }
+
     if (this.connectRefreshCoordinator) {
       void this.connectRefreshCoordinator.refresh(deviceId).catch(() => undefined);
     }
@@ -1143,8 +1152,7 @@ export class StatsMqttLite {
   }
 
   /**
-   * Load Device + User prefs from MongoDB, Instagram tokens from `Social` (provider INSTAGRAM),
-   * write one `ActiveDevice` row to local file and mirror IG meta to Redis for pollers/workers.
+   * Load Device from MongoDB, Instagram tokens from `Social`, write active device + Redis IG meta.
    */
   private async cacheActiveDevice(deviceId: string): Promise<void> {
     try {
@@ -1155,48 +1163,25 @@ export class StatsMqttLite {
         await this.activeDeviceCache.setActive({
           deviceId,
           userId: '',
-          adManagementEnabled: true,
-          brandCanvasEnabled: false,
           lastSeen: Date.now()
         });
         return;
       }
 
-      logger.info('📋 [LIFECYCLE:CACHE] Step 2/2 — User prefs + Social (Instagram)', {
+      logger.info('📋 [LIFECYCLE:CACHE] Step 2/2 — Social (Instagram) for device', {
         deviceId,
         userId: deviceDoc.userId?.toString() || 'none',
         deviceStatus: deviceDoc.status
       });
 
-      let adManagementEnabled = true;
-      let brandCanvasEnabled = false;
-
       const mongoUserId = deviceDoc.userId?.toString() || '';
       const hasLinkedMongoUser = Boolean(mongoUserId && mongoose.Types.ObjectId.isValid(mongoUserId));
-console.log({hasLinkedMongoUser})
-      if (hasLinkedMongoUser) {
-        const user = await User.findById(deviceDoc.userId);
-        if (user) {
-          adManagementEnabled = user.adManagementEnabled;
-          brandCanvasEnabled = user.brandCanvasEnabled;
-          logger.info('📋 [LIFECYCLE:CACHE] User preferences loaded', {
-            deviceId,
-            userId: mongoUserId,
-            adManagementEnabled,
-            brandCanvasEnabled
-          });
-        } else {
-          logger.warn('📋 [LIFECYCLE:CACHE] User document not found — using defaults', {
-            deviceId,
-            userId: mongoUserId
-          });
-        }
-      } else {
+
+      if (!hasLinkedMongoUser) {
         logger.info('📋 [LIFECYCLE:CACHE] Device has no Mongo userId — cannot load Instagram from Social', { deviceId });
       }
 
       const igFromSocial = hasLinkedMongoUser ? await this.loadLatestInstagramSocialForUser(mongoUserId) : null;
-console.log({igFromSocial})
       if (hasLinkedMongoUser && !igFromSocial) {
         logger.warn('📋 [LIFECYCLE:CACHE] No INSTAGRAM `Social` row for owner — add Instagram for this user in the web app', {
           deviceId,
@@ -1207,8 +1192,6 @@ console.log({igFromSocial})
       const active: ActiveDevice = {
         deviceId,
         userId: mongoUserId,
-        adManagementEnabled,
-        brandCanvasEnabled,
         lastSeen: Date.now(),
         ...(igFromSocial
           ? { instagramAccountId: igFromSocial.socialAccountId, accessToken: igFromSocial.accessToken }
@@ -1302,6 +1285,15 @@ console.log({igFromSocial})
     logger.info('💀 [LIFECYCLE:LWT] Removing device from Redis active cache', { deviceId });
     const removed = await this.activeDeviceCache.removeActive(deviceId);
     await this.redisRemoveDevice(deviceId);
+
+    const clearedPublishHashes = await clearAllPublishHashesForDevice(deviceId);
+    if (clearedPublishHashes > 0) {
+      logger.info('💀 [LIFECYCLE:LWT] Cleared MQTT publish dedupe hashes', {
+        deviceId,
+        clearedPublishHashes
+      });
+    }
+
     logger.info('💀 [LIFECYCLE:LWT] Device disconnect processed', {
       deviceId,
       removedFromRedis: removed
@@ -1517,12 +1509,14 @@ console.log({igFromSocial})
     await this.statsPublisher.start();
 
     if (this.httpServer) {
-      const promotionRoutes = createPromotionRoutes({
+      const routeDeps = {
         statsPublisher: this.statsPublisher,
         topicRoot: this.config.mqtt.topicRoot
-      });
-      this.httpServer.getApp().use('/api/v1', promotionRoutes);
-      logger.info('✅ Promotion routes registered at POST /api/v1/promotions/invalidate-cache');
+      };
+      this.httpServer.getApp().use('/api/v1', createConnectionsRoutes(routeDeps));
+      this.httpServer.getApp().use('/api/v1', createPromotionRoutes(routeDeps));
+      logger.info('✅ Connections routes registered at POST /api/v1/connections/validate');
+      logger.info('✅ Promotion alias at POST /api/v1/promotions/invalidate-cache (deprecated)');
     }
 
     logger.info('✅ Stats publisher initialized - publishing every 60s to /instagram, /gmb, /pos, /promotion');

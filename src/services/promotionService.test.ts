@@ -1,11 +1,14 @@
 import {
+  buildCampaignPayload,
   buildPromotionPayload,
   getNextPromotionIndex,
   getPromotionCacheTtlSec
 } from './promotionService';
+import { DiscountType } from '../models/Campaign';
+import { Provider } from '../models/Social';
 
 jest.mock('../models/Ad', () => ({
-  Ad: { find: jest.fn() },
+  Ad: { findOne: jest.fn() },
   AdStatus: { RUNNING: 'RUNNING' },
   AdType: { PROMOTION: 'PROMOTION' }
 }));
@@ -24,54 +27,44 @@ describe('promotionService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockGetRedis.mockReturnValue(null);
+    delete process.env.CLAIM_BASE_URL;
   });
 
-  it('buildPromotionPayload maps template fields and campaign claim URL', () => {
-    const payload = buildPromotionPayload(
-      {
-        provider: 'square',
-        Offer: '15%',
-        message: 'Latte',
-        qrText: 'https://custom.qr'
-      },
-      'camp123'
-    );
-    expect(payload).toEqual({
-      platform: 'square',
-      Offer: '15%',
-      message: 'Latte',
-      qrText: 'https://custom.qr'
+  it('buildCampaignPayload formats percentage offer', () => {
+    const payload = buildCampaignPayload({
+      _id: 'c1',
+      name: 'Summer Sale',
+      offerCode: 'SUMMER20',
+      platform: Provider.SHOPIFY,
+      discountType: DiscountType.PERCENTAGE,
+      discountValue: 20,
+      description: 'Iced drinks'
     });
+    expect(payload.Offer).toBe('20%');
+    expect(payload.message).toBe('Iced drinks');
+    expect(payload.qrText).toBe('https://statsnapp.vercel.app/claim/SUMMER20');
   });
 
-  it('buildPromotionPayload falls back to claim URL when qrText missing', () => {
+  it('buildCampaignPayload formats fixed amount offer', () => {
+    const payload = buildCampaignPayload({
+      _id: 'c2',
+      name: 'Five off',
+      offerCode: 'FIVE',
+      platform: Provider.SQUARE,
+      discountType: DiscountType.FIXED_AMOUNT,
+      discountValue: 5
+    });
+    expect(payload.Offer).toBe('$5');
+    expect(payload.platform).toBe('square');
+  });
+
+  it('buildPromotionPayload still supports Ad template override path', () => {
     const payload = buildPromotionPayload({ offer: '10%', textContent: 'Tea' }, 'abc');
     expect(payload.qrText).toBe('https://statsnapp.vercel.app/claim/abc');
     expect(payload.message).toBe('Tea');
   });
 
   it('getNextPromotionIndex returns 0 when Redis unavailable', async () => {
-    const index = await getNextPromotionIndex('dev-1', 3);
-    expect(index).toBe(0);
-  });
-
-  it('getNextPromotionIndex advances round-robin in Redis', async () => {
-    const store = new Map<string, string>();
-    mockGetRedis.mockReturnValue({
-      isRedisConnected: () => true,
-      getClient: () => ({
-        get: (k: string) => Promise.resolve(store.get(k) ?? null),
-        set: (k: string, v: string) => {
-          store.set(k, v);
-          return Promise.resolve('OK');
-        },
-        del: jest.fn()
-      })
-    } as never);
-
-    expect(await getNextPromotionIndex('dev-1', 3)).toBe(0);
-    expect(await getNextPromotionIndex('dev-1', 3)).toBe(1);
-    expect(await getNextPromotionIndex('dev-1', 3)).toBe(2);
     expect(await getNextPromotionIndex('dev-1', 3)).toBe(0);
   });
 

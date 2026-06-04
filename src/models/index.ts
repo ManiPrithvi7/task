@@ -27,5 +27,12 @@ export {
   DeviceTransactionLog,
   IDeviceTransactionLog
 } from './DeviceTransactionLog';
-export { Campaign, ICampaign, CampaignStatus } from './Campaign';
+export {
+  Campaign,
+  ICampaign,
+  CampaignStatus,
+  DiscountType,
+  TargetType,
+  ScheduleType
+} from './Campaign';
 export { Redemption, IRedemption } from './Redemption';

@@ -5,6 +5,9 @@ import type { GmbConnectPull } from './gmbConnectPull';
 import type { PosConnectPull } from './posConnectPull';
 import type { RedisService } from './redisService';
 import { logger } from '../utils/logger';
+import { clearAllPublishHashesForDevice } from './mqttChangeDetection';
+import { getUserIntegrations, cacheUserIntegrations } from './userIntegrationCache';
+import { getActiveDeviceCache } from './deviceService';
 
 const CONNECT_REFRESH_DEBOUNCE_SEC = 30;
 const CONNECT_REFRESH_KEY_PREFIX = 'device:connect_refresh:';
@@ -31,19 +34,71 @@ export class ConnectRefreshCoordinator {
     const root = this.deps.mqttClient.getTopicRoot();
     const { mqttClient, instagramPoller, gmbConnectPull, posConnectPull, statsPublisher } = this.deps;
 
-    const igRefresh = this.refreshInstagram(deviceId);
+    const device = await getActiveDeviceCache().getActive(deviceId);
+    if (!device?.userId) {
+      logger.debug('[CONNECT_REFRESH] No userId on active device', { deviceId });
+      return;
+    }
+
+    let integrations = await getUserIntegrations(device.userId);
+    if (!integrations) {
+      integrations = await cacheUserIntegrations(device.userId);
+    }
 
     const mqttReady = await mqttClient.waitUntilConnected({ timeoutMs: 12_000 });
     if (!mqttReady) {
       logger.warn('[CONNECT_REFRESH] MQTT not ready — screen publishes may retry inline', { deviceId });
     }
 
-    await Promise.allSettled([
-      igRefresh,
-      gmbConnectPull.publishForDevice(deviceId, root),
-      posConnectPull.publishForDevice(deviceId, root),
-      statsPublisher.publishPromotionForDevice(deviceId, root)
-    ]);
+    const clearedHashes = await clearAllPublishHashesForDevice(deviceId);
+
+    if (!integrations) {
+      logger.warn('[CONNECT_REFRESH] No integrations cached or found', {
+        deviceId,
+        userId: device.userId
+      });
+      try {
+        await statsPublisher.publishPromotionForDevice(deviceId, root, { force: true });
+      } catch (err: unknown) {
+        logger.warn('[CONNECT_REFRESH] Promotion publish failed', {
+          deviceId,
+          error: err instanceof Error ? err.message : String(err)
+        });
+      }
+      return;
+    }
+
+    const tasks: Promise<unknown>[] = [];
+
+    if (integrations.instagram && instagramPoller) {
+      tasks.push(this.refreshInstagram(deviceId));
+    }
+
+    if (integrations.gmb) {
+      tasks.push(gmbConnectPull.publishForDevice(deviceId, root));
+    }
+
+    if (integrations.pos) {
+      tasks.push(posConnectPull.publishForDevice(deviceId, root));
+    }
+
+    const screenPulls = await Promise.allSettled(tasks);
+
+    try {
+      await statsPublisher.publishPromotionForDevice(deviceId, root, { force: true });
+      logger.info('[CONNECT_REFRESH] Promotion published (connect force)', { deviceId, clearedHashes });
+    } catch (err: unknown) {
+      logger.warn('[CONNECT_REFRESH] Promotion publish failed', {
+        deviceId,
+        clearedHashes,
+        error: err instanceof Error ? err.message : String(err)
+      });
+    }
+
+    const failed = screenPulls.filter((r) => r.status === 'rejected');
+    if (failed.length > 0) {
+      logger.debug('[CONNECT_REFRESH] Some screen pulls failed', { deviceId, failed: failed.length });
+    }
   }
 
   private async refreshInstagram(deviceId: string): Promise<void> {

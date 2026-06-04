@@ -21,8 +21,6 @@ const ACTIVE_PREFIX = 'proof.mqtt:active:';
 export interface ActiveDevice {
   deviceId: string;
   userId: string;
-  adManagementEnabled: boolean;
-  brandCanvasEnabled: boolean;
   lastSeen: number;
   /** Present when `Social` has `INSTAGRAM` for `Device.userId` (written at `/active` registration). */
   instagramAccountId?: string;
