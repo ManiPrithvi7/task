@@ -1,9 +1,9 @@
 import mongoose from 'mongoose';
-import { Ad, AdStatus, AdType } from '../models/Ad';
 import {
   Campaign,
   CampaignStatus,
   DiscountType,
+  ScheduleType,
   type ICampaign
 } from '../models/Campaign';
 import { Provider } from '../models/Social';
@@ -47,6 +47,11 @@ export type CachedCampaignDto = {
   description?: string;
   redemptionUrl?: string;
   socialId?: string;
+  status: string;
+  scheduleType: string;
+  scheduleConfig?: Record<string, unknown>;
+  startsAt?: string;
+  endsAt?: string;
 };
 
 export type PromotionFanoutDeps = {
@@ -70,7 +75,7 @@ function promoRotationKey(deviceId: string): string {
 export function buildCampaignPayload(campaign: ICampaign | CachedCampaignDto): PromotionScreenPayload {
   const discountType =
     'discountType' in campaign && campaign.discountType
-      ? campaign.discountType
+      ? (campaign.discountType as DiscountType)
       : DiscountType.PERCENTAGE;
   const discountValue =
     'discountValue' in campaign && typeof campaign.discountValue === 'number'
@@ -84,52 +89,45 @@ export function buildCampaignPayload(campaign: ICampaign | CachedCampaignDto): P
 
   const message =
     ('description' in campaign && campaign.description?.trim()) ||
-    campaign.name ||
-    'Promotion';
+    ('name' in campaign && campaign.name) ||
+    '';
 
   const offerCode = 'offerCode' in campaign ? campaign.offerCode : '';
   const qrText =
     ('redemptionUrl' in campaign && campaign.redemptionUrl?.trim()) ||
     `${getClaimBaseUrl()}/claim/${offerCode}`;
 
-  const platformRaw = 'platform' in campaign ? String(campaign.platform) : 'shopify';
+  const platformRaw =
+    'platform' in campaign && campaign.platform ? String(campaign.platform) : '';
 
   return {
-    platform: platformRaw.toLowerCase(),
+    platform: platformRaw ? platformRaw.toLowerCase() : '',
     Offer,
     message,
     qrText
   };
 }
 
-/** @deprecated Use buildCampaignPayload — kept for tests migrating from Ad templateData */
-export function buildPromotionPayload(
-  tplData: Record<string, unknown>,
-  campaignId?: string
-): PromotionScreenPayload {
-  const claimUrl = campaignId ? `${getClaimBaseUrl()}/claim/${campaignId}` : undefined;
-  const qrText =
-    (typeof tplData.qrText === 'string' && tplData.qrText.trim() ? tplData.qrText.trim() : undefined) ??
-    claimUrl ??
-    (typeof tplData.url === 'string' && tplData.url.trim() ? tplData.url.trim() : undefined) ??
-    `${getClaimBaseUrl()}/claim/default`;
+/** Re-apply schedule/date gates (cache hits must re-check time windows). */
+export function filterSchedulableCampaigns<T extends ICampaign | CachedCampaignDto>(
+  campaigns: T[],
+  now: Date = new Date()
+): T[] {
+  return campaigns.filter((c) => isCampaignActive(asCampaignForSchedule(c), now));
+}
 
-  return {
-    platform: (typeof tplData.provider === 'string' && tplData.provider.trim()
-      ? tplData.provider.trim()
-      : 'shopify') as string,
-    Offer: (typeof tplData.Offer === 'string'
-      ? tplData.Offer
-      : typeof tplData.offer === 'string'
-        ? tplData.offer
-        : '20%') as string,
-    message: (typeof tplData.message === 'string'
-      ? tplData.message
-      : typeof tplData.textContent === 'string'
-        ? tplData.textContent
-        : 'Cold Brew') as string,
-    qrText
-  };
+function asCampaignForSchedule(c: ICampaign | CachedCampaignDto): ICampaign {
+  if ('startsAt' in c && typeof c.startsAt === 'string') {
+    const dto = c as CachedCampaignDto;
+    return {
+      ...dto,
+      startsAt: dto.startsAt ? new Date(dto.startsAt) : undefined,
+      endsAt: dto.endsAt ? new Date(dto.endsAt) : undefined,
+      status: dto.status as CampaignStatus,
+      scheduleType: dto.scheduleType as ScheduleType
+    } as unknown as ICampaign;
+  }
+  return c as ICampaign;
 }
 
 function posProviderFromCache(integrations: UserIntegrationCache): Provider | null {
@@ -165,7 +163,7 @@ async function queryEligibleCampaigns(
     .limit(3)
     .lean();
 
-  return campaigns as unknown as ICampaign[];
+  return filterSchedulableCampaigns(campaigns as unknown as ICampaign[]);
 }
 
 function toCachedDto(c: ICampaign): CachedCampaignDto {
@@ -178,7 +176,12 @@ function toCachedDto(c: ICampaign): CachedCampaignDto {
     discountValue: c.discountValue,
     description: c.description,
     redemptionUrl: c.redemptionUrl,
-    socialId: c.socialId ? String(c.socialId) : undefined
+    socialId: c.socialId ? String(c.socialId) : undefined,
+    status: c.status,
+    scheduleType: c.scheduleType,
+    scheduleConfig: c.scheduleConfig as Record<string, unknown> | undefined,
+    startsAt: c.startsAt ? c.startsAt.toISOString() : undefined,
+    endsAt: c.endsAt ? c.endsAt.toISOString() : undefined
   };
 }
 
@@ -200,7 +203,10 @@ export async function getEligibleCampaignsForUser(
       if (cached) {
         const parsed = JSON.parse(cached) as CachedCampaignDto[];
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return { campaigns: parsed as unknown as ICampaign[], integrations: ints };
+          const active = filterSchedulableCampaigns(parsed);
+          if (active.length > 0) {
+            return { campaigns: active as unknown as ICampaign[], integrations: ints };
+          }
         }
       }
     } catch {
@@ -220,36 +226,6 @@ export async function getEligibleCampaignsForUser(
   }
 
   return { campaigns, integrations: ints };
-}
-
-export async function applyAdTemplateOverrides(
-  payload: PromotionScreenPayload,
-  campaignId: string
-): Promise<PromotionScreenPayload> {
-  if (!mongoose.Types.ObjectId.isValid(campaignId)) return payload;
-
-  try {
-    const ad = await Ad.findOne({
-      campaignId: new mongoose.Types.ObjectId(campaignId),
-      type: AdType.PROMOTION,
-      status: AdStatus.RUNNING
-    })
-      .sort({ updatedAt: -1 })
-      .lean();
-
-    if (!ad?.templateData) return payload;
-
-    const tpl = ad.templateData as Record<string, unknown>;
-    const merged = buildPromotionPayload(tpl, campaignId);
-    return {
-      platform: merged.platform || payload.platform,
-      Offer: merged.Offer || payload.Offer,
-      message: merged.message || payload.message,
-      qrText: merged.qrText || payload.qrText
-    };
-  } catch {
-    return payload;
-  }
 }
 
 export async function getNextPromotionIndex(deviceId: string, total: number): Promise<number> {

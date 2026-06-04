@@ -10,7 +10,6 @@ import {
 import { publishForce, publishIfChanged } from './mqttChangeDetection';
 import {
   buildCampaignPayload,
-  applyAdTemplateOverrides,
   getEligibleCampaignsForUser,
   getNextPromotionIndex
 } from './promotionService';
@@ -385,8 +384,7 @@ export class StatsPublisher {
       const index = await getNextPromotionIndex(deviceId, campaigns.length);
       const campaign = campaigns[index];
       const campaignId = String((campaign as { _id: unknown })._id);
-      let screenPayload = buildCampaignPayload(campaign);
-      screenPayload = await applyAdTemplateOverrides(screenPayload, campaignId);
+      const screenPayload = buildCampaignPayload(campaign);
       const envelope = buildScreenEnvelope('promotion', screenPayload);
 
       const result = await this.publishPromotionEnvelope(deviceId, root, envelope, campaignId, force);
@@ -397,11 +395,13 @@ export class StatsPublisher {
           userId,
           campaignId,
           campaignName: (campaign as { name?: string }).name,
+          offerCode: (campaign as { offerCode?: string }).offerCode,
           rotationIndex: index,
           totalCampaigns: campaigns.length,
           topic: `${root}/${deviceId}/promotion`,
           Offer: screenPayload.Offer,
-          message: screenPayload.message
+          message: screenPayload.message,
+          qrText: screenPayload.qrText
         });
       } else {
         logger.info('[PROMOTION] Skipped unchanged payload', {
