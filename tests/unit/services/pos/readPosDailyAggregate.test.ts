@@ -1,14 +1,14 @@
-import { readPosDailyAggregate } from './readPosDailyAggregate';
+import { readPosDailyAggregate } from '@/services/pos/readPosDailyAggregate';
 
-jest.mock('../influxService', () => ({
+jest.mock('@/services/influxService', () => ({
   getInfluxService: jest.fn()
 }));
-jest.mock('../redisService', () => ({
+jest.mock('@/services/redisService', () => ({
   getRedisService: jest.fn()
 }));
 
-import { getInfluxService } from '../influxService';
-import { getRedisService } from '../redisService';
+import { getInfluxService } from '@/services/influxService';
+import { getRedisService } from '@/services/redisService';
 
 const mockGetInflux = getInfluxService as jest.MockedFunction<typeof getInfluxService>;
 const mockGetRedis = getRedisService as jest.MockedFunction<typeof getRedisService>;

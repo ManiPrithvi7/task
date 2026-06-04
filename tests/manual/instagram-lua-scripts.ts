@@ -2,7 +2,7 @@ import assert from 'assert';
 import {
   atomicBackoffCheckAndRecordLua,
   atomicPriorityReadAndPruneLua
-} from './services/instagramService';
+} from '../../src/services/instagramService';
 
 function nonEmptyString(name: string, value: unknown): void {
   assert.strictEqual(typeof value, 'string', `${name} must be a string`);
@@ -17,4 +17,3 @@ assert.ok(atomicPriorityReadAndPruneLua.includes('ZREMRANGEBYSCORE'), 'priority 
 assert.ok(atomicBackoffCheckAndRecordLua.includes('ZCOUNT'), 'backoff script should count window');
 
 console.log('OK');
-

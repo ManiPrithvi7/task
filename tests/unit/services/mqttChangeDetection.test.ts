@@ -2,13 +2,13 @@ import {
   publishHashRedisKey,
   clearPublishHash,
   clearAllPublishHashesForDevice
-} from './mqttChangeDetection';
+} from '@/services/mqttChangeDetection';
 
-jest.mock('./redisService', () => ({
+jest.mock('@/services/redisService', () => ({
   getRedisService: jest.fn()
 }));
 
-import { getRedisService } from './redisService';
+import { getRedisService } from '@/services/redisService';
 
 describe('mqttChangeDetection hash keys', () => {
   it('publishHashRedisKey matches publishIfChanged format', () => {

@@ -1,7 +1,7 @@
-import { isCampaignActive } from './campaignSchedule';
-import { CampaignStatus, ScheduleType, DiscountType, TargetType } from '../models/Campaign';
-import { Provider } from '../models/Social';
-import type { ICampaign } from '../models/Campaign';
+import { isCampaignActive } from '@/services/campaignSchedule';
+import { CampaignStatus, ScheduleType, DiscountType, TargetType } from '@/models/Campaign';
+import { Provider } from '@/models/Social';
+import type { ICampaign } from '@/models/Campaign';
 
 function baseCampaign(overrides: Partial<ICampaign> = {}): ICampaign {
   return {

@@ -1,4 +1,4 @@
-import { getDateBucket, priceToCents } from './helpers';
+import { getDateBucket, priceToCents } from '@/services/metrics/helpers';
 
 describe('metrics helpers', () => {
   it('converts price to cents', () => {

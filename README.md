@@ -51,6 +51,21 @@ curl http://localhost:3002/health
 
 ---
 
+## 📚 Documentation
+
+| Topic | Location |
+|-------|----------|
+| Quick start (extended) | [`docs/QUICKSTART.md`](docs/QUICKSTART.md) |
+| Device recovery / firmware | [`docs/DEVICE_RECOVERY_FIRMWARE.md`](docs/DEVICE_RECOVERY_FIRMWARE.md) |
+| Webhook migration | [`docs/WEBHOOK_MIGRATION.md`](docs/WEBHOOK_MIGRATION.md) |
+| Redis setup & troubleshooting | [`docs/REDIS_CLOUD_SETUP.md`](docs/REDIS_CLOUD_SETUP.md), [`docs/REDIS_CONNECTION_FIX.md`](docs/REDIS_CONNECTION_FIX.md) |
+| CSR / device certificates | [`docs/CSR_REQUIREMENTS_VALIDATION.md`](docs/CSR_REQUIREMENTS_VALIDATION.md) |
+| Attention IoT polling | [`docs/attention-polling-status.md`](docs/attention-polling-status.md) |
+
+Unit tests live under `tests/unit/` (mirrors `src/`). Integration: `tests/integration/connections.ts` (`npm run test:connections`). Ops scripts: `scripts/` (e.g. `scripts/integration-test.sh`, `scripts/run-migration.sh`).
+
+---
+
 ## 🏗️ Architecture
 
 ```

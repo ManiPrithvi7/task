@@ -1,30 +1,30 @@
 import { Request, Response } from 'express';
-import { WebhookLatencyTracker } from '../services/webhookMetrics';
-import { handleShopifyWebhook } from './shopifyHandler';
-import { handleSquareWebhook } from './squareHandler';
-import type { WebhookHandlerDeps } from './types';
-import * as shopifySquare from './verify/shopifySquare';
-import * as redisDedupe from './dedupe/redisDedupe';
-import { resolveShopifyUserId } from './resolve/shopifyUser';
-import { ingestPosOrder } from '../services/pos/ingestPosOrder';
-import { readPosDailyAggregate } from '../services/pos/readPosDailyAggregate';
-import { deliverPosScreenToUser } from './posWebhookDelivery';
+import { WebhookLatencyTracker } from '@/services/webhookMetrics';
+import { handleShopifyWebhook } from '@/webhooks/shopifyHandler';
+import { handleSquareWebhook } from '@/webhooks/squareHandler';
+import type { WebhookHandlerDeps } from '@/webhooks/types';
+import * as shopifySquare from '@/webhooks/verify/shopifySquare';
+import * as redisDedupe from '@/webhooks/dedupe/redisDedupe';
+import { resolveShopifyUserId } from '@/webhooks/resolve/shopifyUser';
+import { ingestPosOrder } from '@/services/pos/ingestPosOrder';
+import { readPosDailyAggregate } from '@/services/pos/readPosDailyAggregate';
+import { deliverPosScreenToUser } from '@/webhooks/posWebhookDelivery';
 
-jest.mock('./verify/shopifySquare');
-jest.mock('./dedupe/redisDedupe');
-jest.mock('./resolve/shopifyUser', () => ({ resolveShopifyUserId: jest.fn() }));
-jest.mock('./resolve/squareMerchant', () => ({ resolveSquareUserId: jest.fn() }));
-jest.mock('./resolve/resolveDevices', () => ({ resolveDevicesForUser: jest.fn().mockResolvedValue([]) }));
-jest.mock('./delivery/publishPosScreen', () => ({ publishPosScreen: jest.fn() }));
-jest.mock('./shopifyAsyncMetrics', () => ({ scheduleShopifyAsyncMetrics: jest.fn() }));
-jest.mock('./squareAsyncMetrics', () => ({ scheduleSquareAsyncMetrics: jest.fn() }));
-jest.mock('../services/pos/ingestPosOrder', () => ({ ingestPosOrder: jest.fn().mockResolvedValue(undefined) }));
-jest.mock('../services/pos/readPosDailyAggregate', () => ({
+jest.mock('@/webhooks/verify/shopifySquare');
+jest.mock('@/webhooks/dedupe/redisDedupe');
+jest.mock('@/webhooks/resolve/shopifyUser', () => ({ resolveShopifyUserId: jest.fn() }));
+jest.mock('@/webhooks/resolve/squareMerchant', () => ({ resolveSquareUserId: jest.fn() }));
+jest.mock('@/webhooks/resolve/resolveDevices', () => ({ resolveDevicesForUser: jest.fn().mockResolvedValue([]) }));
+jest.mock('@/webhooks/delivery/publishPosScreen', () => ({ publishPosScreen: jest.fn() }));
+jest.mock('@/webhooks/shopifyAsyncMetrics', () => ({ scheduleShopifyAsyncMetrics: jest.fn() }));
+jest.mock('@/webhooks/squareAsyncMetrics', () => ({ scheduleSquareAsyncMetrics: jest.fn() }));
+jest.mock('@/services/pos/ingestPosOrder', () => ({ ingestPosOrder: jest.fn().mockResolvedValue(undefined) }));
+jest.mock('@/services/pos/readPosDailyAggregate', () => ({
   readPosDailyAggregate: jest.fn().mockResolvedValue({ orderCountToday: 3, topSellerLine: 'Hat' })
 }));
-jest.mock('./posWebhookDelivery', () => ({
+jest.mock('@/webhooks/posWebhookDelivery', () => ({
   deliverPosScreenToUser: jest.fn().mockResolvedValue({ published: true, clientId: 'dev-1', topic: 'proof.mqtt/dev-1/pos' }),
-  isShopifyPaidOrder: jest.requireActual('./posWebhookDelivery').isShopifyPaidOrder
+  isShopifyPaidOrder: jest.requireActual('@/webhooks/posWebhookDelivery').isShopifyPaidOrder
 }));
 
 const mockVerifyShopify = shopifySquare.verifyShopifyIngress as jest.MockedFunction<

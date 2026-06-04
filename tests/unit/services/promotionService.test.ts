@@ -4,19 +4,19 @@ import {
   getNextPromotionIndex,
   getPromotionCacheTtlSec,
   type CachedCampaignDto
-} from './promotionService';
-import { CampaignStatus, DiscountType, ScheduleType, TargetType } from '../models/Campaign';
-import { Provider } from '../models/Social';
-import type { ICampaign } from '../models/Campaign';
+} from '@/services/promotionService';
+import { CampaignStatus, DiscountType, ScheduleType, TargetType } from '@/models/Campaign';
+import { Provider } from '@/models/Social';
+import type { ICampaign } from '@/models/Campaign';
 
-jest.mock('./redisService', () => ({
+jest.mock('@/services/redisService', () => ({
   getRedisService: jest.fn()
 }));
-jest.mock('./deviceService', () => ({
+jest.mock('@/services/deviceService', () => ({
   getActiveDeviceCache: jest.fn()
 }));
 
-import { getRedisService } from './redisService';
+import { getRedisService } from '@/services/redisService';
 
 const mockGetRedis = getRedisService as jest.MockedFunction<typeof getRedisService>;
 

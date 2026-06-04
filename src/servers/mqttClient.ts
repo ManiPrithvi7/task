@@ -68,6 +68,7 @@ export class MqttClientManager extends EventEmitter {
   private messageHandlers: Map<string, MessageHandler> = new Map();
   private reconnectAttempts: number = 0;
   private maxReconnectAttempts: number;
+  private brokerConnectCount: number = 0;
   private pendingAcks: Map<number, PendingAck> = new Map();
   private recentPublishes: Map<string, { timestamp: number; metadata: PublishMetadata }> = new Map();
   private readonly ECHO_WINDOW_MS = 2000;
@@ -128,6 +129,7 @@ export class MqttClientManager extends EventEmitter {
         clean: true,
         connectTimeout: 30000,
         reconnectPeriod: this.config.reconnectPeriod ?? 2000,
+        resubscribe: true,
         keepalive: 45,
         protocolVersion: 5
       };
@@ -169,10 +171,14 @@ export class MqttClientManager extends EventEmitter {
 
       this.client.on('connect', () => {
         this.reconnectAttempts = 0;
+        const reconnect = this.brokerConnectCount > 0;
+        this.brokerConnectCount++;
         logger.info('Connected to MQTT broker', {
           broker: this.config.broker,
-          clientId: this.config.clientId
+          clientId: this.config.clientId,
+          reconnect
         });
+        this.emit('brokerConnect', { reconnect });
         finishConnect();
       });
 

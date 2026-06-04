@@ -2,7 +2,7 @@ import { createHash } from 'crypto';
 import {
   buildShopifyDedupeKey,
   buildSquareDedupeKey
-} from './redisDedupe';
+} from '@/webhooks/dedupe/redisDedupe';
 
 describe('webhook dedupe keys', () => {
   it('builds shopify key from checkout_id', () => {

@@ -1,8 +1,8 @@
 import express from 'express';
 import request from 'supertest';
-import { createWebhookRoutes } from './webhookRoutes';
-import type { MqttClientManager } from '../servers/mqttClient';
-import { loadWebhookConfig } from '../config/webhookConfig';
+import { createWebhookRoutes } from '@/routes/webhookRoutes';
+import type { MqttClientManager } from '@/servers/mqttClient';
+import { loadWebhookConfig } from '@/config/webhookConfig';
 
 const mockPublish = jest.fn().mockResolvedValue(undefined);
 

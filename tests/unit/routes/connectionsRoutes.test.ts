@@ -1,12 +1,12 @@
 import express from 'express';
 import request from 'supertest';
-import { createConnectionsRoutes } from './connectionsRoutes';
+import { createConnectionsRoutes } from '@/routes/connectionsRoutes';
 
-jest.mock('../config/connectionsConfig', () => ({
+jest.mock('@/config/connectionsConfig', () => ({
   resolveConnectionsValidateApiKey: () => 'test-key'
 }));
 
-jest.mock('../services/promotionService', () => ({
+jest.mock('@/services/promotionService', () => ({
   handleConnectionValidateEvent: jest.fn().mockResolvedValue({
     ok: true,
     event: 'social.connected',
@@ -16,7 +16,7 @@ jest.mock('../services/promotionService', () => ({
   })
 }));
 
-import { handleConnectionValidateEvent } from '../services/promotionService';
+import { handleConnectionValidateEvent } from '@/services/promotionService';
 
 const mockHandler = handleConnectionValidateEvent as jest.MockedFunction<
   typeof handleConnectionValidateEvent

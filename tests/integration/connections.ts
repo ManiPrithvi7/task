@@ -6,7 +6,7 @@
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import { createClient } from 'redis';
-import { mongoDriverTimeouts } from './src/config/mongoConnection';
+import { mongoDriverTimeouts } from '../../src/config/mongoConnection';
 
 // Load environment variables
 dotenv.config();
@@ -194,4 +194,3 @@ main().catch(error => {
   console.error(`${colors.red}Fatal error:${colors.reset}`, error);
   process.exit(1);
 });
-

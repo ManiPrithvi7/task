@@ -2,7 +2,7 @@ import * as jwt from 'jsonwebtoken';
 import {
   DEVICE_RESET_RECOVERY_PURPOSE,
   RecoverySessionService
-} from './recoverySessionService';
+} from '@/services/recoverySessionService';
 
 const TEST_SECRET = 'test-auth-secret-for-recovery-session';
 

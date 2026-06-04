@@ -5,6 +5,13 @@ import { WebSocketServerManager } from './servers/webSocketServer';
 import { MqttClientManager } from './servers/mqttClient';
 import { StatsPublisher } from './services/statsPublisher';
 import { ConnectRefreshCoordinator } from './services/connectRefreshCoordinator';
+import { DeferredDeviceWorkQueue } from './services/deferredDeviceWork';
+import {
+  flushMessageBuffer,
+  routeMqttMessage,
+  type MqttIngressHandlers,
+  type MqttIngressRouterState
+} from './services/mqttIngressRouter';
 import { clearAllPublishHashesForDevice } from './services/mqttChangeDetection';
 import { PosConnectPull } from './services/posConnectPull';
 import { createPromotionRoutes } from './routes/promotionRoutes';
@@ -98,10 +105,22 @@ export class StatsMqttLite {
 
   // Active device cache (Redis-backed)
   private activeDeviceCache!: ActiveDeviceCache;
-  
-  // Startup time for grace period
+
+  private isIngressReady = false;
+  private isServicesReady = false;
+  private hasConnectedOnce = false;
+  private readonly deferredWork = new DeferredDeviceWorkQueue();
+  private readonly mqttIngressState: MqttIngressRouterState = {
+    isServicesReady: false,
+    startupTime: Date.now(),
+    buffer: []
+  };
+
+  // Startup time for non-lifecycle grace period (set when ingress ready)
   private startupTime: number = Date.now();
   private keepAliveTimer: NodeJS.Timeout | null = null;
+  private lifecycleTopicsSubscribed = false;
+  private nonLifecycleTopicsSubscribed = false;
 
   constructor() {
     this.config = loadConfig();
@@ -177,51 +196,41 @@ export class StatsMqttLite {
       logger.info('🚀 Starting MQTT Publisher Lite...');
       logger.info('━'.repeat(50));
 
-      // Initialize MongoDB (REQUIRED)
+      // Phase 1: ingress-critical path (device /active must be handled ASAP)
       await this.initializeMongoDB();
 
-      // Initialize Redis (REDIS_URL) for token persistence
       if (this.config.redis.enabled && this.config.redis.url) {
         await this.initializeRedis();
       } else if (this.config.redis.enabled) {
         logger.warn('⚠️  Redis enabled but REDIS_URL not set. Provisioning tokens will use in-memory storage.');
       }
 
-      // Initialize services
       await this.initializeServices();
 
-      // Initialize InfluxDB when INFLUXDB_TOKEN is set (implicit enable)
-      if (this.config.influxdb?.enabled) {
-        logger.info('📈 Initializing InfluxDB...');
+      if (
+        this.config.provisioning.enabled &&
+        this.config.provisioning.requireMtlsForRegistration
+      ) {
+        await this.initializeProvisioning();
       }
-      await this.initializeInfluxDB();
-      await this.initializePkiGovernance();
 
-      // Initialize provisioning services (if enabled)
-      await this.initializeProvisioning();
-
-      // Initialize MQTT client
       await this.initializeMqttClient();
+      await this.subscribeLifecycleTopics();
+      await this.subscribeToTopics();
 
-      // Initialize Instagram dual schedulers (Redis + serverless worker URL)
-      await this.initializeInstagramPoller();
+      this.isIngressReady = true;
+      this.startupTime = Date.now();
+      this.mqttIngressState.startupTime = this.startupTime;
+      logger.info('🟢 MQTT ingress ready — accepting device connections');
 
-      // Initialize HTTP server (includes provisioning routes)
-      await this.initializeHttpServer();
-
-      // Initialize WebSocket server
-      await this.initializeWebSocketServer();
-
-      // Initialize stats publisher
-      await this.initializeStatsPublisher();
-
-      this.initializeConnectRefreshCoordinator();
-
-      // Initialize keep-alive for Render.com free tier
-      this.initializeKeepAlive();
+      void this.initializePhase2().catch((err: unknown) => {
+        logger.error('Phase 2 initialization failed', {
+          error: err instanceof Error ? err.message : String(err)
+        });
+      });
 
       logger.info('━'.repeat(50));
-      logger.info('✅ MQTT Publisher Lite started successfully');
+      logger.info('✅ MQTT Publisher Lite ingress started (Phase 2 warming up)');
       logger.info('');
       logger.info('📡 MQTT Broker:', `${this.config.mqtt.broker}:${this.config.mqtt.port}`);
       logger.info('🌐 HTTP API:', `http://${this.config.http.host}:${this.config.http.port}`);
@@ -245,6 +254,102 @@ export class StatsMqttLite {
         stack: error.stack 
       });
       throw error;
+    }
+  }
+
+  private async initializePhase2(): Promise<void> {
+    if (this.config.influxdb?.enabled) {
+      logger.info('📈 Initializing InfluxDB...');
+    }
+    await this.initializeInfluxDB();
+    await this.initializePkiGovernance();
+
+    if (this.config.provisioning.enabled && !this.caService) {
+      await this.initializeProvisioning();
+    }
+
+    await this.initializeInstagramPoller();
+    await this.initializeHttpServer();
+    await this.initializeWebSocketServer();
+    await this.initializeStatsPublisher();
+    this.initializeConnectRefreshCoordinator();
+    this.initializeKeepAlive();
+
+    this.isServicesReady = true;
+    this.mqttIngressState.isServicesReady = true;
+    logger.info('🟢 All services ready — draining deferred work and message buffer');
+
+    await this.processDeferredWork();
+    await this.flushMqttMessageBuffer();
+  }
+
+  private buildMqttIngressHandlers(): MqttIngressHandlers {
+    return {
+      onActive: (topic, message) => this.handleDeviceRegistration(topic, message),
+      onLwt: (topic, message) => this.handleDeviceLWT(topic, message),
+      onStatus: (topic, message) => this.handleDeviceStatus(topic, message),
+      onScreenEcho: (topic, message) => {
+        logger.debug('Screen message received', {
+          topic,
+          screen: (message as { screen?: string })?.screen
+        });
+        return Promise.resolve();
+      },
+      onOther: (topic, message, payloadLength) => {
+        logger.debug('MQTT message received', {
+          topic,
+          type: (message as { type?: string })?.type || 'unknown',
+          size: payloadLength
+        });
+        return Promise.resolve();
+      },
+      updateLastSeen: (deviceId) =>
+        this.deviceService.updateLastSeen(deviceId).catch(() => undefined),
+      ensureProvisioned: (deviceId) => this.ensureDeviceProvisioned(deviceId),
+      extractDeviceId: (topic) => this.extractDeviceId(topic)
+    };
+  }
+
+  private async onMqttMessageReceived(
+    receivedTopic: string,
+    payload: Buffer,
+    packet?: { retain?: boolean; qos?: number }
+  ): Promise<void> {
+    await routeMqttMessage(
+      receivedTopic,
+      payload,
+      packet,
+      this.buildMqttIngressHandlers(),
+      this.mqttIngressState
+    );
+  }
+
+  private async flushMqttMessageBuffer(): Promise<void> {
+    await flushMessageBuffer(this.buildMqttIngressHandlers(), this.mqttIngressState);
+  }
+
+  private async processDeferredWork(): Promise<void> {
+    const coordinator = this.connectRefreshCoordinator;
+    if (!coordinator) {
+      logger.warn('[DEFERRED_WORK] Connect refresh coordinator not ready — skipping drain');
+      return;
+    }
+
+    const result = await this.deferredWork.processAll(async (item) => {
+      if (item.type !== 'connect_refresh') return;
+      try {
+        await coordinator.refresh(item.deviceId);
+      } catch (err: unknown) {
+        logger.error('[DEFERRED_WORK] connect_refresh failed', {
+          deviceId: item.deviceId,
+          error: err instanceof Error ? err.message : String(err)
+        });
+        throw err;
+      }
+    });
+
+    if (result.processed > 0 || result.failed > 0 || result.skippedStale > 0) {
+      logger.info('[DEFERRED_WORK] Drain complete', result);
     }
   }
 
@@ -793,124 +898,58 @@ export class StatsMqttLite {
     
     await this.mqttClient.connect();
 
-    if (this.mqttClient.isConnected()) {
-      await this.subscribeToTopics();
-    } else {
-      this.mqttClient.once('connect', () => {
-        this.subscribeToTopics().catch((err) => {
-          logger.error('MQTT subscribe failed after deferred connect', {
+    this.mqttClient.on('brokerConnect', ({ reconnect }: { reconnect: boolean }) => {
+      if (reconnect && this.isIngressReady) {
+        logger.info('MQTT reconnected — re-subscribing to topics');
+        void this.subscribeLifecycleTopics().catch((err: unknown) => {
+          logger.error('MQTT lifecycle re-subscribe failed', {
             error: err instanceof Error ? err.message : String(err)
           });
         });
+        void this.subscribeToTopics().catch((err: unknown) => {
+          logger.error('MQTT topic re-subscribe failed', {
+            error: err instanceof Error ? err.message : String(err)
+          });
+        });
+      }
+      this.hasConnectedOnce = true;
+    });
+
+    logger.info('✅ MQTT client initialized with QoS 1 tracking');
+  }
+
+  private async subscribeLifecycleTopics(): Promise<void> {
+    const root = this.config.mqtt.topicRoot;
+    const topics = [`${root}/+/active`, `${root}/+/lwt`];
+
+    for (const topic of topics) {
+      await this.mqttClient.subscribe(topic, (receivedTopic, payload, packet) => {
+        void this.onMqttMessageReceived(receivedTopic, payload, packet);
       });
     }
-    
-    logger.info('✅ MQTT client initialized with QoS 1 tracking');
+
+    this.lifecycleTopicsSubscribed = true;
+    logger.info('Subscribed to lifecycle topics', { topics, root });
   }
 
   private async subscribeToTopics(): Promise<void> {
     const root = this.config.mqtt.topicRoot;
-    // proof.mqtt: device lifecycle + screen topics (Instagram, GMB, POS)
     const topics = [
-      `${root}/+/active`,   // Device registration (connect) → priority + serverless fetch
-      `${root}/+/lwt`,      // Last Will (broker when device disconnects)
-      `${root}/+/status`,   // Device status (e.g. uptime)
-      `${root}/+/instagram`, // Instagram screen (device → server if needed)
-      `${root}/+/gmb`,      // Google My Business screen
-      `${root}/+/pos`,      // POS screen
-      `${root}/+/promotion` // Canvas / Promotion screen
+      `${root}/+/status`,
+      `${root}/+/instagram`,
+      `${root}/+/gmb`,
+      `${root}/+/pos`,
+      `${root}/+/promotion`
     ];
 
     for (const topic of topics) {
-      await this.mqttClient.subscribe(topic, async (receivedTopic, payload, packet) => {
-        try {
-          // ✅ FILTER 1: Skip retained messages (old broker cache)
-          if (packet?.retain) {
-            logger.debug('Ignoring retained message', { 
-              topic: receivedTopic,
-              reason: 'retained flag set'
-            });
-            return;
-          }
-
-          // ✅ FILTER 2: Startup grace period (first 3 seconds) — skip buffered noise only.
-          // Never drop `/active` or `/lwt`: after a server restart the device often publishes within 3s;
-          // skipping those would skip registration + `cacheActiveDevice` (empty IG in active-devices.json).
-          const uptime = Date.now() - this.startupTime;
-          const lifecycleTopic =
-            receivedTopic.endsWith('/active') || receivedTopic.endsWith('/lwt');
-          if (!lifecycleTopic && uptime < 3000) {
-            logger.debug('Ignoring message during startup grace period', {
-              topic: receivedTopic,
-              uptime: `${Math.floor(uptime / 1000)}s`,
-              gracePeriod: '3s'
-            });
-            return;
-          }
-
-          const message = JSON.parse(payload.toString());
-
-          // ✅ FILTER 3: Timestamp validation (ignore messages older than 2 minutes)
-          if (message.timestamp) {
-            const messageAge = Date.now() - new Date(message.timestamp).getTime();
-            if (messageAge > 120000) {  // 2 minutes
-              logger.debug('Ignoring old message', {
-                topic: receivedTopic,
-                age: `${Math.floor(messageAge / 1000)}s`,
-                threshold: '120s'
-              });
-              return;
-            }
-          }
-          
-          // ✅ ENFORCE: Ensure device is provisioned for every device message (development mode)
-          const incomingDeviceId = this.extractDeviceId(receivedTopic);
-          if (incomingDeviceId) {
-            try {
-              const allowedMsg = await this.ensureDeviceProvisioned(incomingDeviceId);
-              if (!allowedMsg) {
-                logger.warn('Dropping message from unprovisioned device', { topic: receivedTopic, deviceId: incomingDeviceId });
-                return;
-              }
-            } catch (err: any) {
-              logger.error('Error checking device provisioning for incoming message', { topic: receivedTopic, deviceId: incomingDeviceId, error: err?.message ?? String(err) });
-              return;
-            }
-          }
-          
-          // ✅ NOW SAFE TO PROCESS - Only fresh, real-time messages
-          
-          // Log based on topic type
-          if (receivedTopic.endsWith('/active')) {
-            await this.handleDeviceRegistration(receivedTopic, message);
-          } else if (receivedTopic.endsWith('/lwt')) {
-            await this.handleDeviceLWT(receivedTopic, message);
-          } else if (receivedTopic.endsWith('/status')) {
-            await this.handleDeviceStatus(receivedTopic, message);
-          } else if (receivedTopic.endsWith('/instagram') || receivedTopic.endsWith('/gmb') || receivedTopic.endsWith('/pos')) {
-            logger.debug('Screen message received', { topic: receivedTopic, screen: message.screen });
-          } else {
-            logger.debug('MQTT message received', { topic: receivedTopic, type: message.type || 'unknown', size: payload.length });
-          }
-          
-          // Update device last seen (but skip for unregistration messages)
-          // ✅ FIX: Don't update lastSeen for unregistration to preserve inactive status
-          const deviceId = this.extractDeviceId(receivedTopic);
-          if (deviceId && message.type !== 'un_registration') {
-            await this.deviceService.updateLastSeen(deviceId).catch(err => {
-              logger.debug('Device not found in storage', { deviceId });
-            });
-          }
-        } catch (error: any) {
-          logger.error('Error processing MQTT message', {
-            topic: receivedTopic,
-            error: error.message
-          });
-        }
+      await this.mqttClient.subscribe(topic, (receivedTopic, payload, packet) => {
+        void this.onMqttMessageReceived(receivedTopic, payload, packet);
       });
     }
 
-    logger.info('Subscribed to proof.mqtt topics', { count: topics.length, root });
+    this.nonLifecycleTopicsSubscribed = true;
+    logger.info('Subscribed to non-lifecycle proof.mqtt topics', { count: topics.length, root });
   }
 
   /**
@@ -1141,11 +1180,23 @@ export class StatsMqttLite {
     const mongoUserId = (await Device.findOne({ clientId: deviceId }).select({ userId: 1 }).lean())?.userId
       ?.toString();
     if (mongoUserId) {
-      void cacheUserIntegrations(mongoUserId).catch(() => undefined);
+      void cacheUserIntegrations(mongoUserId).catch((err: unknown) => {
+        logger.warn('[LIFECYCLE:REGISTER] Integration cache warm failed', {
+          deviceId,
+          userId: mongoUserId,
+          error: err instanceof Error ? err.message : String(err)
+        });
+      });
     }
 
-    if (this.connectRefreshCoordinator) {
-      void this.connectRefreshCoordinator.refresh(deviceId).catch(() => undefined);
+    this.deferredWork.enqueueConnectRefresh(deviceId);
+    if (this.isServicesReady) {
+      void this.processDeferredWork().catch((err: unknown) => {
+        logger.error('[DEFERRED_WORK] Failed after registration', {
+          deviceId,
+          error: err instanceof Error ? err.message : String(err)
+        });
+      });
     }
 
     logger.info('📋 [LIFECYCLE:REGISTER] Device registration complete', { deviceId });

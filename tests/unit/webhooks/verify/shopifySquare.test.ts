@@ -1,7 +1,7 @@
 import {
   verifyShopifyWebhook,
   verifySquareWebhook
-} from './shopifySquare';
+} from '@/webhooks/verify/shopifySquare';
 
 describe('shopifySquare verifiers', () => {
   const secret = 'test-shopify-secret';
