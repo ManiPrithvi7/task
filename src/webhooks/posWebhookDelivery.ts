@@ -1,49 +1,47 @@
 import type { WebhookHandlerDeps } from './types';
-import type { ResolvedDeviceTarget } from './resolve/resolveDevices';
 import { publishPosScreen } from './delivery/publishPosScreen';
-import type { WebhookOrderAudit } from './parseWebhookOrder';
-import { webhookInfluxBatch } from './influxAudit';
+import { getActiveDeviceCache } from '../services/deviceService';
+import { logger } from '../utils/logger';
 
 export async function deliverPosScreenToUser(
   deps: WebhookHandlerDeps,
   userId: string,
   platform: 'shopify' | 'square',
-  devices: ResolvedDeviceTarget[],
-  orderAudit?: WebhookOrderAudit | null
+  orderCountToday: number,
+  topSeller?: string
 ): Promise<{ published: boolean; clientId?: string; topic?: string }> {
+  const activeDevices = (await getActiveDeviceCache().getAllActive()).filter(
+    (d) => d.userId === userId
+  );
+
+  if (activeDevices.length === 0) {
+    logger.debug('[WEBHOOK_POS] No active-cache devices for user — skip MQTT', {
+      userId,
+      platform,
+      orderCountToday
+    });
+    return { published: false };
+  }
+
   let published = false;
   let lastTopic: string | undefined;
   let lastClientId: string | undefined;
 
-  for (const device of devices) {
-    if (orderAudit) {
-      await webhookInfluxBatch((influx) =>
-        influx.writeWebhookOrder(
-          {
-            platform,
-            deviceId: device.clientId,
-            userId,
-            orderId: orderAudit.orderId,
-            totalAmount: orderAudit.totalAmount,
-            currency: orderAudit.currency,
-            itemCount: orderAudit.itemCount,
-            timestamp: new Date()
-          },
-          { flush: false }
-        )
-      );
-    }
-
+  for (const device of activeDevices) {
     const result = await publishPosScreen(
       deps.mqttClient,
       deps.topicRoot,
-      device.clientId,
-      { platform, orderCount: 1 },
+      device.deviceId,
+      {
+        platform,
+        orderCount: orderCountToday,
+        topSeller
+      },
       deps.webhookConfig.mqttPublishEnabled,
-      { userId, deviceId: device.clientId }
+      { userId, deviceId: device.deviceId }
     );
     lastTopic = result.topic;
-    lastClientId = device.clientId;
+    lastClientId = device.deviceId;
     published = published || result.published;
   }
 

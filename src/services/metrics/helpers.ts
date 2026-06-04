@@ -75,3 +75,51 @@ export const getDailyMetricsKeys = (userId: string, dateKey: string): DailyMetri
     lastKey: `${base}:last`
   };
 };
+
+/** Start of calendar day in `timezone` for instant `at` (for Influx range queries). */
+export function getStartOfDayInTimezone(at: Date, timezone: string): Date {
+  if (Number.isNaN(at.getTime())) throw new Error('invalid timestamp');
+
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+  const dateKey = formatter.format(at);
+  const [y, m, d] = dateKey.split('-').map((n) => Number(n));
+  const offsetMs = getTimezoneOffsetMs(at, timezone);
+  return new Date(Date.UTC(y, m - 1, d, 0, 0, 0) - offsetMs);
+}
+
+export function getDateKeyForInstant(at: Date, timezone: string): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(at);
+}
+
+/** Write-through cache for POS daily totals (Influx is source of truth). */
+export function getPosDailyCacheKeys(userId: string, dateKey: string): {
+  countKey: string;
+  topSellerKey: string;
+} {
+  const base = `cache:pos:daily:${userId}:${dateKey}`;
+  return {
+    countKey: base,
+    topSellerKey: `${base}:top_seller`
+  };
+}
+
+const POS_DAILY_CACHE_TTL_SEC = 300;
+
+export function getPosDailyCacheTtlSec(): number {
+  return POS_DAILY_CACHE_TTL_SEC;
+}
+
+/** Escape user-controlled strings embedded in Flux queries. */
+export function escapeFluxString(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}

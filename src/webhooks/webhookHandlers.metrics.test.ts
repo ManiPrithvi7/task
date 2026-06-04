@@ -5,6 +5,10 @@ import { handleSquareWebhook } from './squareHandler';
 import type { WebhookHandlerDeps } from './types';
 import * as shopifySquare from './verify/shopifySquare';
 import * as redisDedupe from './dedupe/redisDedupe';
+import { resolveShopifyUserId } from './resolve/shopifyUser';
+import { ingestPosOrder } from '../services/pos/ingestPosOrder';
+import { readPosDailyAggregate } from '../services/pos/readPosDailyAggregate';
+import { deliverPosScreenToUser } from './posWebhookDelivery';
 
 jest.mock('./verify/shopifySquare');
 jest.mock('./dedupe/redisDedupe');
@@ -14,6 +18,14 @@ jest.mock('./resolve/resolveDevices', () => ({ resolveDevicesForUser: jest.fn().
 jest.mock('./delivery/publishPosScreen', () => ({ publishPosScreen: jest.fn() }));
 jest.mock('./shopifyAsyncMetrics', () => ({ scheduleShopifyAsyncMetrics: jest.fn() }));
 jest.mock('./squareAsyncMetrics', () => ({ scheduleSquareAsyncMetrics: jest.fn() }));
+jest.mock('../services/pos/ingestPosOrder', () => ({ ingestPosOrder: jest.fn().mockResolvedValue(undefined) }));
+jest.mock('../services/pos/readPosDailyAggregate', () => ({
+  readPosDailyAggregate: jest.fn().mockResolvedValue({ orderCountToday: 3, topSellerLine: 'Hat' })
+}));
+jest.mock('./posWebhookDelivery', () => ({
+  deliverPosScreenToUser: jest.fn().mockResolvedValue({ published: true, clientId: 'dev-1', topic: 'proof.mqtt/dev-1/pos' }),
+  isShopifyPaidOrder: jest.requireActual('./posWebhookDelivery').isShopifyPaidOrder
+}));
 
 const mockVerifyShopify = shopifySquare.verifyShopifyIngress as jest.MockedFunction<
   typeof shopifySquare.verifyShopifyIngress
@@ -79,6 +91,47 @@ describe('webhook handler metrics', () => {
 
     expect(markVerifiedSpy).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(401);
+  });
+
+  it('Shopify paid order: ingest → read aggregate → deliver absolute count', async () => {
+    mockVerifyShopify.mockResolvedValue({ valid: true });
+    (resolveShopifyUserId as jest.Mock).mockResolvedValue('user-shop');
+    const req = {
+      headers: {
+        'x-shopify-shop-domain': 'shop.myshopify.com',
+        'x-shopify-topic': 'orders/paid',
+        'x-shopify-hmac-sha256': 'x'
+      },
+      rawBody: Buffer.from(
+        JSON.stringify({
+          id: 99,
+          financial_status: 'paid',
+          processed_at: '2026-06-04T10:00:00Z',
+          current_total_price: '25.00',
+          line_items: [{ name: 'Hat' }]
+        })
+      )
+    } as unknown as Request;
+    const res = mockRes();
+
+    await handleShopifyWebhook(req, res, baseDeps);
+
+    expect(ingestPosOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'user-shop', platform: 'shopify', orderId: '99' })
+    );
+    expect(readPosDailyAggregate).toHaveBeenCalledWith(
+      'user-shop',
+      expect.any(Date),
+      expect.objectContaining({ platform: 'shopify' })
+    );
+    expect(deliverPosScreenToUser).toHaveBeenCalledWith(
+      baseDeps,
+      'user-shop',
+      'shopify',
+      3,
+      'Hat'
+    );
+    expect(res.status).toHaveBeenCalledWith(200);
   });
 
   it('Square: does not call markVerified when verification fails', async () => {

@@ -203,9 +203,14 @@ export class StatsPublisher {
           if (process.env.STATS_PUBLISHER_MOCK_INSTAGRAM === 'true') {
             await this.publishInstagram(device.deviceId, root);
           }
-          await this.publishGmb(device.deviceId, root);
-          await this.publishPos(device.deviceId, root);
-          await this.publishPromotion(device, root);
+          // Production GMB/POS come from webhooks + connect pull; mocks overwrite real data every cycle.
+          if (process.env.STATS_PUBLISHER_MOCK_GMB === 'true') {
+            await this.publishGmb(device.deviceId, root);
+          }
+          if (process.env.STATS_PUBLISHER_MOCK_POS === 'true') {
+            await this.publishPos(device.deviceId, root);
+          }
+          await this.publishPromotionForDevice(device.deviceId, root);
         } catch (err: unknown) {
           logger.error('Failed to publish screens for device', {
             deviceId: device.deviceId,
@@ -332,17 +337,17 @@ export class StatsPublisher {
 
   /**
    * Canvas/Promotion screen — reads preferences from Redis cache (zero MongoDB for prefs).
-   * Fetches the latest RUNNING ad for this user from MongoDB (1 query, no type filter).
-   * Shapes the payload based on the cached preference:
-   *
-   * - adManagementEnabled = true  → Promotion canvas (template data + provider + claim URL)
-   * - brandCanvasEnabled  = true  → Brand canvas (template data only, no provider/url)
-   * - Both false                  → Default empty canvas
-   *
-   * Phase 1: Always fetch latest RUNNING ad. Type-specific filtering deferred to future phase.
+   * Used by the 60s publish cycle and connect-refresh coordinator (same hash dedupe path).
    */
-  private async publishPromotion(device: ActiveDevice, root: string): Promise<void> {
-    const { deviceId, userId, adManagementEnabled, brandCanvasEnabled } = device;
+  async publishPromotionForDevice(deviceId: string, root: string): Promise<void> {
+    const cache = getActiveDeviceCache();
+    const device = await cache.getActive(deviceId);
+    if (!device) {
+      logger.debug('🎨 [PROMOTION] Device not in active cache — skip', { deviceId });
+      return;
+    }
+
+    const { userId, adManagementEnabled, brandCanvasEnabled } = device;
 
     try {
       if (!userId) {
@@ -435,20 +440,11 @@ export class StatsPublisher {
         qrText: (tplData.qrText ?? innerPayload.url ?? tplData.url ?? 'https://promo.link/coldbrew') as string
       });
 
-      const topic = `${root}/${deviceId}/promotion`;
-      await publishIfChanged({
-        deviceId,
-        topic,
-        hashInput: envelope.payload,
-        payload: JSON.stringify(envelope),
-        mqttClient: this.mqttClient,
-        qos: 1,
-        retain: false
-      });
+      await this.publishPromotionEnvelope(deviceId, root, envelope);
 
       logger.info(`🎨 [${canvasMode}:PUBLISHED] Canvas sent`, {
         deviceId,
-        topic,
+        topic: `${root}/${deviceId}/promotion`,
         adId: ad._id.toString(),
         adName: ad.name,
         canvasMode,
@@ -474,6 +470,19 @@ export class StatsPublisher {
       qrText: 'https://promo.link/coldbrew'
     });
 
+    await this.publishPromotionEnvelope(deviceId, root, envelope);
+    logger.info('🎨 [DEFAULT:PUBLISHED] Empty default canvas sent', {
+      deviceId,
+      topic: `${root}/${deviceId}/promotion`
+    });
+  }
+
+  /** Shared MQTT publish + payload-hash dedupe for promotion (cycle + connect pull). */
+  private async publishPromotionEnvelope(
+    deviceId: string,
+    root: string,
+    envelope: ReturnType<typeof buildScreenEnvelope>
+  ): Promise<void> {
     const topic = `${root}/${deviceId}/promotion`;
     await publishIfChanged({
       deviceId,
@@ -484,8 +493,6 @@ export class StatsPublisher {
       qos: 1,
       retain: false
     });
-    logger.info('🎨 [DEFAULT:PUBLISHED] Empty default canvas sent', { deviceId, topic });
-
   }
 
   /** `.../gmb`: canonical v6 payload rotation including mini/mega celebration envelopes. */

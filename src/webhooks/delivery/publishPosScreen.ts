@@ -50,13 +50,22 @@ export async function publishPosScreen(
     });
   } else {
     try {
-      await mqttClient.publish({
-        topic,
-        payload,
-        qos: 1,
-        retain: false
-      });
+      await mqttClient.publishWithRetry(
+        {
+          topic,
+          payload,
+          qos: 1,
+          retain: false
+        },
+        { deviceId: clientId, source: 'pos_screen' }
+      );
       published = true;
+      logger.info('[WEBHOOK_POS] Published absolute daily total', {
+        clientId,
+        topic,
+        platform: input.platform,
+        orderCount: input.orderCount
+      });
     } catch (err: unknown) {
       success = false;
       errorMessage = err instanceof Error ? err.message : String(err);

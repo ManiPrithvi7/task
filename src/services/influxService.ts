@@ -120,6 +120,7 @@ export interface WebhookOrderInfluxInput {
   totalAmount?: number;
   currency?: string;
   itemCount?: number;
+  topSellerLine?: string;
   timestamp?: Date;
 }
 
@@ -451,8 +452,71 @@ export class InfluxService {
     if (typeof input.itemCount === 'number' && Number.isFinite(input.itemCount)) {
       point.intField('item_count', Math.max(0, Math.round(input.itemCount)));
     }
+    if (input.topSellerLine?.trim()) {
+      point.stringField('top_seller_line', input.topSellerLine.trim().slice(0, 512));
+    }
     point.timestamp(input.timestamp ?? new Date());
     await this.submitPoint(point, opts?.flush !== false);
+  }
+
+  /**
+   * Distinct paid orders today for a user (POS source of truth).
+   * Counts unique order_id tags on webhook_order since startTime.
+   */
+  async queryPosDailyOrderCount(
+    userId: string,
+    startTime: Date,
+    platform?: 'shopify' | 'square'
+  ): Promise<number> {
+    try {
+      const startIso = startTime.toISOString();
+      const safeUserId = userId.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+      const platformFilter = platform
+        ? `|> filter(fn: (r) => r.platform == "${platform}")`
+        : '';
+
+      const query = `
+        from(bucket: "${this.config.bucket}")
+          |> range(start: ${startIso})
+          |> filter(fn: (r) => r._measurement == "webhook_order")
+          |> filter(fn: (r) => r.user_id == "${safeUserId}")
+          ${platformFilter}
+          |> group(columns: ["order_id"])
+          |> first()
+          |> group()
+          |> count(column: "order_id")
+      `;
+
+      let count = 0;
+
+      await new Promise<void>((resolve, reject) => {
+        this.queryApi.queryRows(query, {
+          next(row, tableMeta) {
+            const o = tableMeta.toObject(row) as Record<string, unknown>;
+            const v = o._value ?? o.order_id;
+            if (typeof v === 'number' && Number.isFinite(v)) {
+              count = Math.max(0, Math.round(v));
+            } else if (typeof v === 'string' && /^\d+$/.test(v)) {
+              count = Math.max(0, parseInt(v, 10));
+            }
+          },
+          error(error) {
+            logger.error('[INFLUX_POS] queryPosDailyOrderCount error', { error: error.message, userId });
+            reject(error);
+          },
+          complete() {
+            resolve();
+          }
+        });
+      });
+
+      logger.debug('[INFLUX_POS] queryPosDailyOrderCount', { userId, platform, count, startIso });
+      return count;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error('[INFLUX_POS] queryPosDailyOrderCount failed', { userId, error: errorMessage });
+      throw error;
+    }
   }
 
   /** User/device mapping traceability after resolve attempt. */

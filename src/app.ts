@@ -4,6 +4,9 @@ import { HttpServer } from './servers/httpServer';
 import { WebSocketServerManager } from './servers/webSocketServer';
 import { MqttClientManager } from './servers/mqttClient';
 import { StatsPublisher } from './services/statsPublisher';
+import { ConnectRefreshCoordinator } from './services/connectRefreshCoordinator';
+import { PosConnectPull } from './services/posConnectPull';
+import { GmbConnectPull } from './services/gmbConnectPull';
 import { ProvisioningService } from './services/provisioningService';
 import { CAService } from './services/caService';
 import { AuthService } from './services/authService';
@@ -69,6 +72,7 @@ export class StatsMqttLite {
   
   // Stats publisher
   private statsPublisher!: StatsPublisher;
+  private connectRefreshCoordinator?: ConnectRefreshCoordinator;
   
   // Provisioning services
   private provisioningService?: ProvisioningService;
@@ -206,6 +210,8 @@ export class StatsMqttLite {
 
       // Initialize stats publisher
       await this.initializeStatsPublisher();
+
+      this.initializeConnectRefreshCoordinator();
 
       // Initialize keep-alive for Render.com free tier
       this.initializeKeepAlive();
@@ -1128,20 +1134,8 @@ export class StatsMqttLite {
     await this.cacheActiveDevice(deviceId);
     await this.redisMarkDeviceActive(deviceId);
 
-    // Maintain polling sets for Instagram dual schedulers
-    try {
-      if (this.redisService?.isRedisConnected()) {
-        const client = this.redisService.getClient();
-        if (this.instagramPoller && this.config.instagramPolling) {
-          await this.instagramPoller.markPriority(deviceId, this.config.instagramPolling.priorityTtlMs);
-          void this.instagramPoller.requestImmediateFetch(deviceId).catch(() => undefined);
-        }
-      }
-    } catch (err: unknown) {
-      logger.warn('Failed to update Instagram polling sets on registration', {
-        deviceId,
-        error: err instanceof Error ? err.message : String(err)
-      });
+    if (this.connectRefreshCoordinator) {
+      void this.connectRefreshCoordinator.refresh(deviceId).catch(() => undefined);
     }
 
     logger.info('📋 [LIFECYCLE:REGISTER] Device registration complete', { deviceId });
@@ -1522,6 +1516,27 @@ console.log({igFromSocial})
     await this.statsPublisher.start();
     
     logger.info('✅ Stats publisher initialized - publishing every 60s to /instagram, /gmb, /pos, /promotion');
+  }
+
+  private initializeConnectRefreshCoordinator(): void {
+    const gmbConnectPull = new GmbConnectPull(
+      this.mqttClient,
+      this.config.webhooks.mqttPublishEnabled
+    );
+    const posConnectPull = new PosConnectPull(
+      this.mqttClient,
+      this.config.webhooks.mqttPublishEnabled
+    );
+    this.connectRefreshCoordinator = new ConnectRefreshCoordinator({
+      mqttClient: this.mqttClient,
+      redisService: this.redisService ?? null,
+      instagramPoller: this.instagramPoller ?? null,
+      instagramPriorityTtlMs: this.config.instagramPolling?.priorityTtlMs ?? 300_000,
+      gmbConnectPull,
+      posConnectPull,
+      statsPublisher: this.statsPublisher
+    });
+    logger.info('✅ Connect refresh coordinator initialized (/active → debounced screen pull)');
   }
 
   private initializeKeepAlive(): void {

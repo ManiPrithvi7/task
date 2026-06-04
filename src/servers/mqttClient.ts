@@ -445,6 +445,72 @@ export class MqttClientManager extends EventEmitter {
     return this.client?.connected || false;
   }
 
+  /**
+   * Block until the broker session is up (or timeout). Used before connect-time screen publishes.
+   */
+  waitUntilConnected(opts?: { timeoutMs?: number; pollMs?: number }): Promise<boolean> {
+    const timeoutMs = opts?.timeoutMs ?? 15_000;
+    const pollMs = opts?.pollMs ?? 100;
+
+    if (this.isConnected()) return Promise.resolve(true);
+
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (ok: boolean) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        clearInterval(poll);
+        this.client?.off('connect', onConnect);
+        resolve(ok);
+      };
+
+      const onConnect = () => {
+        if (this.isConnected()) finish(true);
+      };
+
+      const poll = setInterval(() => {
+        if (this.isConnected()) finish(true);
+      }, pollMs);
+
+      const timer = setTimeout(() => finish(this.isConnected()), timeoutMs);
+      this.client?.once('connect', onConnect);
+    });
+  }
+
+  /**
+   * Publish with short retries when the session is briefly offline (common during broker reconnect).
+   */
+  async publishWithRetry(
+    message: MqttMessage,
+    metadata?: PublishMetadata,
+    opts?: { maxAttempts?: number; waitPerAttemptMs?: number }
+  ): Promise<void> {
+    const maxAttempts = opts?.maxAttempts ?? 5;
+    const waitPerAttemptMs = opts?.waitPerAttemptMs ?? 2_500;
+    let lastError: Error | undefined;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      await this.waitUntilConnected({ timeoutMs: waitPerAttemptMs, pollMs: 100 });
+      if (!this.isConnected()) {
+        lastError = new Error('MQTT client not connected');
+        continue;
+      }
+      try {
+        await this.publish(message, metadata);
+        return;
+      } catch (err: unknown) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+        const retryable =
+          lastError.message.includes('not connected') ||
+          lastError.message.includes('connection closed');
+        if (!retryable || attempt === maxAttempts) throw lastError;
+      }
+    }
+
+    throw lastError ?? new Error('MQTT publish failed');
+  }
+
   getTopicRoot(): string {
     return this.config.topicRoot;
   }

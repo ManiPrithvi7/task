@@ -1,7 +1,7 @@
 /** statsmqtt integration primitives (@proof-socials/socials npm — not Statsnapp app code). */
-import { gmb, webhooks } from '@proof-socials/socials';
+import { gmb, webhooks, ig, isAccessTokenExpired, normalizeRefreshToken } from '@proof-socials/socials';
 
-export { gmb, webhooks };
+export { gmb, webhooks, ig, isAccessTokenExpired, normalizeRefreshToken };
 
 export const {
   verifyShopifyWebhook,

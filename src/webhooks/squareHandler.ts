@@ -8,6 +8,8 @@ import { resolveDevicesForUser } from './resolve/resolveDevices';
 import { scheduleSquareAsyncMetrics } from './squareAsyncMetrics';
 import { deliverPosScreenToUser } from './posWebhookDelivery';
 import { parseSquareOrderAudit } from './parseWebhookOrder';
+import { ingestPosOrder } from '../services/pos/ingestPosOrder';
+import { readPosDailyAggregate } from '../services/pos/readPosDailyAggregate';
 import { webhookInfluxBatch, flushWebhookInflux } from './influxAudit';
 import { isSquareInvoiceEvent, isSquarePaymentEvent } from '../lib/socials/integrations';
 import { WebhookLatencyTracker } from '../services/webhookMetrics';
@@ -164,13 +166,38 @@ export async function handleSquareWebhook(req: Request, res: Response, deps: Web
     scheduleSquareAsyncMetrics(userId, eventType, rawBody, deps.webhookConfig.enableDailyMetrics);
 
     const orderAudit = parseSquareOrderAudit(rawBody);
-    const delivery = await deliverPosScreenToUser(deps, userId, 'square', devices, orderAudit);
+    let delivery: { published: boolean; clientId?: string; topic?: string } = { published: false };
+    let orderCountToday: number | undefined;
+
+    if (orderAudit?.paidAt) {
+      await ingestPosOrder({
+        userId,
+        platform: 'square',
+        orderId: orderAudit.orderId,
+        paidAt: orderAudit.paidAt,
+        topSellerLine: orderAudit.topSellerLine,
+        totalAmount: orderAudit.totalAmount,
+        currency: orderAudit.currency,
+        itemCount: orderAudit.itemCount
+      });
+      const aggregate = await readPosDailyAggregate(userId, new Date(), { platform: 'square' });
+      orderCountToday = aggregate.orderCountToday;
+      delivery = await deliverPosScreenToUser(
+        deps,
+        userId,
+        'square',
+        orderCountToday,
+        orderAudit.topSellerLine ?? aggregate.topSellerLine
+      );
+    }
+
     tracker.markPublished();
 
     logger.info('[SQUARE WEBHOOK][payment]', {
       merchantId,
       eventType,
       userId,
+      orderCountToday,
       clientId: delivery.clientId,
       topic: delivery.topic,
       published: delivery.published

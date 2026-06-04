@@ -7,6 +7,8 @@ import { resolveDevicesForUser } from './resolve/resolveDevices';
 import { scheduleShopifyAsyncMetrics } from './shopifyAsyncMetrics';
 import { deliverPosScreenToUser, isShopifyPaidOrder } from './posWebhookDelivery';
 import { parseShopifyOrderAudit } from './parseWebhookOrder';
+import { ingestPosOrder } from '../services/pos/ingestPosOrder';
+import { readPosDailyAggregate } from '../services/pos/readPosDailyAggregate';
 import { webhookInfluxBatch, flushWebhookInflux } from './influxAudit';
 import { WebhookLatencyTracker } from '../services/webhookMetrics';
 import { logger } from '../utils/logger';
@@ -106,19 +108,41 @@ export async function handleShopifyWebhook(req: Request, res: Response, deps: We
 
     if (isShopifyPaidOrder(topic, rawBody)) {
       const orderAudit = parseShopifyOrderAudit(rawBody);
-      const delivery = await deliverPosScreenToUser(deps, userId, 'shopify', devices, orderAudit);
-      published = delivery.published;
-      lastTopic = delivery.topic;
-      lastClientId = delivery.clientId;
-      tracker.markPublished();
-      logger.info('[SHOPIFY_WEBHOOK] pos_published', {
-        shop,
-        webhookTopic: topic,
-        userId,
-        clientId: lastClientId,
-        mqttTopic: lastTopic,
-        published
-      });
+      if (orderAudit?.paidAt) {
+        await ingestPosOrder({
+          userId,
+          platform: 'shopify',
+          orderId: orderAudit.orderId,
+          paidAt: orderAudit.paidAt,
+          topSellerLine: orderAudit.topSellerLine,
+          totalAmount: orderAudit.totalAmount,
+          currency: orderAudit.currency,
+          itemCount: orderAudit.itemCount
+        });
+        const { orderCountToday, topSellerLine } = await readPosDailyAggregate(userId, new Date(), {
+          platform: 'shopify'
+        });
+        const delivery = await deliverPosScreenToUser(
+          deps,
+          userId,
+          'shopify',
+          orderCountToday,
+          orderAudit.topSellerLine ?? topSellerLine
+        );
+        published = delivery.published;
+        lastTopic = delivery.topic;
+        lastClientId = delivery.clientId;
+        tracker.markPublished();
+        logger.info('[SHOPIFY_WEBHOOK] pos_published', {
+          shop,
+          webhookTopic: topic,
+          userId,
+          orderCountToday,
+          clientId: lastClientId,
+          mqttTopic: lastTopic,
+          published
+        });
+      }
     }
 
     tracker.finish('shopify', {

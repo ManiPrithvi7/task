@@ -21,6 +21,11 @@ import { getRedisService } from './redisService';
 import type { RedisService } from './redisService';
 import { getInfluxService } from './influxService';
 import { getActiveDeviceCache } from './deviceService';
+import {
+  fetchInstagramProfileMetrics,
+  InstagramProfileFetchError
+} from '../lib/socials/instagramMetrics';
+import { ensureFreshInstagramAccessToken } from '../lib/socials/instagramTokenRefresh';
 
 const igLocalFollowersCache = new Map<string, number>();
 const igLocalLastPublishMs = new Map<string, number>();
@@ -445,11 +450,10 @@ export class InstagramCircuitBreaker {
 }
 
 // ============================================================
-// Graph API client (instagramApiClient.ts)
+// Graph API client (via @proof-socials/socials — src/lib/socials/instagramMetrics.ts)
 // ============================================================
 
-const GRAPH_BASE = 'graph.instagram.com';
-const API_VERSION = 'v22.0';
+export type InstagramFetchTrigger = 'attention' | 'scheduled' | 'connect';
 
 export interface InstagramAccountInfo {
   accessToken: string;
@@ -483,56 +487,6 @@ export interface InstagramFetchResult {
   cacheHit: boolean;
 }
 
-function httpsGet(url: string): Promise<Record<string, unknown>> {
-  return (async () => {
-    let res: Response;
-    try {
-      res = await fetch(url, { method: 'GET', signal: AbortSignal.timeout(15_000) });
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      throw new Error(`Instagram API request failed: ${msg}`);
-    }
-
-    if (res.status === 429) {
-      const rawRa = res.headers.get('retry-after');
-      let retryAfterSeconds = 60;
-      if (rawRa) {
-        const n = parseInt(String(rawRa), 10);
-        if (Number.isFinite(n) && n > 0) retryAfterSeconds = n;
-      }
-      throw Object.assign(new Error('HTTP 429 Too Many Requests'), { httpStatus: 429, retryAfterSeconds });
-    }
-
-    const text = await res.text();
-    let parsed: Record<string, unknown>;
-    try {
-      parsed = (text ? JSON.parse(text) : {}) as Record<string, unknown>;
-    } catch {
-      throw new Error(`Failed to parse Instagram API response (${res.status}): ${text.slice(0, 200)}`);
-    }
-
-    if (parsed.error && typeof parsed.error === 'object') {
-      const ge = parsed.error as { message?: string; code?: number; type?: string };
-      throw Object.assign(new Error(ge.message || 'Instagram API error'), { code: ge.code, type: ge.type });
-    }
-
-    return parsed;
-  })();
-}
-
-async function fetchAccountFields(
-  accountId: string,
-  accessToken: string
-): Promise<{ followers_count: number; media_count: number; username?: string }> {
-  const url = `https://${GRAPH_BASE}/${API_VERSION}/${accountId}?fields=followers_count,media_count,username&access_token=${accessToken}`;
-  const data = (await httpsGet(url)) as { followers_count?: number; media_count?: number; username?: string };
-  return {
-    followers_count: typeof data.followers_count === 'number' ? data.followers_count : 0,
-    media_count: typeof data.media_count === 'number' ? data.media_count : 0,
-    ...(typeof data.username === 'string' && data.username.trim() ? { username: data.username.trim() } : {})
-  };
-}
-
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export async function fetchInstagramMetrics(
@@ -549,7 +503,24 @@ export async function fetchInstagramMetrics(
       attempt: retryCount + 1
     });
 
-    const fields = await fetchAccountFields(account.instagramAccountId, account.accessToken);
+    const accessToken = await ensureFreshInstagramAccessToken({
+      deviceId,
+      accessToken: account.accessToken,
+      userId: account.userId || undefined
+    });
+
+    const fields = await fetchInstagramProfileMetrics(accessToken);
+    if (!fields) {
+      return {
+        success: false,
+        error: 'Instagram profile metrics unavailable',
+        apiResponseTimeMs: Date.now() - startTime,
+        instagramAccountId: account.instagramAccountId,
+        userId: account.userId || undefined,
+        cacheHit: false
+      };
+    }
+
     const apiResponseTimeMs = Date.now() - startTime;
 
     const metrics: InstagramMetrics = {
@@ -577,11 +548,14 @@ export async function fetchInstagramMetrics(
     };
   } catch (error: unknown) {
     const apiResponseTimeMs = Date.now() - startTime;
-    const err = error as Error & {
-      code?: string | number;
-      httpStatus?: number;
-      retryAfterSeconds?: number;
-    };
+    const err =
+      error instanceof InstagramProfileFetchError
+        ? error
+        : (error as Error & {
+            code?: string | number;
+            httpStatus?: number;
+            retryAfterSeconds?: number;
+          });
 
     if (err.httpStatus === 429) {
       const retryAfterSeconds = typeof err.retryAfterSeconds === 'number' ? err.retryAfterSeconds : 60;
@@ -1008,7 +982,10 @@ export async function applyInstagramServerlessDeviceOutcome(
 
 export interface InstagramFetchInvoker {
   isConfigured(): boolean;
-  invokeFetch(deviceIds: string[], opts: { trigger: 'attention' | 'scheduled'; correlationId?: string }): Promise<boolean>;
+  invokeFetch(
+    deviceIds: string[],
+    opts: { trigger: InstagramFetchTrigger; correlationId?: string }
+  ): Promise<boolean>;
 }
 
 function parseDeviceRow(raw: Record<string, unknown>, fallbackDeviceId?: string): NormalizedDeviceFetchResult | null {
@@ -1141,7 +1118,7 @@ export class InstagramServerlessBridge implements InstagramFetchInvoker {
 
   async invokeFetch(
     deviceIds: string[],
-    opts: { trigger: 'attention' | 'scheduled'; correlationId?: string }
+    opts: { trigger: InstagramFetchTrigger; correlationId?: string }
   ): Promise<boolean> {
     if (!this.isConfigured() || deviceIds.length === 0) return false;
 
@@ -1225,7 +1202,9 @@ export class InstagramServerlessBridge implements InstagramFetchInvoker {
 
     const topicRoot = this.mqttClient.getTopicRoot();
     const triggerTag = opts.trigger;
-    const cid = opts.correlationId && deviceIds.length === 1 && opts.trigger === 'attention' ? opts.correlationId : undefined;
+    const attentionLike = opts.trigger === 'attention' || opts.trigger === 'connect';
+    const cid =
+      opts.correlationId && deviceIds.length === 1 && attentionLike ? opts.correlationId : undefined;
 
     const allowed = new Set(deviceIds);
     let applied = 0;
@@ -1340,11 +1319,13 @@ export class InstagramDirectFetchInvoker implements InstagramFetchInvoker {
 
   async invokeFetch(
     deviceIds: string[],
-    opts: { trigger: 'attention' | 'scheduled'; correlationId?: string }
+    opts: { trigger: InstagramFetchTrigger; correlationId?: string }
   ): Promise<boolean> {
     const topicRoot = this.mqttClient.getTopicRoot();
     let successes = 0;
-    const cid = opts.correlationId && deviceIds.length === 1 && opts.trigger === 'attention' ? opts.correlationId : undefined;
+    const attentionLike = opts.trigger === 'attention' || opts.trigger === 'connect';
+    const cid =
+      opts.correlationId && deviceIds.length === 1 && attentionLike ? opts.correlationId : undefined;
 
     const concurrency = 4;
     const queue = [...deviceIds];
@@ -1353,12 +1334,12 @@ export class InstagramDirectFetchInvoker implements InstagramFetchInvoker {
       const meta = await resolveDeviceMeta(deviceId);
 
       if (!meta) {
-        const level = opts.trigger === 'attention' ? 'info' : 'debug';
+        const level = attentionLike ? 'info' : 'debug';
         logger[level]('[IG_DIRECT] No Instagram credentials (Redis proof.mqtt:device:{id} or active-devices.json)', {
           deviceId,
           trigger: opts.trigger
         });
-        if (opts.trigger === 'attention' && deviceIds.length === 1) {
+        if (attentionLike && deviceIds.length === 1) {
           await applyInstagramServerlessDeviceOutcome(
             {
               deviceId,
@@ -1521,7 +1502,11 @@ export class InstagramPoller {
     }
   }
 
-  async requestImmediateFetch(deviceId: string): Promise<boolean> {
+  async requestImmediateFetch(
+    deviceId: string,
+    opts?: { trigger?: InstagramFetchTrigger }
+  ): Promise<boolean> {
+    const trigger: InstagramFetchTrigger = opts?.trigger ?? 'attention';
     if (!this.running || !this.scriptsReady || !this.fetchInvoker?.isConfigured() || !this.redisService.isRedisConnected()) {
       return false;
     }
@@ -1555,7 +1540,7 @@ export class InstagramPoller {
       const correlationId = crypto.randomUUID();
       registerAttentionCorrelationStart(correlationId);
       const ok = await this.fetchInvoker.invokeFetch([deviceId], {
-        trigger: 'attention',
+        trigger,
         correlationId
       });
       if (!ok) {
