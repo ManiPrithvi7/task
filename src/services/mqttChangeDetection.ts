@@ -29,8 +29,14 @@ export async function publishIfChanged(opts: {
   const ttl = opts.hashTtlSec ?? 86400;
 
   const redisSvc = getRedisService();
+  const doPublish = () =>
+    opts.mqttClient.publishWithRetry(
+      { topic: opts.topic, payload: opts.payload, qos, retain },
+      { deviceId: opts.deviceId, source: 'publish_if_changed' }
+    );
+
   if (!redisSvc?.isRedisConnected()) {
-    await opts.mqttClient.publish({ topic: opts.topic, payload: opts.payload, qos, retain });
+    await doPublish();
     return { published: true, reason: 'no_redis' };
   }
 
@@ -43,7 +49,7 @@ export async function publishIfChanged(opts: {
     return { published: false, reason: 'unchanged' };
   }
 
-  await opts.mqttClient.publish({ topic: opts.topic, payload: opts.payload, qos, retain });
+  await doPublish();
   await client.set(redisKey, newHash, { EX: ttl });
   return { published: true, reason: 'changed' };
 }

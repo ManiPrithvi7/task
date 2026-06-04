@@ -6,6 +6,7 @@ import { MqttClientManager } from './servers/mqttClient';
 import { StatsPublisher } from './services/statsPublisher';
 import { ConnectRefreshCoordinator } from './services/connectRefreshCoordinator';
 import { PosConnectPull } from './services/posConnectPull';
+import { createPromotionRoutes } from './routes/promotionRoutes';
 import { GmbConnectPull } from './services/gmbConnectPull';
 import { ProvisioningService } from './services/provisioningService';
 import { CAService } from './services/caService';
@@ -1514,7 +1515,16 @@ console.log({igFromSocial})
     );
     
     await this.statsPublisher.start();
-    
+
+    if (this.httpServer) {
+      const promotionRoutes = createPromotionRoutes({
+        statsPublisher: this.statsPublisher,
+        topicRoot: this.config.mqtt.topicRoot
+      });
+      this.httpServer.getApp().use('/api/v1', promotionRoutes);
+      logger.info('✅ Promotion routes registered at POST /api/v1/promotions/invalidate-cache');
+    }
+
     logger.info('✅ Stats publisher initialized - publishing every 60s to /instagram, /gmb, /pos, /promotion');
   }
 
