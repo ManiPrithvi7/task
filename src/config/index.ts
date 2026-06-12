@@ -397,6 +397,29 @@ export interface InfluxDBConfig {
   diskQueueMaxLinesPerFile: number;
 }
 
+export type OtaDownloadMode = 'presigned' | 'proxy';
+
+export interface OtaS3Config {
+  bucket: string;
+  region: string;
+  accessKeyId?: string;
+  secretAccessKey?: string;
+}
+
+export interface OtaConfig {
+  enabled: boolean;
+  s3: OtaS3Config;
+  presignedUrlTtlSec: number;
+  signingPublicKeyPath?: string;
+  /** When false, promote is blocked until OTA_SIGNING_CONFIRMED=true (firmware team). */
+  signingConfirmed: boolean;
+  checkOnRegistration: boolean;
+  broadcastTopic: string;
+  downloadMode: OtaDownloadMode;
+  checkRateLimitSec: number;
+  rollbackFailureThreshold: number;
+}
+
 /**
  * Trim and strip trailing slashes for Influx base URL.
  *
@@ -429,6 +452,7 @@ export interface AppConfig {
    * When unset, the poller still runs (requires Redis) and calls Instagram Graph from this process.
    */
   instagramServerless?: InstagramServerlessConfig;
+  ota?: OtaConfig;
 }
 
 export function loadConfig(): AppConfig {
@@ -673,6 +697,31 @@ export function loadConfig(): AppConfig {
     instagramPolling
   };
 
+  const topicRoot = config.mqtt.topicRoot;
+  const otaEnabled = process.env.OTA_ENABLED === 'true';
+  if (otaEnabled) {
+    config.ota = {
+      enabled: true,
+      s3: {
+        bucket: process.env.OTA_S3_BUCKET?.trim() || '',
+        region: process.env.OTA_S3_REGION?.trim() || 'us-east-1',
+        accessKeyId: process.env.OTA_S3_ACCESS_KEY_ID?.trim() || undefined,
+        secretAccessKey: process.env.OTA_S3_SECRET_ACCESS_KEY?.trim() || undefined
+      },
+      presignedUrlTtlSec: parseInt(process.env.OTA_PRESIGNED_TTL_SEC || '900', 10),
+      signingPublicKeyPath: process.env.OTA_ED25519_PUBLIC_KEY_PATH?.trim() || undefined,
+      signingConfirmed:
+        process.env.OTA_SIGNING_CONFIRMED === 'true' || process.env.OTA_SIGNING_CONFIRMED === '1',
+      checkOnRegistration: process.env.OTA_CHECK_ON_REGISTRATION === 'true',
+      broadcastTopic:
+        process.env.OTA_BROADCAST_TOPIC?.trim() || `${topicRoot}/broadcast/cmd`,
+      downloadMode:
+        process.env.OTA_DOWNLOAD_MODE === 'proxy' ? 'proxy' : 'presigned',
+      checkRateLimitSec: parseInt(process.env.OTA_CHECK_RATE_LIMIT_SEC || '300', 10),
+      rollbackFailureThreshold: parseInt(process.env.OTA_ROLLBACK_FAILURE_THRESHOLD || '3', 10)
+    };
+  }
+
   logger.info('Configuration loaded', {
     mqtt: {
       broker: config.mqtt.broker,
@@ -750,6 +799,15 @@ export function validateConfig(config: AppConfig): void {
   }
   if (!config.mongodb.uri) {
     throw new Error('MongoDB URI is REQUIRED. Set MONGODB_URI environment variable.');
+  }
+
+  if (config.ota?.enabled) {
+    if (!config.ota.s3.bucket) {
+      throw new Error('OTA_ENABLED requires OTA_S3_BUCKET');
+    }
+    if (config.ota.presignedUrlTtlSec < 60) {
+      throw new Error('OTA_PRESIGNED_TTL_SEC must be at least 60');
+    }
   }
 
   if (config.mqtt.authX509Only) {

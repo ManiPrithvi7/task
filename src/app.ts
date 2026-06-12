@@ -47,7 +47,13 @@ import { createProvisioningRoutes } from './routes/provisioningRoutes';
 import { createConfigRoutes } from './routes/configRoutes';
 import { createLifecycleRoutes } from './routes/lifecycleRoutes';
 import { createRecoveryRoutes } from './routes/recoveryRoutes';
+import { createOtaRoutes } from './routes/otaRoutes';
+import { createOtaAdminRoutes } from './routes/otaAdminRoutes';
 import { createWebhookRoutes } from './routes/webhookRoutes';
+import { FirmwareStorageService } from './services/firmwareStorageService';
+import { OtaService } from './services/otaService';
+import { OtaCommandPublisher } from './services/otaCommandPublisher';
+import { OtaEventHandler } from './services/otaEventHandler';
 import { createRecoverySessionService } from './services/recoverySessionService';
 import { getTokenStore } from './storage/tokenStore';
 import * as dns from 'dns';
@@ -102,6 +108,12 @@ export class StatsMqttLite {
   private influxService?: InfluxService;
   private auditService?: AuditService;
   private transparencyLog?: TransparencyLog;
+
+  // OTA services
+  private firmwareStorageService?: FirmwareStorageService;
+  private otaService?: OtaService;
+  private otaCommandPublisher?: OtaCommandPublisher;
+  private otaEventHandler?: OtaEventHandler;
 
   // Active device cache (Redis-backed)
   private activeDeviceCache!: ActiveDeviceCache;
@@ -1200,6 +1212,41 @@ export class StatsMqttLite {
     }
 
     logger.info('📋 [LIFECYCLE:REGISTER] Device registration complete', { deviceId });
+
+    void this.maybeOtaCheckOnRegistration(deviceId, message.appVersion || message.app_version);
+  }
+
+  private async maybeOtaCheckOnRegistration(
+    deviceId: string,
+    appVersion?: string
+  ): Promise<void> {
+    if (!this.config.ota?.enabled || !this.config.ota.checkOnRegistration) {
+      return;
+    }
+    if (!this.otaService || !this.otaCommandPublisher) {
+      return;
+    }
+
+    const currentVersion =
+      typeof appVersion === 'string' && appVersion.trim() ? appVersion.trim() : undefined;
+    if (!currentVersion) {
+      return;
+    }
+
+    try {
+      const offer = await this.otaService.resolveUpdate({
+        deviceId,
+        currentVersion
+      });
+      if (offer) {
+        await this.otaCommandPublisher.publishUpdateToDevice(deviceId, offer);
+      }
+    } catch (err: unknown) {
+      logger.warn('[OTA] Registration piggyback check failed', {
+        deviceId,
+        error: err instanceof Error ? err.message : String(err)
+      });
+    }
   }
 
   /**
@@ -1380,9 +1427,16 @@ export class StatsMqttLite {
       return;
     }
 
+    const eventType = message?.type || message?.event || message?.status;
+
+    if (this.otaEventHandler && eventType && String(eventType).startsWith('ota_')) {
+      await this.otaEventHandler.handle(deviceId, message);
+    }
+
     logger.info('📊 Device Status Update', {
       deviceId,
       status: message.status,
+      eventType,
       uptime: message.uptime
     });
   }
@@ -1529,10 +1583,76 @@ export class StatsMqttLite {
     } catch (err: any) {
       logger.warn('⚠️ Failed to register device configuration route', { error: err instanceof Error ? err.message : String(err) });
     }
+
+    if (this.config.ota?.enabled) {
+      this.initializeOtaServices();
+      if (
+        this.firmwareStorageService &&
+        this.otaService &&
+        this.otaCommandPublisher &&
+        this.otaEventHandler
+      ) {
+        const publicBaseUrl =
+          process.env.OTA_PUBLIC_BASE_URL?.trim() ||
+          `http://${this.config.http.host === '0.0.0.0' ? 'localhost' : this.config.http.host}:${this.config.http.port}`;
+
+        const otaRoutes = createOtaRoutes({
+          otaConfig: this.config.ota,
+          otaService: this.otaService,
+          storage: this.firmwareStorageService,
+          eventHandler: this.otaEventHandler,
+          getRedisClient: () => this.getRedisClientOrNull(),
+          redisKeyPrefix: this.config.redis.keyPrefix || 'mqtt-lite:'
+        });
+        this.httpServer.getApp().use('/api/v1', otaRoutes);
+        logger.info('✅ OTA device routes registered at /api/v1/ota/*');
+
+        if (this.authService || this.config.auth.secret) {
+          if (!this.authService && this.config.auth.secret) {
+            this.authService = new AuthService(this.config.auth.secret);
+          }
+          const adminAuth = this.authService!;
+          const otaAdminRoutes = createOtaAdminRoutes({
+            otaConfig: this.config.ota,
+            authService: adminAuth,
+            storage: this.firmwareStorageService,
+            otaService: this.otaService,
+            commandPublisher: this.otaCommandPublisher
+          });
+          this.httpServer.getApp().use('/api/v1/admin/ota', otaAdminRoutes);
+          logger.info('✅ OTA admin routes registered at /api/v1/admin/ota/*');
+        } else {
+          logger.warn('⚠️ OTA admin routes skipped — AuthService not initialized');
+        }
+      }
+    }
     
     await this.httpServer.start();
     
     logger.info('✅ HTTP server initialized');
+  }
+
+  private initializeOtaServices(): void {
+    if (!this.config.ota?.enabled) return;
+
+    this.firmwareStorageService = new FirmwareStorageService(this.config.ota);
+    const publicBaseUrl =
+      process.env.OTA_PUBLIC_BASE_URL?.trim() ||
+      `http://${this.config.http.host === '0.0.0.0' ? 'localhost' : this.config.http.host}:${this.config.http.port}`;
+
+    this.otaService = new OtaService(this.config.ota, this.firmwareStorageService, publicBaseUrl);
+    this.otaCommandPublisher = new OtaCommandPublisher(
+      this.mqttClient,
+      this.config.mqtt.topicRoot,
+      this.config.ota.broadcastTopic
+    );
+    this.otaEventHandler = new OtaEventHandler(this.otaService, this.otaCommandPublisher);
+
+    logger.info('✅ OTA services initialized', {
+      downloadMode: this.config.ota.downloadMode,
+      bucket: this.config.ota.s3.bucket,
+      checkOnRegistration: this.config.ota.checkOnRegistration
+    });
   }
 
   private async initializeWebSocketServer(): Promise<void> {

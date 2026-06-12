@@ -36,3 +36,10 @@ export {
   ScheduleType
 } from './Campaign';
 export { Redemption, IRedemption } from './Redemption';
+export {
+  FirmwareRelease,
+  IFirmwareRelease,
+  FirmwareReleaseStatus,
+  FirmwareRolloutStrategy,
+  IFirmwareRollout
+} from './FirmwareRelease';

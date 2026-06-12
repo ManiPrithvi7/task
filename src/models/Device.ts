@@ -16,6 +16,14 @@ export enum DeviceStatus {
   RECOVERY = 'RECOVERY'
 }
 
+export enum DeviceOtaState {
+  IDLE = 'idle',
+  NOTIFIED = 'notified',
+  DOWNLOADING = 'downloading',
+  VALIDATING = 'validating',
+  ROLLBACK_REPORTED = 'rollback_reported'
+}
+
 export interface IDevice extends Document {
   _id: mongoose.Types.ObjectId;
   userId?: mongoose.Types.ObjectId;
@@ -43,6 +51,15 @@ export interface IDevice extends Document {
   
   // Error tracking
   errorMessage?: string;
+
+  // OTA tracking (otaState is telemetry-only — not used for eligibility)
+  firmwareVersion?: string;
+  firmwareReportedAt?: Date;
+  otaLastCheckAt?: Date;
+  otaState?: DeviceOtaState;
+  otaTargetVersion?: string;
+  otaBlockedVersions?: string[];
+  otaRollbackFailures?: Map<string, number>;
   
   // Timestamps
   createdAt?: Date;
@@ -125,6 +142,22 @@ const DeviceSchema = new Schema<IDevice>({
   errorMessage: {
     type: String,
     required: false
+  },
+
+  firmwareVersion: { type: String, required: false },
+  firmwareReportedAt: { type: Date, required: false },
+  otaLastCheckAt: { type: Date, required: false },
+  otaState: {
+    type: String,
+    enum: Object.values(DeviceOtaState),
+    required: false
+  },
+  otaTargetVersion: { type: String, required: false },
+  otaBlockedVersions: [{ type: String }],
+  otaRollbackFailures: {
+    type: Map,
+    of: Number,
+    default: undefined
   }
 }, {
   timestamps: true, // Automatically adds createdAt and updatedAt
