@@ -50,7 +50,8 @@ import { createRecoveryRoutes } from './routes/recoveryRoutes';
 import { createOtaRoutes } from './routes/otaRoutes';
 import { createOtaAdminRoutes } from './routes/otaAdminRoutes';
 import { createWebhookRoutes } from './routes/webhookRoutes';
-import { FirmwareStorageService } from './services/firmwareStorageService';
+import { createFirmwareStorageService } from './services/firmwareStorageService';
+import { initOtaSigningState } from './services/otaSigningState';
 import { OtaService } from './services/otaService';
 import { OtaCommandPublisher } from './services/otaCommandPublisher';
 import { OtaEventHandler } from './services/otaEventHandler';
@@ -110,7 +111,7 @@ export class StatsMqttLite {
   private transparencyLog?: TransparencyLog;
 
   // OTA services
-  private firmwareStorageService?: FirmwareStorageService;
+  private firmwareStorageService?: ReturnType<typeof createFirmwareStorageService>;
   private otaService?: OtaService;
   private otaCommandPublisher?: OtaCommandPublisher;
   private otaEventHandler?: OtaEventHandler;
@@ -1635,7 +1636,8 @@ export class StatsMqttLite {
   private initializeOtaServices(): void {
     if (!this.config.ota?.enabled) return;
 
-    this.firmwareStorageService = new FirmwareStorageService(this.config.ota);
+    this.firmwareStorageService = createFirmwareStorageService(this.config.ota);
+    initOtaSigningState(this.config.ota.signingConfirmed);
     const publicBaseUrl =
       process.env.OTA_PUBLIC_BASE_URL?.trim() ||
       `http://${this.config.http.host === '0.0.0.0' ? 'localhost' : this.config.http.host}:${this.config.http.port}`;
@@ -1650,7 +1652,8 @@ export class StatsMqttLite {
 
     logger.info('✅ OTA services initialized', {
       downloadMode: this.config.ota.downloadMode,
-      bucket: this.config.ota.s3.bucket,
+      bucket: this.config.ota.oci.bucket,
+      namespace: this.config.ota.oci.namespace,
       checkOnRegistration: this.config.ota.checkOnRegistration
     });
   }

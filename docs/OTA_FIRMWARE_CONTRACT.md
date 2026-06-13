@@ -6,13 +6,47 @@ Server-side API and MQTT schemas for the Proof Display OTA system. Device behavi
 
 ```bash
 OTA_ENABLED=true
-OTA_S3_BUCKET=your-bucket
-OTA_S3_REGION=us-east-1
-# Optional IAM keys (omit on EC2/ECS with instance role)
-# OTA_S3_ACCESS_KEY_ID=
-# OTA_S3_SECRET_ACCESS_KEY=
-OTA_SIGNING_CONFIRMED=true   # after firmware confirms Ed25519 payload format
+OTA_OCI_NAMESPACE=your-tenancy-namespace
+OTA_OCI_BUCKET=your-bucket
+OTA_OCI_REGION=ap-hyderabad-1
+OCI_CONFIG_FILE=~/.oci/config
+OCI_CONFIG_PROFILE=DEFAULT
+OTA_SIGNING_CONFIRMED=true   # or POST /api/v1/admin/ota/signing-confirm after device E2E
+OTA_ED25519_PUBLIC_KEY_PATH=/path/to/ota_public.pem
 ```
+
+## Signing contract (locked)
+
+| Field | Format |
+|-------|--------|
+| `sha256` | 64-char lowercase hex (digest of firmware bytes) |
+| `signature` | **base64** encoding of 64-byte Ed25519 signature |
+| Signed message | UTF-8 bytes of the `sha256` hex string (not raw binary digest) |
+
+Server verifies signature at `POST /releases/finalize`. Device verifies again before flash.
+
+## Storage — Oracle Cloud Object Storage (PAR)
+
+Firmware binaries live in OCI Object Storage. Admin upload uses **Pre-Authenticated Request (PAR)** URLs (`ObjectWrite`). Device download uses fresh **PAR** URLs (`ObjectRead`) per check/push offer.
+
+Upload PUT headers (required):
+
+| Header | Value |
+|--------|-------|
+| `opc-meta-firmware-version` | Release version (e.g. `4.3.1-mvp`) |
+| `opc-meta-sha256` | 64-char lowercase SHA-256 hex |
+
+Device accepts version from response headers: `X-Firmware-Version`, `x-amz-meta-firmware-version`, or `opc-meta-firmware-version`.
+
+### Storage error codes
+
+| `code` | HTTP | Meaning |
+|--------|------|---------|
+| `OBJECT_NOT_FOUND` | 404 | Object missing in bucket |
+| `STORAGE_UNAVAILABLE` | 503 | OCI timeout / transient failure |
+| `STORAGE_FORBIDDEN` | 403 | IAM / credentials issue |
+| `STORAGE_BAD_REQUEST` | 400 | Invalid key or PAR request |
+| `STORAGE_ERROR` | 500 | Unknown storage error |
 
 ## Device HTTP — `GET /api/v1/ota/check`
 
@@ -38,7 +72,7 @@ OTA_SIGNING_CONFIRMED=true   # after firmware confirms Ed25519 payload format
 {
   "update_available": true,
   "version": "4.3.1",
-  "download_url": "https://...",
+  "download_url": "https://objectstorage....oraclecloud.com/p/...",
   "sha256": "<64 hex>",
   "signature": "<base64 Ed25519>",
   "size_bytes": 1234567,
@@ -52,7 +86,7 @@ OTA_SIGNING_CONFIRMED=true   # after firmware confirms Ed25519 payload format
 
 When `OTA_DOWNLOAD_MODE=proxy`, `download_url` points here. Response includes header `X-Firmware-Version: {version}`.
 
-Default mode (`presigned`) returns a direct S3 URL; object metadata must include `x-amz-meta-firmware-version`.
+Default mode (`presigned`) returns a direct OCI PAR URL; object metadata must include `opc-meta-firmware-version`.
 
 ## Device HTTP — `POST /api/v1/ota/report` (optional fallback)
 
@@ -121,14 +155,30 @@ Base: `/api/v1/admin/ota`
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| POST | `/releases/init` | Presigned S3 PUT URL |
-| POST | `/releases/finalize` | Verify SHA-256, create draft |
-| POST | `/releases/:version/promote` | Draft → stable (requires `OTA_SIGNING_CONFIRMED`) |
+| POST | `/releases/init` | OCI PAR upload URL + `object_key` |
+| POST | `/releases/finalize` | Verify SHA-256 + Ed25519 + metadata; create draft |
+| POST | `/releases/:version/promote` | Draft → stable (requires signing confirmed) |
+| POST | `/signing-confirm` | Enable promote after successful device OTA E2E |
 | GET | `/releases` | List releases |
 | GET | `/devices/:deviceId/ota` | Device OTA state |
 | POST | `/push` | Push update to device(s) or broadcast |
 
-## Open firmware dependencies
+### Signing confirmation
 
-1. **Ed25519 signing payload** — confirm exact signed bytes before production `promote`.
-2. **MQTT field names** — defaults above use `cmd` key per v4.3 convention.
+After first successful OCI-backed device OTA, either:
+
+1. Set `OTA_SIGNING_CONFIRMED=true` in server `.env`, or
+2. `POST /api/v1/admin/ota/signing-confirm` with `{ "confirmed": true, "notes": "..." }`
+
+## Finalize validation (server)
+
+At `POST /releases/finalize`, server checks in order:
+
+1. Object exists (`headObject`) with non-zero size ≤ 2 MB
+2. `opc-meta-firmware-version` and `opc-meta-sha256` match request
+3. Streamed SHA-256 matches `sha256` field
+4. Ed25519 signature (base64) over UTF-8 sha256 hex
+
+## PAR expiration
+
+Default TTL: `OTA_PRESIGNED_TTL_SEC=900` (15 min). If a PAR expires before download completes, device retries via `ota_check` or a new MQTT push (fresh PAR issued each offer).

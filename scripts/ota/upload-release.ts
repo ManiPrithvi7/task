@@ -1,6 +1,6 @@
 #!/usr/bin/env ts-node
 /**
- * Upload a firmware release: init → PUT to S3 → finalize.
+ * Upload a firmware release: init → PUT to OCI (PAR) → finalize.
  *
  * Usage:
  *   AUTH_TOKEN=<jwt> ts-node scripts/ota/upload-release.ts --file ./firmware.bin --version 4.3.1 --sha256 <hex> --signature <b64>
@@ -46,10 +46,12 @@ async function main(): Promise<void> {
   const init = (await initRes.json()) as {
     success?: boolean;
     upload_url?: string;
+    object_key?: string;
     s3_key?: string;
     error?: string;
   };
-  if (!initRes.ok || !init.upload_url || !init.s3_key) {
+  const objectKey = init.object_key || init.s3_key;
+  if (!initRes.ok || !init.upload_url || !objectKey) {
     console.error('init failed', init);
     process.exit(1);
   }
@@ -59,12 +61,13 @@ async function main(): Promise<void> {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/octet-stream',
-      'x-amz-meta-firmware-version': version
+      'opc-meta-firmware-version': version,
+      'opc-meta-sha256': sha256.toLowerCase()
     },
     body
   });
   if (!putRes.ok) {
-    console.error('S3 PUT failed', putRes.status, await putRes.text());
+    console.error('OCI PUT failed', putRes.status, await putRes.text());
     process.exit(1);
   }
 
@@ -74,7 +77,7 @@ async function main(): Promise<void> {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({ version, sha256, signature, s3_key: init.s3_key })
+    body: JSON.stringify({ version, sha256, signature, object_key: objectKey })
   });
   const fin = await finRes.json();
   console.log(JSON.stringify(fin, null, 2));

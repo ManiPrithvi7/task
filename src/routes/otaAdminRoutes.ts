@@ -12,7 +12,14 @@ import {
   type IFirmwareRollout
 } from '../models/FirmwareRelease';
 import { Device } from '../models/Device';
-import type { FirmwareStorageService } from '../services/firmwareStorageService';
+import type { IFirmwareStorage } from '../services/firmwareStorageService';
+import { OciStorageError } from '../services/ociStorageErrors';
+import {
+  FinalizeValidationError,
+  validateFinalizeInput
+} from '../services/otaReleaseValidator';
+import { isOtaSigningConfirmed, setOtaSigningConfirmed } from '../services/otaSigningState';
+import { getReleaseObjectKey } from '../utils/firmwareReleaseKey';
 import type { OtaCommandPublisher } from '../services/otaCommandPublisher';
 import type { OtaService } from '../services/otaService';
 import { AuditEventType, getAuditService } from '../services/auditService';
@@ -21,7 +28,7 @@ import { logger } from '../utils/logger';
 export interface OtaAdminRoutesDeps {
   otaConfig: OtaConfig;
   authService: AuthService;
-  storage: FirmwareStorageService;
+  storage: IFirmwareStorage;
   otaService: OtaService;
   commandPublisher: OtaCommandPublisher;
 }
@@ -87,20 +94,35 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
       return;
     }
 
-    const s3Key = storage.buildS3Key(version);
-    const uploadUrl = await storage.createPresignedPutUrl(s3Key, version);
+    const objectKey = storage.buildObjectKey(version);
+    try {
+      const uploadUrl = await storage.createPresignedPutUrl(objectKey, version);
 
-    res.json({
-      success: true,
-      version,
-      s3_key: s3Key,
-      upload_url: uploadUrl,
-      upload_metadata: {
-        'x-amz-meta-firmware-version': version
-      },
-      expires_in: otaConfig.presignedUrlTtlSec,
-      timestamp: new Date().toISOString()
-    });
+      res.json({
+        success: true,
+        version,
+        object_key: objectKey,
+        s3_key: objectKey,
+        upload_url: uploadUrl,
+        upload_metadata: {
+          'opc-meta-firmware-version': version,
+          'opc-meta-sha256': '(set to sha256 hex at upload time)'
+        },
+        expires_in: otaConfig.presignedUrlTtlSec,
+        timestamp: new Date().toISOString()
+      });
+    } catch (err: unknown) {
+      if (err instanceof OciStorageError) {
+        res.status(err.httpStatus).json({
+          success: false,
+          error: err.message,
+          code: err.code,
+          timestamp: new Date().toISOString()
+        });
+        return;
+      }
+      throw err;
+    }
   });
 
   router.post('/releases/finalize', async (req: Request, res: Response) => {
@@ -110,53 +132,41 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
     const version = String(req.body?.version || '').trim();
     const sha256 = String(req.body?.sha256 || '').trim().toLowerCase();
     const signature = String(req.body?.signature || '').trim();
-    const s3Key = String(req.body?.s3_key || req.body?.s3Key || '').trim();
+    const objectKey = String(
+      req.body?.object_key || req.body?.objectKey || req.body?.s3_key || req.body?.s3Key || ''
+    ).trim();
     const rollout = (req.body?.rollout || { strategy: FirmwareRolloutStrategy.ALL }) as IFirmwareRollout;
 
-    if (!version || !sha256 || !signature || !s3Key) {
+    if (!version || !sha256 || !signature || !objectKey) {
       res.status(400).json({
         success: false,
-        error: 'version, sha256, signature, and s3_key are required',
+        error: 'version, sha256, signature, and object_key are required',
         code: 'MISSING_FIELDS',
         timestamp: new Date().toISOString()
       });
       return;
     }
 
-    if (!/^[a-f0-9]{64}$/.test(sha256)) {
-      res.status(400).json({
-        success: false,
-        error: 'sha256 must be 64 hex characters',
-        code: 'INVALID_SHA256',
-        timestamp: new Date().toISOString()
-      });
-      return;
-    }
-
     try {
-      const head = await storage.headObject(s3Key);
-      if (!head.sizeBytes) {
-        res.status(404).json({
-          success: false,
-          error: 'S3 object not found',
-          code: 'S3_NOT_FOUND',
-          timestamp: new Date().toISOString()
-        });
-        return;
-      }
+      const head = await storage.headObject(objectKey);
+      validateFinalizeInput({
+        version,
+        sha256,
+        signature,
+        head,
+        signingPublicKeyPath: otaConfig.signingPublicKeyPath
+      });
 
-      const shaOk = await storage.verifySha256(s3Key, sha256);
+      const shaOk = await storage.verifySha256(objectKey, sha256);
       if (!shaOk) {
         res.status(400).json({
           success: false,
-          error: 'sha256 does not match S3 object',
+          error: 'sha256 does not match object bytes',
           code: 'SHA256_MISMATCH',
           timestamp: new Date().toISOString()
         });
         return;
       }
-
-      await storage.ensureFirmwareMetadata(s3Key, version, sha256);
 
       const release = await FirmwareRelease.findOneAndUpdate(
         { version },
@@ -164,7 +174,8 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
           version,
           sha256,
           signature,
-          s3Key,
+          objectKey,
+          s3Key: objectKey,
           sizeBytes: head.sizeBytes,
           status: FirmwareReleaseStatus.DRAFT,
           rollout,
@@ -177,7 +188,7 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
         ?.logEvent({
           event: AuditEventType.OTA_RELEASE_CREATED,
           userId: auth.userId,
-          details: { version, s3Key, sizeBytes: head.sizeBytes }
+          details: { version, objectKey, sizeBytes: head.sizeBytes }
         })
         .catch(() => undefined);
 
@@ -191,6 +202,24 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
         timestamp: new Date().toISOString()
       });
     } catch (err: unknown) {
+      if (err instanceof FinalizeValidationError) {
+        res.status(err.httpStatus).json({
+          success: false,
+          error: err.message,
+          code: err.code,
+          timestamp: new Date().toISOString()
+        });
+        return;
+      }
+      if (err instanceof OciStorageError) {
+        res.status(err.httpStatus).json({
+          success: false,
+          error: err.message,
+          code: err.code,
+          timestamp: new Date().toISOString()
+        });
+        return;
+      }
       logger.error('[OTA] finalize failed', {
         error: err instanceof Error ? err.message : String(err)
       });
@@ -207,7 +236,7 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
     const auth = await requireAdminAuth(req, res, authService);
     if (!auth) return;
 
-    if (!otaConfig.signingConfirmed) {
+    if (!isOtaSigningConfirmed(otaConfig.signingConfirmed)) {
       res.status(503).json({
         success: false,
         error: 'OTA signing format not confirmed — set OTA_SIGNING_CONFIRMED=true after firmware team sign-off',
@@ -230,9 +259,16 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
     }
 
     try {
-      const head = await storage.headObject(release.s3Key);
-      if (head.firmwareVersion !== release.version) {
-        await storage.ensureFirmwareMetadata(release.s3Key, release.version, release.sha256);
+      const objectKey = getReleaseObjectKey(release);
+      const head = await storage.headObject(objectKey);
+      if (head.firmwareVersion !== release.version || head.sha256 !== release.sha256) {
+        res.status(400).json({
+          success: false,
+          error: 'Object metadata does not match release — re-upload with opc-meta headers',
+          code: 'METADATA_MISMATCH',
+          timestamp: new Date().toISOString()
+        });
+        return;
       }
 
       release.status = FirmwareReleaseStatus.STABLE;
@@ -383,7 +419,7 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
         const downloadUrl =
           otaConfig.downloadMode === 'proxy'
             ? `${req.protocol}://${req.get('host')}/api/v1/ota/download/${encodeURIComponent(version)}`
-            : await storage.createPresignedGetUrl(release.s3Key);
+            : await storage.createPresignedGetUrl(getReleaseObjectKey(release), release.version);
         const expiresAt = new Date(Date.now() + otaConfig.presignedUrlTtlSec * 1000);
         await commandPublisher.publishBroadcastUpdate(
           {
@@ -423,7 +459,7 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
               const downloadUrl =
                 otaConfig.downloadMode === 'proxy'
                   ? `${req.protocol}://${req.get('host')}/api/v1/ota/download/${encodeURIComponent(version)}`
-                  : await storage.createPresignedGetUrl(release.s3Key);
+                  : await storage.createPresignedGetUrl(getReleaseObjectKey(release), release.version);
               const expiresAt = new Date(Date.now() + otaConfig.presignedUrlTtlSec * 1000);
               await commandPublisher.publishUpdateToDevice(
                 deviceId,
@@ -467,6 +503,41 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
         timestamp: new Date().toISOString()
       });
     }
+  });
+
+  router.post('/signing-confirm', async (req: Request, res: Response) => {
+    const auth = await requireAdminAuth(req, res, authService);
+    if (!auth) return;
+
+    const confirmed = req.body?.confirmed === true;
+    const notes = String(req.body?.notes || '').trim();
+
+    if (!confirmed) {
+      res.status(400).json({
+        success: false,
+        error: 'confirmed: true is required',
+        code: 'MISSING_CONFIRMED',
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+
+    setOtaSigningConfirmed(true);
+
+    void getAuditService()
+      ?.logEvent({
+        event: AuditEventType.OTA_SIGNING_CONFIRMED,
+        userId: auth.userId,
+        details: { notes: notes || undefined }
+      })
+      .catch(() => undefined);
+
+    res.json({
+      success: true,
+      signing_confirmed: true,
+      notes: notes || undefined,
+      timestamp: new Date().toISOString()
+    });
   });
 
   return router;

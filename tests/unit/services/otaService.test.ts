@@ -39,12 +39,12 @@ import { FirmwareRelease } from '@/models/FirmwareRelease';
 import { OtaService } from '@/services/otaService';
 
 const mockStorage = {
-  createPresignedGetUrl: jest.fn().mockResolvedValue('https://s3.example/firmware.bin')
+  createPresignedGetUrl: jest.fn().mockResolvedValue('https://objectstorage.ap-hyderabad-1.oraclecloud.com/p/par/firmware.bin')
 };
 
 const otaConfig = {
   enabled: true,
-  s3: { bucket: 'test-bucket', region: 'us-east-1' },
+  oci: { namespace: 'ns', bucket: 'firmware-bucket', region: 'ap-hyderabad-1' },
   presignedUrlTtlSec: 900,
   signingConfirmed: false,
   checkOnRegistration: false,
@@ -99,6 +99,7 @@ describe('OtaService.resolveUpdate', () => {
               version: '4.3.1',
               sha256: 'a'.repeat(64),
               signature: 'sig',
+              objectKey: 'firmware/4.3.1/firmware.bin',
               s3Key: 'firmware/4.3.1/firmware.bin',
               sizeBytes: 1000,
               rollout: { strategy: FirmwareRolloutStrategy.ALL }

@@ -7,7 +7,9 @@ import type { RedisClientType } from 'redis';
 import type { OtaConfig } from '../config';
 import { requireMtlsDeviceCert } from '../middleware/mtlsAuth';
 import { FirmwareRelease, FirmwareReleaseStatus } from '../models/FirmwareRelease';
-import type { FirmwareStorageService } from '../services/firmwareStorageService';
+import type { IFirmwareStorage } from '../services/firmwareStorageService';
+import { OciStorageError } from '../services/ociStorageErrors';
+import { getReleaseObjectKey } from '../utils/firmwareReleaseKey';
 import { checkOtaRateLimit } from '../services/otaRateLimiter';
 import type { OtaEventHandler } from '../services/otaEventHandler';
 import type { OtaService } from '../services/otaService';
@@ -17,7 +19,7 @@ import { logger } from '../utils/logger';
 export interface OtaRoutesDeps {
   otaConfig: OtaConfig;
   otaService: OtaService;
-  storage: FirmwareStorageService;
+  storage: IFirmwareStorage;
   eventHandler: OtaEventHandler;
   getRedisClient: () => RedisClientType | null;
   redisKeyPrefix: string;
@@ -139,17 +141,19 @@ export function createOtaRoutes(deps: OtaRoutesDeps): Router {
         res.setHeader('X-Firmware-Version', release.version);
         res.setHeader('Content-Length', String(release.sizeBytes));
 
-        const stream = await storage.getObjectStream(release.s3Key);
+        const stream = await storage.getObjectStream(getReleaseObjectKey(release));
         stream.pipe(res);
       } catch (err: unknown) {
         logger.error('[OTA] download proxy failed', {
           error: err instanceof Error ? err.message : String(err)
         });
         if (!res.headersSent) {
-          res.status(500).json({
+          const status = err instanceof OciStorageError ? err.httpStatus : 500;
+          const code = err instanceof OciStorageError ? err.code : 'OTA_DOWNLOAD_ERROR';
+          res.status(status).json({
             success: false,
             error: 'Download failed',
-            code: 'OTA_DOWNLOAD_ERROR',
+            code,
             timestamp: new Date().toISOString()
           });
         }

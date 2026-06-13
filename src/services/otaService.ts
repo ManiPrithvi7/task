@@ -19,7 +19,8 @@ import {
 } from '../models/FirmwareRelease';
 import { isVersionGreater } from '../utils/semver';
 import { logger } from '../utils/logger';
-import type { FirmwareStorageService } from './firmwareStorageService';
+import type { IFirmwareStorage } from './firmwareStorageService';
+import { getReleaseObjectKey } from '../utils/firmwareReleaseKey';
 
 export interface OtaUpdateOffer {
   version: string;
@@ -40,7 +41,7 @@ export interface ResolveUpdateInput {
 export class OtaService {
   constructor(
     private readonly otaConfig: OtaConfig,
-    private readonly storage: FirmwareStorageService,
+    private readonly storage: IFirmwareStorage,
     private readonly publicBaseUrl: string
   ) {}
 
@@ -158,7 +159,10 @@ export class OtaService {
       if (this.otaConfig.downloadMode === 'proxy') {
         downloadUrl = `${this.publicBaseUrl}/api/v1/ota/download/${encodeURIComponent(release.version)}`;
       } else {
-        downloadUrl = await this.storage.createPresignedGetUrl(release.s3Key);
+        downloadUrl = await this.storage.createPresignedGetUrl(
+          getReleaseObjectKey(release),
+          release.version
+        );
       }
 
       return {

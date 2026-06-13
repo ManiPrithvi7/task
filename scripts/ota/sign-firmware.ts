@@ -33,7 +33,7 @@ function main(): void {
     process.exit(1);
   }
 
-  // Default placeholder: sign SHA-256 hex string (confirm with firmware team)
+  // Ed25519 over UTF-8 SHA-256 hex (64 chars); signature is base64 (device contract).
   const message = Buffer.from(sha256, 'utf8');
   const keyPem = fs.readFileSync(keyPath, 'utf8');
   const key = crypto.createPrivateKey(keyPem);

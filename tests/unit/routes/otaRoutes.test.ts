@@ -25,7 +25,7 @@ function buildApp() {
     createOtaRoutes({
       otaConfig: {
         enabled: true,
-        s3: { bucket: 'b', region: 'us-east-1' },
+        oci: { namespace: 'ns', bucket: 'firmware-bucket', region: 'ap-hyderabad-1' },
         presignedUrlTtlSec: 900,
         signingConfirmed: false,
         checkOnRegistration: false,

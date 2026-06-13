@@ -1,130 +1,184 @@
 /**
- * S3 firmware artifact storage — presigned URLs and object metadata.
+ * Oracle Cloud Object Storage firmware artifacts — PAR URLs and object metadata.
  */
 
-import {
-  CopyObjectCommand,
-  GetObjectCommand,
-  HeadObjectCommand,
-  PutObjectCommand,
-  S3Client
-} from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import * as crypto from 'crypto';
 import { Readable } from 'stream';
-import { logger } from '../utils/logger';
+import { objectstorage, common } from 'oci-sdk';
 import type { OtaConfig } from '../config';
+import { logger } from '../utils/logger';
+import { mapOciError, withOciRetry } from './ociStorageErrors';
 
 export const FIRMWARE_VERSION_METADATA_KEY = 'firmware-version';
 export const FIRMWARE_SHA256_METADATA_KEY = 'sha256';
 
-export class FirmwareStorageService {
-  private client: S3Client;
+export interface ObjectHeadResult {
+  sizeBytes: number;
+  firmwareVersion?: string;
+  sha256?: string;
+}
+
+export interface IFirmwareStorage {
+  buildObjectKey(version: string): string;
+  createPresignedPutUrl(objectKey: string, version: string): Promise<string>;
+  createPresignedGetUrl(objectKey: string, firmwareVersion?: string): Promise<string>;
+  headObject(objectKey: string): Promise<ObjectHeadResult>;
+  verifySha256(objectKey: string, expectedSha256: string): Promise<boolean>;
+  getObjectStream(objectKey: string): Promise<Readable>;
+}
+
+function metaValue(head: objectstorage.responses.HeadObjectResponse, key: string): string | undefined {
+  const meta = head.opcMeta || {};
+  const direct = meta[key];
+  if (direct) return direct;
+  const lower = key.toLowerCase();
+  for (const [k, v] of Object.entries(meta)) {
+    if (k.toLowerCase() === lower) return v;
+  }
+  return undefined;
+}
+
+export class OciFirmwareStorageService implements IFirmwareStorage {
+  private client: objectstorage.ObjectStorageClient;
   private config: OtaConfig;
 
   constructor(config: OtaConfig) {
     this.config = config;
-    const credentials =
-      config.s3.accessKeyId && config.s3.secretAccessKey
-        ? {
-            accessKeyId: config.s3.accessKeyId,
-            secretAccessKey: config.s3.secretAccessKey
-          }
-        : undefined;
+    const oci = config.oci;
+    const configFile = oci.configFile || process.env.OCI_CONFIG_FILE;
+    const profile = oci.configProfile || process.env.OCI_CONFIG_PROFILE || 'DEFAULT';
 
-    this.client = new S3Client({
-      region: config.s3.region,
-      ...(credentials ? { credentials } : {})
+    const provider = configFile
+      ? new common.ConfigFileAuthenticationDetailsProvider(configFile, profile)
+      : new common.ConfigFileAuthenticationDetailsProvider(undefined, profile);
+
+    this.client = new objectstorage.ObjectStorageClient({
+      authenticationDetailsProvider: provider
     });
+    this.client.regionId = oci.region;
   }
 
-  buildS3Key(version: string): string {
+  private parBaseUrl(): string {
+    const override = this.config.oci.parBaseUrl?.replace(/\/+$/, '');
+    if (override) return override;
+    return `https://objectstorage.${this.config.oci.region}.oraclecloud.com`;
+  }
+
+  private buildParUrl(par: objectstorage.models.PreauthenticatedRequest): string {
+    if (par.fullPath) {
+      if (par.fullPath.startsWith('http://') || par.fullPath.startsWith('https://')) {
+        return par.fullPath;
+      }
+      return `${this.parBaseUrl()}${par.fullPath.startsWith('/') ? '' : '/'}${par.fullPath}`;
+    }
+    const uri = par.accessUri.startsWith('/') ? par.accessUri : `/${par.accessUri}`;
+    return `${this.parBaseUrl()}${uri}`;
+  }
+
+  buildObjectKey(version: string): string {
     const safe = version.replace(/[^a-zA-Z0-9._-]/g, '_');
     return `firmware/${safe}/firmware.bin`;
   }
 
-  async createPresignedPutUrl(s3Key: string, version: string): Promise<string> {
-    const command = new PutObjectCommand({
-      Bucket: this.config.s3.bucket,
-      Key: s3Key,
-      ContentType: 'application/octet-stream',
-      Metadata: {
-        [FIRMWARE_VERSION_METADATA_KEY]: version
+  /** @deprecated Use buildObjectKey */
+  buildS3Key(version: string): string {
+    return this.buildObjectKey(version);
+  }
+
+  async createPresignedPutUrl(objectKey: string, version: string): Promise<string> {
+    return withOciRetry(async () => {
+      try {
+        const expires = new Date(Date.now() + this.config.presignedUrlTtlSec * 1000);
+        const response = await this.client.createPreauthenticatedRequest({
+          namespaceName: this.config.oci.namespace,
+          bucketName: this.config.oci.bucket,
+          createPreauthenticatedRequestDetails: {
+            name: `ota-upload-${version}-${Date.now()}`.slice(0, 200),
+            objectName: objectKey,
+            accessType: objectstorage.models.CreatePreauthenticatedRequestDetails.AccessType.ObjectWrite,
+            timeExpires: expires
+          }
+        });
+        const url = this.buildParUrl(response.preauthenticatedRequest);
+        logger.debug('[OTA] OCI upload PAR created', { objectKey, version });
+        return url;
+      } catch (err) {
+        throw mapOciError(err);
       }
     });
-    return getSignedUrl(this.client, command, { expiresIn: this.config.presignedUrlTtlSec });
   }
 
-  async createPresignedGetUrl(s3Key: string): Promise<string> {
-    const command = new GetObjectCommand({
-      Bucket: this.config.s3.bucket,
-      Key: s3Key
+  async createPresignedGetUrl(objectKey: string, _firmwareVersion?: string): Promise<string> {
+    return withOciRetry(async () => {
+      try {
+        const expires = new Date(Date.now() + this.config.presignedUrlTtlSec * 1000);
+        const response = await this.client.createPreauthenticatedRequest({
+          namespaceName: this.config.oci.namespace,
+          bucketName: this.config.oci.bucket,
+          createPreauthenticatedRequestDetails: {
+            name: `ota-download-${Date.now()}`.slice(0, 200),
+            objectName: objectKey,
+            accessType: objectstorage.models.CreatePreauthenticatedRequestDetails.AccessType.ObjectRead,
+            timeExpires: expires
+          }
+        });
+        return this.buildParUrl(response.preauthenticatedRequest);
+      } catch (err) {
+        throw mapOciError(err);
+      }
     });
-    return getSignedUrl(this.client, command, { expiresIn: this.config.presignedUrlTtlSec });
   }
 
-  async headObject(s3Key: string): Promise<{
-    sizeBytes: number;
-    firmwareVersion?: string;
-    sha256?: string;
-  }> {
-    const res = await this.client.send(
-      new HeadObjectCommand({
-        Bucket: this.config.s3.bucket,
-        Key: s3Key
-      })
-    );
-    const meta = res.Metadata || {};
-    return {
-      sizeBytes: res.ContentLength ?? 0,
-      firmwareVersion: meta[FIRMWARE_VERSION_METADATA_KEY],
-      sha256: meta[FIRMWARE_SHA256_METADATA_KEY]
-    };
+  async headObject(objectKey: string): Promise<ObjectHeadResult> {
+    return withOciRetry(async () => {
+      try {
+        const head = await this.client.headObject({
+          namespaceName: this.config.oci.namespace,
+          bucketName: this.config.oci.bucket,
+          objectName: objectKey
+        });
+        return {
+          sizeBytes: head.contentLength ?? 0,
+          firmwareVersion: metaValue(head, FIRMWARE_VERSION_METADATA_KEY),
+          sha256: metaValue(head, FIRMWARE_SHA256_METADATA_KEY)
+        };
+      } catch (err) {
+        throw mapOciError(err);
+      }
+    });
   }
 
-  async verifySha256(s3Key: string, expectedSha256: string): Promise<boolean> {
-    const stream = await this.getObjectStream(s3Key);
+  async verifySha256(objectKey: string, expectedSha256: string): Promise<boolean> {
+    const stream = await this.getObjectStream(objectKey);
     const hash = crypto.createHash('sha256');
     for await (const chunk of stream) {
       hash.update(chunk as Buffer);
     }
-    const digest = hash.digest('hex');
-    return digest.toLowerCase() === expectedSha256.toLowerCase();
+    return hash.digest('hex').toLowerCase() === expectedSha256.toLowerCase();
   }
 
-  async ensureFirmwareMetadata(s3Key: string, version: string, sha256: string): Promise<void> {
-    const head = await this.headObject(s3Key);
-    if (head.firmwareVersion === version && head.sha256 === sha256) {
-      return;
-    }
-
-    await this.client.send(
-      new CopyObjectCommand({
-        Bucket: this.config.s3.bucket,
-        Key: s3Key,
-        CopySource: `${this.config.s3.bucket}/${s3Key}`,
-        MetadataDirective: 'REPLACE',
-        Metadata: {
-          [FIRMWARE_VERSION_METADATA_KEY]: version,
-          [FIRMWARE_SHA256_METADATA_KEY]: sha256
-        },
-        ContentType: 'application/octet-stream'
-      })
-    );
-
-    logger.info('[OTA] S3 object metadata backfilled', { s3Key, version });
-  }
-
-  async getObjectStream(s3Key: string): Promise<Readable> {
-    const res = await this.client.send(
-      new GetObjectCommand({
-        Bucket: this.config.s3.bucket,
-        Key: s3Key
-      })
-    );
-    if (!res.Body) {
-      throw new Error('Empty S3 object body');
-    }
-    return res.Body as Readable;
+  async getObjectStream(objectKey: string): Promise<Readable> {
+    return withOciRetry(async () => {
+      try {
+        const res = await this.client.getObject({
+          namespaceName: this.config.oci.namespace,
+          bucketName: this.config.oci.bucket,
+          objectName: objectKey
+        });
+        if (!res.value) {
+          throw new Error('Empty OCI object body');
+        }
+        return res.value as Readable;
+      } catch (err) {
+        throw mapOciError(err);
+      }
+    });
   }
 }
+
+export function createFirmwareStorageService(config: OtaConfig): IFirmwareStorage {
+  return new OciFirmwareStorageService(config);
+}
+
+/** @deprecated Use IFirmwareStorage */
+export type FirmwareStorageService = IFirmwareStorage;

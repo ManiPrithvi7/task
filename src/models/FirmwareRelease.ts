@@ -1,5 +1,5 @@
 /**
- * FirmwareRelease — OTA artifact metadata (binary stored in S3).
+ * FirmwareRelease — OTA artifact metadata (binary stored in Oracle Object Storage).
  */
 
 import mongoose, { Document, Schema } from 'mongoose';
@@ -28,7 +28,9 @@ export interface IFirmwareRelease extends Document {
   version: string;
   sha256: string;
   signature: string;
-  s3Key: string;
+  objectKey: string;
+  /** @deprecated Legacy alias — use objectKey */
+  s3Key?: string;
   sizeBytes: number;
   minHardwareRev?: string;
   targetPlatforms?: string[];
@@ -61,7 +63,8 @@ const FirmwareReleaseSchema = new Schema<IFirmwareRelease>(
     version: { type: String, required: true, unique: true, trim: true },
     sha256: { type: String, required: true, trim: true },
     signature: { type: String, required: true },
-    s3Key: { type: String, required: true, trim: true },
+    objectKey: { type: String, required: true, trim: true },
+    s3Key: { type: String, trim: true },
     sizeBytes: { type: Number, required: true, min: 1 },
     minHardwareRev: { type: String },
     targetPlatforms: [{ type: String }],

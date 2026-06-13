@@ -399,16 +399,18 @@ export interface InfluxDBConfig {
 
 export type OtaDownloadMode = 'presigned' | 'proxy';
 
-export interface OtaS3Config {
+export interface OtaOciConfig {
+  namespace: string;
   bucket: string;
   region: string;
-  accessKeyId?: string;
-  secretAccessKey?: string;
+  parBaseUrl?: string;
+  configFile?: string;
+  configProfile?: string;
 }
 
 export interface OtaConfig {
   enabled: boolean;
-  s3: OtaS3Config;
+  oci: OtaOciConfig;
   presignedUrlTtlSec: number;
   signingPublicKeyPath?: string;
   /** When false, promote is blocked until OTA_SIGNING_CONFIRMED=true (firmware team). */
@@ -702,11 +704,13 @@ export function loadConfig(): AppConfig {
   if (otaEnabled) {
     config.ota = {
       enabled: true,
-      s3: {
-        bucket: process.env.OTA_S3_BUCKET?.trim() || '',
-        region: process.env.OTA_S3_REGION?.trim() || 'us-east-1',
-        accessKeyId: process.env.OTA_S3_ACCESS_KEY_ID?.trim() || undefined,
-        secretAccessKey: process.env.OTA_S3_SECRET_ACCESS_KEY?.trim() || undefined
+      oci: {
+        namespace: process.env.OTA_OCI_NAMESPACE?.trim() || '',
+        bucket: process.env.OTA_OCI_BUCKET?.trim() || '',
+        region: process.env.OTA_OCI_REGION?.trim() || 'ap-hyderabad-1',
+        parBaseUrl: process.env.OTA_OCI_PAR_BASE_URL?.trim() || undefined,
+        configFile: process.env.OCI_CONFIG_FILE?.trim() || undefined,
+        configProfile: process.env.OCI_CONFIG_PROFILE?.trim() || undefined
       },
       presignedUrlTtlSec: parseInt(process.env.OTA_PRESIGNED_TTL_SEC || '900', 10),
       signingPublicKeyPath: process.env.OTA_ED25519_PUBLIC_KEY_PATH?.trim() || undefined,
@@ -802,8 +806,11 @@ export function validateConfig(config: AppConfig): void {
   }
 
   if (config.ota?.enabled) {
-    if (!config.ota.s3.bucket) {
-      throw new Error('OTA_ENABLED requires OTA_S3_BUCKET');
+    if (!config.ota.oci.namespace) {
+      throw new Error('OTA_ENABLED requires OTA_OCI_NAMESPACE');
+    }
+    if (!config.ota.oci.bucket) {
+      throw new Error('OTA_ENABLED requires OTA_OCI_BUCKET');
     }
     if (config.ota.presignedUrlTtlSec < 60) {
       throw new Error('OTA_PRESIGNED_TTL_SEC must be at least 60');
