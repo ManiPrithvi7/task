@@ -3,9 +3,9 @@ import {
   assertValidSha256Hex,
   assertValidVersionFormat,
   OTA_MAX_FIRMWARE_BYTES
-} from '@/services/otaReleaseValidator';
+} from '@/services/otaService';
 
-describe('otaReleaseValidator', () => {
+describe('otaService validation', () => {
   it('accepts valid version format', () => {
     expect(() => assertValidVersionFormat('4.3.1-mvp')).not.toThrow();
     expect(() => assertValidVersionFormat('4.3.1')).not.toThrow();

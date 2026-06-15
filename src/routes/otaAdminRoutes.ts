@@ -17,7 +17,7 @@ import { OciStorageError } from '../services/ociStorageErrors';
 import {
   FinalizeValidationError,
   validateFinalizeInput
-} from '../services/otaReleaseValidator';
+} from '../services/otaService';
 import { isOtaSigningConfirmed, setOtaSigningConfirmed } from '../services/otaSigningState';
 import { getReleaseObjectKey } from '../utils/firmwareReleaseKey';
 import type { OtaCommandPublisher } from '../services/otaCommandPublisher';

@@ -420,6 +420,8 @@ export interface OtaConfig {
   downloadMode: OtaDownloadMode;
   checkRateLimitSec: number;
   rollbackFailureThreshold: number;
+  /** Bearer secret for POST /api/webhooks/ota-release (GitHub Actions CI). */
+  releaseWebhookSecret?: string;
 }
 
 /**
@@ -722,7 +724,8 @@ export function loadConfig(): AppConfig {
       downloadMode:
         process.env.OTA_DOWNLOAD_MODE === 'proxy' ? 'proxy' : 'presigned',
       checkRateLimitSec: parseInt(process.env.OTA_CHECK_RATE_LIMIT_SEC || '300', 10),
-      rollbackFailureThreshold: parseInt(process.env.OTA_ROLLBACK_FAILURE_THRESHOLD || '3', 10)
+      rollbackFailureThreshold: parseInt(process.env.OTA_ROLLBACK_FAILURE_THRESHOLD || '3', 10),
+      releaseWebhookSecret: process.env.OTA_RELEASE_WEBHOOK_SECRET?.trim() || undefined
     };
   }
 

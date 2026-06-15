@@ -38,6 +38,32 @@ Upload PUT headers (required):
 
 Device accepts version from response headers: `X-Firmware-Version`, `x-amz-meta-firmware-version`, or `opc-meta-firmware-version`.
 
+## CI webhook — automated release + broadcast
+
+GitHub Actions (statsclient) uploads a signed binary to OCI, then calls:
+
+`POST /api/webhooks/ota-release`
+
+**Auth:** `Authorization: Bearer {OTA_RELEASE_WEBHOOK_SECRET}`
+
+**Body:**
+
+```json
+{
+  "version": "4.3.1-mvp",
+  "object_key": "firmware/4.3.1-mvp/firmware.bin",
+  "sha256": "<64 hex>",
+  "signature": "<base64 Ed25519>",
+  "size_bytes": 1124528,
+  "released_at": "2026-06-15T12:00:00.000Z",
+  "broadcast": true
+}
+```
+
+Server validates object metadata + signature (same as finalize), upserts a **stable** release, and publishes `ota_update` on `{MQTT_TOPIC_ROOT}/broadcast/cmd` with a fresh PAR `download_url`.
+
+Boot-up devices catch up via `GET /api/v1/ota/check?current_version=...` (no periodic polling).
+
 ### Storage error codes
 
 | `code` | HTTP | Meaning |

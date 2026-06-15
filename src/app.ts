@@ -49,7 +49,7 @@ import { createLifecycleRoutes } from './routes/lifecycleRoutes';
 import { createRecoveryRoutes } from './routes/recoveryRoutes';
 import { createOtaRoutes } from './routes/otaRoutes';
 import { createOtaAdminRoutes } from './routes/otaAdminRoutes';
-import { createWebhookRoutes } from './routes/webhookRoutes';
+import { createWebhookRoutes, type OtaReleaseWebhookDeps } from './routes/webhookRoutes';
 import { createFirmwareStorageService } from './services/firmwareStorageService';
 import { initOtaSigningState } from './services/otaSigningState';
 import { OtaService } from './services/otaService';
@@ -1522,11 +1522,24 @@ export class StatsMqttLite {
   private async initializeHttpServer(): Promise<void> {
     logger.info('🌐 Initializing HTTP server...');
 
+    let otaReleaseWebhook: OtaReleaseWebhookDeps | undefined;
+
+    if (this.config.ota?.enabled) {
+      this.initializeOtaServices();
+      if (this.config.ota.releaseWebhookSecret && this.otaService) {
+        otaReleaseWebhook = {
+          secret: this.config.ota.releaseWebhookSecret,
+          otaService: this.otaService
+        };
+      }
+    }
+
     const webhookRoutes = createWebhookRoutes({
       mqttClient: this.mqttClient,
       topicRoot: this.config.mqtt.topicRoot,
       webhookConfig: this.config.webhooks,
-      appEnv: this.config.app.env
+      appEnv: this.config.app.env,
+      otaReleaseWebhook
     });
 
     this.httpServer = new HttpServer(
@@ -1586,7 +1599,6 @@ export class StatsMqttLite {
     }
 
     if (this.config.ota?.enabled) {
-      this.initializeOtaServices();
       if (
         this.firmwareStorageService &&
         this.otaService &&
@@ -1642,11 +1654,16 @@ export class StatsMqttLite {
       process.env.OTA_PUBLIC_BASE_URL?.trim() ||
       `http://${this.config.http.host === '0.0.0.0' ? 'localhost' : this.config.http.host}:${this.config.http.port}`;
 
-    this.otaService = new OtaService(this.config.ota, this.firmwareStorageService, publicBaseUrl);
     this.otaCommandPublisher = new OtaCommandPublisher(
       this.mqttClient,
       this.config.mqtt.topicRoot,
       this.config.ota.broadcastTopic
+    );
+    this.otaService = new OtaService(
+      this.config.ota,
+      this.firmwareStorageService,
+      publicBaseUrl,
+      this.otaCommandPublisher
     );
     this.otaEventHandler = new OtaEventHandler(this.otaService, this.otaCommandPublisher);
 
