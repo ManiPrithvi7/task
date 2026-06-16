@@ -18,9 +18,9 @@ import {
   FinalizeValidationError,
   validateFinalizeInput
 } from '../services/otaService';
-import { isOtaSigningConfirmed, setOtaSigningConfirmed } from '../services/otaSigningState';
+import { isOtaSigningConfirmed, setOtaSigningConfirmed } from '../services/otaService';
 import { getReleaseObjectKey } from '../utils/firmwareReleaseKey';
-import type { OtaCommandPublisher } from '../services/otaCommandPublisher';
+import type { OtaCommandPublisher } from '../services/otaService';
 import type { OtaService } from '../services/otaService';
 import { AuditEventType, getAuditService } from '../services/auditService';
 import { logger } from '../utils/logger';

@@ -5,6 +5,8 @@
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import mongoose from 'mongoose';
+import type { RedisClientType } from 'redis';
+import type { MqttClientManager } from '../servers/mqttClient';
 import type { OtaConfig } from '../config';
 import {
   Device,
@@ -22,8 +24,6 @@ import { isVersionGreater } from '../utils/semver';
 import { logger } from '../utils/logger';
 import type { IFirmwareStorage, ObjectHeadResult } from './firmwareStorageService';
 import { OciStorageError } from './ociStorageErrors';
-import type { OtaCommandPublisher } from './otaCommandPublisher';
-import type { OtaRedisState } from './otaRedisState';
 import { getActiveDeviceCache } from './deviceService';
 import { AuditEventType, getAuditService } from './auditService';
 import { getReleaseObjectKey } from '../utils/firmwareReleaseKey';
@@ -161,6 +161,336 @@ export function validateFinalizeInput(input: FinalizeValidationInput): void {
   if (!verifyEd25519Signature(sha256, signature, publicKeyPem)) {
     throw new FinalizeValidationError('Ed25519 signature verification failed', 'INVALID_SIGNATURE');
   }
+}
+
+// ─── OTA Redis State ──────────────────────────────────────────────────────
+
+export interface OtaActiveRelease {
+  version: string;
+  sha256: string;
+  signature: string;
+  objectKey: string;
+  sizeBytes: number;
+  releasedAt: string;
+}
+
+export class OtaRedisState {
+  constructor(
+    private readonly getClient: () => RedisClientType | null,
+    private readonly keyPrefix: string
+  ) {}
+
+  private activeReleaseKey(): string {
+    return `${this.keyPrefix}ota:active_release`;
+  }
+
+  private pendingKey(version: string): string {
+    return `${this.keyPrefix}ota:pending:${version}`;
+  }
+
+  private deliveredKey(version: string): string {
+    return `${this.keyPrefix}ota:delivered:${version}`;
+  }
+
+  async setActiveRelease(release: OtaActiveRelease): Promise<void> {
+    const client = this.getClient();
+    if (!client) {
+      logger.warn('[OTA] Redis unavailable — skipping setActiveRelease');
+      return;
+    }
+    await client.set(this.activeReleaseKey(), JSON.stringify(release));
+  }
+
+  async getActiveRelease(): Promise<OtaActiveRelease | null> {
+    const client = this.getClient();
+    if (!client) return null;
+    const raw = await client.get(this.activeReleaseKey());
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as OtaActiveRelease;
+    } catch {
+      return null;
+    }
+  }
+
+  async seedPendingFleet(version: string, deviceIds: string[]): Promise<void> {
+    const client = this.getClient();
+    if (!client || deviceIds.length === 0) return;
+    const key = this.pendingKey(version);
+    await client.del(key);
+    await client.sAdd(key, deviceIds);
+  }
+
+  async isPending(deviceId: string, version: string): Promise<boolean> {
+    const client = this.getClient();
+    if (!client) return true;
+    return Boolean(await client.sIsMember(this.pendingKey(version), deviceId));
+  }
+
+  async isDelivered(deviceId: string, version: string): Promise<boolean> {
+    const client = this.getClient();
+    if (!client) return false;
+    return Boolean(await client.sIsMember(this.deliveredKey(version), deviceId));
+  }
+
+  async markDelivered(deviceId: string, version: string): Promise<void> {
+    const client = this.getClient();
+    if (!client) return;
+    await client.sRem(this.pendingKey(version), deviceId);
+    await client.sAdd(this.deliveredKey(version), deviceId);
+  }
+
+  async markPending(deviceId: string, version: string): Promise<void> {
+    const client = this.getClient();
+    if (!client) return;
+    await client.sAdd(this.pendingKey(version), deviceId);
+  }
+}
+
+// ─── OTA Command Publisher ───────────────────────────────────────────────
+
+export interface OtaUpdateCommandPayload {
+  cmd: 'ota_update';
+  version: string;
+  download_url: string;
+  sha256: string;
+  signature: string;
+  size_bytes: number;
+  force: boolean;
+  issued_at: string;
+}
+
+export class OtaCommandPublisher {
+  constructor(
+    private readonly mqttClient: MqttClientManager,
+    private readonly topicRoot: string,
+    private readonly broadcastTopic: string,
+    private readonly otaRedisState?: OtaRedisState
+  ) {}
+
+  async publishUpdateToDevice(
+    deviceId: string,
+    offer: OtaUpdateOffer,
+    force = false
+  ): Promise<void> {
+    const payload: OtaUpdateCommandPayload = {
+      cmd: 'ota_update',
+      version: offer.version,
+      download_url: offer.downloadUrl,
+      sha256: offer.sha256,
+      signature: offer.signature,
+      size_bytes: offer.sizeBytes,
+      force,
+      issued_at: new Date().toISOString()
+    };
+
+    const topic = `${this.topicRoot}/${deviceId}/cmd`;
+    await this.mqttClient.publish(
+      {
+        topic,
+        payload: JSON.stringify(payload),
+        qos: 2,
+        retain: false
+      },
+      {
+        deviceId,
+        onDelivered: this.otaRedisState
+          ? () => {
+              void this.otaRedisState!.markDelivered(deviceId, offer.version).catch((err: unknown) => {
+                logger.warn('[OTA] markDelivered failed after MQTT ack', {
+                  deviceId,
+                  version: offer.version,
+                  error: err instanceof Error ? err.message : String(err)
+                });
+              });
+            }
+          : undefined
+      }
+    );
+
+    await Device.updateOne(
+      { clientId: deviceId },
+      {
+        $set: {
+          otaState: DeviceOtaState.NOTIFIED,
+          otaTargetVersion: offer.version
+        }
+      }
+    );
+
+    logger.info('[OTA] Published ota_update cmd', { deviceId, version: offer.version, topic });
+  }
+
+  async publishBroadcastUpdate(offer: OtaUpdateOffer, force = false): Promise<void> {
+    const payload: OtaUpdateCommandPayload = {
+      cmd: 'ota_update',
+      version: offer.version,
+      download_url: offer.downloadUrl,
+      sha256: offer.sha256,
+      signature: offer.signature,
+      size_bytes: offer.sizeBytes,
+      force,
+      issued_at: new Date().toISOString()
+    };
+
+    await this.mqttClient.publish({
+      topic: this.broadcastTopic,
+      payload: JSON.stringify(payload),
+      qos: 1,
+      retain: false
+    });
+
+    logger.info('[OTA] Published broadcast ota_update', {
+      version: offer.version,
+      topic: this.broadcastTopic
+    });
+  }
+
+  async publishRollbackAck(deviceId: string, version: string): Promise<void> {
+    const topic = `${this.topicRoot}/${deviceId}/ack`;
+    await this.mqttClient.publish({
+      topic,
+      payload: JSON.stringify({
+        cmd: 'ota_rollback_received',
+        version,
+        received_at: new Date().toISOString()
+      }),
+      qos: 1,
+      retain: false
+    });
+
+    logger.info('[OTA] Published rollback ack', { deviceId, version, topic });
+  }
+}
+
+// ─── OTA Event Handler ────────────────────────────────────────────────────
+
+export type OtaEventPayload = {
+  type?: string;
+  event?: string;
+  version?: string;
+  attempted_version?: string;
+  reason?: string;
+  reasons?: string[];
+  boot_attempts?: number;
+  progress?: number;
+  status?: string;
+};
+
+function eventKey(payload: OtaEventPayload): string | undefined {
+  return payload.type || payload.event || payload.status;
+}
+
+export class OtaEventHandler {
+  constructor(
+    private readonly otaService: OtaService,
+    private readonly commandPublisher: OtaCommandPublisher
+  ) {}
+
+  async handle(deviceId: string, payload: OtaEventPayload): Promise<void> {
+    const key = eventKey(payload);
+    if (!key) return;
+
+    switch (key) {
+      case 'ota_progress':
+        await this.otaService.updateOtaState(deviceId, DeviceOtaState.DOWNLOADING);
+        break;
+
+      case 'ota_validating':
+        await this.otaService.updateOtaState(deviceId, DeviceOtaState.VALIDATING);
+        break;
+
+      case 'ota_success': {
+        const version = payload.version || '';
+        if (version) {
+          await this.otaService.recordOtaSuccess(deviceId, version);
+          await this.otaService.markDeviceDelivered(deviceId, version);
+        }
+        void getAuditService()
+          ?.logEvent({
+            event: AuditEventType.OTA_SUCCESS,
+            deviceId,
+            details: { version }
+          })
+          .catch(() => undefined);
+        break;
+      }
+
+      case 'ota_rollback': {
+        const version = payload.attempted_version || payload.version || '';
+        const reason =
+          payload.reason ||
+          (Array.isArray(payload.reasons) ? payload.reasons.join('; ') : undefined);
+
+        const { blocked, failures } = await this.otaService.recordRollbackFailure(
+          deviceId,
+          version,
+          reason
+        );
+
+        void getAuditService()
+          ?.logEvent({
+            event: AuditEventType.OTA_ROLLBACK,
+            deviceId,
+            details: { version, reason, failures, blocked }
+          })
+          .catch(() => undefined);
+
+        if (version) {
+          await this.commandPublisher.publishRollbackAck(deviceId, version);
+        }
+        break;
+      }
+
+      default:
+        logger.debug('[OTA] Ignored status event', { deviceId, key });
+    }
+  }
+}
+
+// ─── OTA Rate Limiter ─────────────────────────────────────────────────────
+
+export async function checkOtaRateLimit(
+  client: RedisClientType | null,
+  keyPrefix: string,
+  deviceId: string,
+  windowSec: number
+): Promise<boolean> {
+  if (!client || windowSec <= 0) {
+    return true;
+  }
+
+  const key = `${keyPrefix}ota:check:${deviceId}`;
+  try {
+    const set = await client.set(key, '1', { NX: true, EX: windowSec });
+    return set === 'OK';
+  } catch (err: unknown) {
+    logger.warn('[OTA] Rate limit check failed — allowing request', {
+      deviceId,
+      error: err instanceof Error ? err.message : String(err)
+    });
+    return true;
+  }
+}
+
+// ─── OTA Signing State ────────────────────────────────────────────────────
+
+let runtimeSigningConfirmed = false;
+
+export function initOtaSigningState(envConfirmed: boolean): void {
+  runtimeSigningConfirmed = envConfirmed;
+}
+
+export function isOtaSigningConfirmed(envConfirmed: boolean): boolean {
+  return envConfirmed || runtimeSigningConfirmed;
+}
+
+export function setOtaSigningConfirmed(confirmed: boolean): void {
+  runtimeSigningConfirmed = confirmed;
+}
+
+export function getRuntimeSigningConfirmed(): boolean {
+  return runtimeSigningConfirmed;
 }
 
 // ─── Update resolution & device state ───────────────────────────────────────

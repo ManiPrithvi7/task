@@ -420,11 +420,8 @@ export interface OtaOciConfig {
   bucket: string;
   region: string;
   parBaseUrl: string;
-  /** Env-based API key auth (production). */
+  /** Env-based API key auth (required when OTA_ENABLED=true). */
   credentials?: OtaOciCredentials;
-  /** Local dev only — avoid on deployed servers. */
-  configFile?: string;
-  configProfile?: string;
 }
 
 export interface OtaConfig {
@@ -791,15 +788,7 @@ export function loadConfig(): AppConfig {
         bucket: ociBucket,
         region: ociRegion,
         parBaseUrl: parOverride || otaOciParBaseUrl(ociNamespace, ociRegion),
-        credentials: ociCredentials,
-        configFile:
-          ociCredentials || process.env.NODE_ENV === 'production'
-            ? undefined
-            : process.env.OCI_CONFIG_FILE?.trim() || undefined,
-        configProfile:
-          ociCredentials || process.env.NODE_ENV === 'production'
-            ? undefined
-            : process.env.OCI_CONFIG_PROFILE?.trim() || undefined
+        credentials: ociCredentials
       },
       presignedUrlTtlSec: envInt('OTA_PRESIGNED_TTL_SEC', OTA_PRESIGNED_TTL_SEC),
       signingPublicKeyPem,
@@ -904,17 +893,9 @@ export function validateConfig(config: AppConfig): void {
     }
     const hasOciAuth = !!config.ota.oci.credentials;
     if (!hasOciAuth) {
-      if (process.env.NODE_ENV === 'production') {
-        throw new Error(
-          'OTA_ENABLED requires OCI_API_PRIVATE_KEY_BASE64, OCI_TENANCY_OCID, OCI_USER_OCID, OCI_FINGERPRINT'
-        );
-      }
-      const hasDevConfig = !!process.env.OCI_CONFIG_FILE?.trim();
-      if (!hasDevConfig) {
-        throw new Error(
-          'OTA_ENABLED requires OCI env credentials or OCI_CONFIG_FILE (development only)'
-        );
-      }
+      throw new Error(
+        'OTA_ENABLED requires OCI_API_PRIVATE_KEY_BASE64, OCI_TENANCY_OCID, OCI_USER_OCID, OCI_FINGERPRINT'
+      );
     }
     if (!config.ota.signingPublicKeyPem) {
       logger.warn(

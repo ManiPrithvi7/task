@@ -10,8 +10,8 @@ import { FirmwareRelease, FirmwareReleaseStatus } from '../models/FirmwareReleas
 import type { IFirmwareStorage } from '../services/firmwareStorageService';
 import { OciStorageError } from '../services/ociStorageErrors';
 import { getReleaseObjectKey } from '../utils/firmwareReleaseKey';
-import { checkOtaRateLimit } from '../services/otaRateLimiter';
-import type { OtaEventHandler } from '../services/otaEventHandler';
+import { checkOtaRateLimit } from '../services/otaService';
+import type { OtaEventHandler } from '../services/otaService';
 import type { OtaService } from '../services/otaService';
 import { logger } from '../utils/logger';
 

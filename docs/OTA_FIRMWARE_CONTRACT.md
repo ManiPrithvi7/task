@@ -16,7 +16,7 @@ OTA_ED25519_PUBLIC_KEY_BASE64=<base64 PEM of Ed25519 public key>
 OTA_RELEASE_WEBHOOK_SECRET=<shared secret for GitHub Actions webhook>
 ```
 
-Do **not** use `OCI_CONFIG_FILE` on production hosts — credentials must live in env vars. Local dev may set `OCI_CONFIG_FILE=~/.oci/config` as a fallback.
+Do **not** use `OCI_CONFIG_FILE` — credentials must live in env vars in every environment.
 
 PAR base URL is derived automatically: `https://{namespace}.objectstorage.{region}.oci.customer-oci.com`
 

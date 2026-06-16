@@ -1,4 +1,4 @@
-import { OtaEventHandler } from '@/services/otaEventHandler';
+import { OtaEventHandler } from '@/services/otaService';
 
 jest.mock('@/services/auditService', () => ({
   AuditEventType: { OTA_SUCCESS: 'OTA_SUCCESS', OTA_ROLLBACK: 'OTA_ROLLBACK' },

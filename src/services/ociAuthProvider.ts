@@ -1,11 +1,9 @@
 /**
- * OCI SDK authentication — env-based API key only (production).
- * Config file fallback allowed in development only.
+ * OCI SDK authentication — env-based API key only (all environments).
  */
 
 import { common } from 'oci-sdk';
 import type { OtaOciConfig } from '../config';
-import { logger } from '../utils/logger';
 
 function normalizePemFromEnv(raw: string): string {
   return raw.trim().replace(/\\n/g, '\n');
@@ -50,17 +48,6 @@ export function createOciAuthProvider(oci: OtaOciConfig): common.AuthenticationD
       null,
       common.Region.fromRegionId(oci.region)
     );
-  }
-
-  const isDev = process.env.NODE_ENV !== 'production';
-  const configFile = oci.configFile || process.env.OCI_CONFIG_FILE?.trim();
-  const profile = oci.configProfile || process.env.OCI_CONFIG_PROFILE?.trim() || 'DEFAULT';
-
-  if (isDev && configFile) {
-    logger.warn(
-      '[OTA] OCI auth via config file (development only) — set OCI_API_PRIVATE_KEY_BASE64 for production'
-    );
-    return new common.ConfigFileAuthenticationDetailsProvider(configFile, profile);
   }
 
   throw new Error(

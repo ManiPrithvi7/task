@@ -34,9 +34,14 @@ function metaValue(head: objectstorage.responses.HeadObjectResponse, key: string
   const meta = head.opcMeta || {};
   const direct = meta[key];
   if (direct) return direct;
+
+  const prefixed = `opc-meta-${key}`;
+  if (meta[prefixed]) return meta[prefixed];
+
   const lower = key.toLowerCase();
   for (const [k, v] of Object.entries(meta)) {
-    if (k.toLowerCase() === lower) return v;
+    const normalized = k.toLowerCase().replace(/^opc-meta-/, '');
+    if (normalized === lower) return v;
   }
   return undefined;
 }
