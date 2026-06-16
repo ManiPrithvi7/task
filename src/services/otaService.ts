@@ -23,6 +23,8 @@ import { logger } from '../utils/logger';
 import type { IFirmwareStorage, ObjectHeadResult } from './firmwareStorageService';
 import { OciStorageError } from './ociStorageErrors';
 import type { OtaCommandPublisher } from './otaCommandPublisher';
+import type { OtaRedisState } from './otaRedisState';
+import { getActiveDeviceCache } from './deviceService';
 import { AuditEventType, getAuditService } from './auditService';
 import { getReleaseObjectKey } from '../utils/firmwareReleaseKey';
 
@@ -37,6 +39,8 @@ export interface FinalizeValidationInput {
   sha256: string;
   signature: string;
   head: ObjectHeadResult;
+  signingPublicKeyPem?: string;
+  /** @deprecated use signingPublicKeyPem */
   signingPublicKeyPath?: string;
 }
 
@@ -81,9 +85,11 @@ export function assertValidSha256Hex(sha256: string): void {
 export function verifyEd25519Signature(
   sha256Hex: string,
   signatureB64: string,
-  publicKeyPemPath: string
+  publicKeyPem: string
 ): boolean {
-  const pem = fs.readFileSync(publicKeyPemPath, 'utf8');
+  const pem = publicKeyPem.includes('-----BEGIN')
+    ? publicKeyPem
+    : fs.readFileSync(publicKeyPem, 'utf8');
   const pubKey = crypto.createPublicKey(pem);
   const message = Buffer.from(sha256Hex.toLowerCase(), 'utf8');
   let sig: Buffer;
@@ -99,7 +105,7 @@ export function verifyEd25519Signature(
 }
 
 export function validateFinalizeInput(input: FinalizeValidationInput): void {
-  const { version, sha256, signature, head, signingPublicKeyPath } = input;
+  const { version, sha256, signature, head, signingPublicKeyPem, signingPublicKeyPath } = input;
 
   assertValidVersionFormat(version);
   assertValidSha256Hex(sha256);
@@ -139,15 +145,20 @@ export function validateFinalizeInput(input: FinalizeValidationInput): void {
     );
   }
 
-  if (!signingPublicKeyPath || !fs.existsSync(signingPublicKeyPath)) {
+  let publicKeyPem = signingPublicKeyPem?.trim();
+  if (!publicKeyPem && signingPublicKeyPath && fs.existsSync(signingPublicKeyPath)) {
+    publicKeyPem = fs.readFileSync(signingPublicKeyPath, 'utf8');
+  }
+
+  if (!publicKeyPem) {
     throw new FinalizeValidationError(
-      'OTA_ED25519_PUBLIC_KEY_PATH is required for finalize signature verification',
+      'OTA_ED25519_PUBLIC_KEY_BASE64 is required for signature verification',
       'SIGNING_KEY_MISSING',
       503
     );
   }
 
-  if (!verifyEd25519Signature(sha256, signature, signingPublicKeyPath)) {
+  if (!verifyEd25519Signature(sha256, signature, publicKeyPem)) {
     throw new FinalizeValidationError('Ed25519 signature verification failed', 'INVALID_SIGNATURE');
   }
 }
@@ -189,7 +200,8 @@ export class OtaService {
     private readonly otaConfig: OtaConfig,
     private readonly storage: IFirmwareStorage,
     private readonly publicBaseUrl: string,
-    private readonly commandPublisher?: OtaCommandPublisher
+    private readonly commandPublisher?: OtaCommandPublisher,
+    private readonly otaRedisState?: OtaRedisState
   ) {}
 
   async resolveUpdate(input: ResolveUpdateInput): Promise<OtaUpdateOffer | null> {
@@ -233,7 +245,7 @@ export class OtaService {
     const objectKey = input.objectKey.trim();
     const sha256 = input.sha256.trim().toLowerCase();
     const signature = input.signature.trim();
-    const shouldBroadcast = input.broadcast !== false;
+    const shouldPush = input.broadcast !== false;
 
     if (!version || !objectKey || !sha256 || !signature) {
       return {
@@ -244,7 +256,7 @@ export class OtaService {
       };
     }
 
-    if (shouldBroadcast && !this.commandPublisher) {
+    if (shouldPush && !this.commandPublisher) {
       return {
         ok: false,
         httpStatus: 503,
@@ -260,6 +272,7 @@ export class OtaService {
         sha256,
         signature,
         head,
+        signingPublicKeyPem: this.otaConfig.signingPublicKeyPem,
         signingPublicKeyPath: this.otaConfig.signingPublicKeyPath
       });
 
@@ -301,31 +314,36 @@ export class OtaService {
         })
         .catch(() => undefined);
 
-      if (shouldBroadcast) {
-        const downloadUrl =
-          this.otaConfig.downloadMode === 'proxy'
-            ? `${this.publicBaseUrl}/api/v1/ota/download/${encodeURIComponent(version)}`
-            : await this.storage.createPresignedGetUrl(objectKey, version);
-        const expiresAt = new Date(
-          Date.now() + this.otaConfig.presignedUrlTtlSec * 1000
-        ).toISOString();
+      const releasedAtIso = input.releasedAt || new Date().toISOString();
 
-        await this.commandPublisher!.publishBroadcastUpdate(
-          {
-            version: release.version,
-            downloadUrl,
-            sha256: release.sha256,
-            signature: release.signature,
-            sizeBytes: release.sizeBytes,
-            expiresAt
-          },
-          false
-        );
+      if (this.otaRedisState) {
+        await this.otaRedisState.setActiveRelease({
+          version: release.version,
+          sha256: release.sha256,
+          signature: release.signature,
+          objectKey,
+          sizeBytes: release.sizeBytes,
+          releasedAt: releasedAtIso
+        });
+
+        const eligibleIds = await this.listEligibleDeviceIds();
+        await this.otaRedisState.seedPendingFleet(release.version, eligibleIds);
+      }
+
+      let pushedCount = 0;
+      if (shouldPush) {
+        pushedCount = await this.pushReleaseToOnlineDevices(release.version);
 
         void getAuditService()
           ?.logEvent({
             event: AuditEventType.OTA_PUSH_SENT,
-            details: { version, target: 'broadcast', mode: 'full', source: 'webhook' }
+            details: {
+              version,
+              target: 'device',
+              mode: 'full',
+              source: 'webhook',
+              pushedCount
+            }
           })
           .catch(() => undefined);
       }
@@ -333,11 +351,11 @@ export class OtaService {
       logger.info('[OTA] Release ingested from CI webhook', {
         version,
         objectKey,
-        broadcast: shouldBroadcast,
+        pushedCount,
         created
       });
 
-      return { ok: true, version, broadcast: shouldBroadcast, created };
+      return { ok: true, version, broadcast: shouldPush, created };
     } catch (err: unknown) {
       if (err instanceof FinalizeValidationError) {
         return {
@@ -366,6 +384,58 @@ export class OtaService {
         error: 'Failed to ingest OTA release'
       };
     }
+  }
+
+  async deliverPendingToDevice(deviceId: string, currentVersion: string): Promise<void> {
+    if (!this.commandPublisher || !this.otaRedisState) return;
+
+    const active = await this.otaRedisState.getActiveRelease();
+    if (!active) return;
+    if (!isVersionGreater(active.version, currentVersion)) return;
+    if (await this.otaRedisState.isDelivered(deviceId, active.version)) return;
+    if (!(await this.otaRedisState.isPending(deviceId, active.version))) return;
+
+    const offer = await this.resolveUpdate({ deviceId, currentVersion });
+    if (!offer || offer.version !== active.version) return;
+
+    await this.commandPublisher.publishUpdateToDevice(deviceId, offer, false);
+  }
+
+  private async listEligibleDeviceIds(): Promise<string[]> {
+    const devices = await Device.find({
+      status: { $in: [DeviceStatus.PROVISIONED, DeviceStatus.ACTIVE, DeviceStatus.OFFLINE] }
+    })
+      .select({ clientId: 1 })
+      .lean();
+    return devices.map((d) => d.clientId).filter(Boolean);
+  }
+
+  private async pushReleaseToOnlineDevices(version: string): Promise<number> {
+    if (!this.commandPublisher) return 0;
+
+    const online = await getActiveDeviceCache().getAllActive();
+    const onlineIds = new Set(online.map((d) => d.deviceId));
+    let pushed = 0;
+
+    for (const deviceId of onlineIds) {
+      if (!this.otaRedisState || !(await this.otaRedisState.isPending(deviceId, version))) {
+        continue;
+      }
+
+      const device = await Device.findOne({ clientId: deviceId });
+      const currentVersion = device?.firmwareVersion || '0.0.0';
+      const offer = await this.resolveUpdate({ deviceId, currentVersion });
+      if (!offer || offer.version !== version) continue;
+
+      await this.commandPublisher.publishUpdateToDevice(deviceId, offer, false);
+      pushed++;
+    }
+
+    return pushed;
+  }
+
+  async markDeviceDelivered(deviceId: string, version: string): Promise<void> {
+    await this.otaRedisState?.markDelivered(deviceId, version);
   }
 
   private isDeviceEligible(device: IDevice): boolean {

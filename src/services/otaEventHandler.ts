@@ -47,6 +47,7 @@ export class OtaEventHandler {
         const version = payload.version || '';
         if (version) {
           await this.otaService.recordOtaSuccess(deviceId, version);
+          await this.otaService.markDeviceDelivered(deviceId, version);
         }
         void getAuditService()
           ?.logEvent({

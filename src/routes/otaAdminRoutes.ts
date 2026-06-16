@@ -154,6 +154,7 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
         sha256,
         signature,
         head,
+        signingPublicKeyPem: otaConfig.signingPublicKeyPem,
         signingPublicKeyPath: otaConfig.signingPublicKeyPath
       });
 
@@ -364,7 +365,6 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
 
     const version = String(req.body?.version || '').trim();
     const target = String(req.body?.target || 'device');
-    const mode = String(req.body?.mode || 'full') as 'full' | 'trigger';
     const force = req.body?.force === true;
     const deviceIds: string[] = Array.isArray(req.body?.deviceIds)
       ? req.body.deviceIds.map(String)
@@ -386,7 +386,7 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
       version,
       status: FirmwareReleaseStatus.STABLE
     });
-    if (!release && mode === 'full') {
+    if (!release) {
       res.status(404).json({
         success: false,
         error: 'Stable release not found',
@@ -398,24 +398,6 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
 
     try {
       if (target === 'broadcast') {
-        if (mode === 'trigger') {
-          res.status(400).json({
-            success: false,
-            error: 'Broadcast trigger not supported — use full mode',
-            code: 'INVALID_BROADCAST_MODE',
-            timestamp: new Date().toISOString()
-          });
-          return;
-        }
-        if (!release) {
-          res.status(404).json({
-            success: false,
-            error: 'Stable release not found',
-            code: 'RELEASE_NOT_FOUND',
-            timestamp: new Date().toISOString()
-          });
-          return;
-        }
         const downloadUrl =
           otaConfig.downloadMode === 'proxy'
             ? `${req.protocol}://${req.get('host')}/api/v1/ota/download/${encodeURIComponent(version)}`
@@ -444,36 +426,32 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
         }
 
         for (const deviceId of deviceIds) {
-          if (mode === 'trigger') {
-            await commandPublisher.publishCheckTrigger(deviceId, version, force);
+          const device = await Device.findOne({ clientId: deviceId });
+          const current = device?.firmwareVersion || '0.0.0';
+          const offer = await otaService.resolveUpdate({
+            deviceId,
+            currentVersion: current
+          });
+          if (offer && offer.version === version) {
+            await commandPublisher.publishUpdateToDevice(deviceId, offer, force);
           } else {
-            const device = await Device.findOne({ clientId: deviceId });
-            const current = device?.firmwareVersion || '0.0.0';
-            const offer = await otaService.resolveUpdate({
+            const downloadUrl =
+              otaConfig.downloadMode === 'proxy'
+                ? `${req.protocol}://${req.get('host')}/api/v1/ota/download/${encodeURIComponent(version)}`
+                : await storage.createPresignedGetUrl(getReleaseObjectKey(release), release.version);
+            const expiresAt = new Date(Date.now() + otaConfig.presignedUrlTtlSec * 1000);
+            await commandPublisher.publishUpdateToDevice(
               deviceId,
-              currentVersion: current
-            });
-            if (offer && offer.version === version) {
-              await commandPublisher.publishUpdateToDevice(deviceId, offer, force);
-            } else if (release) {
-              const downloadUrl =
-                otaConfig.downloadMode === 'proxy'
-                  ? `${req.protocol}://${req.get('host')}/api/v1/ota/download/${encodeURIComponent(version)}`
-                  : await storage.createPresignedGetUrl(getReleaseObjectKey(release), release.version);
-              const expiresAt = new Date(Date.now() + otaConfig.presignedUrlTtlSec * 1000);
-              await commandPublisher.publishUpdateToDevice(
-                deviceId,
-                {
-                  version: release.version,
-                  downloadUrl,
-                  sha256: release.sha256,
-                  signature: release.signature,
-                  sizeBytes: release.sizeBytes,
-                  expiresAt: expiresAt.toISOString()
-                },
-                force
-              );
-            }
+              {
+                version: release.version,
+                downloadUrl,
+                sha256: release.sha256,
+                signature: release.signature,
+                sizeBytes: release.sizeBytes,
+                expiresAt: expiresAt.toISOString()
+              },
+              force
+            );
           }
         }
       }
@@ -482,7 +460,7 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
         ?.logEvent({
           event: AuditEventType.OTA_PUSH_SENT,
           userId: auth.userId,
-          details: { version, target, mode, deviceIds, force }
+          details: { version, target, deviceIds, force }
         })
         .catch(() => undefined);
 
@@ -490,7 +468,6 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
         success: true,
         version,
         target,
-        mode,
         device_ids: deviceIds,
         timestamp: new Date().toISOString()
       });

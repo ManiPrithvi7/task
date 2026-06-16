@@ -7,6 +7,7 @@ jest.mock('@/services/auditService', () => ({
 
 describe('OtaEventHandler', () => {
   const recordOtaSuccess = jest.fn().mockResolvedValue(undefined);
+  const markDeviceDelivered = jest.fn().mockResolvedValue(undefined);
   const recordRollbackFailure = jest.fn().mockResolvedValue({ blocked: false, failures: 1 });
   const updateOtaState = jest.fn().mockResolvedValue(undefined);
   const publishRollbackAck = jest.fn().mockResolvedValue(undefined);
@@ -14,6 +15,7 @@ describe('OtaEventHandler', () => {
   const handler = new OtaEventHandler(
     {
       recordOtaSuccess,
+      markDeviceDelivered,
       recordRollbackFailure,
       updateOtaState
     } as never,
@@ -27,6 +29,7 @@ describe('OtaEventHandler', () => {
   it('records success and updates firmware version', async () => {
     await handler.handle('dev-1', { type: 'ota_success', version: '4.3.1' });
     expect(recordOtaSuccess).toHaveBeenCalledWith('dev-1', '4.3.1');
+    expect(markDeviceDelivered).toHaveBeenCalledWith('dev-1', '4.3.1');
   });
 
   it('publishes rollback ack on ota_rollback', async () => {

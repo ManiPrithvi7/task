@@ -1,5 +1,5 @@
 /**
- * Device OTA routes — check, download proxy, optional report.
+ * Device OTA routes — download proxy and optional report.
  */
 
 import { Router, Request, Response } from 'express';
@@ -13,7 +13,6 @@ import { getReleaseObjectKey } from '../utils/firmwareReleaseKey';
 import { checkOtaRateLimit } from '../services/otaRateLimiter';
 import type { OtaEventHandler } from '../services/otaEventHandler';
 import type { OtaService } from '../services/otaService';
-import { AuditEventType, getAuditService } from '../services/auditService';
 import { logger } from '../utils/logger';
 
 export interface OtaRoutesDeps {
@@ -27,94 +26,7 @@ export interface OtaRoutesDeps {
 
 export function createOtaRoutes(deps: OtaRoutesDeps): Router {
   const router = Router();
-  const { otaConfig, otaService, storage, eventHandler, getRedisClient, redisKeyPrefix } = deps;
-
-  router.get('/ota/check', requireMtlsDeviceCert({ allowedSlots: ['primary'] }), async (req: Request, res: Response) => {
-    try {
-      const deviceId = (req as any).deviceId as string;
-      const currentVersion = String(req.query.current_version || '').trim();
-
-      if (!currentVersion) {
-        res.status(400).json({
-          success: false,
-          error: 'current_version query parameter is required',
-          code: 'MISSING_CURRENT_VERSION',
-          timestamp: new Date().toISOString()
-        });
-        return;
-      }
-
-      const allowed = await checkOtaRateLimit(
-        getRedisClient(),
-        redisKeyPrefix,
-        deviceId,
-        otaConfig.checkRateLimitSec
-      );
-      if (!allowed) {
-        res.status(429).json({
-          success: false,
-          error: 'OTA check rate limited',
-          code: 'OTA_RATE_LIMITED',
-          timestamp: new Date().toISOString()
-        });
-        return;
-      }
-
-      const hardwareRev = req.query.hardware_rev ? String(req.query.hardware_rev) : undefined;
-      const platform = req.query.platform ? String(req.query.platform) : undefined;
-
-      const offer = await otaService.resolveUpdate({
-        deviceId,
-        currentVersion,
-        hardwareRev,
-        platform
-      });
-
-      if (!offer) {
-        void getAuditService()
-          ?.logEvent({
-            event: AuditEventType.OTA_CHECK_NO_UPDATE,
-            deviceId,
-            details: { currentVersion }
-          })
-          .catch(() => undefined);
-
-        res.json({
-          update_available: false,
-          server_time: new Date().toISOString()
-        });
-        return;
-      }
-
-      void getAuditService()
-        ?.logEvent({
-          event: AuditEventType.OTA_CHECK_OFFERED,
-          deviceId,
-          details: { currentVersion, offeredVersion: offer.version }
-        })
-        .catch(() => undefined);
-
-      res.json({
-        update_available: true,
-        version: offer.version,
-        download_url: offer.downloadUrl,
-        sha256: offer.sha256,
-        signature: offer.signature,
-        size_bytes: offer.sizeBytes,
-        expires_at: offer.expiresAt
-      });
-    } catch (err: unknown) {
-      logger.error('[OTA] check failed', {
-        error: err instanceof Error ? err.message : String(err)
-      });
-      res.status(500).json({
-        success: false,
-        error: 'OTA check failed',
-        code: 'OTA_CHECK_ERROR',
-        timestamp: new Date().toISOString()
-      });
-    }
-  });
+  const { otaConfig, storage, eventHandler, getRedisClient, redisKeyPrefix } = deps;
 
   router.get(
     '/ota/download/:version',

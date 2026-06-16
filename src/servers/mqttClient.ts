@@ -51,6 +51,8 @@ export interface PublishMetadata {
   deviceId?: string;
   timestamp?: string;
   initiator?: string;
+  /** Invoked when broker confirms delivery (PUBACK for QoS 1, PUBCOMP for QoS 2). */
+  onDelivered?: () => void;
 }
 
 interface PendingAck {
@@ -58,6 +60,8 @@ interface PendingAck {
   deviceId: string;
   timestamp: number;
   timeout: NodeJS.Timeout;
+  qos: 1 | 2;
+  onDelivered?: () => void;
 }
 
 type MessageHandler = (topic: string, payload: Buffer, packet?: any) => void;
@@ -70,6 +74,7 @@ export class MqttClientManager extends EventEmitter {
   private maxReconnectAttempts: number;
   private brokerConnectCount: number = 0;
   private pendingAcks: Map<number, PendingAck> = new Map();
+  private deliveryCallbackByTopic: Map<string, () => void> = new Map();
   private recentPublishes: Map<string, { timestamp: number; metadata: PublishMetadata }> = new Map();
   private readonly ECHO_WINDOW_MS = 2000;
   
@@ -225,20 +230,31 @@ export class MqttClientManager extends EventEmitter {
       });
 
       this.client.on('packetsend', (packet: any) => {
-        if (packet.cmd === 'publish' && packet.qos === 1 && packet.messageId) {
-          logger.info('📤 QoS 1 message sent', {
+        if (
+          packet.cmd === 'publish' &&
+          (packet.qos === 1 || packet.qos === 2) &&
+          packet.messageId
+        ) {
+          logger.info(`📤 QoS ${packet.qos} message sent`, {
             messageId: packet.messageId,
             topic: packet.topic,
             qos: packet.qos
           });
-          this.trackQoS1Message(packet);
+          const onDelivered = this.deliveryCallbackByTopic.get(packet.topic);
+          if (onDelivered) {
+            this.deliveryCallbackByTopic.delete(packet.topic);
+          }
+          this.trackOutboundMessage(packet, onDelivered);
         }
       });
 
       this.client.on('packetreceive', (packet: any) => {
         if (packet.cmd === 'puback' && packet.messageId) {
           logger.info('✅ PUBACK received', { messageId: packet.messageId });
-          this.handlePubAck(packet.messageId);
+          this.handleDeliveryAck(packet.messageId, 'puback');
+        } else if (packet.cmd === 'pubcomp' && packet.messageId) {
+          logger.info('✅ PUBCOMP received', { messageId: packet.messageId });
+          this.handleDeliveryAck(packet.messageId, 'pubcomp');
         }
       });
 
@@ -356,6 +372,10 @@ export class MqttClientManager extends EventEmitter {
               qos: message.qos,
               deliveryTime: `${deliveryTime}ms`
             });
+
+            if (metadata?.onDelivered && (message.qos === 1 || message.qos === 2)) {
+              this.deliveryCallbackByTopic.set(fullTopic, metadata.onDelivered);
+            }
 
             const messageKey = `${fullTopic}:${payloadString.substring(0, 100)}`;
             this.recentPublishes.set(messageKey, {
@@ -540,9 +560,10 @@ export class MqttClientManager extends EventEmitter {
   private clearPendingAcks(reason: string): void {
     for (const [messageId, pending] of this.pendingAcks.entries()) {
       clearTimeout(pending.timeout);
-      logger.debug('Cleared pending PUBACK timer', { messageId, reason });
+      logger.debug('Cleared pending delivery ack timer', { messageId, reason });
     }
     this.pendingAcks.clear();
+    this.deliveryCallbackByTopic.clear();
   }
 
   private async resolveBrokerDns(maxAttempts = 5): Promise<void> {
@@ -570,27 +591,30 @@ export class MqttClientManager extends EventEmitter {
     }
   }
 
-  private trackQoS1Message(packet: any): void {
+  private trackOutboundMessage(packet: any, onDelivered?: () => void): void {
     const deviceId = this.extractDeviceIdFromTopic(packet.topic);
     if (!deviceId) return;
 
     const messageId = packet.messageId;
+    const qos = packet.qos === 2 ? 2 : 1;
 
     const timeout = setTimeout(() => {
       if (!this.isConnected()) {
-        logger.debug('QoS1 PUBACK pending but MQTT offline — skip inactive mark', {
+        logger.debug('Delivery ack pending but MQTT offline — skip inactive mark', {
           deviceId,
           messageId,
-          topic: packet.topic
+          topic: packet.topic,
+          qos
         });
         this.pendingAcks.delete(messageId);
         return;
       }
 
-      logger.warn('QoS 1 PUBACK timeout - marking device inactive', {
+      logger.warn(`QoS ${qos} delivery ack timeout - marking device inactive`, {
         deviceId,
         topic: packet.topic,
         messageId,
+        qos,
         timeout: '30s'
       });
 
@@ -605,10 +629,12 @@ export class MqttClientManager extends EventEmitter {
       topic: packet.topic,
       deviceId,
       timestamp: Date.now(),
-      timeout
+      timeout,
+      qos,
+      onDelivered
     });
 
-    logger.info('⏱️ Tracking QoS 1 message (30s timeout)', {
+    logger.info(`⏱️ Tracking QoS ${qos} message (30s timeout)`, {
       deviceId,
       messageId,
       topic: packet.topic,
@@ -616,20 +642,34 @@ export class MqttClientManager extends EventEmitter {
     });
   }
 
-  private handlePubAck(messageId: number): void {
+  private handleDeliveryAck(messageId: number, kind: 'puback' | 'pubcomp'): void {
     const pending = this.pendingAcks.get(messageId);
     if (!pending) return;
+
+    if (kind === 'puback' && pending.qos !== 1) return;
+    if (kind === 'pubcomp' && pending.qos !== 2) return;
 
     clearTimeout(pending.timeout);
     this.pendingAcks.delete(messageId);
 
     const deliveryTime = Date.now() - pending.timestamp;
-    logger.info('✅ QoS 1 PUBACK confirmed', {
+    logger.info(`✅ QoS ${pending.qos} ${kind.toUpperCase()} confirmed`, {
       deviceId: pending.deviceId,
       messageId,
       deliveryTime: `${deliveryTime}ms`,
       pendingCount: this.pendingAcks.size
     });
+
+    if (pending.onDelivered) {
+      try {
+        pending.onDelivered();
+      } catch (err: unknown) {
+        logger.warn('Delivery ack callback failed', {
+          deviceId: pending.deviceId,
+          error: err instanceof Error ? err.message : String(err)
+        });
+      }
+    }
 
     if (this.onDeviceActive) {
       this.onDeviceActive(pending.deviceId);

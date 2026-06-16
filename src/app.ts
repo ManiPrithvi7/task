@@ -55,6 +55,7 @@ import { initOtaSigningState } from './services/otaSigningState';
 import { OtaService } from './services/otaService';
 import { OtaCommandPublisher } from './services/otaCommandPublisher';
 import { OtaEventHandler } from './services/otaEventHandler';
+import { OtaRedisState } from './services/otaRedisState';
 import { createRecoverySessionService } from './services/recoverySessionService';
 import { getTokenStore } from './storage/tokenStore';
 import * as dns from 'dns';
@@ -115,6 +116,7 @@ export class StatsMqttLite {
   private otaService?: OtaService;
   private otaCommandPublisher?: OtaCommandPublisher;
   private otaEventHandler?: OtaEventHandler;
+  private otaRedisState?: OtaRedisState;
 
   // Active device cache (Redis-backed)
   private activeDeviceCache!: ActiveDeviceCache;
@@ -1214,17 +1216,11 @@ export class StatsMqttLite {
 
     logger.info('📋 [LIFECYCLE:REGISTER] Device registration complete', { deviceId });
 
-    void this.maybeOtaCheckOnRegistration(deviceId, message.appVersion || message.app_version);
+    void this.deliverOtaOnRegistration(deviceId, message.appVersion || message.app_version);
   }
 
-  private async maybeOtaCheckOnRegistration(
-    deviceId: string,
-    appVersion?: string
-  ): Promise<void> {
-    if (!this.config.ota?.enabled || !this.config.ota.checkOnRegistration) {
-      return;
-    }
-    if (!this.otaService || !this.otaCommandPublisher) {
+  private async deliverOtaOnRegistration(deviceId: string, appVersion?: string): Promise<void> {
+    if (!this.config.ota?.enabled || !this.otaService) {
       return;
     }
 
@@ -1235,15 +1231,9 @@ export class StatsMqttLite {
     }
 
     try {
-      const offer = await this.otaService.resolveUpdate({
-        deviceId,
-        currentVersion
-      });
-      if (offer) {
-        await this.otaCommandPublisher.publishUpdateToDevice(deviceId, offer);
-      }
+      await this.otaService.deliverPendingToDevice(deviceId, currentVersion);
     } catch (err: unknown) {
-      logger.warn('[OTA] Registration piggyback check failed', {
+      logger.warn('[OTA] Registration delivery failed', {
         deviceId,
         error: err instanceof Error ? err.message : String(err)
       });
@@ -1650,20 +1640,35 @@ export class StatsMqttLite {
 
     this.firmwareStorageService = createFirmwareStorageService(this.config.ota);
     initOtaSigningState(this.config.ota.signingConfirmed);
+    void this.firmwareStorageService
+      .verifyBucketAccess()
+      .catch((err: unknown) => {
+        logger.error('[OTA] OCI bucket access check failed', {
+          bucket: this.config.ota?.oci.bucket,
+          namespace: this.config.ota?.oci.namespace,
+          error: err instanceof Error ? err.message : String(err)
+        });
+      });
     const publicBaseUrl =
       process.env.OTA_PUBLIC_BASE_URL?.trim() ||
       `http://${this.config.http.host === '0.0.0.0' ? 'localhost' : this.config.http.host}:${this.config.http.port}`;
 
+    this.otaRedisState = new OtaRedisState(
+      () => this.getRedisClientOrNull(),
+      this.config.redis.keyPrefix || 'mqtt-lite:'
+    );
     this.otaCommandPublisher = new OtaCommandPublisher(
       this.mqttClient,
       this.config.mqtt.topicRoot,
-      this.config.ota.broadcastTopic
+      this.config.ota.broadcastTopic,
+      this.otaRedisState
     );
     this.otaService = new OtaService(
       this.config.ota,
       this.firmwareStorageService,
       publicBaseUrl,
-      this.otaCommandPublisher
+      this.otaCommandPublisher,
+      this.otaRedisState
     );
     this.otaEventHandler = new OtaEventHandler(this.otaService, this.otaCommandPublisher);
 
@@ -1671,7 +1676,7 @@ export class StatsMqttLite {
       downloadMode: this.config.ota.downloadMode,
       bucket: this.config.ota.oci.bucket,
       namespace: this.config.ota.oci.namespace,
-      checkOnRegistration: this.config.ota.checkOnRegistration
+      delivery: 'server-driven'
     });
   }
 

@@ -1,13 +1,12 @@
 /**
- * MQTT OTA command publisher — push updates to device or broadcast topics.
+ * MQTT OTA command publisher — per-device ota_update delivery.
  */
 
 import type { MqttClientManager } from '../servers/mqttClient';
 import { Device, DeviceOtaState } from '../models/Device';
 import { logger } from '../utils/logger';
 import type { OtaUpdateOffer } from './otaService';
-
-export type OtaPushMode = 'full' | 'trigger';
+import type { OtaRedisState } from './otaRedisState';
 
 export interface OtaUpdateCommandPayload {
   cmd: 'ota_update';
@@ -20,18 +19,12 @@ export interface OtaUpdateCommandPayload {
   issued_at: string;
 }
 
-export interface OtaCheckTriggerPayload {
-  cmd: 'ota_check';
-  force: boolean;
-  hint_version?: string;
-  issued_at: string;
-}
-
 export class OtaCommandPublisher {
   constructor(
     private readonly mqttClient: MqttClientManager,
     private readonly topicRoot: string,
-    private readonly broadcastTopic: string
+    private readonly broadcastTopic: string,
+    private readonly otaRedisState?: OtaRedisState
   ) {}
 
   async publishUpdateToDevice(
@@ -51,12 +44,28 @@ export class OtaCommandPublisher {
     };
 
     const topic = `${this.topicRoot}/${deviceId}/cmd`;
-    await this.mqttClient.publish({
-      topic,
-      payload: JSON.stringify(payload),
-      qos: 1,
-      retain: false
-    });
+    await this.mqttClient.publish(
+      {
+        topic,
+        payload: JSON.stringify(payload),
+        qos: 2,
+        retain: false
+      },
+      {
+        deviceId,
+        onDelivered: this.otaRedisState
+          ? () => {
+              void this.otaRedisState!.markDelivered(deviceId, offer.version).catch((err: unknown) => {
+                logger.warn('[OTA] markDelivered failed after MQTT ack', {
+                  deviceId,
+                  version: offer.version,
+                  error: err instanceof Error ? err.message : String(err)
+                });
+              });
+            }
+          : undefined
+      }
+    );
 
     await Device.updateOne(
       { clientId: deviceId },
@@ -69,29 +78,6 @@ export class OtaCommandPublisher {
     );
 
     logger.info('[OTA] Published ota_update cmd', { deviceId, version: offer.version, topic });
-  }
-
-  async publishCheckTrigger(
-    deviceId: string,
-    hintVersion?: string,
-    force = false
-  ): Promise<void> {
-    const payload: OtaCheckTriggerPayload = {
-      cmd: 'ota_check',
-      force,
-      ...(hintVersion ? { hint_version: hintVersion } : {}),
-      issued_at: new Date().toISOString()
-    };
-
-    const topic = `${this.topicRoot}/${deviceId}/cmd`;
-    await this.mqttClient.publish({
-      topic,
-      payload: JSON.stringify(payload),
-      qos: 1,
-      retain: false
-    });
-
-    logger.info('[OTA] Published ota_check trigger', { deviceId, hintVersion, topic });
   }
 
   async publishBroadcastUpdate(offer: OtaUpdateOffer, force = false): Promise<void> {

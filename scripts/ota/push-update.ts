@@ -12,22 +12,18 @@ async function main(): Promise<void> {
   let version = '';
   let device = '';
   let broadcast = false;
-  let mode: 'full' | 'trigger' = 'full';
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--version') version = args[++i] || '';
     if (args[i] === '--device') device = args[++i] || '';
     if (args[i] === '--broadcast') broadcast = true;
-    if (args[i] === '--trigger') mode = 'trigger';
   }
 
   const token = process.env.AUTH_TOKEN?.trim();
   const base = process.env.OTA_API_BASE?.trim() || 'http://localhost:3002';
 
   if (!token || !version || (!device && !broadcast)) {
-    console.error(
-      'Usage: AUTH_TOKEN=... push-update.ts --version X [--device ID | --broadcast] [--trigger]'
-    );
+    console.error('Usage: AUTH_TOKEN=... push-update.ts --version X [--device ID | --broadcast]');
     process.exit(1);
   }
 
@@ -40,7 +36,6 @@ async function main(): Promise<void> {
     body: JSON.stringify({
       version,
       target: broadcast ? 'broadcast' : 'device',
-      mode,
       deviceIds: device ? [device] : undefined
     })
   });

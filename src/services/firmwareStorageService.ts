@@ -4,9 +4,11 @@
 
 import * as crypto from 'crypto';
 import { Readable } from 'stream';
-import { objectstorage, common } from 'oci-sdk';
+import { objectstorage } from 'oci-sdk';
 import type { OtaConfig } from '../config';
+import { otaOciParBaseUrl } from '../config/otaDefaults';
 import { logger } from '../utils/logger';
+import { createOciAuthProvider } from './ociAuthProvider';
 import { mapOciError, withOciRetry } from './ociStorageErrors';
 
 export const FIRMWARE_VERSION_METADATA_KEY = 'firmware-version';
@@ -25,6 +27,7 @@ export interface IFirmwareStorage {
   headObject(objectKey: string): Promise<ObjectHeadResult>;
   verifySha256(objectKey: string, expectedSha256: string): Promise<boolean>;
   getObjectStream(objectKey: string): Promise<Readable>;
+  verifyBucketAccess(): Promise<void>;
 }
 
 function metaValue(head: objectstorage.responses.HeadObjectResponse, key: string): string | undefined {
@@ -45,12 +48,7 @@ export class OciFirmwareStorageService implements IFirmwareStorage {
   constructor(config: OtaConfig) {
     this.config = config;
     const oci = config.oci;
-    const configFile = oci.configFile || process.env.OCI_CONFIG_FILE;
-    const profile = oci.configProfile || process.env.OCI_CONFIG_PROFILE || 'DEFAULT';
-
-    const provider = configFile
-      ? new common.ConfigFileAuthenticationDetailsProvider(configFile, profile)
-      : new common.ConfigFileAuthenticationDetailsProvider(undefined, profile);
+    const provider = createOciAuthProvider(oci);
 
     this.client = new objectstorage.ObjectStorageClient({
       authenticationDetailsProvider: provider
@@ -61,7 +59,7 @@ export class OciFirmwareStorageService implements IFirmwareStorage {
   private parBaseUrl(): string {
     const override = this.config.oci.parBaseUrl?.replace(/\/+$/, '');
     if (override) return override;
-    return `https://objectstorage.${this.config.oci.region}.oraclecloud.com`;
+    return otaOciParBaseUrl(this.config.oci.namespace, this.config.oci.region);
   }
 
   private buildParUrl(par: objectstorage.models.PreauthenticatedRequest): string {
@@ -169,6 +167,24 @@ export class OciFirmwareStorageService implements IFirmwareStorage {
           throw new Error('Empty OCI object body');
         }
         return res.value as Readable;
+      } catch (err) {
+        throw mapOciError(err);
+      }
+    });
+  }
+
+  async verifyBucketAccess(): Promise<void> {
+    await withOciRetry(async () => {
+      try {
+        await this.client.headBucket({
+          namespaceName: this.config.oci.namespace,
+          bucketName: this.config.oci.bucket
+        });
+        logger.info('[OTA] OCI bucket access verified', {
+          bucket: this.config.oci.bucket,
+          namespace: this.config.oci.namespace,
+          region: this.config.oci.region
+        });
       } catch (err) {
         throw mapOciError(err);
       }

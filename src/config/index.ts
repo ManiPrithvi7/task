@@ -11,6 +11,15 @@ import {
 import { normalizeTlsPem, resolveMqttTlsServername } from '../utils/mqttTlsOptions';
 import { configureLogger } from '../utils/logger';
 import { envBool, envInt, envString } from './envHelpers';
+import {
+  OTA_CHECK_RATE_LIMIT_SEC,
+  OTA_OCI_BUCKET,
+  OTA_OCI_NAMESPACE,
+  OTA_OCI_REGION,
+  OTA_PRESIGNED_TTL_SEC,
+  OTA_ROLLBACK_FAILURE_THRESHOLD,
+  otaOciParBaseUrl
+} from './otaDefaults';
 
 export type { WebhookConfig };
 
@@ -399,11 +408,21 @@ export interface InfluxDBConfig {
 
 export type OtaDownloadMode = 'presigned' | 'proxy';
 
+export interface OtaOciCredentials {
+  tenancyId: string;
+  userId: string;
+  fingerprint: string;
+  privateKey: string;
+}
+
 export interface OtaOciConfig {
   namespace: string;
   bucket: string;
   region: string;
-  parBaseUrl?: string;
+  parBaseUrl: string;
+  /** Env-based API key auth (production). */
+  credentials?: OtaOciCredentials;
+  /** Local dev only — avoid on deployed servers. */
   configFile?: string;
   configProfile?: string;
 }
@@ -412,10 +431,12 @@ export interface OtaConfig {
   enabled: boolean;
   oci: OtaOciConfig;
   presignedUrlTtlSec: number;
+  /** Ed25519 public key PEM (env or file). */
+  signingPublicKeyPem?: string;
+  /** @deprecated Prefer OTA_ED25519_PUBLIC_KEY_BASE64 */
   signingPublicKeyPath?: string;
   /** When false, promote is blocked until OTA_SIGNING_CONFIRMED=true (firmware team). */
   signingConfirmed: boolean;
-  checkOnRegistration: boolean;
   broadcastTopic: string;
   downloadMode: OtaDownloadMode;
   checkRateLimitSec: number;
@@ -457,6 +478,58 @@ export interface AppConfig {
    */
   instagramServerless?: InstagramServerlessConfig;
   ota?: OtaConfig;
+}
+
+function normalizePemFromEnv(raw: string): string {
+  return raw.trim().replace(/\\n/g, '\n');
+}
+
+function loadOciCredentialsFromEnv(): OtaOciCredentials | undefined {
+  const tenancyId = process.env.OCI_TENANCY_OCID?.trim();
+  const userId = process.env.OCI_USER_OCID?.trim();
+  const fingerprint = process.env.OCI_FINGERPRINT?.trim();
+
+  let privateKey = process.env.OCI_API_PRIVATE_KEY?.trim();
+  if (!privateKey && process.env.OCI_API_PRIVATE_KEY_BASE64?.trim()) {
+    try {
+      privateKey = Buffer.from(process.env.OCI_API_PRIVATE_KEY_BASE64.trim(), 'base64').toString('utf8');
+    } catch {
+      privateKey = undefined;
+    }
+  }
+  if (!privateKey && process.env.OCI_PRIVATE_KEY?.trim()) {
+    privateKey = process.env.OCI_PRIVATE_KEY.trim();
+  }
+
+  if (tenancyId && userId && fingerprint && privateKey) {
+    return {
+      tenancyId,
+      userId,
+      fingerprint,
+      privateKey: normalizePemFromEnv(privateKey)
+    };
+  }
+  return undefined;
+}
+
+function loadOtaSigningPublicKeyPem(): string | undefined {
+  const inline = process.env.OTA_ED25519_PUBLIC_KEY_PEM?.trim();
+  if (inline) return normalizePemFromEnv(inline);
+
+  const b64 = process.env.OTA_ED25519_PUBLIC_KEY_BASE64?.trim();
+  if (b64) {
+    try {
+      return normalizePemFromEnv(Buffer.from(b64, 'base64').toString('utf8'));
+    } catch {
+      return undefined;
+    }
+  }
+
+  const keyPath = process.env.OTA_ED25519_PUBLIC_KEY_PATH?.trim();
+  if (keyPath && fs.existsSync(keyPath)) {
+    return fs.readFileSync(keyPath, 'utf8');
+  }
+  return undefined;
 }
 
 export function loadConfig(): AppConfig {
@@ -704,27 +777,44 @@ export function loadConfig(): AppConfig {
   const topicRoot = config.mqtt.topicRoot;
   const otaEnabled = process.env.OTA_ENABLED === 'true';
   if (otaEnabled) {
+    const ociNamespace = envString('OTA_OCI_NAMESPACE', OTA_OCI_NAMESPACE);
+    const ociBucket = envString('OTA_OCI_BUCKET', OTA_OCI_BUCKET);
+    const ociRegion = envString('OTA_OCI_REGION', OTA_OCI_REGION);
+    const parOverride = process.env.OTA_OCI_PAR_BASE_URL?.trim();
+    const ociCredentials = loadOciCredentialsFromEnv();
+    const signingPublicKeyPem = loadOtaSigningPublicKeyPem();
+
     config.ota = {
       enabled: true,
       oci: {
-        namespace: process.env.OTA_OCI_NAMESPACE?.trim() || '',
-        bucket: process.env.OTA_OCI_BUCKET?.trim() || '',
-        region: process.env.OTA_OCI_REGION?.trim() || 'ap-hyderabad-1',
-        parBaseUrl: process.env.OTA_OCI_PAR_BASE_URL?.trim() || undefined,
-        configFile: process.env.OCI_CONFIG_FILE?.trim() || undefined,
-        configProfile: process.env.OCI_CONFIG_PROFILE?.trim() || undefined
+        namespace: ociNamespace,
+        bucket: ociBucket,
+        region: ociRegion,
+        parBaseUrl: parOverride || otaOciParBaseUrl(ociNamespace, ociRegion),
+        credentials: ociCredentials,
+        configFile:
+          ociCredentials || process.env.NODE_ENV === 'production'
+            ? undefined
+            : process.env.OCI_CONFIG_FILE?.trim() || undefined,
+        configProfile:
+          ociCredentials || process.env.NODE_ENV === 'production'
+            ? undefined
+            : process.env.OCI_CONFIG_PROFILE?.trim() || undefined
       },
-      presignedUrlTtlSec: parseInt(process.env.OTA_PRESIGNED_TTL_SEC || '900', 10),
+      presignedUrlTtlSec: envInt('OTA_PRESIGNED_TTL_SEC', OTA_PRESIGNED_TTL_SEC),
+      signingPublicKeyPem,
       signingPublicKeyPath: process.env.OTA_ED25519_PUBLIC_KEY_PATH?.trim() || undefined,
       signingConfirmed:
         process.env.OTA_SIGNING_CONFIRMED === 'true' || process.env.OTA_SIGNING_CONFIRMED === '1',
-      checkOnRegistration: process.env.OTA_CHECK_ON_REGISTRATION === 'true',
       broadcastTopic:
         process.env.OTA_BROADCAST_TOPIC?.trim() || `${topicRoot}/broadcast/cmd`,
       downloadMode:
         process.env.OTA_DOWNLOAD_MODE === 'proxy' ? 'proxy' : 'presigned',
-      checkRateLimitSec: parseInt(process.env.OTA_CHECK_RATE_LIMIT_SEC || '300', 10),
-      rollbackFailureThreshold: parseInt(process.env.OTA_ROLLBACK_FAILURE_THRESHOLD || '3', 10),
+      checkRateLimitSec: envInt('OTA_CHECK_RATE_LIMIT_SEC', OTA_CHECK_RATE_LIMIT_SEC),
+      rollbackFailureThreshold: envInt(
+        'OTA_ROLLBACK_FAILURE_THRESHOLD',
+        OTA_ROLLBACK_FAILURE_THRESHOLD
+      ),
       releaseWebhookSecret: process.env.OTA_RELEASE_WEBHOOK_SECRET?.trim() || undefined
     };
   }
@@ -809,14 +899,32 @@ export function validateConfig(config: AppConfig): void {
   }
 
   if (config.ota?.enabled) {
-    if (!config.ota.oci.namespace) {
-      throw new Error('OTA_ENABLED requires OTA_OCI_NAMESPACE');
-    }
-    if (!config.ota.oci.bucket) {
-      throw new Error('OTA_ENABLED requires OTA_OCI_BUCKET');
-    }
     if (config.ota.presignedUrlTtlSec < 60) {
       throw new Error('OTA_PRESIGNED_TTL_SEC must be at least 60');
+    }
+    const hasOciAuth = !!config.ota.oci.credentials;
+    if (!hasOciAuth) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error(
+          'OTA_ENABLED requires OCI_API_PRIVATE_KEY_BASE64, OCI_TENANCY_OCID, OCI_USER_OCID, OCI_FINGERPRINT'
+        );
+      }
+      const hasDevConfig = !!process.env.OCI_CONFIG_FILE?.trim();
+      if (!hasDevConfig) {
+        throw new Error(
+          'OTA_ENABLED requires OCI env credentials or OCI_CONFIG_FILE (development only)'
+        );
+      }
+    }
+    if (!config.ota.signingPublicKeyPem) {
+      logger.warn(
+        '[OTA] OTA_ED25519_PUBLIC_KEY_BASE64 not set — webhook/finalize signature verification will fail until configured'
+      );
+    }
+    if (!config.ota.releaseWebhookSecret) {
+      logger.warn(
+        '[OTA] OTA_RELEASE_WEBHOOK_SECRET not set — CI webhook ingest disabled until configured'
+      );
     }
   }
 

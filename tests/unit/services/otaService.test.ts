@@ -44,10 +44,14 @@ const mockStorage = {
 
 const otaConfig = {
   enabled: true,
-  oci: { namespace: 'ns', bucket: 'firmware-bucket', region: 'ap-hyderabad-1' },
+  oci: {
+    namespace: 'ns',
+    bucket: 'firmware-bucket',
+    region: 'ap-hyderabad-1',
+    parBaseUrl: 'https://ns.objectstorage.ap-hyderabad-1.oci.customer-oci.com'
+  },
   presignedUrlTtlSec: 900,
   signingConfirmed: false,
-  checkOnRegistration: false,
   broadcastTopic: 'proof.mqtt/broadcast/cmd',
   downloadMode: 'presigned' as const,
   checkRateLimitSec: 300,
