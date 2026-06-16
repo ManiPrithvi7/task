@@ -51,6 +51,7 @@ export interface PublishMetadata {
   deviceId?: string;
   timestamp?: string;
   initiator?: string;
+  onDelivered?: () => void;
 }
 
 interface PendingAck {

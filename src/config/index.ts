@@ -13,6 +13,7 @@ import { configureLogger } from '../utils/logger';
 import { envBool, envInt, envString } from './envHelpers';
 
 export type { WebhookConfig };
+export type { OtaConfig } from './otaConfig';
 
 // Load environment variables
 dotenv.config();
