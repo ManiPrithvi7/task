@@ -2,14 +2,22 @@
 /**
  * Publish ota_update when the device publishes /active (device is subscribed).
  *
- * Usage:
- *   node scripts/ota-e2e/push-ota-on-active.js <LAN_IP> [DEVICE_ID]
+ * Default: OCI Object Storage PAR download URL (firmware in proof-firmware-ota bucket).
+ * LAN dev only: OTA_E2E_LAN=1 node push-ota-on-active.js <LAN_IP> [DEVICE_ID]
+ *
+ * Usage (OCI — requires OCI_* secrets in proofmqtt/.env):
+ *   node scripts/ota-e2e/push-ota-on-active.js [DEVICE_ID]
+ *   node scripts/ota-e2e/push-ota-on-active.js DEVICE-19
+ *
+ * Usage (LAN HTTP server on :8765 — local E2E only):
+ *   OTA_E2E_LAN=1 node scripts/ota-e2e/push-ota-on-active.js <LAN_IP> [DEVICE_ID]
  *
  * Requires proofmqtt/.env with MQTT broker mTLS vars (same creds as server).
  */
 const fs = require('fs');
 const path = require('path');
 const mqtt = require('mqtt');
+const { createOciDownloadUrl, hasOciEnvCredentials } = require('./oci-download-url');
 
 const REPO_ROOT = path.resolve(__dirname, '../..');
 const envPath = path.join(REPO_ROOT, '.env');
@@ -61,84 +69,136 @@ function resolveTlsMaterial() {
   };
 }
 
-if (!fs.existsSync(manifestPath)) {
-  console.error('Missing manifest.json — run sign-firmware.sh first');
-  process.exit(1);
+function parseArgs(argv) {
+  const lanMode = process.env.OTA_E2E_LAN === '1' || process.env.OTA_E2E_LAN === 'true';
+  const positional = argv.filter((a) => !a.startsWith('-'));
+
+  if (lanMode) {
+    const lanIp = positional[0];
+    const deviceId = positional[1] || 'DEVICE-17';
+    return { lanMode: true, lanIp, deviceId };
+  }
+
+  const maybeIp = positional[0];
+  const looksLikeIp = maybeIp && /^\d{1,3}(\.\d{1,3}){3}$/.test(maybeIp);
+  if (looksLikeIp) {
+    console.warn(
+      'Warning: first arg looks like LAN IP but OTA_E2E_LAN is not set — using OCI download URL. Set OTA_E2E_LAN=1 for local HTTP server.'
+    );
+  }
+
+  const deviceId = looksLikeIp ? positional[1] || 'DEVICE-17' : positional[0] || 'DEVICE-17';
+  return { lanMode: false, lanIp: looksLikeIp ? maybeIp : undefined, deviceId };
 }
 
-const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-const lanIp = process.argv[2];
-const deviceId = process.argv[3] || 'DEVICE-17';
+async function resolveDownloadUrl(manifest, args) {
+  const { lanMode, lanIp } = args;
 
-if (!lanIp) {
-  console.error('Usage: node scripts/ota-e2e/push-ota-on-active.js <LAN_IP> [DEVICE_ID]');
-  console.error('Example: node scripts/ota-e2e/push-ota-on-active.js 10.151.216.236 DEVICE-19');
-  process.exit(1);
+  if (lanMode) {
+    if (!lanIp) {
+      console.error('LAN mode: Usage: OTA_E2E_LAN=1 node push-ota-on-active.js <LAN_IP> [DEVICE_ID]');
+      process.exit(1);
+    }
+    if (lanIp.includes('<') || lanIp.includes('>') || !/^\d{1,3}(\.\d{1,3}){3}$/.test(lanIp)) {
+      console.error(`Invalid LAN_IP: "${lanIp}" — use a real IPv4 address (e.g. from: ip -4 addr show)`);
+      process.exit(1);
+    }
+    const firmwareFile = process.env.OTA_FIRMWARE_FILE || 'firmware-target.bin';
+    const port = process.env.OTA_FIRMWARE_PORT || '8765';
+    const downloadUrl = `http://${lanIp}:${port}/${firmwareFile}`;
+    console.log('Download mode: LAN HTTP (dev only)', downloadUrl);
+    return downloadUrl;
+  }
+
+  if (!hasOciEnvCredentials()) {
+    console.error(
+      'OCI credentials not found in .env — set OCI_TENANCY_OCID, OCI_USER_OCID, OCI_FINGERPRINT, OCI_API_PRIVATE_KEY_BASE64.'
+    );
+    console.error('For local LAN testing only, use: OTA_E2E_LAN=1 node push-ota-on-active.js <LAN_IP> [DEVICE_ID]');
+    process.exit(1);
+  }
+
+  const { downloadUrl, objectKey, expiresAt } = await createOciDownloadUrl(manifest.version);
+  console.log('Download mode: OCI Object Storage PAR');
+  console.log('  object_key:', objectKey);
+  console.log('  expires_at:', expiresAt);
+  console.log('  download_url:', downloadUrl);
+  return downloadUrl;
 }
-if (lanIp.includes('<') || lanIp.includes('>') || !/^\d{1,3}(\.\d{1,3}){3}$/.test(lanIp)) {
-  console.error(`Invalid LAN_IP: "${lanIp}" — use a real IPv4 address (e.g. from: ip -4 addr show)`);
-  process.exit(1);
-}
 
-const topicRoot = process.env.MQTT_TOPIC_ROOT || 'proof.mqtt';
-const cmdTopic = `${topicRoot}/${deviceId}/cmd`;
-const activeTopic = `${topicRoot}/${deviceId}/active`;
-const statusTopic = `${topicRoot}/${deviceId}/status`;
-const firmwareFile = process.env.OTA_FIRMWARE_FILE || 'firmware-target.bin';
-const port = process.env.OTA_FIRMWARE_PORT || '8765';
+async function main() {
+  if (!fs.existsSync(manifestPath)) {
+    console.error('Missing manifest.json — run sign-firmware.sh first');
+    process.exit(1);
+  }
 
-const payload = JSON.stringify({
-  cmd: 'ota_update',
-  version: manifest.version,
-  download_url: `http://${lanIp}:${port}/${firmwareFile}`,
-  sha256: manifest.sha256,
-  signature: manifest.signature,
-  size_bytes: manifest.size_bytes,
-  force: true,
-  issued_at: new Date().toISOString(),
-});
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  const args = parseArgs(process.argv.slice(2));
+  const { deviceId } = args;
+  const downloadUrl = await resolveDownloadUrl(manifest, args);
 
-const url = `mqtts://${process.env.MQTT_BROKER || 'broker.withproof.io'}:${process.env.MQTT_PORT || 8883}`;
-let published = 0;
+  const topicRoot = process.env.MQTT_TOPIC_ROOT || 'proof.mqtt';
+  const cmdTopic = `${topicRoot}/${deviceId}/cmd`;
+  const activeTopic = `${topicRoot}/${deviceId}/active`;
+  const statusTopic = `${topicRoot}/${deviceId}/status`;
 
-const tlsOpts = resolveTlsMaterial();
-
-const client = mqtt.connect(url, {
-  // Must differ from device client_id (DEVICE-19) or broker kicks the ESP32 offline.
-  clientId: process.env.OTA_E2E_MQTT_CLIENT_ID || `ota-e2e-pusher-${Date.now()}`,
-  reconnectPeriod: 2000,
-  ...tlsOpts,
-});
-
-function publishOta(reason) {
-  if (published >= 5) return;
-  published++;
-  client.publish(cmdTopic, payload, { qos: 1, retain: false }, (err) => {
-    console.log(`${reason}: publish #${published} → ${cmdTopic}`, err || 'OK');
+  const payload = JSON.stringify({
+    cmd: 'ota_update',
+    version: manifest.version,
+    download_url: downloadUrl,
+    sha256: manifest.sha256,
+    signature: manifest.signature,
+    size_bytes: manifest.size_bytes,
+    force: true,
+    issued_at: new Date().toISOString(),
   });
+
+  const url = `mqtts://${process.env.MQTT_BROKER || 'broker.withproof.io'}:${process.env.MQTT_PORT || 8883}`;
+  let published = 0;
+
+  const tlsOpts = resolveTlsMaterial();
+
+  const client = mqtt.connect(url, {
+    clientId: process.env.OTA_E2E_MQTT_CLIENT_ID || `ota-e2e-pusher-${Date.now()}`,
+    reconnectPeriod: 2000,
+    ...tlsOpts,
+  });
+
+  function publishOta(reason) {
+    if (published >= 5) return;
+    published++;
+    client.publish(cmdTopic, payload, { qos: 1, retain: false }, (err) => {
+      console.log(`${reason}: publish #${published} → ${cmdTopic}`, err || 'OK');
+    });
+  }
+
+  client.on('connect', () => {
+    console.log('MQTT connected, watching', activeTopic);
+    client.subscribe([activeTopic, statusTopic], { qos: 1 });
+    publishOta('on-connect');
+  });
+
+  client.on('message', (topic, msg) => {
+    const s = msg.toString();
+    if (topic.endsWith('/active')) {
+      console.log('saw active on', topic);
+      publishOta('after-active');
+    }
+    if (topic.endsWith('/status') && s.includes('ota')) {
+      console.log('OTA STATUS', s);
+    }
+  });
+
+  client.on('error', (err) => console.error('MQTT error', err.message));
+
+  setTimeout(() => {
+    console.log('done');
+    client.end();
+    process.exit(0);
+  }, 90000);
 }
 
-client.on('connect', () => {
-  console.log('MQTT connected, watching', activeTopic);
-  client.subscribe([activeTopic, statusTopic], { qos: 1 });
-  publishOta('on-connect');
+main().catch((err) => {
+  console.error(err instanceof Error ? err.message : err);
+  process.exit(1);
 });
-
-client.on('message', (topic, msg) => {
-  const s = msg.toString();
-  if (topic.endsWith('/active')) {
-    console.log('saw active on', topic);
-    publishOta('after-active');
-  }
-  if (topic.endsWith('/status') && s.includes('ota')) {
-    console.log('OTA STATUS', s);
-  }
-});
-
-client.on('error', (err) => console.error('MQTT error', err.message));
-
-setTimeout(() => {
-  console.log('done');
-  client.end();
-  process.exit(0);
-}, 90000);

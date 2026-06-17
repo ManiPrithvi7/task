@@ -6,6 +6,7 @@ import { Router, Request, Response } from 'express';
 import type { RedisClientType } from 'redis';
 import type { OtaConfig } from '../config';
 import { requireMtlsDeviceCert } from '../middleware/mtlsAuth';
+import { Device } from '../models/Device';
 import { FirmwareRelease, FirmwareReleaseStatus } from '../models/FirmwareRelease';
 import type { IFirmwareStorage } from '../services/firmwareStorageService';
 import { OciStorageError } from '../services/ociStorageErrors';
@@ -27,6 +28,55 @@ export interface OtaRoutesDeps {
 export function createOtaRoutes(deps: OtaRoutesDeps): Router {
   const router = Router();
   const { otaConfig, storage, eventHandler, getRedisClient, redisKeyPrefix } = deps;
+
+  router.get(
+    '/ota/offer/:version',
+    requireMtlsDeviceCert({ allowedSlots: ['primary'] }),
+    async (req: Request, res: Response) => {
+      try {
+        const deviceId = (req as any).deviceId as string;
+        const version = decodeURIComponent(req.params.version);
+        const device = await Device.findOne({ clientId: deviceId });
+        const currentVersion = device?.firmwareVersion || '0.0.0';
+
+        const offer = await deps.otaService.resolveUpdate({
+          deviceId,
+          currentVersion
+        });
+
+        if (!offer || offer.version !== version) {
+          res.status(404).json({
+            success: false,
+            error: 'No OTA offer for this device and version',
+            code: 'OTA_OFFER_NOT_FOUND',
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
+
+        res.json({
+          success: true,
+          version: offer.version,
+          download_url: offer.downloadUrl,
+          sha256: offer.sha256,
+          signature: offer.signature,
+          size_bytes: offer.sizeBytes,
+          expires_at: offer.expiresAt,
+          timestamp: new Date().toISOString()
+        });
+      } catch (err: unknown) {
+        logger.error('[OTA] offer failed', {
+          error: err instanceof Error ? err.message : String(err)
+        });
+        res.status(500).json({
+          success: false,
+          error: 'Failed to build OTA offer',
+          code: 'OTA_OFFER_ERROR',
+          timestamp: new Date().toISOString()
+        });
+      }
+    }
+  );
 
   router.get(
     '/ota/download/:version',

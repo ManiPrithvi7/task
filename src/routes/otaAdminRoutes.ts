@@ -20,6 +20,7 @@ import {
 } from '../services/otaService';
 import { isOtaSigningConfirmed, setOtaSigningConfirmed } from '../services/otaService';
 import { getReleaseObjectKey } from '../utils/firmwareReleaseKey';
+import { buildOtaDownloadUrl } from '../utils/otaDownloadUrl';
 import type { OtaCommandPublisher } from '../services/otaService';
 import type { OtaService } from '../services/otaService';
 import { AuditEventType, getAuditService } from '../services/auditService';
@@ -397,23 +398,30 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
     }
 
     try {
-      if (target === 'broadcast') {
-        const downloadUrl =
-          otaConfig.downloadMode === 'proxy'
-            ? `${req.protocol}://${req.get('host')}/api/v1/ota/download/${encodeURIComponent(version)}`
-            : await storage.createPresignedGetUrl(getReleaseObjectKey(release), release.version);
-        const expiresAt = new Date(Date.now() + otaConfig.presignedUrlTtlSec * 1000);
-        await commandPublisher.publishBroadcastUpdate(
-          {
-            version: release.version,
-            downloadUrl,
-            sha256: release.sha256,
-            signature: release.signature,
-            sizeBytes: release.sizeBytes,
-            expiresAt: expiresAt.toISOString()
-          },
-          force
+      const publicBaseUrl =
+        process.env.OTA_PUBLIC_BASE_URL?.trim() ||
+        `${req.protocol}://${req.get('host')}`;
+
+      const buildPushOffer = async () => {
+        const downloadUrl = await buildOtaDownloadUrl(
+          release,
+          otaConfig,
+          storage,
+          publicBaseUrl
         );
+        const expiresAt = new Date(Date.now() + otaConfig.presignedUrlTtlSec * 1000);
+        return {
+          version: release.version,
+          downloadUrl,
+          sha256: release.sha256,
+          signature: release.signature,
+          sizeBytes: release.sizeBytes,
+          expiresAt: expiresAt.toISOString()
+        };
+      };
+
+      if (target === 'broadcast') {
+        await commandPublisher.publishBroadcastUpdate(await buildPushOffer(), force);
       } else {
         if (deviceIds.length === 0) {
           res.status(400).json({
@@ -425,34 +433,9 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
           return;
         }
 
+        const offer = await buildPushOffer();
         for (const deviceId of deviceIds) {
-          const device = await Device.findOne({ clientId: deviceId });
-          const current = device?.firmwareVersion || '0.0.0';
-          const offer = await otaService.resolveUpdate({
-            deviceId,
-            currentVersion: current
-          });
-          if (offer && offer.version === version) {
-            await commandPublisher.publishUpdateToDevice(deviceId, offer, force);
-          } else {
-            const downloadUrl =
-              otaConfig.downloadMode === 'proxy'
-                ? `${req.protocol}://${req.get('host')}/api/v1/ota/download/${encodeURIComponent(version)}`
-                : await storage.createPresignedGetUrl(getReleaseObjectKey(release), release.version);
-            const expiresAt = new Date(Date.now() + otaConfig.presignedUrlTtlSec * 1000);
-            await commandPublisher.publishUpdateToDevice(
-              deviceId,
-              {
-                version: release.version,
-                downloadUrl,
-                sha256: release.sha256,
-                signature: release.signature,
-                sizeBytes: release.sizeBytes,
-                expiresAt: expiresAt.toISOString()
-              },
-              force
-            );
-          }
+          await commandPublisher.publishUpdateToDevice(deviceId, offer, force);
         }
       }
 

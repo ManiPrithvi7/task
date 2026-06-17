@@ -27,6 +27,11 @@ import { OciStorageError } from './ociStorageErrors';
 import { getActiveDeviceCache } from './deviceService';
 import { AuditEventType, getAuditService } from './auditService';
 import { getReleaseObjectKey } from '../utils/firmwareReleaseKey';
+import {
+  buildOtaDownloadUrl,
+  isLocalLanDownloadUrl,
+  isOciFirmwareDownloadUrl
+} from '../utils/otaDownloadUrl';
 
 // ─── Release validation (finalize / CI webhook) ─────────────────────────────
 
@@ -265,14 +270,30 @@ export class OtaCommandPublisher {
     private readonly mqttClient: MqttClientManager,
     private readonly topicRoot: string,
     private readonly broadcastTopic: string,
-    private readonly otaRedisState?: OtaRedisState
+    private readonly otaRedisState?: OtaRedisState,
+    private readonly otaConfig?: OtaConfig
   ) {}
+
+  private assertPublishableDownloadUrl(downloadUrl: string, version: string): void {
+    if (isLocalLanDownloadUrl(downloadUrl)) {
+      throw new Error(
+        `[OTA] Refusing to publish LAN/dev download_url for ${version} — use OCI Object Storage PAR`
+      );
+    }
+    if (this.otaConfig?.downloadMode === 'presigned' && !isOciFirmwareDownloadUrl(downloadUrl)) {
+      throw new Error(
+        `[OTA] Refusing to publish non-OCI download_url for ${version} — check OCI credentials and bucket`
+      );
+    }
+  }
 
   async publishUpdateToDevice(
     deviceId: string,
     offer: OtaUpdateOffer,
     force = false
   ): Promise<void> {
+    this.assertPublishableDownloadUrl(offer.downloadUrl, offer.version);
+
     const payload: OtaUpdateCommandPayload = {
       cmd: 'ota_update',
       version: offer.version,
@@ -322,6 +343,8 @@ export class OtaCommandPublisher {
   }
 
   async publishBroadcastUpdate(offer: OtaUpdateOffer, force = false): Promise<void> {
+    this.assertPublishableDownloadUrl(offer.downloadUrl, offer.version);
+
     const payload: OtaUpdateCommandPayload = {
       cmd: 'ota_update',
       version: offer.version,
@@ -725,8 +748,21 @@ export class OtaService {
     if (await this.otaRedisState.isDelivered(deviceId, active.version)) return;
     if (!(await this.otaRedisState.isPending(deviceId, active.version))) return;
 
-    const offer = await this.resolveUpdate({ deviceId, currentVersion });
-    if (!offer || offer.version !== active.version) return;
+    const device = await Device.findOne({ clientId: deviceId });
+    if (!device || !this.isDeviceEligible(device)) return;
+
+    const release = await FirmwareRelease.findOne({
+      version: active.version,
+      status: FirmwareReleaseStatus.STABLE
+    });
+    if (!release) {
+      logger.warn('[OTA] Active release missing from DB', { version: active.version, deviceId });
+      return;
+    }
+    if (!this.matchesRollout(release, device, deviceId)) return;
+
+    const offer = await this.buildOffer(release);
+    if (!offer) return;
 
     await this.commandPublisher.publishUpdateToDevice(deviceId, offer, false);
   }
@@ -841,16 +877,12 @@ export class OtaService {
   private async buildOffer(release: IFirmwareRelease): Promise<OtaUpdateOffer | null> {
     try {
       const expiresAt = new Date(Date.now() + this.otaConfig.presignedUrlTtlSec * 1000);
-      let downloadUrl: string;
-
-      if (this.otaConfig.downloadMode === 'proxy') {
-        downloadUrl = `${this.publicBaseUrl}/api/v1/ota/download/${encodeURIComponent(release.version)}`;
-      } else {
-        downloadUrl = await this.storage.createPresignedGetUrl(
-          getReleaseObjectKey(release),
-          release.version
-        );
-      }
+      const downloadUrl = await buildOtaDownloadUrl(
+        release,
+        this.otaConfig,
+        this.storage,
+        this.publicBaseUrl
+      );
 
       return {
         version: release.version,
