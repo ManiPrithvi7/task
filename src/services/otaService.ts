@@ -28,7 +28,7 @@ import { getActiveDeviceCache } from './deviceService';
 import { AuditEventType, getAuditService } from './auditService';
 import { getReleaseObjectKey } from '../utils/firmwareReleaseKey';
 import {
-  buildOtaDownloadUrl,
+  buildOtaMqttDownloadUrl,
   isLocalLanDownloadUrl,
   isOciFirmwareDownloadUrl
 } from '../utils/otaDownloadUrl';
@@ -280,9 +280,9 @@ export class OtaCommandPublisher {
         `[OTA] Refusing to publish LAN/dev download_url for ${version} — use OCI Object Storage PAR`
       );
     }
-    if (this.otaConfig?.downloadMode === 'presigned' && !isOciFirmwareDownloadUrl(downloadUrl)) {
+    if (!isOciFirmwareDownloadUrl(downloadUrl)) {
       throw new Error(
-        `[OTA] Refusing to publish non-OCI download_url for ${version} — check OCI credentials and bucket`
+        `[OTA] Refusing to publish non-OCI download_url for ${version} — MQTT ota_update requires OCI presigned PAR`
       );
     }
   }
@@ -877,12 +877,7 @@ export class OtaService {
   private async buildOffer(release: IFirmwareRelease): Promise<OtaUpdateOffer | null> {
     try {
       const expiresAt = new Date(Date.now() + this.otaConfig.presignedUrlTtlSec * 1000);
-      const downloadUrl = await buildOtaDownloadUrl(
-        release,
-        this.otaConfig,
-        this.storage,
-        this.publicBaseUrl
-      );
+      const downloadUrl = await buildOtaMqttDownloadUrl(release, this.otaConfig, this.storage);
 
       return {
         version: release.version,

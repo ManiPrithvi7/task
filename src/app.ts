@@ -1688,12 +1688,18 @@ export class StatsMqttLite {
     this.otaEventHandler = new OtaEventHandler(this.otaService, this.otaCommandPublisher);
 
     logger.info('✅ OTA services initialized', {
-      downloadMode: this.config.ota.downloadMode,
+      mqttDownloadMode: 'presigned',
+      httpDownloadMode: this.config.ota.downloadMode,
       publicBaseUrl: this.otaPublicBaseUrl,
       bucket: this.config.ota.oci.bucket,
       namespace: this.config.ota.oci.namespace,
       delivery: 'server-driven'
     });
+    if (this.config.ota.downloadMode === 'proxy') {
+      logger.warn(
+        '[OTA] OTA_DOWNLOAD_MODE=proxy enables GET /api/v1/ota/download only — requires mTLS-capable HTTP edge (not Railway public URL). MQTT always uses OCI presigned PAR.'
+      );
+    }
   }
 
   private async initializeWebSocketServer(): Promise<void> {

@@ -5,13 +5,13 @@ import {
 } from '@/config/otaDefaults';
 
 describe('otaDefaults', () => {
-  it('defaults download mode to proxy', () => {
-    expect(resolveOtaDownloadMode(undefined)).toBe('proxy');
-    expect(resolveOtaDownloadMode('')).toBe('proxy');
+  it('defaults download mode to presigned', () => {
+    expect(resolveOtaDownloadMode(undefined)).toBe('presigned');
+    expect(resolveOtaDownloadMode('')).toBe('presigned');
   });
 
-  it('allows presigned override', () => {
-    expect(resolveOtaDownloadMode('presigned')).toBe('presigned');
+  it('allows proxy override for local mTLS HTTP route', () => {
+    expect(resolveOtaDownloadMode('proxy')).toBe('proxy');
   });
 
   it('resolves public base URL from PUBLIC_APP_URL', () => {

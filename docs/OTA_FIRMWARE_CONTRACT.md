@@ -79,11 +79,11 @@ Offline devices catch up when they publish `/active` with `appVersion` — the s
 | `STORAGE_BAD_REQUEST` | 400 | Invalid key or PAR request |
 | `STORAGE_ERROR` | 500 | Unknown storage error |
 
-## Device HTTP — `GET /api/v1/ota/download/:version` (proxy mode)
+## Device HTTP — `GET /api/v1/ota/download/:version` (proxy mode, optional)
 
-When `OTA_DOWNLOAD_MODE=proxy`, `download_url` points here. Response includes header `X-Firmware-Version: {version}`.
+When `OTA_DOWNLOAD_MODE=proxy`, this HTTP route streams firmware from OCI (requires device mTLS reaching the Node app). Response includes header `X-Firmware-Version: {version}`.
 
-Default mode (`presigned`) returns a direct OCI PAR URL; object metadata must include `opc-meta-firmware-version`.
+**MQTT `ota_update` always carries a direct OCI presigned PAR URL** in `download_url` (works on Railway and all production edges). Object metadata must include `opc-meta-firmware-version`.
 
 ## Device HTTP — `POST /api/v1/ota/report` (optional fallback)
 
@@ -101,7 +101,7 @@ Topics: `{MQTT_TOPIC_ROOT}/{deviceId}/cmd`
 {
   "cmd": "ota_update",
   "version": "4.3.1",
-  "download_url": "https://...",
+  "download_url": "https://{namespace}.objectstorage.{region}.oci.customer-oci.com/p/.../firmware.bin",
   "sha256": "...",
   "signature": "...",
   "size_bytes": 1234567,

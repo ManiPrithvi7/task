@@ -36,7 +36,7 @@ jest.mock('@/models/FirmwareRelease', () => ({
 
 import { Device } from '@/models/Device';
 import { FirmwareRelease } from '@/models/FirmwareRelease';
-import { OtaService } from '@/services/otaService';
+import { OtaCommandPublisher, OtaService } from '@/services/otaService';
 
 const mockStorage = {
   createPresignedGetUrl: jest.fn().mockResolvedValue('https://objectstorage.ap-hyderabad-1.oraclecloud.com/p/par/firmware.bin')
@@ -134,5 +134,54 @@ describe('OtaService.recordRollbackFailure', () => {
     expect(result.blocked).toBe(true);
     expect(result.failures).toBe(3);
     expect(save).toHaveBeenCalled();
+  });
+});
+
+describe('OtaCommandPublisher', () => {
+  const ociUrl =
+    'https://ns.objectstorage.ap-hyderabad-1.oci.customer-oci.com/p/read/firmware.bin';
+  const proxyUrl = 'https://server.withproof.io/api/v1/ota/download/4.3.1-mvp';
+
+  const baseOffer = {
+    version: '4.3.1-mvp',
+    sha256: 'a'.repeat(64),
+    signature: 'sig',
+    sizeBytes: 1000,
+    expiresAt: new Date().toISOString()
+  };
+
+  function makePublisher(downloadMode: 'presigned' | 'proxy' = 'proxy') {
+    return new OtaCommandPublisher(
+      { publish: jest.fn().mockResolvedValue(undefined) } as never,
+      'proof.mqtt',
+      'proof.mqtt/broadcast/cmd',
+      undefined,
+      { ...otaConfig, downloadMode }
+    );
+  }
+
+  it('accepts OCI presigned download_url for MQTT publish', async () => {
+    const publisher = makePublisher();
+    await expect(
+      publisher.publishUpdateToDevice('DEVICE-17', { ...baseOffer, downloadUrl: ociUrl }, false)
+    ).resolves.toBeUndefined();
+  });
+
+  it('rejects proxy download_url for MQTT publish', async () => {
+    const publisher = makePublisher('proxy');
+    await expect(
+      publisher.publishUpdateToDevice('DEVICE-17', { ...baseOffer, downloadUrl: proxyUrl }, false)
+    ).rejects.toThrow(/Refusing to publish non-OCI download_url/);
+  });
+
+  it('rejects LAN download_url for MQTT publish', async () => {
+    const publisher = makePublisher();
+    await expect(
+      publisher.publishUpdateToDevice(
+        'DEVICE-17',
+        { ...baseOffer, downloadUrl: 'http://192.168.29.95:8765/firmware.bin' },
+        false
+      )
+    ).rejects.toThrow(/Refusing to publish LAN/);
   });
 });

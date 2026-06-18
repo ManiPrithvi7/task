@@ -18,9 +18,13 @@ export const OTA_ROLLBACK_FAILURE_THRESHOLD = 3;
 
 export type OtaDownloadMode = 'presigned' | 'proxy';
 
-/** Default: proxy (your-domain /api/v1/ota/download/:version). Set OTA_DOWNLOAD_MODE=presigned for direct OCI PAR. */
+/**
+ * HTTP download route mode only — MQTT ota_update always carries OCI presigned PAR.
+ * Default: presigned (production / Railway).
+ * proxy: enable GET /api/v1/ota/download/:version (requires mTLS-capable HTTP edge).
+ */
 export function resolveOtaDownloadMode(envValue?: string): OtaDownloadMode {
-  return envValue?.trim() === 'presigned' ? 'presigned' : 'proxy';
+  return envValue?.trim() === 'proxy' ? 'proxy' : 'presigned';
 }
 
 /** Public base URL for OTA proxy download links (never LAN / request host). */

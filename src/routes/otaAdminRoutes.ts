@@ -20,7 +20,7 @@ import {
 } from '../services/otaService';
 import { isOtaSigningConfirmed, setOtaSigningConfirmed } from '../services/otaService';
 import { getReleaseObjectKey } from '../utils/firmwareReleaseKey';
-import { buildOtaDownloadUrl } from '../utils/otaDownloadUrl';
+import { buildOtaMqttDownloadUrl } from '../utils/otaDownloadUrl';
 import type { OtaCommandPublisher } from '../services/otaService';
 import type { OtaService } from '../services/otaService';
 import { AuditEventType, getAuditService } from '../services/auditService';
@@ -68,7 +68,7 @@ async function requireAdminAuth(
 
 export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
   const router = Router();
-  const { otaConfig, authService, storage, otaService, commandPublisher, publicBaseUrl } = deps;
+  const { otaConfig, authService, storage, otaService, commandPublisher } = deps;
 
   router.post('/releases/init', async (req: Request, res: Response) => {
     const auth = await requireAdminAuth(req, res, authService);
@@ -400,12 +400,7 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
 
     try {
       const buildPushOffer = async () => {
-        const downloadUrl = await buildOtaDownloadUrl(
-          release,
-          otaConfig,
-          storage,
-          publicBaseUrl
-        );
+        const downloadUrl = await buildOtaMqttDownloadUrl(release, otaConfig, storage);
         const expiresAt = new Date(Date.now() + otaConfig.presignedUrlTtlSec * 1000);
         return {
           version: release.version,

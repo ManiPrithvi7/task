@@ -31,6 +31,25 @@ export function isLocalLanDownloadUrl(url: string): boolean {
   }
 }
 
+/** OCI presigned PAR for MQTT / offer — always used for device-facing delivery. */
+export async function buildOtaMqttDownloadUrl(
+  release: Pick<IFirmwareRelease, 'version' | 'objectKey' | 's3Key'>,
+  otaConfig: OtaConfig,
+  storage: IFirmwareStorage
+): Promise<string> {
+  const url = await storage.createPresignedGetUrl(getReleaseObjectKey(release), release.version);
+  if (!isOciFirmwareDownloadUrl(url)) {
+    throw new Error(
+      `OCI presigned URL generation failed — got non-OCI host (check OCI credentials and bucket ${otaConfig.oci.bucket})`
+    );
+  }
+  return url;
+}
+
+/**
+ * HTTP proxy download URL for GET /api/v1/ota/download/:version (local mTLS labs only).
+ * MQTT payloads always use {@link buildOtaMqttDownloadUrl}.
+ */
 export async function buildOtaDownloadUrl(
   release: Pick<IFirmwareRelease, 'version' | 'objectKey' | 's3Key'>,
   otaConfig: OtaConfig,
@@ -42,11 +61,5 @@ export async function buildOtaDownloadUrl(
     return `${base}/api/v1/ota/download/${encodeURIComponent(release.version)}`;
   }
 
-  const url = await storage.createPresignedGetUrl(getReleaseObjectKey(release), release.version);
-  if (!isOciFirmwareDownloadUrl(url)) {
-    throw new Error(
-      `OCI presigned URL generation failed — got non-OCI host (check OCI credentials and bucket ${otaConfig.oci.bucket})`
-    );
-  }
-  return url;
+  return buildOtaMqttDownloadUrl(release, otaConfig, storage);
 }

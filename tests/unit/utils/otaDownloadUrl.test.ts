@@ -1,5 +1,6 @@
 import {
   buildOtaDownloadUrl,
+  buildOtaMqttDownloadUrl,
   isLocalLanDownloadUrl,
   isOciFirmwareDownloadUrl
 } from '@/utils/otaDownloadUrl';
@@ -20,6 +21,13 @@ const otaConfig = {
   rollbackFailureThreshold: 3
 };
 
+const proxyOtaConfig = { ...otaConfig, downloadMode: 'proxy' as const };
+
+const release = {
+  version: '4.3.1-mvp',
+  objectKey: 'firmware/4.3.1-mvp/firmware.bin'
+};
+
 describe('otaDownloadUrl', () => {
   it('detects OCI PAR URLs', () => {
     expect(
@@ -33,6 +41,36 @@ describe('otaDownloadUrl', () => {
     expect(isLocalLanDownloadUrl('http://192.168.29.95:8765/firmware-4.3.1-mvp.bin')).toBe(true);
   });
 
+  it('buildOtaMqttDownloadUrl always returns OCI presigned URL', async () => {
+    const storage = {
+      createPresignedGetUrl: jest
+        .fn()
+        .mockResolvedValue(
+          'https://ns.objectstorage.ap-hyderabad-1.oci.customer-oci.com/p/read/firmware.bin'
+        )
+    };
+
+    const url = await buildOtaMqttDownloadUrl(release, proxyOtaConfig, storage as never);
+
+    expect(url).toContain('objectstorage');
+    expect(storage.createPresignedGetUrl).toHaveBeenCalledWith(
+      'firmware/4.3.1-mvp/firmware.bin',
+      '4.3.1-mvp'
+    );
+  });
+
+  it('buildOtaMqttDownloadUrl rejects non-OCI URL from storage', async () => {
+    const storage = {
+      createPresignedGetUrl: jest
+        .fn()
+        .mockResolvedValue('http://192.168.29.95:8765/firmware-target.bin')
+    };
+
+    await expect(
+      buildOtaMqttDownloadUrl(release, otaConfig, storage as never)
+    ).rejects.toThrow(/OCI presigned URL generation failed/);
+  });
+
   it('buildOtaDownloadUrl uses OCI presigned URL in presigned mode', async () => {
     const storage = {
       createPresignedGetUrl: jest
@@ -43,7 +81,7 @@ describe('otaDownloadUrl', () => {
     };
 
     const url = await buildOtaDownloadUrl(
-      { version: '4.3.1-mvp', objectKey: 'firmware/4.3.1-mvp/firmware.bin' },
+      release,
       otaConfig,
       storage as never,
       'http://localhost:3002'
@@ -56,20 +94,19 @@ describe('otaDownloadUrl', () => {
     );
   });
 
-  it('rejects non-OCI URL from storage in presigned mode', async () => {
+  it('buildOtaDownloadUrl uses proxy URL in proxy mode', async () => {
     const storage = {
-      createPresignedGetUrl: jest
-        .fn()
-        .mockResolvedValue('http://192.168.29.95:8765/firmware-target.bin')
+      createPresignedGetUrl: jest.fn()
     };
 
-    await expect(
-      buildOtaDownloadUrl(
-        { version: '4.3.1-mvp', objectKey: 'firmware/4.3.1-mvp/firmware.bin' },
-        otaConfig,
-        storage as never,
-        'http://localhost:3002'
-      )
-    ).rejects.toThrow(/OCI presigned URL generation failed/);
+    const url = await buildOtaDownloadUrl(
+      release,
+      proxyOtaConfig,
+      storage as never,
+      'https://server.withproof.io'
+    );
+
+    expect(url).toBe('https://server.withproof.io/api/v1/ota/download/4.3.1-mvp');
+    expect(storage.createPresignedGetUrl).not.toHaveBeenCalled();
   });
 });
