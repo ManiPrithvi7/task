@@ -10,7 +10,7 @@ import {
 } from './webhookConfig';
 import { normalizeTlsPem, resolveMqttTlsServername } from '../utils/mqttTlsOptions';
 import { configureLogger } from '../utils/logger';
-import { envBool, envInt, envString } from './envHelpers';
+import { envBool, envInt, envString, resolveMqttClientId } from './envHelpers';
 import {
   OTA_CHECK_RATE_LIMIT_SEC,
   OTA_OCI_BUCKET,
@@ -18,7 +18,9 @@ import {
   OTA_OCI_REGION,
   OTA_PRESIGNED_TTL_SEC,
   OTA_ROLLBACK_FAILURE_THRESHOLD,
-  otaOciParBaseUrl
+  otaOciParBaseUrl,
+  resolveOtaDownloadMode,
+  type OtaDownloadMode
 } from './otaDefaults';
 
 export type { WebhookConfig };
@@ -406,7 +408,7 @@ export interface InfluxDBConfig {
   diskQueueMaxLinesPerFile: number;
 }
 
-export type OtaDownloadMode = 'presigned' | 'proxy';
+export type { OtaDownloadMode };
 
 export interface OtaOciCredentials {
   tenancyId: string;
@@ -661,7 +663,7 @@ export function loadConfig(): AppConfig {
     mqtt: {
       broker: process.env.MQTT_BROKER || 'broker.withproof.io',
       port: parseInt(process.env.MQTT_PORT || '8883', 10),
-      clientId: process.env.MQTT_CLIENT_ID || 'proof-server',
+      clientId: resolveMqttClientId(),
       authX509Only,
       username: hasMqttUserPass ? mqttUsername : undefined,
       password: hasMqttUserPass ? mqttPassword : undefined,
@@ -797,8 +799,7 @@ export function loadConfig(): AppConfig {
         process.env.OTA_SIGNING_CONFIRMED === 'true' || process.env.OTA_SIGNING_CONFIRMED === '1',
       broadcastTopic:
         process.env.OTA_BROADCAST_TOPIC?.trim() || `${topicRoot}/broadcast/cmd`,
-      downloadMode:
-        process.env.OTA_DOWNLOAD_MODE === 'proxy' ? 'proxy' : 'presigned',
+      downloadMode: resolveOtaDownloadMode(process.env.OTA_DOWNLOAD_MODE),
       checkRateLimitSec: envInt('OTA_CHECK_RATE_LIMIT_SEC', OTA_CHECK_RATE_LIMIT_SEC),
       rollbackFailureThreshold: envInt(
         'OTA_ROLLBACK_FAILURE_THRESHOLD',

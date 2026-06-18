@@ -4,6 +4,7 @@
 
 import { Router, Request, Response } from 'express';
 import type { OtaConfig } from '../config';
+import { buildOtaProxyDownloadUrl } from '../config/otaDefaults';
 import { AuthService } from '../services/authService';
 import {
   FirmwareRelease,
@@ -31,6 +32,20 @@ export interface OtaAdminRoutesDeps {
   storage: IFirmwareStorage;
   otaService: OtaService;
   commandPublisher: OtaCommandPublisher;
+  publicBaseUrl: string;
+}
+
+async function resolvePushDownloadUrl(
+  otaConfig: OtaConfig,
+  publicBaseUrl: string,
+  storage: IFirmwareStorage,
+  release: { version: string; objectKey?: string },
+  version: string
+): Promise<string> {
+  if (otaConfig.downloadMode === 'proxy') {
+    return buildOtaProxyDownloadUrl(publicBaseUrl, version);
+  }
+  return storage.createPresignedGetUrl(getReleaseObjectKey(release), release.version);
 }
 
 async function requireAdminAuth(
@@ -66,7 +81,7 @@ async function requireAdminAuth(
 
 export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
   const router = Router();
-  const { otaConfig, authService, storage, otaService, commandPublisher } = deps;
+  const { otaConfig, authService, storage, otaService, commandPublisher, publicBaseUrl } = deps;
 
   router.post('/releases/init', async (req: Request, res: Response) => {
     const auth = await requireAdminAuth(req, res, authService);
@@ -398,10 +413,13 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
 
     try {
       if (target === 'broadcast') {
-        const downloadUrl =
-          otaConfig.downloadMode === 'proxy'
-            ? `${req.protocol}://${req.get('host')}/api/v1/ota/download/${encodeURIComponent(version)}`
-            : await storage.createPresignedGetUrl(getReleaseObjectKey(release), release.version);
+        const downloadUrl = await resolvePushDownloadUrl(
+          otaConfig,
+          publicBaseUrl,
+          storage,
+          release,
+          version
+        );
         const expiresAt = new Date(Date.now() + otaConfig.presignedUrlTtlSec * 1000);
         await commandPublisher.publishBroadcastUpdate(
           {
@@ -435,10 +453,13 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
           if (offer && offer.version === version) {
             await commandPublisher.publishUpdateToDevice(deviceId, offer, force);
           } else {
-            const downloadUrl =
-              otaConfig.downloadMode === 'proxy'
-                ? `${req.protocol}://${req.get('host')}/api/v1/ota/download/${encodeURIComponent(version)}`
-                : await storage.createPresignedGetUrl(getReleaseObjectKey(release), release.version);
+            const downloadUrl = await resolvePushDownloadUrl(
+              otaConfig,
+              publicBaseUrl,
+              storage,
+              release,
+              version
+            );
             const expiresAt = new Date(Date.now() + otaConfig.presignedUrlTtlSec * 1000);
             await commandPublisher.publishUpdateToDevice(
               deviceId,

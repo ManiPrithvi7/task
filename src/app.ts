@@ -51,11 +51,14 @@ import { createOtaRoutes } from './routes/otaRoutes';
 import { createOtaAdminRoutes } from './routes/otaAdminRoutes';
 import { createWebhookRoutes, type OtaReleaseWebhookDeps } from './routes/webhookRoutes';
 import { createFirmwareStorageService } from './services/firmwareStorageService';
-import { initOtaSigningState, isOtaSigningConfirmed, setOtaSigningConfirmed, getRuntimeSigningConfirmed } from './services/otaService';
-import { OtaService } from './services/otaService';
-import { OtaCommandPublisher } from './services/otaService';
-import { OtaEventHandler } from './services/otaService';
-import { OtaRedisState } from './services/otaService';
+import { resolveOtaPublicBaseUrl } from './config/otaDefaults';
+import {
+  initOtaSigningState,
+  OtaService,
+  OtaCommandPublisher,
+  OtaEventHandler,
+  OtaRedisState
+} from './services/otaService';
 import { createRecoverySessionService } from './services/recoverySessionService';
 import { getTokenStore } from './storage/tokenStore';
 import * as dns from 'dns';
@@ -113,6 +116,7 @@ export class StatsMqttLite {
 
   // OTA services
   private firmwareStorageService?: ReturnType<typeof createFirmwareStorageService>;
+  private otaPublicBaseUrl?: string;
   private otaService?: OtaService;
   private otaCommandPublisher?: OtaCommandPublisher;
   private otaEventHandler?: OtaEventHandler;
@@ -1595,9 +1599,7 @@ export class StatsMqttLite {
         this.otaCommandPublisher &&
         this.otaEventHandler
       ) {
-        const publicBaseUrl =
-          process.env.OTA_PUBLIC_BASE_URL?.trim() ||
-          `http://${this.config.http.host === '0.0.0.0' ? 'localhost' : this.config.http.host}:${this.config.http.port}`;
+        const publicBaseUrl = this.otaPublicBaseUrl!;
 
         const otaRoutes = createOtaRoutes({
           otaConfig: this.config.ota,
@@ -1620,7 +1622,8 @@ export class StatsMqttLite {
             authService: adminAuth,
             storage: this.firmwareStorageService,
             otaService: this.otaService,
-            commandPublisher: this.otaCommandPublisher
+            commandPublisher: this.otaCommandPublisher,
+            publicBaseUrl
           });
           this.httpServer.getApp().use('/api/v1/admin/ota', otaAdminRoutes);
           logger.info('✅ OTA admin routes registered at /api/v1/admin/ota/*');
@@ -1649,9 +1652,12 @@ export class StatsMqttLite {
           error: err instanceof Error ? err.message : String(err)
         });
       });
-    const publicBaseUrl =
-      process.env.OTA_PUBLIC_BASE_URL?.trim() ||
-      `http://${this.config.http.host === '0.0.0.0' ? 'localhost' : this.config.http.host}:${this.config.http.port}`;
+    this.otaPublicBaseUrl = resolveOtaPublicBaseUrl({
+      otaPublicBaseUrl: process.env.OTA_PUBLIC_BASE_URL,
+      publicAppUrl: process.env.PUBLIC_APP_URL,
+      httpHost: this.config.http.host,
+      httpPort: this.config.http.port
+    });
 
     this.otaRedisState = new OtaRedisState(
       () => this.getRedisClientOrNull(),
@@ -1666,7 +1672,7 @@ export class StatsMqttLite {
     this.otaService = new OtaService(
       this.config.ota,
       this.firmwareStorageService,
-      publicBaseUrl,
+      this.otaPublicBaseUrl,
       this.otaCommandPublisher,
       this.otaRedisState
     );
@@ -1674,6 +1680,7 @@ export class StatsMqttLite {
 
     logger.info('✅ OTA services initialized', {
       downloadMode: this.config.ota.downloadMode,
+      publicBaseUrl: this.otaPublicBaseUrl,
       bucket: this.config.ota.oci.bucket,
       namespace: this.config.ota.oci.namespace,
       delivery: 'server-driven'

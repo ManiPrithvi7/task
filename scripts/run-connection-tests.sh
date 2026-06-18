@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
-# Run integration connection tests with cleanup before/after.
+# Run integration connection tests with graceful interrupt handling.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-bash "$ROOT/scripts/stop-dev-services.sh"
-trap 'bash "$ROOT/scripts/stop-dev-services.sh"' EXIT INT TERM
+on_interrupt() {
+  echo "[test:connections] interrupted — exiting"
+  exit 130
+}
 
-exec npx ts-node --transpile-only tests/integration/connections.ts "$@"
+trap on_interrupt INT TERM
+
+npx ts-node --transpile-only tests/integration/connections.ts "$@"
+exit $?

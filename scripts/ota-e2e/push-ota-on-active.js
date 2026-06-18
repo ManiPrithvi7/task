@@ -1,11 +1,15 @@
 #!/usr/bin/env node
 /**
- * Publish ota_update when the device publishes /active (device is subscribed).
+ * Push OTA via proofmqtt server when the device publishes /active.
+ * Server builds download_url from OCI Object Storage (presigned PAR by default).
  *
  * Usage:
- *   node scripts/ota-e2e/push-ota-on-active.js <LAN_IP> [DEVICE_ID]
+ *   AUTH_TOKEN=<jwt> node scripts/ota-e2e/push-ota-on-active.js [DEVICE_ID]
  *
- * Requires proofmqtt/.env with MQTT broker mTLS vars (same creds as server).
+ * Env (from proofmqtt/.env when unset):
+ *   OTA_API_BASE | PUBLIC_APP_URL — server base URL
+ *   OTA_FIRMWARE_VERSION — override release version
+ *   OTA_PUSH_FORCE=1 — force push even if device reports same version
  */
 const fs = require('fs');
 const path = require('path');
@@ -20,14 +24,16 @@ if (!process.env.OTA_E2E_DEVICE_CERT_DIR && fs.existsSync(path.join(defaultDevic
   process.env.OTA_E2E_DEVICE_CERT_DIR = defaultDeviceCertDir;
 }
 
-for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
-  const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
-  if (!m) continue;
-  let v = m[2].trim();
-  if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
-    v = v.slice(1, -1);
+if (fs.existsSync(envPath)) {
+  for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
+    const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
+    if (!m) continue;
+    let v = m[2].trim();
+    if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+      v = v.slice(1, -1);
+    }
+    if (!process.env[m[1]]) process.env[m[1]] = v;
   }
-  if (!process.env[m[1]]) process.env[m[1]] = v;
 }
 
 function b64(v) {
@@ -61,74 +67,107 @@ function resolveTlsMaterial() {
   };
 }
 
-if (!fs.existsSync(manifestPath)) {
-  console.error('Missing manifest.json — run sign-firmware.sh first');
+function resolveVersion() {
+  if (process.env.OTA_FIRMWARE_VERSION?.trim()) {
+    return process.env.OTA_FIRMWARE_VERSION.trim();
+  }
+  if (fs.existsSync(manifestPath)) {
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    if (manifest.version) return manifest.version;
+  }
+  return '';
+}
+
+const deviceId = process.argv[2] || process.env.OTA_DEVICE_ID || 'DEVICE-17';
+const version = resolveVersion();
+const token = process.env.AUTH_TOKEN?.trim();
+const apiBase = (
+  process.env.OTA_API_BASE?.trim() ||
+  process.env.PUBLIC_APP_URL?.trim() ||
+  'http://localhost:3002'
+).replace(/\/$/, '');
+const force = process.env.OTA_PUSH_FORCE === '1' || process.env.OTA_PUSH_FORCE === 'true';
+
+if (!token) {
+  console.error('AUTH_TOKEN is required (JWT for /api/v1/admin/ota/push).');
+  console.error('Example:');
+  console.error(
+    `  AUTH_TOKEN=<jwt> node scripts/ota-e2e/push-ota-on-active.js ${deviceId}`
+  );
   process.exit(1);
 }
 
-const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-const lanIp = process.argv[2];
-const deviceId = process.argv[3] || 'DEVICE-17';
-
-if (!lanIp) {
-  console.error('Usage: node scripts/ota-e2e/push-ota-on-active.js <LAN_IP> [DEVICE_ID]');
-  console.error('Example: node scripts/ota-e2e/push-ota-on-active.js 10.151.216.236 DEVICE-19');
-  process.exit(1);
-}
-if (lanIp.includes('<') || lanIp.includes('>') || !/^\d{1,3}(\.\d{1,3}){3}$/.test(lanIp)) {
-  console.error(`Invalid LAN_IP: "${lanIp}" — use a real IPv4 address (e.g. from: ip -4 addr show)`);
+if (!version) {
+  console.error('Set OTA_FIRMWARE_VERSION or create scripts/ota-e2e/artifacts/manifest.json (run sign-firmware.sh).');
   process.exit(1);
 }
 
 const topicRoot = process.env.MQTT_TOPIC_ROOT || 'proof.mqtt';
-const cmdTopic = `${topicRoot}/${deviceId}/cmd`;
 const activeTopic = `${topicRoot}/${deviceId}/active`;
 const statusTopic = `${topicRoot}/${deviceId}/status`;
-const firmwareFile = process.env.OTA_FIRMWARE_FILE || 'firmware-target.bin';
-const port = process.env.OTA_FIRMWARE_PORT || '8765';
 
-const payload = JSON.stringify({
-  cmd: 'ota_update',
-  version: manifest.version,
-  download_url: `http://${lanIp}:${port}/${firmwareFile}`,
-  sha256: manifest.sha256,
-  signature: manifest.signature,
-  size_bytes: manifest.size_bytes,
-  force: true,
-  issued_at: new Date().toISOString(),
-});
+let pushCount = 0;
+let pushInFlight = false;
+
+async function pushViaServer(reason) {
+  if (pushCount >= 5 || pushInFlight) return;
+  pushInFlight = true;
+  pushCount++;
+
+  try {
+    const res = await fetch(`${apiBase}/api/v1/admin/ota/push`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        version,
+        target: 'device',
+        deviceIds: [deviceId],
+        force,
+      }),
+    });
+    const body = await res.json();
+    console.log(
+      `${reason}: server push #${pushCount} → ${deviceId} @ ${version}`,
+      res.ok ? 'OK' : `HTTP ${res.status}`,
+      JSON.stringify(body)
+    );
+    if (!res.ok) {
+      console.error('Server push failed — device will not receive OCI download_url until this succeeds.');
+    } else {
+      console.log(`Device should receive download_url on ${process.env.PUBLIC_APP_URL || process.env.OTA_PUBLIC_BASE_URL || 'your configured domain'}/api/v1/ota/download/...`);
+    }
+  } catch (err) {
+    console.error(`${reason}: server push error`, err instanceof Error ? err.message : String(err));
+  } finally {
+    pushInFlight = false;
+  }
+}
 
 const url = `mqtts://${process.env.MQTT_BROKER || 'broker.withproof.io'}:${process.env.MQTT_PORT || 8883}`;
-let published = 0;
-
 const tlsOpts = resolveTlsMaterial();
 
+console.log(`Watching ${activeTopic} — push OTA ${version} via ${apiBase} on /active`);
+
 const client = mqtt.connect(url, {
-  // Must differ from device client_id (DEVICE-19) or broker kicks the ESP32 offline.
-  clientId: process.env.OTA_E2E_MQTT_CLIENT_ID || `ota-e2e-pusher-${Date.now()}`,
+  clientId: process.env.OTA_E2E_MQTT_CLIENT_ID || `ota-push-on-active-${Date.now()}`,
   reconnectPeriod: 2000,
   ...tlsOpts,
 });
 
-function publishOta(reason) {
-  if (published >= 5) return;
-  published++;
-  client.publish(cmdTopic, payload, { qos: 1, retain: false }, (err) => {
-    console.log(`${reason}: publish #${published} → ${cmdTopic}`, err || 'OK');
-  });
-}
-
 client.on('connect', () => {
-  console.log('MQTT connected, watching', activeTopic);
+  console.log('MQTT connected');
   client.subscribe([activeTopic, statusTopic], { qos: 1 });
-  publishOta('on-connect');
+  void pushViaServer('on-connect');
 });
 
 client.on('message', (topic, msg) => {
   const s = msg.toString();
   if (topic.endsWith('/active')) {
     console.log('saw active on', topic);
-    publishOta('after-active');
+    void pushViaServer('after-active');
   }
   if (topic.endsWith('/status') && s.includes('ota')) {
     console.log('OTA STATUS', s);

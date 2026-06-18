@@ -1,5 +1,13 @@
 # ESP32 OTA End-to-End Manual Test Guide
 
+> **Important:** This guide’s **LAN E2E path** (`scripts/ota-e2e/`, port `:8765`) is for **local lab testing only**.
+> It publishes `download_url` like `http://192.168.x.x:8765/...` — devices on other networks cannot reach that.
+>
+> **For ESP32 testing with real firmware delivery**, use the **Production OCI flow** (bottom of this doc) and:
+> `AUTH_TOKEN=<jwt> npx ts-node scripts/ota/push-update.ts --device DEVICE-17 --version 4.3.1-mvp`
+>
+> LAN E2E scripts require `OTA_E2E_ALLOW=1` to run (accidental production use is blocked).
+
 Step-by-step guide to manually test the full OTA flow: **MQTT push → HTTP download → SHA-256 + Ed25519 verify → flash → reboot → pending-verify → `ota_success`**.
 
 This test uses:
@@ -269,7 +277,7 @@ sg dialout -c "bash -lc 'source .../export.sh && cd ~/Desktop/mqttclient && idf.
 ```bash
 cd ~/Desktop/proofmqtt
 LAN_IP=10.151.216.236   # REPLACE with your real IP from Step 5
-MQTT_BROKER=broker.withproof.io MQTT_PORT=8883 \
+MQTT_BROKER=broker.withproof.io MQTT_PORT=8883 OTA_E2E_ALLOW=1 \
   NODE_PATH="$(pwd)/node_modules" \
   node scripts/ota-e2e/push-ota-on-active.js "$LAN_IP" DEVICE-19
 ```
@@ -277,7 +285,7 @@ MQTT_BROKER=broker.withproof.io MQTT_PORT=8883 \
 Or use the helper script:
 
 ```bash
-LAN_IP=10.151.216.236 MQTT_BROKER=broker.withproof.io MQTT_PORT=8883 \
+LAN_IP=10.151.216.236 MQTT_BROKER=broker.withproof.io MQTT_PORT=8883 OTA_E2E_ALLOW=1 \
   bash scripts/ota-e2e/run-e2e.sh DEVICE-19
 ```
 
@@ -392,7 +400,7 @@ python3 scripts/ota-e2e/firmware_server.py
 # Terminal 3 — MQTT push (after device MQTT connected)
 cd ~/Desktop/proofmqtt
 LAN_IP=$(ip -4 -o addr show scope global | awk '!/docker|br-/ {print $4}' | cut -d/ -f1 | head -1)
-MQTT_BROKER=broker.withproof.io MQTT_PORT=8883 \
+MQTT_BROKER=broker.withproof.io MQTT_PORT=8883 OTA_E2E_ALLOW=1 \
   bash scripts/ota-e2e/run-e2e.sh DEVICE-19
 ```
 
@@ -431,8 +439,8 @@ export OTA_FIRMWARE_VERSION=4.3.1-mvp
 | `scripts/ota-e2e/generate-keys.sh` | Create Ed25519 keypair |
 | `scripts/ota-e2e/sign-firmware.sh` | SHA-256 + sign → `manifest.json` (Node fallback) |
 | `scripts/ota-e2e/firmware_server.py` | LAN HTTP server with `X-Firmware-Version` |
-| `scripts/ota-e2e/push-ota-on-active.js` | MQTT publish synced to `/active` (device certs) |
-| `scripts/ota-e2e/run-e2e.sh` | Start HTTP server + push (validates `LAN_IP`) |
+| `scripts/ota-e2e/push-ota-on-active.js` | LAN E2E only (`OTA_E2E_ALLOW=1`); use `scripts/ota/push-update.ts` for OCI |
+| `scripts/ota-e2e/run-e2e.sh` | LAN E2E only — start HTTP server + push (validates `LAN_IP`) |
 | `scripts/ota-e2e/flash-baseline.sh` | Flash baseline with dialout check |
 | `scripts/ota-e2e/artifacts/` | `firmware-baseline.bin`, `firmware-target.bin`, `manifest.json` |
 | `scripts/ota-e2e/keys/` | `ota_private.pem`, `ota_public.pem` (gitignored) |

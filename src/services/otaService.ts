@@ -8,6 +8,7 @@ import mongoose from 'mongoose';
 import type { RedisClientType } from 'redis';
 import type { MqttClientManager } from '../servers/mqttClient';
 import type { OtaConfig } from '../config';
+import { buildOtaProxyDownloadUrl } from '../config/otaDefaults';
 import {
   Device,
   DeviceStatus,
@@ -844,7 +845,7 @@ export class OtaService {
       let downloadUrl: string;
 
       if (this.otaConfig.downloadMode === 'proxy') {
-        downloadUrl = `${this.publicBaseUrl}/api/v1/ota/download/${encodeURIComponent(release.version)}`;
+        downloadUrl = buildOtaProxyDownloadUrl(this.publicBaseUrl, release.version);
       } else {
         downloadUrl = await this.storage.createPresignedGetUrl(
           getReleaseObjectKey(release),

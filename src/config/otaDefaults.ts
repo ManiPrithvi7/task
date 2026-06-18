@@ -15,3 +15,32 @@ export function otaOciParBaseUrl(namespace = OTA_OCI_NAMESPACE, region = OTA_OCI
 export const OTA_PRESIGNED_TTL_SEC = 900;
 export const OTA_CHECK_RATE_LIMIT_SEC = 300;
 export const OTA_ROLLBACK_FAILURE_THRESHOLD = 3;
+
+export type OtaDownloadMode = 'presigned' | 'proxy';
+
+/** Default: proxy (your-domain /api/v1/ota/download/:version). Set OTA_DOWNLOAD_MODE=presigned for direct OCI PAR. */
+export function resolveOtaDownloadMode(envValue?: string): OtaDownloadMode {
+  return envValue?.trim() === 'presigned' ? 'presigned' : 'proxy';
+}
+
+/** Public base URL for OTA proxy download links (never LAN / request host). */
+export function resolveOtaPublicBaseUrl(options: {
+  otaPublicBaseUrl?: string;
+  publicAppUrl?: string;
+  httpHost?: string;
+  httpPort?: number;
+}): string {
+  const explicit = options.otaPublicBaseUrl?.trim();
+  if (explicit) return explicit.replace(/\/+$/, '');
+
+  const appUrl = options.publicAppUrl?.trim();
+  if (appUrl) return appUrl.replace(/\/+$/, '');
+
+  const host = options.httpHost === '0.0.0.0' ? 'localhost' : options.httpHost || 'localhost';
+  const port = options.httpPort ?? 3002;
+  return `http://${host}:${port}`;
+}
+
+export function buildOtaProxyDownloadUrl(publicBaseUrl: string, version: string): string {
+  return `${publicBaseUrl.replace(/\/+$/, '')}/api/v1/ota/download/${encodeURIComponent(version)}`;
+}
