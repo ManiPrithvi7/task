@@ -1228,8 +1228,16 @@ export class StatsMqttLite {
       return;
     }
 
-    const currentVersion =
+    let currentVersion =
       typeof appVersion === 'string' && appVersion.trim() ? appVersion.trim() : undefined;
+
+    if (!currentVersion || currentVersion === '1.0.0') {
+      const device = await Device.findOne({ clientId: deviceId }).select({ firmwareVersion: 1 });
+      if (device?.firmwareVersion?.trim()) {
+        currentVersion = device.firmwareVersion.trim();
+      }
+    }
+
     if (!currentVersion) {
       return;
     }
@@ -1667,7 +1675,8 @@ export class StatsMqttLite {
       this.mqttClient,
       this.config.mqtt.topicRoot,
       this.config.ota.broadcastTopic,
-      this.otaRedisState
+      this.otaRedisState,
+      this.config.ota
     );
     this.otaService = new OtaService(
       this.config.ota,

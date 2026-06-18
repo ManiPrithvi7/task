@@ -4,7 +4,6 @@
 
 import { Router, Request, Response } from 'express';
 import type { OtaConfig } from '../config';
-import { buildOtaProxyDownloadUrl } from '../config/otaDefaults';
 import { AuthService } from '../services/authService';
 import {
   FirmwareRelease,
@@ -21,6 +20,7 @@ import {
 } from '../services/otaService';
 import { isOtaSigningConfirmed, setOtaSigningConfirmed } from '../services/otaService';
 import { getReleaseObjectKey } from '../utils/firmwareReleaseKey';
+import { buildOtaDownloadUrl } from '../utils/otaDownloadUrl';
 import type { OtaCommandPublisher } from '../services/otaService';
 import type { OtaService } from '../services/otaService';
 import { AuditEventType, getAuditService } from '../services/auditService';
@@ -33,19 +33,6 @@ export interface OtaAdminRoutesDeps {
   otaService: OtaService;
   commandPublisher: OtaCommandPublisher;
   publicBaseUrl: string;
-}
-
-async function resolvePushDownloadUrl(
-  otaConfig: OtaConfig,
-  publicBaseUrl: string,
-  storage: IFirmwareStorage,
-  release: { version: string; objectKey?: string },
-  version: string
-): Promise<string> {
-  if (otaConfig.downloadMode === 'proxy') {
-    return buildOtaProxyDownloadUrl(publicBaseUrl, version);
-  }
-  return storage.createPresignedGetUrl(getReleaseObjectKey(release), release.version);
 }
 
 async function requireAdminAuth(
@@ -412,26 +399,26 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
     }
 
     try {
-      if (target === 'broadcast') {
-        const downloadUrl = await resolvePushDownloadUrl(
-          otaConfig,
-          publicBaseUrl,
-          storage,
+      const buildPushOffer = async () => {
+        const downloadUrl = await buildOtaDownloadUrl(
           release,
-          version
+          otaConfig,
+          storage,
+          publicBaseUrl
         );
         const expiresAt = new Date(Date.now() + otaConfig.presignedUrlTtlSec * 1000);
-        await commandPublisher.publishBroadcastUpdate(
-          {
-            version: release.version,
-            downloadUrl,
-            sha256: release.sha256,
-            signature: release.signature,
-            sizeBytes: release.sizeBytes,
-            expiresAt: expiresAt.toISOString()
-          },
-          force
-        );
+        return {
+          version: release.version,
+          downloadUrl,
+          sha256: release.sha256,
+          signature: release.signature,
+          sizeBytes: release.sizeBytes,
+          expiresAt: expiresAt.toISOString()
+        };
+      };
+
+      if (target === 'broadcast') {
+        await commandPublisher.publishBroadcastUpdate(await buildPushOffer(), force);
       } else {
         if (deviceIds.length === 0) {
           res.status(400).json({
@@ -446,33 +433,14 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
         for (const deviceId of deviceIds) {
           const device = await Device.findOne({ clientId: deviceId });
           const current = device?.firmwareVersion || '0.0.0';
-          const offer = await otaService.resolveUpdate({
+          const resolved = await otaService.resolveUpdate({
             deviceId,
             currentVersion: current
           });
-          if (offer && offer.version === version) {
-            await commandPublisher.publishUpdateToDevice(deviceId, offer, force);
+          if (resolved && resolved.version === version) {
+            await commandPublisher.publishUpdateToDevice(deviceId, resolved, force);
           } else {
-            const downloadUrl = await resolvePushDownloadUrl(
-              otaConfig,
-              publicBaseUrl,
-              storage,
-              release,
-              version
-            );
-            const expiresAt = new Date(Date.now() + otaConfig.presignedUrlTtlSec * 1000);
-            await commandPublisher.publishUpdateToDevice(
-              deviceId,
-              {
-                version: release.version,
-                downloadUrl,
-                sha256: release.sha256,
-                signature: release.signature,
-                sizeBytes: release.sizeBytes,
-                expiresAt: expiresAt.toISOString()
-              },
-              force
-            );
+            await commandPublisher.publishUpdateToDevice(deviceId, await buildPushOffer(), force);
           }
         }
       }
