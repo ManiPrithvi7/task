@@ -77,6 +77,18 @@ export function createWebhookRoutes(deps: WebhookRoutesDeps): Router {
       void fn(req, res, handlerDeps);
     };
 
+  /**
+   * @swagger
+   * /health/webhooks:
+   *   get:
+   *     tags: [Webhooks, Health]
+   *     summary: Webhook subsystem readiness
+   *     responses:
+   *       200:
+   *         description: Webhooks ready
+   *       503:
+   *         description: Redis, MongoDB, or MQTT not ready
+   */
   router.get('/health/webhooks', (_req, res) => {
     const redis = getRedisService();
     const redisOk = redis?.isRedisConnected() === true;
@@ -96,6 +108,33 @@ export function createWebhookRoutes(deps: WebhookRoutesDeps): Router {
     });
   });
 
+  /**
+   * @swagger
+   * /api/pos-promotions/webhooks/shopify:
+   *   post:
+   *     tags: [Webhooks]
+   *     summary: Shopify POS promotion webhook
+   *     description: |
+   *       Requires HMAC verification via X-Shopify-Hmac-Sha256 header against raw request body.
+   *       Body is parsed from raw bytes before express.json().
+   *     parameters:
+   *       - in: header
+   *         name: X-Shopify-Hmac-Sha256
+   *         required: true
+   *         schema:
+   *           type: string
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *     responses:
+   *       200:
+   *         description: Webhook accepted
+   *       401:
+   *         description: HMAC verification failed
+   */
   router.post(
     '/api/pos-promotions/webhooks/shopify',
     shopifyLimiter,
@@ -103,6 +142,32 @@ export function createWebhookRoutes(deps: WebhookRoutesDeps): Router {
     wrap(handleShopifyWebhook)
   );
 
+  /**
+   * @swagger
+   * /api/pos-promotions/webhooks/square:
+   *   post:
+   *     tags: [Webhooks]
+   *     summary: Square POS promotion webhook
+   *     description: |
+   *       Requires Square webhook signature verification against raw request body.
+   *     parameters:
+   *       - in: header
+   *         name: x-square-hmacsha256-signature
+   *         required: true
+   *         schema:
+   *           type: string
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *     responses:
+   *       200:
+   *         description: Webhook accepted
+   *       401:
+   *         description: Signature verification failed
+   */
   router.post(
     '/api/pos-promotions/webhooks/square',
     squareLimiter,
@@ -110,6 +175,31 @@ export function createWebhookRoutes(deps: WebhookRoutesDeps): Router {
     wrap(handleSquareWebhook)
   );
 
+  /**
+   * @swagger
+   * /api/webhooks/google-business-reviews:
+   *   post:
+   *     tags: [Webhooks]
+   *     summary: Google Business reviews Pub/Sub push
+   *     description: |
+   *       Google Cloud Pub/Sub push envelope. Verified via Pub/Sub JWT / subscription config.
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               message:
+   *                 type: object
+   *               subscription:
+   *                 type: string
+   *     responses:
+   *       200:
+   *         description: Push accepted
+   *       401:
+   *         description: Pub/Sub verification failed
+   */
   router.post(
     '/api/webhooks/google-business-reviews',
     gmbLimiter,

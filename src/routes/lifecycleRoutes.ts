@@ -75,10 +75,36 @@ export function createLifecycleRoutes(deps: LifecycleDeps): Router {
   const { caService, recoverySessionService } = deps;
 
   /**
-   * Flow 2.2: POST /api/v1/certificates/renewAuth
-   * Auth: mTLS (primary cert) via proxy header middleware.
-   * Body: { csr: "<pem-or-base64-pem>" }
-   * Response: { certificate, ca_certificate, expires_at, fingerprint, slot }
+   * @swagger
+   * /api/v1/certificates/renewAuth:
+   *   post:
+   *     tags: [Lifecycle]
+   *     summary: Renew certificate (staging slot)
+   *     description: Requires mTLS with active primary certificate. Signs CSR into staging slot.
+   *     security:
+   *       - MtlsClientCert: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required: [csr]
+   *             properties:
+   *               csr:
+   *                 type: string
+   *                 description: PEM or base64-encoded CSR
+   *     responses:
+   *       200:
+   *         description: Staging certificate issued
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/CertificateResponse'
+   *       401:
+   *         $ref: '#/components/responses/Unauthorized'
+   *       403:
+   *         $ref: '#/components/responses/Forbidden'
    */
   router.post(
     '/certificates/renewAuth',
@@ -132,9 +158,21 @@ export function createLifecycleRoutes(deps: LifecycleDeps): Router {
   );
 
   /**
-   * Flow 2.4: POST /api/v1/certificates/confirm
-   * Auth: mTLS (staging cert) via proxy header middleware.
-   * Effect: promote staging→primary, revoke old primary.
+   * @swagger
+   * /api/v1/certificates/confirm:
+   *   post:
+   *     tags: [Lifecycle]
+   *     summary: Promote staging certificate to primary
+   *     description: Requires mTLS with staging certificate. Revokes old primary.
+   *     security:
+   *       - MtlsClientCert: []
+   *     responses:
+   *       200:
+   *         description: Certificate promoted
+   *       401:
+   *         $ref: '#/components/responses/Unauthorized'
+   *       409:
+   *         description: No staging certificate to promote
    */
   router.post(
     '/certificates/confirm',
@@ -174,9 +212,46 @@ export function createLifecycleRoutes(deps: LifecycleDeps): Router {
   );
 
   /**
-   * POST /api/v1/certificates/reissue
-   * Body: { device_id, csr, recovery_token | token }
-   * Requires a valid recovery session (POST /api/v1/recovery/generate-session). No user JWT.
+   * @swagger
+   * /api/v1/certificates/reissue:
+   *   post:
+   *     tags: [Lifecycle]
+   *     summary: Reissue certificate after factory reset
+   *     description: |
+   *       Requires a valid recovery session from POST /api/v1/recovery/generate-session.
+   *       No user JWT — uses recovery_token instead. Rate limited per IP.
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required: [device_id, csr, recovery_token]
+   *             properties:
+   *               device_id:
+   *                 type: string
+   *               csr:
+   *                 type: string
+   *               recovery_token:
+   *                 type: string
+   *               token:
+   *                 type: string
+   *                 description: Alias for recovery_token
+   *     responses:
+   *       200:
+   *         description: Certificate reissued
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/CertificateResponse'
+   *       400:
+   *         description: Invalid CSR or recovery token
+   *       404:
+   *         $ref: '#/components/responses/NotFound'
+   *       409:
+   *         description: Device already has active certificate
+   *       429:
+   *         $ref: '#/components/responses/TooManyRequests'
    */
   router.post('/certificates/reissue', reissueLimiter, async (req: Request, res: Response) => {
     try {

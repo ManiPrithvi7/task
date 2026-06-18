@@ -11,15 +11,21 @@ export function createConfigRoutes(deps: ConfigRoutesDeps) {
   const router = Router();
 
   /**
-   * GET /v1/mqtt-config
-   * Returns broker connection info for devices to consume.
-   *
-   * Response:
-   * {
-   *   broker: string,
-   *   port: number,
-   *   ca_cert: string | null   // base64-encoded PEM or null
-   * }
+   * @swagger
+   * /api/v1/mqtt-config:
+   *   get:
+   *     tags: [Config]
+   *     summary: MQTT broker configuration
+   *     description: Returns broker host, port, and optional base64-encoded root CA for device firmware.
+   *     responses:
+   *       200:
+   *         description: Broker configuration
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/MqttConfigResponse'
+   *       500:
+   *         $ref: '#/components/responses/InternalError'
    */
   router.get('/mqtt-config', async (req, res) => {
     try {

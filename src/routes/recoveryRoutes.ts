@@ -16,15 +16,58 @@ function bearerToken(req: Request): string | null {
   return m?.[1]?.trim() || null;
 }
 
-/**
- * POST /api/v1/recovery/generate-session
- * Body: { device_id: string, token: string } — device recovery JWT from dashboard.
- * Authorization: Bearer <user session JWT>
- */
 export function createRecoveryRoutes(deps: RecoveryRoutesDeps): Router {
   const router = Router();
   const { recoverySessionService, authService } = deps;
 
+  /**
+   * @swagger
+   * /api/v1/recovery/generate-session:
+   *   post:
+   *     tags: [Recovery]
+   *     summary: Register recovery session
+   *     description: |
+   *       Also available at POST /api/recovery/generate-session (legacy alias).
+   *       Requires user JWT and device recovery token from dashboard.
+   *     security:
+   *       - BearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             $ref: '#/components/schemas/RecoveryGenerateSessionRequest'
+   *     responses:
+   *       200:
+   *         description: Recovery session registered
+   *       401:
+   *         $ref: '#/components/responses/Unauthorized'
+   *       403:
+   *         $ref: '#/components/responses/Forbidden'
+   *       404:
+   *         $ref: '#/components/responses/NotFound'
+   *       429:
+   *         $ref: '#/components/responses/TooManyRequests'
+   *       503:
+   *         $ref: '#/components/responses/ServiceUnavailable'
+   * /api/recovery/generate-session:
+   *   post:
+   *     tags: [Recovery]
+   *     summary: Register recovery session (legacy alias)
+   *     security:
+   *       - BearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             $ref: '#/components/schemas/RecoveryGenerateSessionRequest'
+   *     responses:
+   *       200:
+   *         description: Recovery session registered
+   *       401:
+   *         $ref: '#/components/responses/Unauthorized'
+   */
   router.post('/recovery/generate-session', async (req: Request, res: Response) => {
     try {
       res.type('application/json');

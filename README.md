@@ -117,6 +117,8 @@ This repo can **mark certificates revoked in MongoDB** and the Node service will
 
 ## 📡 API Endpoints
 
+Interactive OpenAPI documentation is available at **`GET /api/docs`** (raw spec at `/api/docs/openapi.json`).
+
 ### Health Check
 ```bash
 GET /health

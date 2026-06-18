@@ -13,6 +13,32 @@ export type PromotionRoutesDeps = {
 export function createPromotionRoutes(deps: PromotionRoutesDeps): Router {
   const router = Router();
 
+  /**
+   * @swagger
+   * /api/v1/promotions/invalidate-cache:
+   *   post:
+   *     tags: [Deprecated]
+   *     summary: Invalidate promotion cache (deprecated)
+   *     deprecated: true
+   *     description: Use POST /api/v1/connections/validate with event campaign.updated instead.
+   *     security:
+   *       - ApiKeyAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required: [userId]
+   *             properties:
+   *               userId:
+   *                 type: string
+   *     responses:
+   *       200:
+   *         description: Cache invalidated (deprecated response includes deprecated=true)
+   *       401:
+   *         $ref: '#/components/responses/Unauthorized'
+   */
   router.post('/promotions/invalidate-cache', async (req: Request, res: Response) => {
     logger.warn('[PROMO_INVALIDATE] Deprecated route — use POST /api/v1/connections/validate', {
       event: 'campaign.updated'

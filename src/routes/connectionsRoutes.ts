@@ -35,6 +35,30 @@ export type ConnectionsRoutesDeps = {
 export function createConnectionsRoutes(deps: ConnectionsRoutesDeps): Router {
   const router = Router();
 
+  /**
+   * @swagger
+   * /api/v1/connections/validate:
+   *   post:
+   *     tags: [Connections]
+   *     summary: Validate connection and fan out promotion updates
+   *     security:
+   *       - ApiKeyAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             $ref: '#/components/schemas/ConnectionValidateRequest'
+   *     responses:
+   *       200:
+   *         description: Event processed
+   *       400:
+   *         description: Invalid request
+   *       401:
+   *         $ref: '#/components/responses/Unauthorized'
+   *       500:
+   *         $ref: '#/components/responses/InternalError'
+   */
   router.post('/connections/validate', async (req: Request, res: Response) => {
     const expectedKey = resolveConnectionsValidateApiKey();
     const providedKey = req.headers['x-api-key'];

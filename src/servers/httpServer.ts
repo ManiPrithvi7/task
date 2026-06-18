@@ -5,6 +5,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
 import { logger } from '../utils/logger';
+import { setupSwaggerUi } from '../config/swagger';
 import { SessionService } from '../services/sessionService';
 import { DeviceService } from '../services/deviceService';
 import { MqttClientManager } from './mqttClient';
@@ -100,7 +101,23 @@ export class HttpServer {
   }
 
   private setupRoutes(): void {
-    // Health check
+    setupSwaggerUi(this.app);
+
+    /**
+     * @swagger
+     * /health:
+     *   get:
+     *     tags: [Health]
+     *     summary: Liveness probe
+     *     description: Returns service health including MQTT and storage stats when health checks are enabled.
+     *     responses:
+     *       200:
+     *         description: Service is healthy
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/HealthResponse'
+     */
     this.app.get('/health', async (req: Request, res: Response) => {
       if (this.config.healthChecksEnabled === false) {
         res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -131,7 +148,27 @@ export class HttpServer {
       res.json(health);
     });
 
-    /** Deep readiness for Instagram polling (Redis + Lua + poller; serverless URL optional). Returns 503 when not ready. */
+    /**
+     * @swagger
+     * /ready:
+     *   get:
+     *     tags: [Health]
+     *     summary: Deep readiness probe
+     *     description: Returns 503 when dependencies (Redis, poller, etc.) are not ready.
+     *     responses:
+     *       200:
+     *         description: Ready
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/ReadinessResponse'
+     *       503:
+     *         description: Not ready
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/ReadinessResponse'
+     */
     this.app.get('/ready', async (_req: Request, res: Response) => {
       try {
         const payload = this.readinessProvider
@@ -145,15 +182,27 @@ export class HttpServer {
       }
     });
 
-    // Root endpoint
+    /**
+     * @swagger
+     * /api:
+     *   get:
+     *     tags: [Health]
+     *     summary: API index
+     *     description: Lightweight JSON discovery of key endpoints. Full interactive docs at /api/docs.
+     *     responses:
+     *       200:
+     *         description: API metadata and endpoint map
+     */
     this.app.get('/api', (req: Request, res: Response) => {
       res.json({
         name: 'mqtt-publisher-lite',
         version: '1.0.0',
         description: 'Lightweight MQTT Publisher for firmware testing',
+        docs: '/api/docs',
         endpoints: {
           health: '/health',
           ready: '/ready',
+          docs: '/api/docs',
           sessions: '/api/sessions',
           devices: '/api/devices (supports ?status=active or ?status=inactive)',
           provisioning: {
@@ -176,7 +225,23 @@ export class HttpServer {
       });
     });
 
-    // Session endpoints
+    /**
+     * @swagger
+     * /api/sessions:
+     *   post:
+     *     tags: [Sessions]
+     *     summary: Create session
+     *     requestBody:
+     *       content:
+     *         application/json:
+     *           schema:
+     *             type: object
+     *     responses:
+     *       201:
+     *         description: Session created
+     *       500:
+     *         $ref: '#/components/responses/InternalError'
+     */
     this.app.post('/api/sessions', async (req: Request, res: Response) => {
       try {
         const sessionData = req.body;
@@ -188,6 +253,40 @@ export class HttpServer {
       }
     });
 
+    /**
+     * @swagger
+     * /api/sessions/{sessionId}:
+     *   get:
+     *     tags: [Sessions]
+     *     summary: Get session
+     *     parameters:
+     *       - in: path
+     *         name: sessionId
+     *         required: true
+     *         schema:
+     *           type: string
+     *     responses:
+     *       200:
+     *         description: Session found
+     *       404:
+     *         $ref: '#/components/responses/NotFound'
+     *       500:
+     *         $ref: '#/components/responses/InternalError'
+     *   delete:
+     *     tags: [Sessions]
+     *     summary: Delete session
+     *     parameters:
+     *       - in: path
+     *         name: sessionId
+     *         required: true
+     *         schema:
+     *           type: string
+     *     responses:
+     *       200:
+     *         description: Session deleted
+     *       500:
+     *         $ref: '#/components/responses/InternalError'
+     */
     this.app.get('/api/sessions/:sessionId', async (req: Request, res: Response) => {
       try {
         const session = await this.sessionService.getSession(req.params.sessionId);
@@ -210,7 +309,41 @@ export class HttpServer {
       }
     });
 
-    // Device endpoints
+    /**
+     * @swagger
+     * /api/devices:
+     *   post:
+     *     tags: [Devices]
+     *     summary: Register device
+     *     requestBody:
+     *       content:
+     *         application/json:
+     *           schema:
+     *             type: object
+     *             properties:
+     *               deviceId:
+     *                 type: string
+     *     responses:
+     *       201:
+     *         description: Device registered
+     *       500:
+     *         $ref: '#/components/responses/InternalError'
+     *   get:
+     *     tags: [Devices]
+     *     summary: List devices
+     *     parameters:
+     *       - in: query
+     *         name: status
+     *         schema:
+     *           type: string
+     *           enum: [active, inactive]
+     *         description: Filter by device status
+     *     responses:
+     *       200:
+     *         description: Device list
+     *       500:
+     *         $ref: '#/components/responses/InternalError'
+     */
     this.app.post('/api/devices', async (req: Request, res: Response) => {
       try {
         const device = {
@@ -242,6 +375,26 @@ export class HttpServer {
       }
     });
 
+    /**
+     * @swagger
+     * /api/devices/{deviceId}:
+     *   get:
+     *     tags: [Devices]
+     *     summary: Get device
+     *     parameters:
+     *       - in: path
+     *         name: deviceId
+     *         required: true
+     *         schema:
+     *           type: string
+     *     responses:
+     *       200:
+     *         description: Device found
+     *       404:
+     *         $ref: '#/components/responses/NotFound'
+     *       500:
+     *         $ref: '#/components/responses/InternalError'
+     */
     this.app.get('/api/devices/:deviceId', async (req: Request, res: Response) => {
       try {
         const device = await this.deviceService.getDevice(req.params.deviceId);
@@ -255,7 +408,21 @@ export class HttpServer {
       }
     });
 
-    // MQTT publish endpoints removed: publishing is handled only via broker mTLS connections.
+    /**
+     * @swagger
+     * /api/publish:
+     *   post:
+     *     tags: [Deprecated]
+     *     summary: HTTP-to-MQTT publish (removed)
+     *     deprecated: true
+     *     responses:
+     *       410:
+     *         description: Endpoint removed
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/GoneResponse'
+     */
     this.app.post('/api/publish', async (req: Request, res: Response) => {
       res.status(410).json({
         error: 'Endpoint removed',
@@ -264,6 +431,33 @@ export class HttpServer {
       });
     });
 
+    /**
+     * @swagger
+     * /api/test/register:
+     *   post:
+     *     tags: [Deprecated]
+     *     summary: Simulated device registration (removed)
+     *     deprecated: true
+     *     responses:
+     *       410:
+     *         description: Endpoint removed
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/GoneResponse'
+     * /api/test/unregister:
+     *   post:
+     *     tags: [Deprecated]
+     *     summary: Simulated LWT (removed)
+     *     deprecated: true
+     *     responses:
+     *       410:
+     *         description: Endpoint removed
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/GoneResponse'
+     */
     this.app.post('/api/test/register', async (_req: Request, res: Response) => {
       res.status(410).json({
         error: 'Endpoint removed',
@@ -280,6 +474,33 @@ export class HttpServer {
       });
     });
 
+    /**
+     * @swagger
+     * /api/test/set-device-status:
+     *   post:
+     *     tags: [Devices]
+     *     summary: Set device status (test helper)
+     *     requestBody:
+     *       required: true
+     *       content:
+     *         application/json:
+     *           schema:
+     *             type: object
+     *             required: [deviceId, status]
+     *             properties:
+     *               deviceId:
+     *                 type: string
+     *               status:
+     *                 type: string
+     *                 enum: [active, inactive]
+     *     responses:
+     *       200:
+     *         description: Status updated
+     *       400:
+     *         description: Invalid request
+     *       500:
+     *         $ref: '#/components/responses/InternalError'
+     */
     this.app.post('/api/test/set-device-status', async (req: Request, res: Response) => {
       try {
         const { deviceId, status } = req.body;

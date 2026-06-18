@@ -45,15 +45,29 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
   const { provisioningService, caService, authService, userService } = dependencies;
 
   /**
-   * POST /api/v1/onboarding
-   * Stage 1: Token Issuance
-   * Validates device_id and auth_token, then issues a provisioning token bound to both device and user
-   * 
-   * Headers:
-   *   Authorization: Bearer <auth_token> (REQUIRED)
-   * 
-   * Body:
-   *   { "device_id": "device-123" }
+   * @swagger
+   * /api/v1/onboarding:
+   *   post:
+   *     tags: [Provisioning]
+   *     summary: Issue provisioning token
+   *     description: |
+   *       Stage 1 token issuance. Validates device_id and user JWT, then issues a
+   *       one-time provisioning token bound to both. Requires PROVISIONING_ENABLED.
+   *     security:
+   *       - BearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             $ref: '#/components/schemas/OnboardingRequest'
+   *     responses:
+   *       200:
+   *         description: Provisioning token issued
+   *       401:
+   *         $ref: '#/components/responses/Unauthorized'
+   *       503:
+   *         $ref: '#/components/responses/ServiceUnavailable'
    */
   router.post('/onboarding', async (req: Request, res: Response): Promise<void> => {
     // Keep key request context available for catch-path retries
@@ -373,9 +387,37 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
   });
 
   /**
-   * POST /api/v1/sign-csr
-   * Stage 2: CSR Signing
-   * Validates provisioning token and signs CSR to create device certificate
+   * @swagger
+   * /api/v1/sign-csr:
+   *   post:
+   *     tags: [Provisioning]
+   *     summary: Sign CSR and issue device certificate
+   *     description: |
+   *       Stage 2 CSR signing. Validates provisioning token and signs CSR.
+   *       Rate limited per IP and device (csrRateLimiter).
+   *     security:
+   *       - ProvisioningToken: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             $ref: '#/components/schemas/SignCsrRequest'
+   *     responses:
+   *       200:
+   *         description: Certificate issued
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/CertificateResponse'
+   *       400:
+   *         description: Invalid CSR or token
+   *       409:
+   *         description: Device already has certificate
+   *       429:
+   *         $ref: '#/components/responses/TooManyRequests'
+   *       503:
+   *         $ref: '#/components/responses/ServiceUnavailable'
    */
   router.post('/sign-csr', csrRateLimiter(), async (req: Request, res: Response): Promise<void> => {
     // Declare variables outside try block for error handling
@@ -859,8 +901,31 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
   });
 
   /**
-   * GET /api/v1/certificates/:certificateId/download
-   * Download certificate (works with both storage types)
+   * @swagger
+   * /api/v1/certificates/{certificateId}/download:
+   *   get:
+   *     tags: [Provisioning]
+   *     summary: Download certificate by ID
+   *     description: |
+   *       Authenticate with Bearer user JWT or provisioning token via Authorization header or ?token= query.
+   *     parameters:
+   *       - in: path
+   *         name: certificateId
+   *         required: true
+   *         schema:
+   *           type: string
+   *       - in: query
+   *         name: token
+   *         schema:
+   *           type: string
+   *         description: Provisioning token (legacy fallback)
+   *     responses:
+   *       200:
+   *         description: Certificate PEM bundle
+   *       401:
+   *         $ref: '#/components/responses/Unauthorized'
+   *       404:
+   *         $ref: '#/components/responses/NotFound'
    */
   router.get('/certificates/:certificateId/download', async (req: Request, res: Response): Promise<void> => {
     try {
@@ -985,18 +1050,30 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
   });
 
   /**
-   * POST /api/v1/certificates/recover
-   * Recover an already-issued certificate for a device.
-   *
-   * Intended for real-world cases like:
-   * - device completed sign-csr but failed to persist the response
-   * - server restarted mid-flow and in-memory provisioning tokens were lost
-   *
-   * Auth:
-   *   Authorization: Bearer <auth_token> (AUTH_SECRET)
-   *
-   * Body:
-   *   { "device_id": "device-123" }
+   * @swagger
+   * /api/v1/certificates/recover:
+   *   post:
+   *     tags: [Provisioning]
+   *     summary: Recover already-issued certificate
+   *     description: |
+   *       For devices that completed sign-csr but lost the response, or after server restart.
+   *     security:
+   *       - BearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             $ref: '#/components/schemas/OnboardingRequest'
+   *     responses:
+   *       200:
+   *         description: Certificate recovered
+   *       401:
+   *         $ref: '#/components/responses/Unauthorized'
+   *       404:
+   *         $ref: '#/components/responses/NotFound'
+   *       503:
+   *         $ref: '#/components/responses/ServiceUnavailable'
    */
   router.post('/certificates/recover', async (req: Request, res: Response): Promise<void> => {
     try {
@@ -1154,8 +1231,24 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
   });
 
   /**
-   * GET /api/v1/certificates/:deviceId/status
-   * Get certificate status for a device (works with both storage types)
+   * @swagger
+   * /api/v1/certificates/{deviceId}/status:
+   *   get:
+   *     tags: [Provisioning]
+   *     summary: Get certificate status for device
+   *     parameters:
+   *       - in: path
+   *         name: deviceId
+   *         required: true
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: Certificate status
+   *       404:
+   *         $ref: '#/components/responses/NotFound'
+   *       500:
+   *         $ref: '#/components/responses/InternalError'
    */
   router.get('/certificates/:deviceId/status', async (req: Request, res: Response): Promise<void> => {
     try {
@@ -1200,8 +1293,24 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
   });
 
   /**
-   * DELETE /api/v1/certificates/:deviceId
-   * Revoke certificate for a device (works with both storage types)
+   * @swagger
+   * /api/v1/certificates/{deviceId}:
+   *   delete:
+   *     tags: [Provisioning]
+   *     summary: Revoke device certificate
+   *     parameters:
+   *       - in: path
+   *         name: deviceId
+   *         required: true
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: Certificate revoked
+   *       404:
+   *         $ref: '#/components/responses/NotFound'
+   *       500:
+   *         $ref: '#/components/responses/InternalError'
    */
   router.delete('/certificates/:deviceId', async (req: Request, res: Response): Promise<void> => {
     try {
