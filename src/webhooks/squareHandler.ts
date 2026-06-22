@@ -14,6 +14,8 @@ import { webhookInfluxBatch, flushWebhookInflux } from './influxAudit';
 import { isSquareInvoiceEvent, isSquarePaymentEvent } from '../lib/socials/integrations';
 import { WebhookLatencyTracker } from '../services/webhookMetrics';
 import { logger } from '../utils/logger';
+import { respondWebhookHandlerError } from './webhookHandlerError';
+import { finishWebhookAck } from './webhookHandlerResponse';
 
 function resolveSquareNotificationUrl(
   req: Request,
@@ -26,6 +28,129 @@ function resolveSquareNotificationUrl(
   return host ? `${req.protocol}://${host}/api/pos-promotions/webhooks/square` : '';
 }
 
+function parseSquareWebhookBody(
+  rawBody: string,
+  res: Response
+): { merchantId: string; eventType: string; eventId: string | null } | null {
+  let parsedBody: Record<string, unknown>;
+  try {
+    parsedBody = JSON.parse(rawBody) as Record<string, unknown>;
+  } catch {
+    logger.warn('[SQUARE_WEBHOOK] invalid_json');
+    res.status(400).json({ success: false, error: 'Invalid JSON payload' });
+    return null;
+  }
+
+  const merchantId =
+    typeof parsedBody.merchant_id === 'string' ? parsedBody.merchant_id : undefined;
+  if (!merchantId) {
+    logger.warn('[SQUARE_WEBHOOK] missing_merchant_id');
+    res.status(400).json({ success: false, error: 'Missing merchant_id in payload' });
+    return null;
+  }
+
+  const eventType = typeof parsedBody.type === 'string' ? parsedBody.type : 'unknown';
+  const eventId = typeof parsedBody.event_id === 'string' ? parsedBody.event_id : null;
+  return { merchantId, eventType, eventId };
+}
+
+async function deliverSquarePosOrderIfPaid(
+  deps: WebhookHandlerDeps,
+  userId: string,
+  rawBody: string
+): Promise<{ published: boolean; clientId?: string; topic?: string; orderCountToday?: number }> {
+  const orderAudit = parseSquareOrderAudit(rawBody);
+  if (!orderAudit?.paidAt) return { published: false };
+
+  await ingestPosOrder({
+    userId,
+    platform: 'square',
+    orderId: orderAudit.orderId,
+    paidAt: orderAudit.paidAt,
+    topSellerLine: orderAudit.topSellerLine,
+    totalAmount: orderAudit.totalAmount,
+    currency: orderAudit.currency,
+    itemCount: orderAudit.itemCount
+  });
+  const aggregate = await readPosDailyAggregate(userId, new Date(), { platform: 'square' });
+  const delivery = await deliverPosScreenToUser(
+    deps,
+    userId,
+    'square',
+    aggregate.orderCountToday,
+    orderAudit.topSellerLine ?? aggregate.topSellerLine
+  );
+  return {
+    published: delivery.published,
+    clientId: delivery.clientId,
+    topic: delivery.topic,
+    orderCountToday: aggregate.orderCountToday
+  };
+}
+
+async function handleSquareVerifiedEvent(
+  res: Response,
+  deps: WebhookHandlerDeps,
+  tracker: WebhookLatencyTracker,
+  merchantId: string,
+  eventType: string,
+  eventId: string | null,
+  rawBody: string,
+  dedupeKey: string
+): Promise<void> {
+  if (isSquareInvoiceEvent(eventType) || !isSquarePaymentEvent(eventType)) {
+    const label = isSquareInvoiceEvent(eventType) ? 'invoice' : 'ignored';
+    logger.info(`[SQUARE WEBHOOK][${label}]`, { merchantId, eventType, eventId });
+    await finishWebhookAck(res, 'square', tracker, { dedupeKey, skippedPublish: true });
+    return;
+  }
+
+  const userId = await resolveSquareUserId(merchantId);
+  const devices = userId ? await resolveDevicesForUser(userId, deps.webhookConfig.deviceTarget) : [];
+  tracker.markResolved();
+
+  await webhookInfluxBatch((influx) =>
+    influx.writeWebhookDeviceResolution(
+      {
+        platform: 'square',
+        externalId: merchantId,
+        userId: userId ?? undefined,
+        resolvedDeviceCount: devices.length,
+        timestamp: new Date()
+      },
+      { flush: false }
+    )
+  );
+
+  if (!userId) {
+    logger.info('[SQUARE_WEBHOOK] unknown_merchant', { merchantId, eventType });
+    await finishWebhookAck(res, 'square', tracker, { dedupeKey, skippedPublish: true });
+    return;
+  }
+
+  scheduleSquareAsyncMetrics(userId, eventType, rawBody, deps.webhookConfig.enableDailyMetrics);
+
+  const delivery = await deliverSquarePosOrderIfPaid(deps, userId, rawBody);
+  tracker.markPublished();
+
+  logger.info('[SQUARE WEBHOOK][payment]', {
+    merchantId,
+    eventType,
+    userId,
+    orderCountToday: delivery.orderCountToday,
+    clientId: delivery.clientId,
+    topic: delivery.topic,
+    published: delivery.published
+  });
+
+  await finishWebhookAck(res, 'square', tracker, {
+    dedupeKey,
+    clientId: delivery.clientId,
+    topic: delivery.topic,
+    skippedPublish: !delivery.published && deps.webhookConfig.mqttPublishEnabled
+  });
+}
+
 export async function handleSquareWebhook(req: Request, res: Response, deps: WebhookHandlerDeps): Promise<void> {
   const tracker = new WebhookLatencyTracker();
   const isProduction = deps.appEnv === 'production';
@@ -36,27 +161,11 @@ export async function handleSquareWebhook(req: Request, res: Response, deps: Web
       (req.headers['x-square-signature'] as string | undefined);
     const rawBody = req.rawBody?.toString('utf8') ?? '';
 
-    let parsedBody: Record<string, unknown>;
-    try {
-      parsedBody = JSON.parse(rawBody) as Record<string, unknown>;
-    } catch {
-      logger.warn('[SQUARE_WEBHOOK] invalid_json');
-      res.status(400).json({ success: false, error: 'Invalid JSON payload' });
-      return;
-    }
+    const parsed = parseSquareWebhookBody(rawBody, res);
+    if (!parsed) return;
 
-    const merchantId =
-      typeof parsedBody.merchant_id === 'string' ? parsedBody.merchant_id : undefined;
-    if (!merchantId) {
-      logger.warn('[SQUARE_WEBHOOK] missing_merchant_id');
-      res.status(400).json({ success: false, error: 'Missing merchant_id in payload' });
-      return;
-    }
-
-    const eventType = typeof parsedBody.type === 'string' ? parsedBody.type : 'unknown';
-    const eventId = typeof parsedBody.event_id === 'string' ? parsedBody.event_id : null;
-    const publicBaseUrl = deps.webhookConfig.publicBaseUrl;
-    const expectedNotificationUrl = resolveSquareNotificationUrl(req, publicBaseUrl, isProduction);
+    const { merchantId, eventType, eventId } = parsed;
+    const expectedNotificationUrl = resolveSquareNotificationUrl(req, deps.webhookConfig.publicBaseUrl, isProduction);
 
     logger.info('[SQUARE_WEBHOOK] received', {
       merchantId,
@@ -75,14 +184,12 @@ export async function handleSquareWebhook(req: Request, res: Response, deps: Web
       isProduction
     );
 
-    const verified = verification.valid;
-
     await webhookInfluxBatch((influx) =>
       influx.writeWebhookReceived(
         {
           platform: 'square',
           eventType,
-          verified,
+          verified: verification.valid,
           merchantId,
           timestamp: new Date()
         },
@@ -90,7 +197,7 @@ export async function handleSquareWebhook(req: Request, res: Response, deps: Web
       )
     );
 
-    if (!verified) {
+    if (!verification.valid) {
       if (!isProduction) {
         logger.warn('[SQUARE_WEBHOOK] verify_failed_dev_continue', {
           merchantId,
@@ -116,109 +223,18 @@ export async function handleSquareWebhook(req: Request, res: Response, deps: Web
     const isNew = await tryClaimWebhookDedupe(dedupeKey);
     if (!isNew) {
       logger.info('[SQUARE_WEBHOOK] duplicate', { merchantId, eventType, dedupeKey });
-      tracker.finish('square', { dedupeKey, dedupeHit: true, skippedPublish: true });
-      await flushWebhookInflux();
-      res.status(200).json({ acknowledged: true, duplicate: true });
-      return;
-    }
-
-    if (isSquareInvoiceEvent(eventType)) {
-      logger.info('[SQUARE WEBHOOK][invoice]', { merchantId, eventType, eventId });
-      tracker.finish('square', { dedupeKey, skippedPublish: true });
-      await flushWebhookInflux();
-      res.status(200).json({ acknowledged: true });
-      return;
-    }
-
-    if (!isSquarePaymentEvent(eventType)) {
-      logger.info('[SQUARE WEBHOOK][ignored]', { merchantId, eventType, eventId });
-      tracker.finish('square', { dedupeKey, skippedPublish: true });
-      await flushWebhookInflux();
-      res.status(200).json({ acknowledged: true });
-      return;
-    }
-
-    const userId = await resolveSquareUserId(merchantId);
-    const devices = userId ? await resolveDevicesForUser(userId, deps.webhookConfig.deviceTarget) : [];
-    tracker.markResolved();
-
-    await webhookInfluxBatch((influx) =>
-      influx.writeWebhookDeviceResolution(
-        {
-          platform: 'square',
-          externalId: merchantId,
-          userId: userId ?? undefined,
-          resolvedDeviceCount: devices.length,
-          timestamp: new Date()
-        },
-        { flush: false }
-      )
-    );
-
-    if (!userId) {
-      logger.info('[SQUARE_WEBHOOK] unknown_merchant', { merchantId, eventType });
-      tracker.finish('square', { dedupeKey, skippedPublish: true });
-      await flushWebhookInflux();
-      res.status(200).json({ acknowledged: true });
-      return;
-    }
-
-    scheduleSquareAsyncMetrics(userId, eventType, rawBody, deps.webhookConfig.enableDailyMetrics);
-
-    const orderAudit = parseSquareOrderAudit(rawBody);
-    let delivery: { published: boolean; clientId?: string; topic?: string } = { published: false };
-    let orderCountToday: number | undefined;
-
-    if (orderAudit?.paidAt) {
-      await ingestPosOrder({
-        userId,
-        platform: 'square',
-        orderId: orderAudit.orderId,
-        paidAt: orderAudit.paidAt,
-        topSellerLine: orderAudit.topSellerLine,
-        totalAmount: orderAudit.totalAmount,
-        currency: orderAudit.currency,
-        itemCount: orderAudit.itemCount
-      });
-      const aggregate = await readPosDailyAggregate(userId, new Date(), { platform: 'square' });
-      orderCountToday = aggregate.orderCountToday;
-      delivery = await deliverPosScreenToUser(
-        deps,
-        userId,
+      await finishWebhookAck(
+        res,
         'square',
-        orderCountToday,
-        orderAudit.topSellerLine ?? aggregate.topSellerLine
+        tracker,
+        { dedupeKey, dedupeHit: true, skippedPublish: true },
+        { acknowledged: true, duplicate: true }
       );
+      return;
     }
 
-    tracker.markPublished();
-
-    logger.info('[SQUARE WEBHOOK][payment]', {
-      merchantId,
-      eventType,
-      userId,
-      orderCountToday,
-      clientId: delivery.clientId,
-      topic: delivery.topic,
-      published: delivery.published
-    });
-
-    tracker.finish('square', {
-      dedupeKey,
-      clientId: delivery.clientId,
-      topic: delivery.topic,
-      skippedPublish: !delivery.published && deps.webhookConfig.mqttPublishEnabled
-    });
-    await flushWebhookInflux();
-    res.status(200).json({ acknowledged: true });
+    await handleSquareVerifiedEvent(res, deps, tracker, merchantId, eventType, eventId, rawBody, dedupeKey);
   } catch (error) {
-    logger.error('[SQUARE_WEBHOOK] Error', {
-      error: error instanceof Error ? error.message : String(error)
-    });
-    res.status(500).json({
-      success: false,
-      error: 'Internal server error',
-      message: error instanceof Error ? error.message : 'Unknown error'
-    });
+    respondWebhookHandlerError(res, 'SQUARE_WEBHOOK', error);
   }
 }

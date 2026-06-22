@@ -12,6 +12,59 @@ import { readPosDailyAggregate } from '../services/pos/readPosDailyAggregate';
 import { webhookInfluxBatch, flushWebhookInflux } from './influxAudit';
 import { WebhookLatencyTracker } from '../services/webhookMetrics';
 import { logger } from '../utils/logger';
+import { isShopifyComplianceTopic } from './shopifyComplianceTopics';
+import { respondWebhookHandlerError } from './webhookHandlerError';
+import { finishWebhookAck } from './webhookHandlerResponse';
+
+async function deliverShopifyPosOrderIfPaid(
+  deps: WebhookHandlerDeps,
+  userId: string,
+  shop: string,
+  topic: string,
+  rawBody: string,
+  tracker: WebhookLatencyTracker
+): Promise<{ published: boolean; topic?: string; clientId?: string }> {
+  if (!isShopifyPaidOrder(topic, rawBody)) return { published: false };
+
+  const orderAudit = parseShopifyOrderAudit(rawBody);
+  if (!orderAudit?.paidAt) return { published: false };
+
+  await ingestPosOrder({
+    userId,
+    platform: 'shopify',
+    orderId: orderAudit.orderId,
+    paidAt: orderAudit.paidAt,
+    topSellerLine: orderAudit.topSellerLine,
+    totalAmount: orderAudit.totalAmount,
+    currency: orderAudit.currency,
+    itemCount: orderAudit.itemCount
+  });
+  const { orderCountToday, topSellerLine } = await readPosDailyAggregate(userId, new Date(), {
+    platform: 'shopify'
+  });
+  const delivery = await deliverPosScreenToUser(
+    deps,
+    userId,
+    'shopify',
+    orderCountToday,
+    orderAudit.topSellerLine ?? topSellerLine
+  );
+  tracker.markPublished();
+  logger.info('[SHOPIFY_WEBHOOK] pos_published', {
+    shop,
+    webhookTopic: topic,
+    userId,
+    orderCountToday,
+    clientId: delivery.clientId,
+    mqttTopic: delivery.topic,
+    published: delivery.published
+  });
+  return {
+    published: delivery.published,
+    topic: delivery.topic,
+    clientId: delivery.clientId
+  };
+}
 
 export async function handleShopifyWebhook(req: Request, res: Response, deps: WebhookHandlerDeps): Promise<void> {
   const tracker = new WebhookLatencyTracker();
@@ -65,13 +118,23 @@ export async function handleShopifyWebhook(req: Request, res: Response, deps: We
     logger.info('[SHOPIFY_WEBHOOK] verify_ok', { shop, topic });
     tracker.markVerified();
 
+    if (isShopifyComplianceTopic(topic)) {
+      logger.info('[SHOPIFY_WEBHOOK] compliance_ack', { shop, topic, bodyBytes: rawBody.length });
+      await finishWebhookAck(res, 'shopify', tracker, { skippedPublish: true }, { acknowledged: true, compliance: true });
+      return;
+    }
+
     const dedupeKey = buildShopifyDedupeKey(shop, topic, rawBody);
     const isNew = await tryClaimWebhookDedupe(dedupeKey);
     if (!isNew) {
       logger.info('[SHOPIFY_WEBHOOK] duplicate', { shop, topic, dedupeKey });
-      tracker.finish('shopify', { dedupeKey, dedupeHit: true, skippedPublish: true });
-      await flushWebhookInflux();
-      res.status(200).json({ acknowledged: true, duplicate: true });
+      await finishWebhookAck(
+        res,
+        'shopify',
+        tracker,
+        { dedupeKey, dedupeHit: true, skippedPublish: true },
+        { acknowledged: true, duplicate: true }
+      );
       return;
     }
 
@@ -94,73 +157,21 @@ export async function handleShopifyWebhook(req: Request, res: Response, deps: We
 
     if (!userId) {
       logger.info('[SHOPIFY_WEBHOOK] unknown_shop', { shop, topic });
-      tracker.finish('shopify', { dedupeKey, skippedPublish: true });
-      await flushWebhookInflux();
-      res.status(200).json({ acknowledged: true });
+      await finishWebhookAck(res, 'shopify', tracker, { dedupeKey, skippedPublish: true });
       return;
     }
 
     scheduleShopifyAsyncMetrics(userId, topic, rawBody, deps.webhookConfig.enableDailyMetrics);
 
-    let published = false;
-    let lastTopic: string | undefined;
-    let lastClientId: string | undefined;
+    const delivery = await deliverShopifyPosOrderIfPaid(deps, userId, shop, topic, rawBody, tracker);
 
-    if (isShopifyPaidOrder(topic, rawBody)) {
-      const orderAudit = parseShopifyOrderAudit(rawBody);
-      if (orderAudit?.paidAt) {
-        await ingestPosOrder({
-          userId,
-          platform: 'shopify',
-          orderId: orderAudit.orderId,
-          paidAt: orderAudit.paidAt,
-          topSellerLine: orderAudit.topSellerLine,
-          totalAmount: orderAudit.totalAmount,
-          currency: orderAudit.currency,
-          itemCount: orderAudit.itemCount
-        });
-        const { orderCountToday, topSellerLine } = await readPosDailyAggregate(userId, new Date(), {
-          platform: 'shopify'
-        });
-        const delivery = await deliverPosScreenToUser(
-          deps,
-          userId,
-          'shopify',
-          orderCountToday,
-          orderAudit.topSellerLine ?? topSellerLine
-        );
-        published = delivery.published;
-        lastTopic = delivery.topic;
-        lastClientId = delivery.clientId;
-        tracker.markPublished();
-        logger.info('[SHOPIFY_WEBHOOK] pos_published', {
-          shop,
-          webhookTopic: topic,
-          userId,
-          orderCountToday,
-          clientId: lastClientId,
-          mqttTopic: lastTopic,
-          published
-        });
-      }
-    }
-
-    tracker.finish('shopify', {
+    await finishWebhookAck(res, 'shopify', tracker, {
       dedupeKey,
-      clientId: lastClientId,
-      topic: lastTopic,
-      skippedPublish: !published && deps.webhookConfig.mqttPublishEnabled
+      clientId: delivery.clientId,
+      topic: delivery.topic,
+      skippedPublish: !delivery.published && deps.webhookConfig.mqttPublishEnabled
     });
-    await flushWebhookInflux();
-    res.status(200).json({ acknowledged: true });
   } catch (error) {
-    logger.error('[SHOPIFY_WEBHOOK] Error', {
-      error: error instanceof Error ? error.message : String(error)
-    });
-    res.status(500).json({
-      success: false,
-      error: 'Internal server error',
-      message: error instanceof Error ? error.message : 'Unknown error'
-    });
+    respondWebhookHandlerError(res, 'SHOPIFY_WEBHOOK', error);
   }
 }

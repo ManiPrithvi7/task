@@ -62,20 +62,20 @@ const baseDeps: WebhookHandlerDeps = {
   }
 };
 
-describe('webhook handler metrics', () => {
-  let markVerifiedSpy: jest.SpyInstance;
+function setupMetricsTest(): jest.SpyInstance {
+  const markVerifiedSpy = jest.spyOn(WebhookLatencyTracker.prototype, 'markVerified');
+  mockDedupe.mockResolvedValue(true);
+  return markVerifiedSpy;
+}
 
-  beforeEach(() => {
-    markVerifiedSpy = jest.spyOn(WebhookLatencyTracker.prototype, 'markVerified');
-    mockDedupe.mockResolvedValue(true);
-  });
+function teardownMetricsTest(markVerifiedSpy: jest.SpyInstance): void {
+  jest.clearAllMocks();
+  markVerifiedSpy.mockRestore();
+}
 
-  afterEach(() => {
-    jest.clearAllMocks();
-    markVerifiedSpy.mockRestore();
-  });
-
-  it('Shopify: does not call markVerified when verification fails', async () => {
+describe('Shopify webhook metrics', () => {
+  it('does not call markVerified when verification fails', async () => {
+    const markVerifiedSpy = setupMetricsTest();
     mockVerifyShopify.mockResolvedValue({ valid: false, error: 'bad sig' });
     const req = {
       headers: {
@@ -91,9 +91,35 @@ describe('webhook handler metrics', () => {
 
     expect(markVerifiedSpy).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(401);
+    teardownMetricsTest(markVerifiedSpy);
   });
 
-  it('Shopify paid order: ingest → read aggregate → deliver absolute count', async () => {
+  it('compliance topic: acks without user resolution or order parsing', async () => {
+    const markVerifiedSpy = setupMetricsTest();
+    mockVerifyShopify.mockResolvedValue({ valid: true });
+    const req = {
+      headers: {
+        'x-shopify-shop-domain': 'shop.myshopify.com',
+        'x-shopify-topic': 'customers/redact',
+        'x-shopify-hmac-sha256': 'x'
+      },
+      rawBody: Buffer.from('{}')
+    } as unknown as Request;
+    const res = mockRes();
+
+    await handleShopifyWebhook(req, res, baseDeps);
+
+    expect(resolveShopifyUserId).not.toHaveBeenCalled();
+    expect(ingestPosOrder).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({ acknowledged: true, compliance: true })
+    );
+    teardownMetricsTest(markVerifiedSpy);
+  });
+
+  it('paid order: ingest → read aggregate → deliver absolute count', async () => {
+    const markVerifiedSpy = setupMetricsTest();
     mockVerifyShopify.mockResolvedValue({ valid: true });
     (resolveShopifyUserId as jest.Mock).mockResolvedValue('user-shop');
     const req = {
@@ -132,9 +158,13 @@ describe('webhook handler metrics', () => {
       'Hat'
     );
     expect(res.status).toHaveBeenCalledWith(200);
+    teardownMetricsTest(markVerifiedSpy);
   });
+});
 
-  it('Square: does not call markVerified when verification fails', async () => {
+describe('Square webhook metrics', () => {
+  it('does not call markVerified when verification fails', async () => {
+    const markVerifiedSpy = setupMetricsTest();
     mockVerifySquare.mockResolvedValue({ valid: false, error: 'bad sig' });
     const req = {
       headers: { 'x-square-hmacsha256-signature': 'x' },
@@ -148,5 +178,6 @@ describe('webhook handler metrics', () => {
 
     expect(markVerifiedSpy).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(401);
+    teardownMetricsTest(markVerifiedSpy);
   });
 });
