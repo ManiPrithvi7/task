@@ -180,3 +180,7 @@ Default TTL: `OTA_PRESIGNED_TTL_SEC=900` (15 min). If a PAR expires before downl
 | `{prefix}ota:active_release` | Current stable release manifest |
 | `{prefix}ota:pending:{version}` | Devices still needing this version |
 | `{prefix}ota:delivered:{version}` | Devices confirmed (MQTT QoS 2 ack or `ota_success`) |
+
+## See also
+
+- **Temporary dev HTTP download test** (open bucket + `GET /api/v1/ota/download/test:1.1`, no mTLS): [OTA_DEV_DOWNLOAD_TEST.md](./OTA_DEV_DOWNLOAD_TEST.md). Does not replace this production contract.

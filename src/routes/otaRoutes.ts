@@ -2,6 +2,7 @@
  * Device OTA routes — download proxy and optional report.
  */
 
+import https from 'https';
 import { Router, Request, Response } from 'express';
 import type { RedisClientType } from 'redis';
 import type { OtaConfig } from '../config';
@@ -77,6 +78,43 @@ export function createOtaRoutes(deps: OtaRoutesDeps): Router {
       }
     }
   );
+
+  // ponytail: dev-only open download test — remove after firmware validates HTTP streaming
+  const DEV_TEST_OTA_VERSION = 'test:1.1';
+  const DEV_TEST_FIRMWARE_PUBLIC_URL =
+    'https://objectstorage.ap-hyderabad-1.oraclecloud.com/n/ax4egmknthnr/b/proof-firmware-dev-download/o/dev%2Fwifi_ap_project.bin';
+
+  router.get(/^\/ota\/download\/test:1\.1$/, (_req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('X-Firmware-Version', DEV_TEST_OTA_VERSION);
+
+    https
+      .get(DEV_TEST_FIRMWARE_PUBLIC_URL, (ociRes) => {
+        if (!ociRes.statusCode || ociRes.statusCode < 200 || ociRes.statusCode >= 300) {
+          res.status(502).json({
+            success: false,
+            error: 'OCI fetch failed',
+            code: 'DEV_OTA_UPSTREAM',
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
+        const len = ociRes.headers['content-length'];
+        if (len) res.setHeader('Content-Length', len);
+        ociRes.pipe(res);
+      })
+      .on('error', (err) => {
+        logger.error('[OTA] dev test download failed', { error: err.message });
+        if (!res.headersSent) {
+          res.status(502).json({
+            success: false,
+            error: 'OCI fetch failed',
+            code: 'DEV_OTA_UPSTREAM',
+            timestamp: new Date().toISOString()
+          });
+        }
+      });
+  });
 
   router.get(
     '/ota/download/:version',
