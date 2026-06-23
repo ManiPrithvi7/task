@@ -1,7 +1,7 @@
 {
   "StatsMQTT-Lite-Provisioning.postman_collection.json": {
-    "mtime": 1780471804.1542294,
-    "ast_hash": "1e38459938ee9485b94b675a25197531",
+    "mtime": 1782227998.9024823,
+    "ast_hash": "9ecb657ecd4efb500d58e0f90c441ee2",
     "semantic_hash": ""
   },
   "StatsMQTT-Lite-Provisioning.postman_environment.json": {
@@ -35,7 +35,7 @@
     "semantic_hash": ""
   },
   "scripts/attention-roadmap-smoke.ts": {
-    "mtime": 1782192772.4073899,
+    "mtime": 1782224918.5930517,
     "ast_hash": "2eb2296fc87aa85d860afa9f3f27026f",
     "semantic_hash": ""
   },
@@ -380,8 +380,8 @@
     "semantic_hash": ""
   },
   "src/routes/recoveryRoutes.ts": {
-    "mtime": 1782123553.0852623,
-    "ast_hash": "83055adb4f5a73ddc506d1a6035acf2c",
+    "mtime": 1782227908.776687,
+    "ast_hash": "cb459ed70f96e2cb620304b19982fa19",
     "semantic_hash": ""
   },
   "src/routes/webhookRoutes.ts": {
@@ -555,8 +555,8 @@
     "semantic_hash": ""
   },
   "src/services/recoverySessionService.ts": {
-    "mtime": 1780471596.9282188,
-    "ast_hash": "2a5cdf4c86928502596d5ef219f08027",
+    "mtime": 1782227902.9644828,
+    "ast_hash": "a396eb06253c9d71ac0e1abdc0d11427",
     "semantic_hash": ""
   },
   "src/services/redisService.ts": {
@@ -750,7 +750,7 @@
     "semantic_hash": ""
   },
   "src/webhooks/shopifyAsyncMetrics.ts": {
-    "mtime": 1782192772.40339,
+    "mtime": 1782224918.5920517,
     "ast_hash": "438fa6b9bcd74a4ff9340219993e2471",
     "semantic_hash": ""
   },
@@ -895,8 +895,8 @@
     "semantic_hash": ""
   },
   "tests/unit/services/recoverySessionService.test.ts": {
-    "mtime": 1780573112.2590826,
-    "ast_hash": "ffd2036e90785a24ff99daf0eb23f65b",
+    "mtime": 1782227968.4199867,
+    "ast_hash": "5bc926da0cbb927f0d2a8b6144866fe6",
     "semantic_hash": ""
   },
   "tests/unit/utils/otaDownloadUrl.test.ts": {
@@ -930,7 +930,7 @@
     "semantic_hash": ""
   },
   "OTA_E2E_TEST.md": {
-    "mtime": 1782192772.4073899,
+    "mtime": 1782224918.5930517,
     "ast_hash": "b9aee5dba9ac48004eb1228ea2d4b0db",
     "semantic_hash": ""
   },
@@ -940,8 +940,8 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1782123553.0794954,
-    "ast_hash": "d832245809c72d8cb05de635a826d164",
+    "mtime": 1782227996.984338,
+    "ast_hash": "dc4354c213c6433b7b76f5e735b651d6",
     "semantic_hash": ""
   },
   "docs/CSR_REQUIREMENTS_VALIDATION.md": {
@@ -950,13 +950,13 @@
     "semantic_hash": ""
   },
   "docs/DEVICE_RECOVERY_FIRMWARE.md": {
-    "mtime": 1780471768.8429224,
-    "ast_hash": "cd141f1a4792ecf93d38dc99edaf22ee",
+    "mtime": 1782227994.7251682,
+    "ast_hash": "27e767c76bcc29a9689ed370c6b4669e",
     "semantic_hash": ""
   },
   "docs/OTA_DEV_DOWNLOAD_TEST.md": {
-    "mtime": 1782125190.8097022,
-    "ast_hash": "6616547cfd610599e4d52d1508788f5d",
+    "mtime": 1782198459.308357,
+    "ast_hash": "47991a22309506831f57973ceff1acbb",
     "semantic_hash": ""
   },
   "docs/OTA_FIRMWARE_CONTRACT.md": {
@@ -985,8 +985,8 @@
     "semantic_hash": ""
   },
   "docs/SECURITY_PENTEST_REPORT.md": {
-    "mtime": 1782198085.5061183,
-    "ast_hash": "f063ecc2a51def2fe807cfa0473ac124",
+    "mtime": 1782198457.8161225,
+    "ast_hash": "9e9bf486bdb2af4173892241ea001364",
     "semantic_hash": ""
   },
   "docs/WEBHOOK_MIGRATION.md": {
@@ -1017,6 +1017,11 @@
   "scripts/pki/README.md": {
     "mtime": 1780463380.5624993,
     "ast_hash": "fa1f9b07e32bb5615d6777bebba7bb5e",
+    "semantic_hash": ""
+  },
+  "tests/unit/routes/recoveryRoutes.test.ts": {
+    "mtime": 1782227978.1413822,
+    "ast_hash": "ed9ed2bfda90a54695e51016a952dd2a",
     "semantic_hash": ""
   }
 }
