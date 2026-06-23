@@ -68,58 +68,7 @@ else
     exit 1
 fi
 
-# Step 5: Register a test device via API
-echo ""
-echo -e "${BLUE}📱 Registering test device via API...${NC}"
-DEVICE_RESPONSE=$(curl -s -X POST http://localhost:3002/api/devices \
-  -H "Content-Type: application/json" \
-  -d '{
-    "deviceId": "TEST-DEVICE-001",
-    "clientId": "test-client-001",
-    "username": "testuser",
-    "metadata": {"firmware": "v1.0.0", "model": "ESP32"}
-  }')
-echo "$DEVICE_RESPONSE" | jq
-
-if echo "$DEVICE_RESPONSE" | jq -e '.success' > /dev/null; then
-    echo -e "${GREEN}✅ Device registered via API${NC}"
-else
-    echo -e "${RED}❌ Device registration failed${NC}"
-fi
-
-# Step 6: Publish MQTT message via API
-echo ""
-echo -e "${BLUE}📡 Publishing MQTT message via API...${NC}"
-PUBLISH_RESPONSE=$(curl -s -X POST http://localhost:3002/api/publish \
-  -H "Content-Type: application/json" \
-  -d '{
-    "topic": "statsnapp/TEST-DEVICE-001/status",
-    "payload": {"status": "online", "uptime": 3600},
-    "qos": 0,
-    "retain": false
-  }')
-echo "$PUBLISH_RESPONSE" | jq
-
-if echo "$PUBLISH_RESPONSE" | jq -e '.success' > /dev/null; then
-    echo -e "${GREEN}✅ MQTT message published${NC}"
-else
-    echo -e "${RED}❌ MQTT publish failed${NC}"
-fi
-
-# Step 7: Wait and check logs
-echo ""
-echo -e "${BLUE}⏳ Waiting 3 seconds for message processing...${NC}"
-sleep 3
-
-# Step 8: Check devices endpoint
-echo ""
-echo -e "${BLUE}📋 Getting all devices...${NC}"
-DEVICES=$(curl -s http://localhost:3002/api/devices)
-echo "$DEVICES" | jq
-DEVICE_COUNT=$(echo "$DEVICES" | jq '. | length')
-echo -e "${GREEN}Total devices: $DEVICE_COUNT${NC}"
-
-# Step 9: Show recent logs
+# Step 5: Show recent logs
 echo ""
 echo -e "${BLUE}📄 Recent publisher logs:${NC}"
 echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"

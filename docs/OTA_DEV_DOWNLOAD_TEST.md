@@ -175,3 +175,4 @@ No proofmqtt restart needed unless the object key or public URL changes (the rou
 - [ ] Remove dev route from [`src/routes/otaRoutes.ts`](../src/routes/otaRoutes.ts)
 - [ ] Delete OCI bucket `proof-firmware-dev-download` (optional — or keep for future dev)
 - [ ] Remove or archive this doc if no longer needed
+- [ ] Confirm production paths only: **mTLS** device routes + **HMAC/Bearer** webhooks + **presigned PAR** or mTLS proxy download (see [`SECURITY_PENTEST_REPORT.md`](./SECURITY_PENTEST_REPORT.md))

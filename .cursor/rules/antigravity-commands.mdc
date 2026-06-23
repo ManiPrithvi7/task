@@ -1,0 +1,31 @@
+---
+description: Antigravity slash commands load skills on demand from ~/.cursor/skills
+alwaysApply: true
+---
+
+Antigravity Awesome Skills v13.1.1 is installed at `~/.cursor/skills/`.
+
+## How to invoke skills
+
+- **Slash command (preferred):** `/skill-name` — thin wrappers live in `~/.cursor/commands/<skill-name>.md`
+- **Chat mention:** `@skill-name` in Cursor chat
+
+Do not inline or guess skill content. When the user runs a slash command or names a skill, read `~/.cursor/skills/<skill-name>/SKILL.md` first, then follow it.
+
+## Resync after skill updates
+
+```bash
+npx antigravity-awesome-skills --cursor
+bash scripts/sync-cursor-skill-commands.sh
+```
+
+## Starter skills for this repo
+
+- `/systematic-debugging` — bugs and test failures
+- `/test-driven-development` — TDD workflow
+- `/api-security-best-practices` — webhook/API hardening
+- `/testing-patterns` — Jest unit/integration tests
+- `/fallow` — code-health audit before finishing changes
+- `/ponytail` — minimal-diff senior dev mode
+
+Bundles catalog: `~/.cursor/skills/docs/users/bundles.md`
