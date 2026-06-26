@@ -2,7 +2,6 @@ import type { MqttClientManager } from '../servers/mqttClient';
 import type { InstagramPoller } from './instagramService';
 import type { StatsPublisher } from './statsPublisher';
 import type { GmbConnectPull } from './gmbConnectPull';
-import type { PosConnectPull } from './posConnectPull';
 import type { RedisService } from './redisService';
 import { logger } from '../utils/logger';
 import { clearAllPublishHashesForDevice } from './mqttChangeDetection';
@@ -18,7 +17,6 @@ export type ConnectRefreshCoordinatorDeps = {
   instagramPoller: InstagramPoller | null;
   instagramPriorityTtlMs: number;
   gmbConnectPull: GmbConnectPull;
-  posConnectPull: PosConnectPull;
   statsPublisher: StatsPublisher;
 };
 
@@ -32,7 +30,7 @@ export class ConnectRefreshCoordinator {
     }
 
     const root = this.deps.mqttClient.getTopicRoot();
-    const { mqttClient, instagramPoller, gmbConnectPull, posConnectPull, statsPublisher } = this.deps;
+    const { mqttClient, instagramPoller, gmbConnectPull, statsPublisher } = this.deps;
 
     const device = await getActiveDeviceCache().getActive(deviceId);
     if (!device?.userId) {
@@ -76,10 +74,6 @@ export class ConnectRefreshCoordinator {
 
     if (integrations.gmb) {
       tasks.push(gmbConnectPull.publishForDevice(deviceId, root));
-    }
-
-    if (integrations.pos) {
-      tasks.push(posConnectPull.publishForDevice(deviceId, root));
     }
 
     const screenPulls = await Promise.allSettled(tasks);

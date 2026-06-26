@@ -33,13 +33,6 @@ describe('webhookRoutes', () => {
     mockPublish.mockClear();
   });
 
-  it('returns 400 when Shopify headers missing', async () => {
-    const res = await request(buildApp())
-      .post('/api/pos-promotions/webhooks/shopify')
-      .send('{}');
-    expect(res.status).toBe(400);
-  });
-
   it('returns 200 ack for GMB invalid JSON (Pub/Sub pattern)', async () => {
     const res = await request(buildApp())
       .post('/api/webhooks/google-business-reviews')

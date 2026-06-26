@@ -18,6 +18,7 @@ import {
   type UserIntegrationCache
 } from './userIntegrationCache';
 import { isCampaignActive } from './campaignSchedule';
+import { invalidateCanvasCache } from './brandCanvasService';
 import { logger } from '../utils/logger';
 
 const PROMO_ACTIVE_KEY_PREFIX = 'promo:active:';
@@ -28,6 +29,7 @@ export type ConnectionValidateEvent =
   | 'social.disconnected'
   | 'campaign.updated'
   | 'campaign.deleted'
+  | 'canvas.updated'
   | 'integrations.refresh';
 
 export type PromotionScreenPayload = {
@@ -35,6 +37,8 @@ export type PromotionScreenPayload = {
   Offer: string;
   message: string;
   qrText: string;
+  creativeUrl?: string;
+  templateData?: Record<string, unknown>;
 };
 
 export type CachedCampaignDto = {
@@ -338,6 +342,7 @@ export async function handleConnectionValidateEvent(
       await invalidateUserIntegrations(userId);
       integrationsCached = (await cacheUserIntegrations(userId)) !== null;
       await invalidatePromotionCache(userId);
+      await invalidateCanvasCache(userId);
       await resetRotationForUser(userId);
       if (fanout) {
         devicesNotified = await fanoutPromotionToUserDevices(userId, deps, { force: true });
@@ -352,6 +357,7 @@ export async function handleConnectionValidateEvent(
         integrationsCached = (await cacheUserIntegrations(userId)) !== null;
       }
       await invalidatePromotionCache(userId);
+      await invalidateCanvasCache(userId);
       await resetRotationForUser(userId);
       if (fanout) {
         devicesNotified = await fanoutPromotionToUserDevices(userId, deps, { force: true });
@@ -360,7 +366,9 @@ export async function handleConnectionValidateEvent(
 
     case 'campaign.updated':
     case 'campaign.deleted':
+    case 'canvas.updated':
       await invalidatePromotionCache(userId);
+      await invalidateCanvasCache(userId);
       await resetRotationForUser(userId);
       if (fanout) {
         devicesNotified = await fanoutPromotionToUserDevices(userId, deps, { force });
@@ -372,6 +380,7 @@ export async function handleConnectionValidateEvent(
       integrationsCached = (await cacheUserIntegrations(userId)) !== null;
       if (fanout) {
         await invalidatePromotionCache(userId);
+        await invalidateCanvasCache(userId);
         devicesNotified = await fanoutPromotionToUserDevices(userId, deps, { force });
       }
       break;

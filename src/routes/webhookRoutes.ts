@@ -3,8 +3,6 @@ import rateLimit from 'express-rate-limit';
 import type { MqttClientManager } from '../servers/mqttClient';
 import type { WebhookConfig } from '../config/webhookConfig';
 import type { WebhookHandlerDeps } from '../webhooks/types';
-import { handleShopifyWebhook } from '../webhooks/shopifyHandler';
-import { handleSquareWebhook } from '../webhooks/squareHandler';
 import { handleGmbWebhook } from '../webhooks/gmbHandler';
 import type { OtaService } from '../services/otaService';
 import mongoose from 'mongoose';
@@ -19,22 +17,6 @@ const captureRawBody = raw({
   verify: (req, _res, buf) => {
     req.rawBody = buf;
   }
-});
-
-const shopifyLimiter = rateLimit({
-  windowMs: 60_000,
-  max: 300,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Too many Shopify webhook requests' }
-});
-
-const squareLimiter = rateLimit({
-  windowMs: 60_000,
-  max: 300,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Too many Square webhook requests' }
 });
 
 const gmbLimiter = rateLimit({
@@ -203,73 +185,6 @@ export function createWebhookRoutes(deps: WebhookRoutesDeps): Router {
 
   /**
    * @swagger
-   * /api/pos-promotions/webhooks/shopify:
-   *   post:
-   *     tags: [Webhooks]
-   *     summary: Shopify POS promotion webhook
-   *     description: |
-   *       Requires HMAC verification via X-Shopify-Hmac-Sha256 header against raw request body.
-   *       Body is parsed from raw bytes before express.json().
-   *     parameters:
-   *       - in: header
-   *         name: X-Shopify-Hmac-Sha256
-   *         required: true
-   *         schema:
-   *           type: string
-   *     requestBody:
-   *       required: true
-   *       content:
-   *         application/json:
-   *           schema:
-   *             type: object
-   *     responses:
-   *       200:
-   *         description: Webhook accepted
-   *       401:
-   *         description: HMAC verification failed
-   */
-  router.post(
-    '/api/pos-promotions/webhooks/shopify',
-    shopifyLimiter,
-    captureRawBody,
-    wrap(handleShopifyWebhook)
-  );
-
-  /**
-   * @swagger
-   * /api/pos-promotions/webhooks/square:
-   *   post:
-   *     tags: [Webhooks]
-   *     summary: Square POS promotion webhook
-   *     description: |
-   *       Requires Square webhook signature verification against raw request body.
-   *     parameters:
-   *       - in: header
-   *         name: x-square-hmacsha256-signature
-   *         required: true
-   *         schema:
-   *           type: string
-   *     requestBody:
-   *       required: true
-   *       content:
-   *         application/json:
-   *           schema:
-   *             type: object
-   *     responses:
-   *       200:
-   *         description: Webhook accepted
-   *       401:
-   *         description: Signature verification failed
-   */
-  router.post(
-    '/api/pos-promotions/webhooks/square',
-    squareLimiter,
-    captureRawBody,
-    wrap(handleSquareWebhook)
-  );
-
-  /**
-   * @swagger
    * /api/webhooks/google-business-reviews:
    *   post:
    *     tags: [Webhooks]
@@ -301,8 +216,6 @@ export function createWebhookRoutes(deps: WebhookRoutesDeps): Router {
   );
 
   logger.info('Webhook ingress routes registered', {
-    shopify: '/api/pos-promotions/webhooks/shopify',
-    square: '/api/pos-promotions/webhooks/square',
     gmb: '/api/webhooks/google-business-reviews',
     otaRelease: deps.otaReleaseWebhook ? '/api/webhooks/ota-release' : null,
     mqttPublish: deps.webhookConfig.mqttPublishEnabled,

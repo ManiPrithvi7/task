@@ -13,8 +13,6 @@ import {
   type MqttIngressRouterState
 } from './services/mqttIngressRouter';
 import { clearAllPublishHashesForDevice } from './services/mqttChangeDetection';
-import { PosConnectPull } from './services/posConnectPull';
-import { createPromotionRoutes } from './routes/promotionRoutes';
 import { createConnectionsRoutes } from './routes/connectionsRoutes';
 import { cacheUserIntegrations } from './services/userIntegrationCache';
 import { GmbConnectPull } from './services/gmbConnectPull';
@@ -957,7 +955,6 @@ export class StatsMqttLite {
       `${root}/+/status`,
       `${root}/+/instagram`,
       `${root}/+/gmb`,
-      `${root}/+/pos`,
       `${root}/+/promotion`
     ];
 
@@ -1719,7 +1716,7 @@ export class StatsMqttLite {
     this.statsPublisher = new StatsPublisher(
       this.mqttClient,
       this.deviceService,
-      60 * 1000, // Publish every minute to /instagram, /gmb, /pos
+      60 * 1000, // Publish every minute to /instagram, /gmb, /promotion
       this.caService,
       this.config.provisioning.requireMtlsForRegistration
     );
@@ -1732,20 +1729,14 @@ export class StatsMqttLite {
         topicRoot: this.config.mqtt.topicRoot
       };
       this.httpServer.getApp().use('/api/v1', createConnectionsRoutes(routeDeps));
-      this.httpServer.getApp().use('/api/v1', createPromotionRoutes(routeDeps));
       logger.info('✅ Connections routes registered at POST /api/v1/connections/validate');
-      logger.info('✅ Promotion alias at POST /api/v1/promotions/invalidate-cache (deprecated)');
     }
 
-    logger.info('✅ Stats publisher initialized - publishing every 60s to /instagram, /gmb, /pos, /promotion');
+    logger.info('✅ Stats publisher initialized - publishing every 60s to /instagram, /gmb, /promotion');
   }
 
   private initializeConnectRefreshCoordinator(): void {
     const gmbConnectPull = new GmbConnectPull(
-      this.mqttClient,
-      this.config.webhooks.mqttPublishEnabled
-    );
-    const posConnectPull = new PosConnectPull(
       this.mqttClient,
       this.config.webhooks.mqttPublishEnabled
     );
@@ -1755,7 +1746,6 @@ export class StatsMqttLite {
       instagramPoller: this.instagramPoller ?? null,
       instagramPriorityTtlMs: this.config.instagramPolling?.priorityTtlMs ?? 300_000,
       gmbConnectPull,
-      posConnectPull,
       statsPublisher: this.statsPublisher
     });
     logger.info('✅ Connect refresh coordinator initialized (/active → debounced screen pull)');

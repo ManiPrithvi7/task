@@ -13,6 +13,7 @@ const VALID_EVENTS: ConnectionValidateEvent[] = [
   'social.disconnected',
   'campaign.updated',
   'campaign.deleted',
+  'canvas.updated',
   'integrations.refresh'
 ];
 
@@ -20,11 +21,7 @@ const PROVIDER_MAP: Record<string, Provider> = {
   instagram: Provider.INSTAGRAM,
   INSTAGRAM: Provider.INSTAGRAM,
   google_business: Provider.GOOGLE_BUSINESS,
-  GOOGLE_BUSINESS: Provider.GOOGLE_BUSINESS,
-  shopify: Provider.SHOPIFY,
-  SHOPIFY: Provider.SHOPIFY,
-  square: Provider.SQUARE,
-  SQUARE: Provider.SQUARE
+  GOOGLE_BUSINESS: Provider.GOOGLE_BUSINESS
 };
 
 export type ConnectionsRoutesDeps = {

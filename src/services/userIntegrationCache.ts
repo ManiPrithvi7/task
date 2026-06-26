@@ -1,7 +1,5 @@
 import mongoose from 'mongoose';
 import { Social, Provider } from '../models/Social';
-import { ShopifyProfile } from '../models/ShopifyProfile';
-import { SquareProfile } from '../models/SquareProfile';
 import { GoogleBusinessProfile } from '../models/GoogleBusinessProfile';
 import { GoogleBusinessLocation } from '../models/GoogleBusinessLocation';
 import { getRedisService } from './redisService';
@@ -106,32 +104,9 @@ export async function cacheUserIntegrations(userId: string): Promise<UserIntegra
           break;
         }
 
-        case Provider.SHOPIFY: {
-          const profile = await ShopifyProfile.findOne({ socialId: social._id }).lean();
-          cache.pos = {
-            socialId,
-            platform: 'shopify',
-            accessToken: social.accessToken,
-            refreshToken: social.refreshToken || undefined,
-            storeId: profile?.shopDomain ?? social.socialAccountId,
-            expiresAt: social.tokenExp || undefined
-          };
+        case Provider.SHOPIFY:
+        case Provider.SQUARE:
           break;
-        }
-
-        case Provider.SQUARE: {
-          if (cache.pos?.platform === 'shopify') break;
-          const profile = await SquareProfile.findOne({ socialId: social._id }).lean();
-          cache.pos = {
-            socialId,
-            platform: 'square',
-            accessToken: social.accessToken,
-            refreshToken: social.refreshToken || undefined,
-            storeId: profile?.merchantId ?? social.socialAccountId,
-            expiresAt: social.tokenExp || undefined
-          };
-          break;
-        }
 
         default:
           break;
@@ -220,12 +195,9 @@ export async function applySocialDisconnected(
     case Provider.GOOGLE_BUSINESS:
       delete existing.gmb;
       break;
-    case Provider.SHOPIFY:
-    case Provider.SQUARE:
-      if (existing.pos?.platform === provider.toLowerCase()) {
-        delete existing.pos;
-      }
-      break;
+        case Provider.SHOPIFY:
+        case Provider.SQUARE:
+          break;
     default:
       break;
   }

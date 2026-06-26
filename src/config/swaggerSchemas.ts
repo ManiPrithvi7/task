@@ -202,13 +202,14 @@
  *             - social.disconnected
  *             - campaign.updated
  *             - campaign.deleted
+ *             - canvas.updated
  *             - integrations.refresh
  *         fanout:
  *           type: boolean
  *           default: true
  *         provider:
  *           type: string
- *           enum: [instagram, google_business, shopify, square]
+ *           enum: [instagram, google_business]
  *
  *   responses:
  *     Unauthorized:

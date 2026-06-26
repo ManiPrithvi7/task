@@ -3,6 +3,7 @@ import {
   filterSchedulableCampaigns,
   getNextPromotionIndex,
   getPromotionCacheTtlSec,
+  handleConnectionValidateEvent,
   type CachedCampaignDto
 } from '@/services/promotionService';
 import { CampaignStatus, DiscountType, ScheduleType, TargetType } from '@/models/Campaign';
@@ -15,8 +16,13 @@ jest.mock('@/services/redisService', () => ({
 jest.mock('@/services/deviceService', () => ({
   getActiveDeviceCache: jest.fn()
 }));
+jest.mock('@/services/brandCanvasService', () => ({
+  invalidateCanvasCache: jest.fn().mockResolvedValue(undefined)
+}));
 
 import { getRedisService } from '@/services/redisService';
+import { getActiveDeviceCache } from '@/services/deviceService';
+import { invalidateCanvasCache } from '@/services/brandCanvasService';
 
 const mockGetRedis = getRedisService as jest.MockedFunction<typeof getRedisService>;
 
@@ -144,5 +150,24 @@ describe('promotionService', () => {
 
   it('getPromotionCacheTtlSec defaults to 3600', () => {
     expect(getPromotionCacheTtlSec()).toBe(3600);
+  });
+
+  it('handleConnectionValidateEvent canvas.updated invalidates canvas cache and fans out', async () => {
+    const mockPublish = jest.fn().mockResolvedValue(undefined);
+    (getActiveDeviceCache as jest.Mock).mockReturnValue({
+      getAllActive: jest.fn().mockResolvedValue([{ deviceId: 'dev-1', userId: 'user-1' }])
+    });
+
+    const result = await handleConnectionValidateEvent(
+      'canvas.updated',
+      'user-1',
+      { topicRoot: 'proof.mqtt', publishForDevice: mockPublish },
+      { force: true }
+    );
+
+    expect(invalidateCanvasCache).toHaveBeenCalledWith('user-1');
+    expect(mockPublish).toHaveBeenCalledWith('dev-1', 'proof.mqtt', { force: true });
+    expect(result.devicesNotified).toBe(1);
+    expect(result.event).toBe('canvas.updated');
   });
 });

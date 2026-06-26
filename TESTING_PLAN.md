@@ -8,8 +8,6 @@ This plan outlines a systematic approach to testing all endpoints in the proofmq
 ### 1.1 Webhook Routes (`/api/webhooks/*`)
 **Endpoints:**
 - `POST /api/webhooks/google-business-reviews`
-- `POST /api/pos-promotions/webhooks/shopify`
-- `POST /api/pos-promotions/webhooks/square`
 
 **Test Categories:**
 - ✅ **Input Validation** - Missing headers, invalid JSON, malformed payloads
@@ -20,9 +18,7 @@ This plan outlines a systematic approach to testing all endpoints in the proofmq
 - ✅ **Security** - Raw body capture, content-type validation
 
 **Existing Tests:**
-- `tests/unit/routes/webhookRoutes.test.ts` (2 tests)
-- `tests/unit/webhooks/webhookHandlers.metrics.test.ts`
-- `tests/unit/webhooks/verify/shopifySquare.test.ts`
+- `tests/unit/routes/webhookRoutes.test.ts`
 - `tests/unit/webhooks/dedupe/redisDedupe.test.ts`
 
 ### 1.2 Promotion Routes (`/api/v1/promotions/*`)

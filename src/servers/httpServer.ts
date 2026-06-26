@@ -214,8 +214,6 @@ export class HttpServer {
               'POST /api/v1/certificates/reissue (body: device_id, csr, recovery_token — requires prior generate-session)'
           },
           webhooks: {
-            shopify: 'POST /api/pos-promotions/webhooks/shopify',
-            square: 'POST /api/pos-promotions/webhooks/square',
             gmb: 'POST /api/webhooks/google-business-reviews'
           },
           note: 'User management is handled by Next.js web app'

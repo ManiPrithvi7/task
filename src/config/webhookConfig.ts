@@ -1,5 +1,5 @@
 /**
- * Webhook ingress configuration (Shopify / Square / GMB Pub/Sub).
+ * Webhook ingress configuration (GMB Pub/Sub + OTA release).
  */
 
 export type WebhookDeviceTarget = 'primary' | 'all_active';
@@ -10,9 +10,6 @@ export interface WebhookConfig {
   mqttPublishEnabled: boolean;
   gmbFastPathOnly: boolean;
   deviceTarget: WebhookDeviceTarget;
-  enableDailyMetrics: boolean;
-  shopifyClientSecret?: string;
-  squareWebhookSignatureKey?: string;
   gmbPubsubAudience?: string;
   gmbPubsubServiceAccountEmail?: string;
   gmbPubsubSkipAuthVerify: boolean;
@@ -21,7 +18,6 @@ export interface WebhookConfig {
 }
 
 const GMB_WEBHOOK_PATH = '/api/webhooks/google-business-reviews';
-const SQUARE_WEBHOOK_PATH = '/api/pos-promotions/webhooks/square';
 
 const PUBLIC_BASE_URL_ENV_HINT =
   'WEBHOOK_PUBLIC_BASE_URL (or NEXT_PUBLIC_MQTT_PUBLIC_URL, NEXT_PUBLIC_APP_URL, PUBLIC_APP_URL)';
@@ -32,8 +28,6 @@ export function loadWebhookConfig(): WebhookConfig {
     ''
   ).replace(/\/+$/, '');
 
-  // Prefer base URL + path (mirrors statsnapp's NEXT_PUBLIC_APP_URL + /api/webhooks/google-business-reviews).
-  // GMB_PUBSUB_AUDIENCE is a fallback for when no base URL env var is set.
   let gmbPubsubAudience: string | undefined;
   if (publicBaseUrl) {
     const base = publicBaseUrl.endsWith(GMB_WEBHOOK_PATH)
@@ -54,11 +48,6 @@ export function loadWebhookConfig(): WebhookConfig {
     mqttPublishEnabled: process.env.WEBHOOK_MQTT_PUBLISH_ENABLED !== 'false',
     gmbFastPathOnly: process.env.WEBHOOK_GMB_FAST_PATH_ONLY === 'true',
     deviceTarget,
-    enableDailyMetrics: process.env.ENABLE_DAILY_METRICS !== 'false',
-    shopifyClientSecret:
-      process.env.SHOPIFY_CLIENT_SECRET?.trim() ||
-      process.env.SHOPIFY_API_SECRET?.trim(),
-    squareWebhookSignatureKey: process.env.SQUARE_WEBHOOK_SIGNATURE_KEY?.trim(),
     gmbPubsubAudience,
     gmbPubsubServiceAccountEmail: process.env.GMB_PUBSUB_SERVICE_ACCOUNT_EMAIL?.trim(),
     gmbPubsubSkipAuthVerify: process.env.GMB_PUBSUB_SKIP_AUTH_VERIFY === 'true',
@@ -67,30 +56,10 @@ export function loadWebhookConfig(): WebhookConfig {
   };
 }
 
-export function getSquareWebhookUrl(publicBaseUrl: string): string {
-  const base = publicBaseUrl.replace(/\/$/, '');
-  return `${base}${SQUARE_WEBHOOK_PATH}`;
-}
-
 export function validateWebhookConfig(config: WebhookConfig, env: string): void {
   if (!config.enabled) return;
 
   if (env === 'production') {
-    if (!config.publicBaseUrl) {
-      throw new Error(
-        `${PUBLIC_BASE_URL_ENV_HINT} is required in production when webhooks are enabled (Square HMAC canonical URL).`
-      );
-    }
-    if (!config.shopifyClientSecret) {
-      throw new Error(
-        'SHOPIFY_CLIENT_SECRET is required in production when webhooks are enabled.'
-      );
-    }
-    if (!config.squareWebhookSignatureKey) {
-      throw new Error(
-        'SQUARE_WEBHOOK_SIGNATURE_KEY is required in production when webhooks are enabled (or per-merchant keys).'
-      );
-    }
     if (!config.gmbPubsubAudience) {
       throw new Error(
         `GMB_PUBSUB_AUDIENCE or ${PUBLIC_BASE_URL_ENV_HINT} is required in production for GMB Pub/Sub push.`

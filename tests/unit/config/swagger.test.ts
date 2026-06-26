@@ -18,12 +18,12 @@ describe('swagger', () => {
     expect(paths['/api/v1/onboarding']).toBeDefined();
     expect(paths['/api/v1/mqtt-config']).toBeDefined();
     expect(paths['/api/v1/connections/validate']).toBeDefined();
-    expect(paths['/api/pos-promotions/webhooks/shopify']).toBeDefined();
+    expect(paths['/api/webhooks/google-business-reviews']).toBeDefined();
   });
 
-  it('documents at least 21 paths', () => {
+  it('documents at least 15 paths', () => {
     const paths = getSwaggerSpec().paths as Record<string, unknown>;
-    expect(Object.keys(paths).length).toBeGreaterThanOrEqual(21);
+    expect(Object.keys(paths).length).toBeGreaterThanOrEqual(15);
   });
 
   it('defines required security schemes', () => {

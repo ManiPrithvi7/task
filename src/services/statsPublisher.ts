@@ -9,11 +9,9 @@ import {
 } from './screenEnvelope';
 import { publishForce, publishIfChanged } from './mqttChangeDetection';
 import {
-  buildCampaignPayload,
-  getEligibleCampaignsForUser,
-  getNextPromotionIndex
-} from './promotionService';
-import { getUserIntegrations } from './userIntegrationCache';
+  buildBrandCanvasPayload,
+  getCachedBrandCanvasAd
+} from './brandCanvasService';
 
 /**
  * Canonical PROOF Display v6 GMB payloads for `.../gmb` (firmware listens here for celebration flows).
@@ -78,13 +76,12 @@ const TEST_GMB_V6_VARIANTS = [
   }
 ];
 
-/** Per-device state for Instagram, GMB, POS (for mock rotation). */
+/** Per-device state for Instagram, GMB (for mock rotation). */
 interface DeviceScreenState {
   instagram: { followers: number; target: number };
   gmb: { reviews: number; rating: number };
   /** testGmbCycle: index into TEST_GMB_V6_VARIANTS for canonical /gmb publishes (variant rotation). */
   gmbTest: { testGmbCycle: number };
-  pos: { customersToday: number };
 }
 export class StatsPublisher {
   private mqttClient: MqttClientManager;
@@ -119,7 +116,7 @@ export class StatsPublisher {
 
     this.isRunning = true;
     const root = this.mqttClient.getTopicRoot();
-    logger.info('📈 Starting screen publisher (Instagram, GMB, POS, Promotion)', {
+    logger.info('📈 Starting screen publisher (Instagram, GMB, Promotion)', {
       interval: `${this.publishInterval / 1000}s`,
       topicRoot: root
     });
@@ -209,9 +206,6 @@ export class StatsPublisher {
           if (process.env.STATS_PUBLISHER_MOCK_GMB === 'true') {
             await this.publishGmb(device.deviceId, root);
           }
-          if (process.env.STATS_PUBLISHER_MOCK_POS === 'true') {
-            await this.publishPos(device.deviceId, root);
-          }
           await this.publishPromotionForDevice(device.deviceId, root);
         } catch (err: unknown) {
           logger.error('Failed to publish screens for device', {
@@ -230,8 +224,7 @@ export class StatsPublisher {
       this.deviceState.set(deviceId, {
         instagram: { followers: 7500 + Math.floor(Math.random() * 500), target: 10000 },
         gmb: { reviews: 370 + Math.floor(Math.random() * 30), rating: 4.8 },
-        gmbTest: { testGmbCycle: 0 },
-        pos: { customersToday: 130 + Math.floor(Math.random() * 40) }
+        gmbTest: { testGmbCycle: 0 }
       });
     }
     const s = this.deviceState.get(deviceId)!;
@@ -311,34 +304,8 @@ export class StatsPublisher {
     logger.debug('Published test-gmb screen', { deviceId, reviews, milestone: nextGoal });
   }
 
-  /** POS: screen_update with must_try, customers_today, provider (square/shopify). */
-  private async publishPos(deviceId: string, root: string): Promise<void> {
-    const state = this.ensureDeviceState(deviceId);
-    state.pos.customersToday += 3 + Math.floor(Math.random() * 10);
-    const providers = ['square', 'shopify'] as const;
-    const provider = providers[Math.floor(Math.random() * providers.length)];
-
-    const envelope = buildScreenEnvelope('pos', {
-      platform: provider,
-      orderCount: state.pos.customersToday,
-      top_seller: 'Caramel Latte'
-    });
-
-    const topic = `${root}/${deviceId}/pos`;
-    await publishIfChanged({
-      deviceId,
-      topic,
-      hashInput: envelope.payload,
-      payload: JSON.stringify(envelope),
-      mqttClient: this.mqttClient,
-      qos: 1,
-      retain: false
-    });
-    logger.debug('Published POS screen', { deviceId, provider, customersToday: state.pos.customersToday });
-  }
-
   /**
-   * Canvas/Promotion screen — reads preferences from Redis cache (zero MongoDB for prefs).
+   * Brand Canvas / Promotion screen — reads running Ad from Mongo (cached in Redis).
    * Used by the 60s publish cycle and connect-refresh coordinator (same hash dedupe path).
    */
   async publishPromotionForDevice(
@@ -363,50 +330,32 @@ export class StatsPublisher {
         return;
       }
 
-      const integrations = await getUserIntegrations(userId);
-      if (!integrations?.pos?.platform) {
-        logger.info('[PROMOTION] No POS integration — default canvas', { deviceId, userId });
+      const ad = await getCachedBrandCanvasAd(userId);
+      if (!ad) {
+        logger.info('[PROMOTION] No running brand canvas — default canvas', { deviceId, userId });
         await this.publishDefaultCanvas(deviceId, root, force);
         return;
       }
 
-      const { campaigns } = await getEligibleCampaignsForUser(userId, integrations);
-      if (campaigns.length === 0) {
-        logger.info('[PROMOTION] No eligible campaigns — default canvas', {
-          deviceId,
-          userId,
-          posPlatform: integrations.pos.platform
-        });
-        await this.publishDefaultCanvas(deviceId, root, force);
-        return;
-      }
-
-      const index = await getNextPromotionIndex(deviceId, campaigns.length);
-      const campaign = campaigns[index];
-      const campaignId = String((campaign as { _id: unknown })._id);
-      const screenPayload = buildCampaignPayload(campaign);
+      const adId = String((ad as { _id: unknown })._id);
+      const screenPayload = buildBrandCanvasPayload(ad);
       const envelope = buildScreenEnvelope('promotion', screenPayload);
 
-      const result = await this.publishPromotionEnvelope(deviceId, root, envelope, campaignId, force);
+      const result = await this.publishPromotionEnvelope(deviceId, root, envelope, adId, force);
 
       if (result.published) {
-        logger.info('[PROMOTION] Published campaign', {
+        logger.info('[PROMOTION] Published brand canvas', {
           deviceId,
           userId,
-          campaignId,
-          campaignName: (campaign as { name?: string }).name,
-          offerCode: (campaign as { offerCode?: string }).offerCode,
-          rotationIndex: index,
-          totalCampaigns: campaigns.length,
+          adId,
+          adName: (ad as { name?: string }).name,
           topic: `${root}/${deviceId}/promotion`,
-          Offer: screenPayload.Offer,
-          message: screenPayload.message,
-          qrText: screenPayload.qrText
+          creativeUrl: screenPayload.creativeUrl
         });
       } else {
         logger.info('[PROMOTION] Skipped unchanged payload', {
           deviceId,
-          campaignId,
+          adId,
           reason: result.reason
         });
       }
@@ -423,10 +372,10 @@ export class StatsPublisher {
     }
   }
 
-  /** 4.3 Default canvas — no POS, no eligible campaigns, or error fallback */
+  /** Default canvas — no userId, no running brand canvas, or error fallback */
   private async publishDefaultCanvas(deviceId: string, root: string, force = false): Promise<void> {
     const envelope = buildScreenEnvelope('promotion', {
-      platform: 'shopify',
+      platform: 'brand_canvas',
       Offer: '20%',
       message: 'Cold Brew',
       qrText: 'https://promo.link/coldbrew'
@@ -450,12 +399,12 @@ export class StatsPublisher {
     deviceId: string,
     root: string,
     envelope: ReturnType<typeof buildScreenEnvelope>,
-    campaignId?: string,
+    contentId?: string,
     force = false
   ): Promise<{ published: boolean; reason: 'changed' | 'unchanged' | 'no_redis' }> {
     const topic = `${root}/${deviceId}/promotion`;
-    const hashInput = campaignId
-      ? { ...(envelope.payload as Record<string, unknown>), campaignId }
+    const hashInput = contentId
+      ? { ...(envelope.payload as Record<string, unknown>), contentId }
       : envelope.payload;
     const payload = JSON.stringify(envelope);
 
