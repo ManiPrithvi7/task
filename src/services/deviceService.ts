@@ -201,6 +201,12 @@ export class DeviceService {
         existing.macID = data.macID;
         existing.lastSeenAt = new Date();
         existing.updatedAt = new Date();
+
+        const appVersion = data.metadata?.appVersion || data.metadata?.app_version;
+        if (typeof appVersion === 'string' && appVersion.trim()) {
+          existing.firmwareVersion = appVersion.trim();
+          existing.firmwareReportedAt = new Date();
+        }
         
         // Update status if it's not already active
         if (existing.status === DeviceStatus.OFFLINE) {
@@ -220,6 +226,7 @@ export class DeviceService {
 
       // Create new device (honor data.status so MQTT-registered devices get ACTIVE and receive screen updates)
       const initialStatus = data.status === 'active' ? DeviceStatus.ACTIVE : DeviceStatus.UNALLOCATED;
+      const appVersion = data.metadata?.appVersion || data.metadata?.app_version;
       const device = new Device({
         userId: undefined, // Will be set when allocated to user
         macID: data.macID,
@@ -228,7 +235,13 @@ export class DeviceService {
         clientId: data.clientId,
         status: initialStatus,
         tokenUsed: false,
-        lastSeenAt: new Date()
+        lastSeenAt: new Date(),
+        ...(typeof appVersion === 'string' && appVersion.trim()
+          ? {
+              firmwareVersion: appVersion.trim(),
+              firmwareReportedAt: new Date()
+            }
+          : {})
       });
 
       await device.save();

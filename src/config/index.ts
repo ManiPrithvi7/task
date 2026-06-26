@@ -10,10 +10,20 @@ import {
 } from './webhookConfig';
 import { normalizeTlsPem, resolveMqttTlsServername } from '../utils/mqttTlsOptions';
 import { configureLogger } from '../utils/logger';
-import { envBool, envInt, envString } from './envHelpers';
+import { envBool, envInt, envString, resolveMqttClientId } from './envHelpers';
+import {
+  OTA_CHECK_RATE_LIMIT_SEC,
+  OTA_OCI_BUCKET,
+  OTA_OCI_NAMESPACE,
+  OTA_OCI_REGION,
+  OTA_PRESIGNED_TTL_SEC,
+  OTA_ROLLBACK_FAILURE_THRESHOLD,
+  otaOciParBaseUrl,
+  resolveOtaDownloadMode,
+  type OtaDownloadMode
+} from './otaDefaults';
 
 export type { WebhookConfig };
-export type { OtaConfig } from './otaConfig';
 
 // Load environment variables
 dotenv.config();
@@ -398,6 +408,42 @@ export interface InfluxDBConfig {
   diskQueueMaxLinesPerFile: number;
 }
 
+export type { OtaDownloadMode };
+
+export interface OtaOciCredentials {
+  tenancyId: string;
+  userId: string;
+  fingerprint: string;
+  privateKey: string;
+}
+
+export interface OtaOciConfig {
+  namespace: string;
+  bucket: string;
+  region: string;
+  parBaseUrl: string;
+  /** Env-based API key auth (required when OTA_ENABLED=true). */
+  credentials?: OtaOciCredentials;
+}
+
+export interface OtaConfig {
+  enabled: boolean;
+  oci: OtaOciConfig;
+  presignedUrlTtlSec: number;
+  /** Ed25519 public key PEM (env or file). */
+  signingPublicKeyPem?: string;
+  /** @deprecated Prefer OTA_ED25519_PUBLIC_KEY_BASE64 */
+  signingPublicKeyPath?: string;
+  /** When false, promote is blocked until OTA_SIGNING_CONFIRMED=true (firmware team). */
+  signingConfirmed: boolean;
+  broadcastTopic: string;
+  downloadMode: OtaDownloadMode;
+  checkRateLimitSec: number;
+  rollbackFailureThreshold: number;
+  /** Bearer secret for POST /api/webhooks/ota-release (GitHub Actions CI). */
+  releaseWebhookSecret?: string;
+}
+
 /**
  * Trim and strip trailing slashes for Influx base URL.
  *
@@ -430,6 +476,59 @@ export interface AppConfig {
    * When unset, the poller still runs (requires Redis) and calls Instagram Graph from this process.
    */
   instagramServerless?: InstagramServerlessConfig;
+  ota?: OtaConfig;
+}
+
+function normalizePemFromEnv(raw: string): string {
+  return raw.trim().replace(/\\n/g, '\n');
+}
+
+function loadOciCredentialsFromEnv(): OtaOciCredentials | undefined {
+  const tenancyId = process.env.OCI_TENANCY_OCID?.trim();
+  const userId = process.env.OCI_USER_OCID?.trim();
+  const fingerprint = process.env.OCI_FINGERPRINT?.trim();
+
+  let privateKey = process.env.OCI_API_PRIVATE_KEY?.trim();
+  if (!privateKey && process.env.OCI_API_PRIVATE_KEY_BASE64?.trim()) {
+    try {
+      privateKey = Buffer.from(process.env.OCI_API_PRIVATE_KEY_BASE64.trim(), 'base64').toString('utf8');
+    } catch {
+      privateKey = undefined;
+    }
+  }
+  if (!privateKey && process.env.OCI_PRIVATE_KEY?.trim()) {
+    privateKey = process.env.OCI_PRIVATE_KEY.trim();
+  }
+
+  if (tenancyId && userId && fingerprint && privateKey) {
+    return {
+      tenancyId,
+      userId,
+      fingerprint,
+      privateKey: normalizePemFromEnv(privateKey)
+    };
+  }
+  return undefined;
+}
+
+function loadOtaSigningPublicKeyPem(): string | undefined {
+  const inline = process.env.OTA_ED25519_PUBLIC_KEY_PEM?.trim();
+  if (inline) return normalizePemFromEnv(inline);
+
+  const b64 = process.env.OTA_ED25519_PUBLIC_KEY_BASE64?.trim();
+  if (b64) {
+    try {
+      return normalizePemFromEnv(Buffer.from(b64, 'base64').toString('utf8'));
+    } catch {
+      return undefined;
+    }
+  }
+
+  const keyPath = process.env.OTA_ED25519_PUBLIC_KEY_PATH?.trim();
+  if (keyPath && fs.existsSync(keyPath)) {
+    return fs.readFileSync(keyPath, 'utf8');
+  }
+  return undefined;
 }
 
 export function loadConfig(): AppConfig {
@@ -564,7 +663,7 @@ export function loadConfig(): AppConfig {
     mqtt: {
       broker: process.env.MQTT_BROKER || 'broker.withproof.io',
       port: parseInt(process.env.MQTT_PORT || '8883', 10),
-      clientId: process.env.MQTT_CLIENT_ID || 'proof-server',
+      clientId: resolveMqttClientId(),
       authX509Only,
       username: hasMqttUserPass ? mqttUsername : undefined,
       password: hasMqttUserPass ? mqttPassword : undefined,
@@ -674,6 +773,42 @@ export function loadConfig(): AppConfig {
     instagramPolling
   };
 
+  const topicRoot = config.mqtt.topicRoot;
+  const otaEnabled = process.env.OTA_ENABLED === 'true';
+  if (otaEnabled) {
+    const ociNamespace = envString('OTA_OCI_NAMESPACE', OTA_OCI_NAMESPACE);
+    const ociBucket = envString('OTA_OCI_BUCKET', OTA_OCI_BUCKET);
+    const ociRegion = envString('OTA_OCI_REGION', OTA_OCI_REGION);
+    const parOverride = process.env.OTA_OCI_PAR_BASE_URL?.trim();
+    const ociCredentials = loadOciCredentialsFromEnv();
+    const signingPublicKeyPem = loadOtaSigningPublicKeyPem();
+
+    config.ota = {
+      enabled: true,
+      oci: {
+        namespace: ociNamespace,
+        bucket: ociBucket,
+        region: ociRegion,
+        parBaseUrl: parOverride || otaOciParBaseUrl(ociNamespace, ociRegion),
+        credentials: ociCredentials
+      },
+      presignedUrlTtlSec: envInt('OTA_PRESIGNED_TTL_SEC', OTA_PRESIGNED_TTL_SEC),
+      signingPublicKeyPem,
+      signingPublicKeyPath: process.env.OTA_ED25519_PUBLIC_KEY_PATH?.trim() || undefined,
+      signingConfirmed:
+        process.env.OTA_SIGNING_CONFIRMED === 'true' || process.env.OTA_SIGNING_CONFIRMED === '1',
+      broadcastTopic:
+        process.env.OTA_BROADCAST_TOPIC?.trim() || `${topicRoot}/broadcast/cmd`,
+      downloadMode: resolveOtaDownloadMode(process.env.OTA_DOWNLOAD_MODE),
+      checkRateLimitSec: envInt('OTA_CHECK_RATE_LIMIT_SEC', OTA_CHECK_RATE_LIMIT_SEC),
+      rollbackFailureThreshold: envInt(
+        'OTA_ROLLBACK_FAILURE_THRESHOLD',
+        OTA_ROLLBACK_FAILURE_THRESHOLD
+      ),
+      releaseWebhookSecret: process.env.OTA_RELEASE_WEBHOOK_SECRET?.trim() || undefined
+    };
+  }
+
   logger.info('Configuration loaded', {
     mqtt: {
       broker: config.mqtt.broker,
@@ -751,6 +886,28 @@ export function validateConfig(config: AppConfig): void {
   }
   if (!config.mongodb.uri) {
     throw new Error('MongoDB URI is REQUIRED. Set MONGODB_URI environment variable.');
+  }
+
+  if (config.ota?.enabled) {
+    if (config.ota.presignedUrlTtlSec < 60) {
+      throw new Error('OTA_PRESIGNED_TTL_SEC must be at least 60');
+    }
+    const hasOciAuth = !!config.ota.oci.credentials;
+    if (!hasOciAuth) {
+      throw new Error(
+        'OTA_ENABLED requires OCI_API_PRIVATE_KEY_BASE64, OCI_TENANCY_OCID, OCI_USER_OCID, OCI_FINGERPRINT'
+      );
+    }
+    if (!config.ota.signingPublicKeyPem) {
+      logger.warn(
+        '[OTA] OTA_ED25519_PUBLIC_KEY_BASE64 not set — webhook/finalize signature verification will fail until configured'
+      );
+    }
+    if (!config.ota.releaseWebhookSecret) {
+      logger.warn(
+        '[OTA] OTA_RELEASE_WEBHOOK_SECRET not set — CI webhook ingest disabled until configured'
+      );
+    }
   }
 
   if (config.mqtt.authX509Only) {

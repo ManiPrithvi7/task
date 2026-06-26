@@ -47,7 +47,18 @@ import { createProvisioningRoutes } from './routes/provisioningRoutes';
 import { createConfigRoutes } from './routes/configRoutes';
 import { createLifecycleRoutes } from './routes/lifecycleRoutes';
 import { createRecoveryRoutes } from './routes/recoveryRoutes';
-import { createWebhookRoutes } from './routes/webhookRoutes';
+import { createOtaRoutes } from './routes/otaRoutes';
+import { createOtaAdminRoutes } from './routes/otaAdminRoutes';
+import { createWebhookRoutes, type OtaReleaseWebhookDeps } from './routes/webhookRoutes';
+import { createFirmwareStorageService } from './services/firmwareStorageService';
+import { resolveOtaPublicBaseUrl } from './config/otaDefaults';
+import {
+  initOtaSigningState,
+  OtaService,
+  OtaCommandPublisher,
+  OtaEventHandler,
+  OtaRedisState
+} from './services/otaService';
 import { createRecoverySessionService } from './services/recoverySessionService';
 import { getTokenStore } from './storage/tokenStore';
 import * as dns from 'dns';
@@ -102,6 +113,14 @@ export class StatsMqttLite {
   private influxService?: InfluxService;
   private auditService?: AuditService;
   private transparencyLog?: TransparencyLog;
+
+  // OTA services
+  private firmwareStorageService?: ReturnType<typeof createFirmwareStorageService>;
+  private otaPublicBaseUrl?: string;
+  private otaService?: OtaService;
+  private otaCommandPublisher?: OtaCommandPublisher;
+  private otaEventHandler?: OtaEventHandler;
+  private otaRedisState?: OtaRedisState;
 
   // Active device cache (Redis-backed)
   private activeDeviceCache!: ActiveDeviceCache;
@@ -1200,6 +1219,37 @@ export class StatsMqttLite {
     }
 
     logger.info('📋 [LIFECYCLE:REGISTER] Device registration complete', { deviceId });
+
+    void this.deliverOtaOnRegistration(deviceId, message.appVersion || message.app_version);
+  }
+
+  private async deliverOtaOnRegistration(deviceId: string, appVersion?: string): Promise<void> {
+    if (!this.config.ota?.enabled || !this.otaService) {
+      return;
+    }
+
+    let currentVersion =
+      typeof appVersion === 'string' && appVersion.trim() ? appVersion.trim() : undefined;
+
+    if (!currentVersion || currentVersion === '1.0.0') {
+      const device = await Device.findOne({ clientId: deviceId }).select({ firmwareVersion: 1 });
+      if (device?.firmwareVersion?.trim()) {
+        currentVersion = device.firmwareVersion.trim();
+      }
+    }
+
+    if (!currentVersion) {
+      return;
+    }
+
+    try {
+      await this.otaService.deliverPendingToDevice(deviceId, currentVersion);
+    } catch (err: unknown) {
+      logger.warn('[OTA] Registration delivery failed', {
+        deviceId,
+        error: err instanceof Error ? err.message : String(err)
+      });
+    }
   }
 
   /**
@@ -1380,9 +1430,16 @@ export class StatsMqttLite {
       return;
     }
 
+    const eventType = message?.type || message?.event || message?.status;
+
+    if (this.otaEventHandler && eventType && String(eventType).startsWith('ota_')) {
+      await this.otaEventHandler.handle(deviceId, message);
+    }
+
     logger.info('📊 Device Status Update', {
       deviceId,
       status: message.status,
+      eventType,
       uptime: message.uptime
     });
   }
@@ -1467,11 +1524,24 @@ export class StatsMqttLite {
   private async initializeHttpServer(): Promise<void> {
     logger.info('🌐 Initializing HTTP server...');
 
+    let otaReleaseWebhook: OtaReleaseWebhookDeps | undefined;
+
+    if (this.config.ota?.enabled) {
+      this.initializeOtaServices();
+      if (this.config.ota.releaseWebhookSecret && this.otaService) {
+        otaReleaseWebhook = {
+          secret: this.config.ota.releaseWebhookSecret,
+          otaService: this.otaService
+        };
+      }
+    }
+
     const webhookRoutes = createWebhookRoutes({
       mqttClient: this.mqttClient,
       topicRoot: this.config.mqtt.topicRoot,
       webhookConfig: this.config.webhooks,
-      appEnv: this.config.app.env
+      appEnv: this.config.app.env,
+      otaReleaseWebhook
     });
 
     this.httpServer = new HttpServer(
@@ -1529,10 +1599,107 @@ export class StatsMqttLite {
     } catch (err: any) {
       logger.warn('⚠️ Failed to register device configuration route', { error: err instanceof Error ? err.message : String(err) });
     }
+
+    if (this.config.ota?.enabled) {
+      if (
+        this.firmwareStorageService &&
+        this.otaService &&
+        this.otaCommandPublisher &&
+        this.otaEventHandler
+      ) {
+        const publicBaseUrl = this.otaPublicBaseUrl!;
+
+        const otaRoutes = createOtaRoutes({
+          otaConfig: this.config.ota,
+          otaService: this.otaService,
+          storage: this.firmwareStorageService,
+          eventHandler: this.otaEventHandler,
+          getRedisClient: () => this.getRedisClientOrNull(),
+          redisKeyPrefix: this.config.redis.keyPrefix || 'mqtt-lite:'
+        });
+        this.httpServer.getApp().use('/api/v1', otaRoutes);
+        logger.info('✅ OTA device routes registered at /api/v1/ota/*');
+
+        if (this.authService || this.config.auth.secret) {
+          if (!this.authService && this.config.auth.secret) {
+            this.authService = new AuthService(this.config.auth.secret);
+          }
+          const adminAuth = this.authService!;
+          const otaAdminRoutes = createOtaAdminRoutes({
+            otaConfig: this.config.ota,
+            authService: adminAuth,
+            storage: this.firmwareStorageService,
+            otaService: this.otaService,
+            commandPublisher: this.otaCommandPublisher,
+            publicBaseUrl
+          });
+          this.httpServer.getApp().use('/api/v1/admin/ota', otaAdminRoutes);
+          logger.info('✅ OTA admin routes registered at /api/v1/admin/ota/*');
+        } else {
+          logger.warn('⚠️ OTA admin routes skipped — AuthService not initialized');
+        }
+      }
+    }
     
     await this.httpServer.start();
     
     logger.info('✅ HTTP server initialized');
+  }
+
+  private initializeOtaServices(): void {
+    if (!this.config.ota?.enabled) return;
+
+    this.firmwareStorageService = createFirmwareStorageService(this.config.ota);
+    initOtaSigningState(this.config.ota.signingConfirmed);
+    void this.firmwareStorageService
+      .verifyBucketAccess()
+      .catch((err: unknown) => {
+        logger.error('[OTA] OCI bucket access check failed', {
+          bucket: this.config.ota?.oci.bucket,
+          namespace: this.config.ota?.oci.namespace,
+          error: err instanceof Error ? err.message : String(err)
+        });
+      });
+    this.otaPublicBaseUrl = resolveOtaPublicBaseUrl({
+      otaPublicBaseUrl: process.env.OTA_PUBLIC_BASE_URL,
+      publicAppUrl: process.env.PUBLIC_APP_URL,
+      httpHost: this.config.http.host,
+      httpPort: this.config.http.port
+    });
+
+    this.otaRedisState = new OtaRedisState(
+      () => this.getRedisClientOrNull(),
+      this.config.redis.keyPrefix || 'mqtt-lite:'
+    );
+    this.otaCommandPublisher = new OtaCommandPublisher(
+      this.mqttClient,
+      this.config.mqtt.topicRoot,
+      this.config.ota.broadcastTopic,
+      this.otaRedisState,
+      this.config.ota
+    );
+    this.otaService = new OtaService(
+      this.config.ota,
+      this.firmwareStorageService,
+      this.otaPublicBaseUrl,
+      this.otaCommandPublisher,
+      this.otaRedisState
+    );
+    this.otaEventHandler = new OtaEventHandler(this.otaService, this.otaCommandPublisher);
+
+    logger.info('✅ OTA services initialized', {
+      mqttDownloadMode: 'presigned',
+      httpDownloadMode: this.config.ota.downloadMode,
+      publicBaseUrl: this.otaPublicBaseUrl,
+      bucket: this.config.ota.oci.bucket,
+      namespace: this.config.ota.oci.namespace,
+      delivery: 'server-driven'
+    });
+    if (this.config.ota.downloadMode === 'proxy') {
+      logger.warn(
+        '[OTA] OTA_DOWNLOAD_MODE=proxy enables GET /api/v1/ota/download only — requires mTLS-capable HTTP edge (not Railway public URL). MQTT always uses OCI presigned PAR.'
+      );
+    }
   }
 
   private async initializeWebSocketServer(): Promise<void> {

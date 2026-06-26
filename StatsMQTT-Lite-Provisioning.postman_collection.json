@@ -518,7 +518,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"device_id\": \"{{device_id}}\",\n    \"token\": \"{{recovery_token}}\"\n}",
+							"raw": "{\n    \"device_id\": \"{{device_id}}\",\n    \"token\": \"{{recovery_token}}\",\n    \"force_reissue\": true\n}",
 							"options": { "raw": { "language": "json" } }
 						},
 						"url": {
@@ -526,7 +526,7 @@
 							"host": ["{{base_url}}"],
 							"path": ["api", "v1", "recovery", "generate-session"]
 						},
-						"description": "Registers device recovery JWT in Redis. Normally called by Next.js POST /api/recovery/generate-session after minting the token."
+						"description": "Registers device recovery JWT in Redis. Normally called by Next.js POST /api/recovery/generate-session after minting the token. Set force_reissue:true to replace an existing session instead of 429."
 					},
 					"response": []
 				},

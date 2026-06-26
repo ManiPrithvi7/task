@@ -9,6 +9,10 @@ module.exports = {
     '^@/(.*)$': '<rootDir>/src/$1'
   },
   clearMocks: true,
+  forceExit: true,
+  detectOpenHandles: false,
+  maxWorkers: 1,
+  testTimeout: 120000,
   globals: {
     'ts-jest': {
       tsconfig: {

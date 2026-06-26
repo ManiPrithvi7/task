@@ -55,7 +55,9 @@ On success, MQTT **consumes** the Redis session (single-use). A second reissue w
 `POST /api/v1/recovery/generate-session`
 
 - Header: `Authorization: Bearer <user JWT>` (dashboard session).
-- Body: `{ "device_id", "token" }` where `token` is the device recovery JWT from Next.js.
+- Body: `{ "device_id", "token", "force_reissue"?: boolean }` where `token` is the device recovery JWT from Next.js.
+- When `force_reissue` is `true`, an existing Redis session for the device is **replaced** (fresh TTL, new JWT). Dashboard should send this on every factory-reset generate-session call.
+- When `force_reissue` is omitted or `false`, an active session returns **429** instead of replacing.
 
 ## Errors (firmware handling)
 
@@ -63,7 +65,7 @@ On success, MQTT **consumes** the Redis session (single-use). A second reissue w
 |------|------|---------|
 | `SESSION_EXPIRED` | 410 | No Redis session or already used |
 | `SESSION_INVALID` | 401 | JWT/hash mismatch |
-| `GENERATE_RATE_LIMITED` | 429 | Active session still exists |
+| `GENERATE_RATE_LIMITED` | 429 | Active session still exists (`force_reissue` not set) |
 
 ## Environment
 

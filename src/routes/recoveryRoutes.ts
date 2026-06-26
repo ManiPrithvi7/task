@@ -104,8 +104,14 @@ export function createRecoveryRoutes(deps: RecoveryRoutesDeps): Router {
         return;
       }
 
-      const raw = (req.body as { device_id?: string; token?: string })?.device_id;
-      const rawToken = (req.body as { device_id?: string; token?: string })?.token;
+      const body = req.body as {
+        device_id?: string;
+        token?: string;
+        force_reissue?: boolean;
+      };
+      const raw = body?.device_id;
+      const rawToken = body?.token;
+      const forceReissue = body?.force_reissue === true;
       if (typeof raw !== 'string' || raw.trim().length === 0) {
         res.status(400).json({
           success: false,
@@ -126,7 +132,7 @@ export function createRecoveryRoutes(deps: RecoveryRoutesDeps): Router {
       }
 
       const requestedDeviceId = raw.trim();
-      logger.info('recovery generate-session request received', { requestedDeviceId });
+      logger.info('recovery generate-session request received', { requestedDeviceId, forceReissue });
 
       const device = await Device.findOne({ clientId: requestedDeviceId });
       if (!device) {
@@ -153,7 +159,8 @@ export function createRecoveryRoutes(deps: RecoveryRoutesDeps): Router {
       const result = await recoverySessionService.registerSession(
         deviceId,
         rawToken.trim(),
-        userAuth.userId
+        userAuth.userId,
+        { forceReissue }
       );
 
       if ('error' in result) {

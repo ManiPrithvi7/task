@@ -57,6 +57,7 @@ curl http://localhost:3002/health
 |-------|----------|
 | Quick start (extended) | [`docs/QUICKSTART.md`](docs/QUICKSTART.md) |
 | Device recovery / firmware | [`docs/DEVICE_RECOVERY_FIRMWARE.md`](docs/DEVICE_RECOVERY_FIRMWARE.md) |
+| OTA firmware updates | [`docs/OTA_FIRMWARE_CONTRACT.md`](docs/OTA_FIRMWARE_CONTRACT.md) |
 | Webhook migration | [`docs/WEBHOOK_MIGRATION.md`](docs/WEBHOOK_MIGRATION.md) |
 | Redis setup & troubleshooting | [`docs/REDIS_CLOUD_SETUP.md`](docs/REDIS_CLOUD_SETUP.md), [`docs/REDIS_CONNECTION_FIX.md`](docs/REDIS_CONNECTION_FIX.md) |
 | CSR / device certificates | [`docs/CSR_REQUIREMENTS_VALIDATION.md`](docs/CSR_REQUIREMENTS_VALIDATION.md) |
@@ -603,8 +604,8 @@ Firmware rule: **Do not delete the old cert until MQTT connect succeeds with sta
 #### Flow 4: Factory reset recovery (JWT session + reissue)
 
 1. Dashboard (authenticated): `POST /api/recovery/generate-session` (Next.js) → `POST /api/v1/recovery/generate-session` (MQTT)
-   - Body: `{ "device_id": "<device_id>", "token": "<device_recovery_jwt>" }`
-   - Registers Redis session `mqtt-lite:recovery:session:{device_id}` (15 min TTL, single-use)
+   - Body: `{ "device_id": "<device_id>", "token": "<device_recovery_jwt>", "force_reissue": true }`
+   - Registers (or replaces) Redis session `mqtt-lite:recovery:session:{device_id}` (15 min TTL, single-use)
 2. Device AP portal: user opens `http://192.168.4.1/?token=<jwt>` and submits Wi‑Fi + token to device `POST /api/recovery/restore`
 3. Device calls MQTT: `POST /api/v1/certificates/reissue`
    - Body: `{ "device_id", "csr", "recovery_token" }` (alias: `token`)

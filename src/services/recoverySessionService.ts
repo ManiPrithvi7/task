@@ -141,11 +141,13 @@ export class RecoverySessionService {
 
   /**
    * Register a device recovery JWT session in Redis (one active session per device).
+   * When forceReissue is true, an existing session is replaced instead of rate-limited.
    */
   async registerSession(
     deviceId: string,
     token: string,
-    expectedUserId: string
+    expectedUserId: string,
+    opts?: { forceReissue?: boolean }
   ): Promise<{ expiresIn: number; jti: string } | { error: RecoverySessionError }> {
     const redis = this.getRedis();
     if (!redis) {
@@ -156,12 +158,18 @@ export class RecoverySessionService {
     if ('error' in active) {
       return { error: active.error };
     }
-    if (active.exists) {
+    if (active.exists && !opts?.forceReissue) {
       logger.warn('recovery generate-session blocked (active session exists)', {
         deviceId,
         ttlSec: active.ttlSec
       });
       return { error: 'GENERATE_RATE_LIMITED' };
+    }
+    if (active.exists && opts?.forceReissue) {
+      logger.info('recovery session replaced (force_reissue)', {
+        deviceId,
+        previousTtlSec: active.ttlSec
+      });
     }
 
     const parsed = this.parseDeviceRecoveryToken(token, deviceId);

@@ -1,0 +1,1092 @@
+{
+  "StatsMQTT-Lite-Provisioning.postman_collection.json": {
+    "mtime": 1782458142.117082,
+    "ast_hash": "9ecb657ecd4efb500d58e0f90c441ee2",
+    "semantic_hash": ""
+  },
+  "StatsMQTT-Lite-Provisioning.postman_environment.json": {
+    "mtime": 1774847091.4495316,
+    "ast_hash": "9067f4ded060d6f982ff073930528ec0",
+    "semantic_hash": ""
+  },
+  "jest.config.js": {
+    "mtime": 1782458142.1247926,
+    "ast_hash": "fa043d66781c1f21082c5b1009f99854",
+    "semantic_hash": ""
+  },
+  "package.json": {
+    "mtime": 1782458142.1259525,
+    "ast_hash": "23f8b0cd3daa552d2e0900ecf4a1fcf8",
+    "semantic_hash": ""
+  },
+  "public/js/message-viewer.js": {
+    "mtime": 1774847091.4519317,
+    "ast_hash": "7eda0ac3859e38fe883d9ba7c41e8385",
+    "semantic_hash": ""
+  },
+  "public/js/mqtt-tester.js": {
+    "mtime": 1782458142.1260376,
+    "ast_hash": "4f79a2247053a013990806c874a1c83f",
+    "semantic_hash": ""
+  },
+  "railway.json": {
+    "mtime": 1776841080.21112,
+    "ast_hash": "bbafb98488ca7eff3d25f78dbff9a170",
+    "semantic_hash": ""
+  },
+  "scripts/attention-roadmap-smoke.ts": {
+    "mtime": 1782453567.974773,
+    "ast_hash": "2eb2296fc87aa85d860afa9f3f27026f",
+    "semantic_hash": ""
+  },
+  "scripts/instance.sh": {
+    "mtime": 1780035760.0898867,
+    "ast_hash": "9f4ab861308d407288cf4e9033607d9e",
+    "semantic_hash": ""
+  },
+  "scripts/integration-test.sh": {
+    "mtime": 1782458142.1260889,
+    "ast_hash": "3a79577df4e3ac83b7a7d7088354d1c0",
+    "semantic_hash": ""
+  },
+  "scripts/migrate-device-certificates-to-slots.ts": {
+    "mtime": 1776841080.2112162,
+    "ast_hash": "c530a3ee83cf0110ba42fee807e51898",
+    "semantic_hash": ""
+  },
+  "scripts/mongo-ping.ts": {
+    "mtime": 1780035760.0918958,
+    "ast_hash": "e2c7295612bb9de46490d748fc2d52b7",
+    "semantic_hash": ""
+  },
+  "scripts/ota-e2e/firmware_server.py": {
+    "mtime": 1782458142.1261413,
+    "ast_hash": "a56eaa73d03e25058c51ac139f314c57",
+    "semantic_hash": ""
+  },
+  "scripts/ota-e2e/flash-baseline.sh": {
+    "mtime": 1782458142.1261704,
+    "ast_hash": "c861b50ae6ee8aa6cdf1083881125d00",
+    "semantic_hash": ""
+  },
+  "scripts/ota-e2e/generate-keys.sh": {
+    "mtime": 1782458142.1261938,
+    "ast_hash": "594ae74bed104d7dd64a170b9e6a77eb",
+    "semantic_hash": ""
+  },
+  "scripts/ota-e2e/oci-download-url.js": {
+    "mtime": 1782458142.1262312,
+    "ast_hash": "d64644ebc0726bc1ddde6b9d4dbcceee",
+    "semantic_hash": ""
+  },
+  "scripts/ota-e2e/push-ota-on-active.js": {
+    "mtime": 1782458142.126284,
+    "ast_hash": "a342a24999fb317facca8351c4d3b5fe",
+    "semantic_hash": ""
+  },
+  "scripts/ota-e2e/run-e2e.sh": {
+    "mtime": 1782458142.1263175,
+    "ast_hash": "6434f4544b127c6233180b813f29abed",
+    "semantic_hash": ""
+  },
+  "scripts/ota-e2e/sign-firmware.sh": {
+    "mtime": 1782458142.1263483,
+    "ast_hash": "8f17300ba5020b0efc58e844bf2c72de",
+    "semantic_hash": ""
+  },
+  "scripts/ota/push-update.ts": {
+    "mtime": 1782458142.1263483,
+    "ast_hash": "a148d6ae51732a6826c8f61ce28cdef5",
+    "semantic_hash": ""
+  },
+  "scripts/ota/sign-firmware.ts": {
+    "mtime": 1782458142.1264114,
+    "ast_hash": "0b4de2d80ee7a450c17b691ca7ce796b",
+    "semantic_hash": ""
+  },
+  "scripts/ota/upload-firmware-oci.ts": {
+    "mtime": 1782458142.1264691,
+    "ast_hash": "afb99066624e9b3867fc87ef37620c2e",
+    "semantic_hash": ""
+  },
+  "scripts/ota/upload-release.ts": {
+    "mtime": 1782458142.1265001,
+    "ast_hash": "6ea3248c3e240e04cef9b8bc28216b8f",
+    "semantic_hash": ""
+  },
+  "scripts/pki/generate-broker-cert.sh": {
+    "mtime": 1780488552.8299642,
+    "ast_hash": "9b515e8d2cdb926769f5aa18c8d28dc4",
+    "semantic_hash": ""
+  },
+  "scripts/pki/pki.ts": {
+    "mtime": 1780463380.5625896,
+    "ast_hash": "35472e77d4bcff39a059e77ea014d80a",
+    "semantic_hash": ""
+  },
+  "scripts/pki/print-railway-broker-env.sh": {
+    "mtime": 1780298593.882082,
+    "ast_hash": "b21083c5fef343a3c920625880a86c69",
+    "semantic_hash": ""
+  },
+  "scripts/pki/verify-broker-tls.sh": {
+    "mtime": 1780463380.5626314,
+    "ast_hash": "9bb310264fb6e74ac18efc2d167abb09",
+    "semantic_hash": ""
+  },
+  "scripts/run-connection-tests.sh": {
+    "mtime": 1782458142.126524,
+    "ast_hash": "7c6e1b934d2dd608134efcbd7c9d34fe",
+    "semantic_hash": ""
+  },
+  "scripts/run-migration.sh": {
+    "mtime": 1780298593.882082,
+    "ast_hash": "43cf7f86d9f66402a6e518657e173ca6",
+    "semantic_hash": ""
+  },
+  "scripts/run-unit-tests.sh": {
+    "mtime": 1782458142.1265483,
+    "ast_hash": "2dd7c26276ee5420ba948e8cf728288f",
+    "semantic_hash": ""
+  },
+  "scripts/sync-cursor-skill-commands.sh": {
+    "mtime": 1782458142.1265724,
+    "ast_hash": "8c478d93d0f4469eb65bdae5ba6aa4e1",
+    "semantic_hash": ""
+  },
+  "scripts/test-mqtt-mtls.ts": {
+    "mtime": 1780463380.5626674,
+    "ast_hash": "c7bc39455e9e43217b903247f563684d",
+    "semantic_hash": ""
+  },
+  "scripts/verify-gmb-audience.ts": {
+    "mtime": 1780463380.5511649,
+    "ast_hash": "a57f1d906c1d50688d8cbcb453eebbe9",
+    "semantic_hash": ""
+  },
+  "src/app.ts": {
+    "mtime": 1782458142.1268396,
+    "ast_hash": "9a0966ef0f42411f33b622721f0f3d56",
+    "semantic_hash": ""
+  },
+  "src/config/connectionsConfig.ts": {
+    "mtime": 1780568871.9430892,
+    "ast_hash": "77fd84667ffdeefd243a71b15f6b7fd2",
+    "semantic_hash": ""
+  },
+  "src/config/envHelpers.ts": {
+    "mtime": 1782458142.1268973,
+    "ast_hash": "62a4668ffa5387c94b688c2074da2472",
+    "semantic_hash": ""
+  },
+  "src/config/index.ts": {
+    "mtime": 1782458405.7841485,
+    "ast_hash": "556eb69ae9ba5c15a006abbaca3ffae5",
+    "semantic_hash": ""
+  },
+  "src/config/mongoConnection.ts": {
+    "mtime": 1780035760.0939627,
+    "ast_hash": "4b57b0adeca6274310ac51cac676a6d9",
+    "semantic_hash": ""
+  },
+  "src/config/otaDefaults.ts": {
+    "mtime": 1782458142.1271074,
+    "ast_hash": "7d53412e069a2ed7d34672aa6273b261",
+    "semantic_hash": ""
+  },
+  "src/config/promotionConfig.ts": {
+    "mtime": 1780564820.7865028,
+    "ast_hash": "9fa37ddf3daa1db1f529928dd716a193",
+    "semantic_hash": ""
+  },
+  "src/config/webhookConfig.ts": {
+    "mtime": 1780463380.5524142,
+    "ast_hash": "420c65232b20c8a969e5e7ab11974993",
+    "semantic_hash": ""
+  },
+  "src/index.ts": {
+    "mtime": 1782458142.1271427,
+    "ast_hash": "c3d3a27c87797041ac02b8f644c59d7b",
+    "semantic_hash": ""
+  },
+  "src/init.ts": {
+    "mtime": 1780298593.8824365,
+    "ast_hash": "229e53d386dd66c78ef31d8daefa68a5",
+    "semantic_hash": ""
+  },
+  "src/lib/socials/gmb-pubsub.ts": {
+    "mtime": 1780463380.5524828,
+    "ast_hash": "68808c6462299f19d1d3c32d5ba76fd6",
+    "semantic_hash": ""
+  },
+  "src/lib/socials/instagramMetrics.ts": {
+    "mtime": 1780550950.7626357,
+    "ast_hash": "53c6180c651806f5b6d75af3ad429aea",
+    "semantic_hash": ""
+  },
+  "src/lib/socials/instagramTokenRefresh.ts": {
+    "mtime": 1780550953.5407717,
+    "ast_hash": "a5aebe92fdcafe2c05abee82a382e646",
+    "semantic_hash": ""
+  },
+  "src/lib/socials/integrations.ts": {
+    "mtime": 1780550948.8095403,
+    "ast_hash": "ec1f2568abffbced5e447e3049cbc855",
+    "semantic_hash": ""
+  },
+  "src/lib/socials/pos-verify.ts": {
+    "mtime": 1780463380.552559,
+    "ast_hash": "ec97b2d3fefa4c66193b4a73d2159ec2",
+    "semantic_hash": ""
+  },
+  "src/lib/socials/resolveDeviceGmb.ts": {
+    "mtime": 1780550955.3566198,
+    "ast_hash": "fbba6b9871d95f5928fe298d8a61feda",
+    "semantic_hash": ""
+  },
+  "src/lib/socials/resolvePosContextForDevice.ts": {
+    "mtime": 1780568944.3584201,
+    "ast_hash": "68f75db1c66852b5265101112bb74707",
+    "semantic_hash": ""
+  },
+  "src/lib/socials/types.ts": {
+    "mtime": 1780463380.552559,
+    "ast_hash": "4b068d6cf337d257899459dea7291a69",
+    "semantic_hash": ""
+  },
+  "src/middleware/csrRateLimiter.ts": {
+    "mtime": 1780298593.8824365,
+    "ast_hash": "3c003af0234727fbf50df7c81f2f7454",
+    "semantic_hash": ""
+  },
+  "src/middleware/mtlsAuth.ts": {
+    "mtime": 1776841080.211799,
+    "ast_hash": "d04018a3e0495cad5b6ae8111513723e",
+    "semantic_hash": ""
+  },
+  "src/models/Ad.ts": {
+    "mtime": 1780463380.5527687,
+    "ast_hash": "229ee23402060141530e18051cbf0f4d",
+    "semantic_hash": ""
+  },
+  "src/models/Campaign.ts": {
+    "mtime": 1780568956.0378923,
+    "ast_hash": "19af729e2693f3787bc14bde04a27673",
+    "semantic_hash": ""
+  },
+  "src/models/Device.ts": {
+    "mtime": 1782458224.5551796,
+    "ast_hash": "bf8a7b2ed376c58ead2a895f772ee09d",
+    "semantic_hash": ""
+  },
+  "src/models/DeviceACL.ts": {
+    "mtime": 1774847091.452968,
+    "ast_hash": "0644e415d36b631f42bc81946813665f",
+    "semantic_hash": ""
+  },
+  "src/models/DeviceCertificate.ts": {
+    "mtime": 1777284802.153911,
+    "ast_hash": "f7d6b83a3bf24ac58368c595967ea834",
+    "semantic_hash": ""
+  },
+  "src/models/DeviceTransactionLog.ts": {
+    "mtime": 1780463380.55293,
+    "ast_hash": "f32c5ba075cb4686feb93969d79b0396",
+    "semantic_hash": ""
+  },
+  "src/models/FirmwareRelease.ts": {
+    "mtime": 1782458175.212134,
+    "ast_hash": "7ef172714a42a0fa38e803585b50fa2f",
+    "semantic_hash": ""
+  },
+  "src/models/GoogleBusinessLocation.ts": {
+    "mtime": 1780463380.5529618,
+    "ast_hash": "9c65aad09ea5d5106901f85c784ff89f",
+    "semantic_hash": ""
+  },
+  "src/models/GoogleBusinessProfile.ts": {
+    "mtime": 1780463380.5529995,
+    "ast_hash": "75f5e2e053849308a2fc1374598ecb3d",
+    "semantic_hash": ""
+  },
+  "src/models/GoogleBusinessReview.ts": {
+    "mtime": 1780463380.5530329,
+    "ast_hash": "c7275d9830e9eb7080ee675f693375e3",
+    "semantic_hash": ""
+  },
+  "src/models/Redemption.ts": {
+    "mtime": 1780463380.5530648,
+    "ast_hash": "8bffbe578ca81172c70239995faea262",
+    "semantic_hash": ""
+  },
+  "src/models/ShopifyProfile.ts": {
+    "mtime": 1780463380.5530648,
+    "ast_hash": "edc8ca99c675aef0fe377f3dfd064e85",
+    "semantic_hash": ""
+  },
+  "src/models/Social.ts": {
+    "mtime": 1780463380.553161,
+    "ast_hash": "c70e8785db541d5ce407b1b898b6ee16",
+    "semantic_hash": ""
+  },
+  "src/models/SquareProfile.ts": {
+    "mtime": 1780463380.553161,
+    "ast_hash": "45edbdaf0af14581a1514466bf14ecef",
+    "semantic_hash": ""
+  },
+  "src/models/User.ts": {
+    "mtime": 1774847091.452968,
+    "ast_hash": "f865f9ef2a0608ad2d34fe27db3a65fa",
+    "semantic_hash": ""
+  },
+  "src/models/index.ts": {
+    "mtime": 1782458142.1272883,
+    "ast_hash": "a483e025f0e676456787d8852df76917",
+    "semantic_hash": ""
+  },
+  "src/routes/configRoutes.ts": {
+    "mtime": 1782457152.6926334,
+    "ast_hash": "a6d8dde391fb0b78377c5c0cd66ba21f",
+    "semantic_hash": ""
+  },
+  "src/routes/connectionsRoutes.ts": {
+    "mtime": 1782457152.6936333,
+    "ast_hash": "c52c2bc5418253c11677156df4834d38",
+    "semantic_hash": ""
+  },
+  "src/routes/lifecycleRoutes.ts": {
+    "mtime": 1782457152.6936333,
+    "ast_hash": "346465832578c9c3dbd50165eb83c5c6",
+    "semantic_hash": ""
+  },
+  "src/routes/otaAdminRoutes.ts": {
+    "mtime": 1782458142.127354,
+    "ast_hash": "a1be49971a31ba73690cebe8b169bcc8",
+    "semantic_hash": ""
+  },
+  "src/routes/otaRoutes.ts": {
+    "mtime": 1782458142.127401,
+    "ast_hash": "7cfae4d10c74c09accd7f3aa5b0e69cc",
+    "semantic_hash": ""
+  },
+  "src/routes/promotionRoutes.ts": {
+    "mtime": 1782457152.6936333,
+    "ast_hash": "0c482e34aa8ac69068c4210c2b1d2b19",
+    "semantic_hash": ""
+  },
+  "src/routes/provisioningRoutes.ts": {
+    "mtime": 1782457152.6946335,
+    "ast_hash": "c0925117ab8f65eac5e7593d6840d1d0",
+    "semantic_hash": ""
+  },
+  "src/routes/recoveryRoutes.ts": {
+    "mtime": 1782458225.7847972,
+    "ast_hash": "b06317bfe55269dd0ee2bb9925cb40be",
+    "semantic_hash": ""
+  },
+  "src/routes/webhookRoutes.ts": {
+    "mtime": 1782458142.1275136,
+    "ast_hash": "0af7f49917e40f839209520a3c6b2938",
+    "semantic_hash": ""
+  },
+  "src/servers/httpServer.ts": {
+    "mtime": 1782458273.4876275,
+    "ast_hash": "13e206229720ea6434dbdcf4ea323037",
+    "semantic_hash": ""
+  },
+  "src/servers/mqttClient.ts": {
+    "mtime": 1782458231.1041477,
+    "ast_hash": "4b280c7457d59c6ad4156c25e01635ef",
+    "semantic_hash": ""
+  },
+  "src/servers/webSocketServer.ts": {
+    "mtime": 1780035760.095132,
+    "ast_hash": "48e3dd54d0cb6eb641b33c21336f053d",
+    "semantic_hash": ""
+  },
+  "src/services/auditService.ts": {
+    "mtime": 1782458229.6574583,
+    "ast_hash": "73916772460af96feaec2bd8f3d5d2f2",
+    "semantic_hash": ""
+  },
+  "src/services/authService.ts": {
+    "mtime": 1774847091.4534276,
+    "ast_hash": "26ae7767a97284ef21fb1bff0e48a10b",
+    "semantic_hash": ""
+  },
+  "src/services/caService.ts": {
+    "mtime": 1780298593.8844366,
+    "ast_hash": "9fec14546e68a1ec064a029c91ea885c",
+    "semantic_hash": ""
+  },
+  "src/services/campaignSchedule.ts": {
+    "mtime": 1780568878.1787498,
+    "ast_hash": "e685e610f67049de9bd2313a4b90e5f2",
+    "semantic_hash": ""
+  },
+  "src/services/chainValidator.ts": {
+    "mtime": 1780298593.8844366,
+    "ast_hash": "bfbcfee8b3ee4d4bc2b19616689773b7",
+    "semantic_hash": ""
+  },
+  "src/services/connectRefreshCoordinator.ts": {
+    "mtime": 1780568922.1057913,
+    "ast_hash": "0c7d9804af7b128bf6e35bf9bf7452ff",
+    "semantic_hash": ""
+  },
+  "src/services/deferredDeviceWork.ts": {
+    "mtime": 1780572748.9231,
+    "ast_hash": "d2b52173dae729f8eda55136bb5898af",
+    "semantic_hash": ""
+  },
+  "src/services/deviceService.ts": {
+    "mtime": 1782458142.1278665,
+    "ast_hash": "ec8be11da16e80e98df7c6ca6c833ecf",
+    "semantic_hash": ""
+  },
+  "src/services/firmwareStorageService.ts": {
+    "mtime": 1782458175.2122695,
+    "ast_hash": "43484c3912ebfa7a72a4b61fab573c8d",
+    "semantic_hash": ""
+  },
+  "src/services/gmbConnectPull.ts": {
+    "mtime": 1780550968.4685066,
+    "ast_hash": "0bc3561dbae2eef0ae658bce45899692",
+    "semantic_hash": ""
+  },
+  "src/services/googleBusiness/googleBusinessApi.ts": {
+    "mtime": 1780463380.5538003,
+    "ast_hash": "b77ebcb8d4580a3eb5f482e3a6ec3d21",
+    "semantic_hash": ""
+  },
+  "src/services/googleBusiness/googleBusinessOAuth.ts": {
+    "mtime": 1780463380.5538435,
+    "ast_hash": "6a2e2bc81df03795bb3397b0d2c9eddf",
+    "semantic_hash": ""
+  },
+  "src/services/influxDiskQueue.ts": {
+    "mtime": 1780035760.095372,
+    "ast_hash": "b5242dc7fcc73d383ad287ab608d6124",
+    "semantic_hash": ""
+  },
+  "src/services/influxService.ts": {
+    "mtime": 1780558193.604492,
+    "ast_hash": "728f7913ef28ddee6e94e2effbd19bd2",
+    "semantic_hash": ""
+  },
+  "src/services/instagramService.ts": {
+    "mtime": 1780550968.3134987,
+    "ast_hash": "8f18af39e6033ce7876ae7250f07dc73",
+    "semantic_hash": ""
+  },
+  "src/services/metrics/dailyMetricsLua.ts": {
+    "mtime": 1780463380.5547166,
+    "ast_hash": "c7f42903097325c7589771ecdd8e1fd9",
+    "semantic_hash": ""
+  },
+  "src/services/metrics/helpers.ts": {
+    "mtime": 1780558189.4015126,
+    "ast_hash": "c0364c081fe5304551ec277a31260e44",
+    "semantic_hash": ""
+  },
+  "src/services/metrics/incrementCampaignUsage.ts": {
+    "mtime": 1780463380.5548434,
+    "ast_hash": "bb65b012411057df44d8f98ecb8cc71c",
+    "semantic_hash": ""
+  },
+  "src/services/metrics/processDailyMetrics.ts": {
+    "mtime": 1780463380.554876,
+    "ast_hash": "376a84025fd1263986752962969d6147",
+    "semantic_hash": ""
+  },
+  "src/services/mongoService.ts": {
+    "mtime": 1780468903.92781,
+    "ast_hash": "954a197fb4ea107e5c2be88eb11af335",
+    "semantic_hash": ""
+  },
+  "src/services/mqttChangeDetection.ts": {
+    "mtime": 1780566797.4447305,
+    "ast_hash": "249cab0bdc78e23e8bbf95bdb94a2e58",
+    "semantic_hash": ""
+  },
+  "src/services/mqttIngressRouter.ts": {
+    "mtime": 1780572755.0370307,
+    "ast_hash": "96fab9ce699395f4a3e0c4a996661080",
+    "semantic_hash": ""
+  },
+  "src/services/ociAuthProvider.ts": {
+    "mtime": 1782458142.1279554,
+    "ast_hash": "a39d6e7668f28126b0a2a26f9072cc0a",
+    "semantic_hash": ""
+  },
+  "src/services/ociStorageErrors.ts": {
+    "mtime": 1782458175.21236,
+    "ast_hash": "a56472dea77f4b29027f42eea5698d6b",
+    "semantic_hash": ""
+  },
+  "src/services/otaService.ts": {
+    "mtime": 1782458175.212567,
+    "ast_hash": "7b10691d0dfd57f0c982ee5227a20561",
+    "semantic_hash": ""
+  },
+  "src/services/pos/ingestPosOrder.ts": {
+    "mtime": 1780558209.4453485,
+    "ast_hash": "92d0a1fef8c5cc00de838da83a181725",
+    "semantic_hash": ""
+  },
+  "src/services/pos/readPosDailyAggregate.ts": {
+    "mtime": 1780558199.2909896,
+    "ast_hash": "460506597a4431a763ed172cc18795be",
+    "semantic_hash": ""
+  },
+  "src/services/posConnectPull.ts": {
+    "mtime": 1780558602.1778424,
+    "ast_hash": "b6ff2fde8990da9763ef15fa34989194",
+    "semantic_hash": ""
+  },
+  "src/services/promotionService.ts": {
+    "mtime": 1780570895.1352851,
+    "ast_hash": "6ffb216a34f7a5cb775ae08ef8c2d17d",
+    "semantic_hash": ""
+  },
+  "src/services/provisioningService.ts": {
+    "mtime": 1776841080.2125218,
+    "ast_hash": "df5390eb33199be61a30ad1000696568",
+    "semantic_hash": ""
+  },
+  "src/services/recoverySessionService.ts": {
+    "mtime": 1782458142.128187,
+    "ast_hash": "a396eb06253c9d71ac0e1abdc0d11427",
+    "semantic_hash": ""
+  },
+  "src/services/redisService.ts": {
+    "mtime": 1780035760.0963829,
+    "ast_hash": "c4ef34d385ba5355a71fdb5873622861",
+    "semantic_hash": ""
+  },
+  "src/services/screenEnvelope.ts": {
+    "mtime": 1780463380.5549257,
+    "ast_hash": "2a1a0ab1d9e0ad378a030bed02a000a0",
+    "semantic_hash": ""
+  },
+  "src/services/sessionService.ts": {
+    "mtime": 1774847091.453651,
+    "ast_hash": "261fd104a7901362852651e757ff8da8",
+    "semantic_hash": ""
+  },
+  "src/services/statsPublisher.ts": {
+    "mtime": 1780570883.312556,
+    "ast_hash": "4ab2fa7e3a253d22a5ddb859d2142c31",
+    "semantic_hash": ""
+  },
+  "src/services/transparencyLog.ts": {
+    "mtime": 1780298593.8854365,
+    "ast_hash": "fefd278d7d3a359881e74fa139360e36",
+    "semantic_hash": ""
+  },
+  "src/services/userIntegrationCache.ts": {
+    "mtime": 1780568888.1761525,
+    "ast_hash": "429604897dbfde0ea2b626c18289ed5b",
+    "semantic_hash": ""
+  },
+  "src/services/userService.ts": {
+    "mtime": 1774847091.453651,
+    "ast_hash": "9164fd355bcdda3340e36cd0ccd7c451",
+    "semantic_hash": ""
+  },
+  "src/services/webhookMetrics.ts": {
+    "mtime": 1780463380.5551229,
+    "ast_hash": "a8dee85d60c491c3cca8113d3184ab3d",
+    "semantic_hash": ""
+  },
+  "src/storage/localActiveDeviceStore.ts": {
+    "mtime": 1780035760.0966597,
+    "ast_hash": "e344c617df41536f883ac88ade94e9c4",
+    "semantic_hash": ""
+  },
+  "src/storage/tokenStore.ts": {
+    "mtime": 1776841080.213282,
+    "ast_hash": "9b418cd0c1eb68cf011b46d853002396",
+    "semantic_hash": ""
+  },
+  "src/types/acl.ts": {
+    "mtime": 1774847091.4541926,
+    "ast_hash": "a64c10c835dbb8a7f9e3c3845c022c75",
+    "semantic_hash": ""
+  },
+  "src/types/express.d.ts": {
+    "mtime": 1780463380.555165,
+    "ast_hash": "c830256bee8b824104d15203e85f45bb",
+    "semantic_hash": ""
+  },
+  "src/types/index.ts": {
+    "mtime": 1774847091.454285,
+    "ast_hash": "eac213203d56a7fa8ac2ef7ff877996e",
+    "semantic_hash": ""
+  },
+  "src/utils/certValidator.ts": {
+    "mtime": 1780298593.8864367,
+    "ast_hash": "b3f5e4b918133f7e57b724078ff69859",
+    "semantic_hash": ""
+  },
+  "src/utils/csr.ts": {
+    "mtime": 1776841080.213282,
+    "ast_hash": "8099def681bbd0d6ef4e1a10c438e8fa",
+    "semantic_hash": ""
+  },
+  "src/utils/deviceKeys.ts": {
+    "mtime": 1776841080.213282,
+    "ast_hash": "adf8ccbd79a0567a7747bde62740434e",
+    "semantic_hash": ""
+  },
+  "src/utils/firmwareReleaseKey.ts": {
+    "mtime": 1782458175.2126489,
+    "ast_hash": "4bb561418675bc6d9b6ba2d46a5597a7",
+    "semantic_hash": ""
+  },
+  "src/utils/logger.ts": {
+    "mtime": 1780468875.7092693,
+    "ast_hash": "f4e627fa226073360719437d0e9212ba",
+    "semantic_hash": ""
+  },
+  "src/utils/mongoRetry.ts": {
+    "mtime": 1780298593.8864367,
+    "ast_hash": "c02dac1664be558e39c7d206ada13511",
+    "semantic_hash": ""
+  },
+  "src/utils/mqttTlsOptions.ts": {
+    "mtime": 1780468503.100957,
+    "ast_hash": "0944ba4b29c2b1f2d987945beb3dbb5d",
+    "semantic_hash": ""
+  },
+  "src/utils/otaDownloadUrl.ts": {
+    "mtime": 1782458142.128258,
+    "ast_hash": "7a63f91f80913c9d42a3fbf58b778be5",
+    "semantic_hash": ""
+  },
+  "src/utils/payloadHash.ts": {
+    "mtime": 1780463380.5552063,
+    "ast_hash": "423c7a59b0c82fdf677a9c6dc1cd9445",
+    "semantic_hash": ""
+  },
+  "src/utils/semver.ts": {
+    "mtime": 1782458175.212719,
+    "ast_hash": "50e98b907038ba25cca387a30e2cf8b4",
+    "semantic_hash": ""
+  },
+  "src/utils/tlsBrokerCa.ts": {
+    "mtime": 1776841080.213282,
+    "ast_hash": "810bc2d4ef1ff827d650ca75c9c2a0f9",
+    "semantic_hash": ""
+  },
+  "src/webhooks/dedupe/redisDedupe.ts": {
+    "mtime": 1780463380.55528,
+    "ast_hash": "b8341d9a69acb888615e761055236ad1",
+    "semantic_hash": ""
+  },
+  "src/webhooks/delivery/publishGmbScreen.ts": {
+    "mtime": 1780463380.55528,
+    "ast_hash": "eea0478be306dfdf27ea80bd67edebe2",
+    "semantic_hash": ""
+  },
+  "src/webhooks/delivery/publishPosScreen.ts": {
+    "mtime": 1780558599.5181978,
+    "ast_hash": "271a23cb40903dc1bbf3edabcc009914",
+    "semantic_hash": ""
+  },
+  "src/webhooks/gmb/gmbReviewResolve.ts": {
+    "mtime": 1780463380.5554562,
+    "ast_hash": "1627e9e750e742426b7e61c143c49f81",
+    "semantic_hash": ""
+  },
+  "src/webhooks/gmbEnrichmentWorker.ts": {
+    "mtime": 1780463380.5556176,
+    "ast_hash": "6225d4437b6a2a2d59461427c3d93f39",
+    "semantic_hash": ""
+  },
+  "src/webhooks/gmbHandler.ts": {
+    "mtime": 1780463380.5557148,
+    "ast_hash": "a7d7d6ab3953aee66eee2ec5a44ba222",
+    "semantic_hash": ""
+  },
+  "src/webhooks/gmbReviewCache.ts": {
+    "mtime": 1780463380.5557663,
+    "ast_hash": "5809ebdb72288d37232232b4423c07ba",
+    "semantic_hash": ""
+  },
+  "src/webhooks/influxAudit.ts": {
+    "mtime": 1780463380.555807,
+    "ast_hash": "32f2cfc0fa963481e79aae57cf907e0e",
+    "semantic_hash": ""
+  },
+  "src/webhooks/parseWebhookOrder.ts": {
+    "mtime": 1780558233.738428,
+    "ast_hash": "4ce7616ed79678153912e04cc9987beb",
+    "semantic_hash": ""
+  },
+  "src/webhooks/posWebhookDelivery.ts": {
+    "mtime": 1780558274.2084422,
+    "ast_hash": "1c5488745da7d627ec7dd16517b4ef4c",
+    "semantic_hash": ""
+  },
+  "src/webhooks/resolve/gmbSocial.ts": {
+    "mtime": 1780463380.5559425,
+    "ast_hash": "fd9b2d03ec34d3d38940a45746588ad1",
+    "semantic_hash": ""
+  },
+  "src/webhooks/resolve/resolveDevices.ts": {
+    "mtime": 1780463380.555985,
+    "ast_hash": "1e2a00a9d1ce16c5b10741146de8f613",
+    "semantic_hash": ""
+  },
+  "src/webhooks/resolve/shopifyUser.ts": {
+    "mtime": 1780463380.556024,
+    "ast_hash": "9263af83343ac6df0ac7006e72a28a8d",
+    "semantic_hash": ""
+  },
+  "src/webhooks/resolve/squareMerchant.ts": {
+    "mtime": 1780463380.556024,
+    "ast_hash": "40a52a1e1c0b275936b61ac4d4741f7b",
+    "semantic_hash": ""
+  },
+  "src/webhooks/shopifyAsyncMetrics.ts": {
+    "mtime": 1782453567.9737728,
+    "ast_hash": "438fa6b9bcd74a4ff9340219993e2471",
+    "semantic_hash": ""
+  },
+  "src/webhooks/shopifyHandler.ts": {
+    "mtime": 1782457152.6976335,
+    "ast_hash": "daf4db0f40a6739e46f3cfb35b0456c5",
+    "semantic_hash": ""
+  },
+  "src/webhooks/squareAsyncMetrics.ts": {
+    "mtime": 1780463380.5561996,
+    "ast_hash": "3c2cc9ceda5e3effb825d36846ef02c3",
+    "semantic_hash": ""
+  },
+  "src/webhooks/squareDiscountUtils.ts": {
+    "mtime": 1780463380.5562387,
+    "ast_hash": "df1de0ff27f93db39af9da92f4ba4754",
+    "semantic_hash": ""
+  },
+  "src/webhooks/squareHandler.ts": {
+    "mtime": 1782457152.6976335,
+    "ast_hash": "505a223e2fc1388eebd87c3fb1284caf",
+    "semantic_hash": ""
+  },
+  "src/webhooks/types.ts": {
+    "mtime": 1780463380.5563006,
+    "ast_hash": "36db9eb567843c40bd6c78901cb69deb",
+    "semantic_hash": ""
+  },
+  "src/webhooks/types/gmbReviewNotification.ts": {
+    "mtime": 1780463380.5563474,
+    "ast_hash": "08df789a776cc444e572e4b4e9b627db",
+    "semantic_hash": ""
+  },
+  "src/webhooks/verify/pubsubGmb.ts": {
+    "mtime": 1780463380.5563474,
+    "ast_hash": "3e0b0005c5e7c61da9c8cd1a0ace6c38",
+    "semantic_hash": ""
+  },
+  "src/webhooks/verify/shopifySquare.ts": {
+    "mtime": 1780463380.5564435,
+    "ast_hash": "a985e92a9d778bae45491525f30bfde1",
+    "semantic_hash": ""
+  },
+  "tests/integration/connections.ts": {
+    "mtime": 1780573164.5130694,
+    "ast_hash": "7c44ade79b04c31474cbe3ba5d95c1f9",
+    "semantic_hash": ""
+  },
+  "tests/manual/instagram-lua-scripts.ts": {
+    "mtime": 1780573165.0910833,
+    "ast_hash": "e055d8d3d9e34a7a9537aba1e5b4c859",
+    "semantic_hash": ""
+  },
+  "tests/unit/config/envHelpers.test.ts": {
+    "mtime": 1782458142.128326,
+    "ast_hash": "e580578d19508d17428db24ec34a0d21",
+    "semantic_hash": ""
+  },
+  "tests/unit/config/otaDefaults.test.ts": {
+    "mtime": 1782458142.1283507,
+    "ast_hash": "491f070fef4df277f1ab66c6664a5194",
+    "semantic_hash": ""
+  },
+  "tests/unit/routes/connectionsRoutes.test.ts": {
+    "mtime": 1780573112.2548087,
+    "ast_hash": "975a5eb440b514fceb40f6da565943c6",
+    "semantic_hash": ""
+  },
+  "tests/unit/routes/otaRoutes.test.ts": {
+    "mtime": 1782458142.128385,
+    "ast_hash": "0b66dd98ca79b70d9bb24fc379d0e07f",
+    "semantic_hash": ""
+  },
+  "tests/unit/routes/otaWebhookRoutes.test.ts": {
+    "mtime": 1782458142.1284168,
+    "ast_hash": "6c0b28297ed5bb97e8c23b0871c0c342",
+    "semantic_hash": ""
+  },
+  "tests/unit/routes/promotionRoutes.test.ts": {
+    "mtime": 1780573112.2558086,
+    "ast_hash": "089f622413ca0473b5087d544532e613",
+    "semantic_hash": ""
+  },
+  "tests/unit/routes/webhookRoutes.test.ts": {
+    "mtime": 1780573112.2568088,
+    "ast_hash": "4d7e732360f17bb76782259d6f456cf5",
+    "semantic_hash": ""
+  },
+  "tests/unit/services/campaignSchedule.test.ts": {
+    "mtime": 1780573112.2568088,
+    "ast_hash": "58ca3415963d6fd00a63ae34be368200",
+    "semantic_hash": ""
+  },
+  "tests/unit/services/deferredDeviceWork.test.ts": {
+    "mtime": 1780573112.2578485,
+    "ast_hash": "c8b00d14dcd3b9a758349737ff49dacb",
+    "semantic_hash": ""
+  },
+  "tests/unit/services/metrics/helpers.test.ts": {
+    "mtime": 1780573112.2578485,
+    "ast_hash": "16b8dc325335fc586127262d48a4d2b9",
+    "semantic_hash": ""
+  },
+  "tests/unit/services/mqttChangeDetection.test.ts": {
+    "mtime": 1780573112.2580981,
+    "ast_hash": "e3fc147a0ce31e37fbc8b74e78cb478d",
+    "semantic_hash": ""
+  },
+  "tests/unit/services/mqttIngressRouter.test.ts": {
+    "mtime": 1780573112.2583437,
+    "ast_hash": "6bd1dc5dd40e60979b9224d3656f2b15",
+    "semantic_hash": ""
+  },
+  "tests/unit/services/ociStorageErrors.test.ts": {
+    "mtime": 1782458142.1284943,
+    "ast_hash": "1a77b7bbf6f7abda5054318ca50dc5ee",
+    "semantic_hash": ""
+  },
+  "tests/unit/services/otaEventHandler.test.ts": {
+    "mtime": 1782458142.1285205,
+    "ast_hash": "a75a5a83128e511f1eb49a839e5c5380",
+    "semantic_hash": ""
+  },
+  "tests/unit/services/otaReleaseValidator.test.ts": {
+    "mtime": 1782458142.1285446,
+    "ast_hash": "451f18b34a4a0ae97c35e19842dc7509",
+    "semantic_hash": ""
+  },
+  "tests/unit/services/otaService.test.ts": {
+    "mtime": 1782458175.212828,
+    "ast_hash": "d538d0770271206fef5ea23a99bc55cf",
+    "semantic_hash": ""
+  },
+  "tests/unit/services/pos/readPosDailyAggregate.test.ts": {
+    "mtime": 1780573112.2583437,
+    "ast_hash": "a966d60f168596426e1bc6457239ad54",
+    "semantic_hash": ""
+  },
+  "tests/unit/services/promotionService.test.ts": {
+    "mtime": 1780573112.258945,
+    "ast_hash": "68524f7cd8f702f726f2c637fa48e4ba",
+    "semantic_hash": ""
+  },
+  "tests/unit/services/recoverySessionService.test.ts": {
+    "mtime": 1782458142.128649,
+    "ast_hash": "5bc926da0cbb927f0d2a8b6144866fe6",
+    "semantic_hash": ""
+  },
+  "tests/unit/utils/otaDownloadUrl.test.ts": {
+    "mtime": 1782458142.128649,
+    "ast_hash": "2f2b98c98247782ee95b6b9c75972cd7",
+    "semantic_hash": ""
+  },
+  "tests/unit/webhooks/dedupe/redisDedupe.test.ts": {
+    "mtime": 1780573112.2590826,
+    "ast_hash": "6d916a715f2c24873588cb3df367ae46",
+    "semantic_hash": ""
+  },
+  "tests/unit/webhooks/verify/shopifySquare.test.ts": {
+    "mtime": 1780573112.2590826,
+    "ast_hash": "6a5a866512da8deedbc2c09c1c27bb5c",
+    "semantic_hash": ""
+  },
+  "tests/unit/webhooks/webhookHandlers.metrics.test.ts": {
+    "mtime": 1782457152.6996336,
+    "ast_hash": "6c1ad274edc54ed81e1ee0af393fdc41",
+    "semantic_hash": ""
+  },
+  "tsconfig.json": {
+    "mtime": 1780573096.1108434,
+    "ast_hash": "37a6a361a12fccfad7707d0d14e9478c",
+    "semantic_hash": ""
+  },
+  "tsconfig.test.json": {
+    "mtime": 1780573096.1108434,
+    "ast_hash": "b1356557909cc97a26f6eb3c3d8d0f8d",
+    "semantic_hash": ""
+  },
+  "OTA_E2E_TEST.md": {
+    "mtime": 1782458142.1159678,
+    "ast_hash": "b9aee5dba9ac48004eb1228ea2d4b0db",
+    "semantic_hash": ""
+  },
+  "Proof Display OTA .md": {
+    "mtime": 1782458142.1167932,
+    "ast_hash": "82abf06cf0a0a9483af338ba2085d719",
+    "semantic_hash": ""
+  },
+  "README.md": {
+    "mtime": 1782458142.1169546,
+    "ast_hash": "7726628e6693819bdd0e02cc2c7ca08a",
+    "semantic_hash": ""
+  },
+  "docs/CSR_REQUIREMENTS_VALIDATION.md": {
+    "mtime": 1774847091.44924,
+    "ast_hash": "bc9b495370f4555bcb558c99749f56a8",
+    "semantic_hash": ""
+  },
+  "docs/DEVICE_RECOVERY_FIRMWARE.md": {
+    "mtime": 1782458142.1171365,
+    "ast_hash": "27e767c76bcc29a9689ed370c6b4669e",
+    "semantic_hash": ""
+  },
+  "docs/OTA_DEV_DOWNLOAD_TEST.md": {
+    "mtime": 1782458142.1171854,
+    "ast_hash": "47991a22309506831f57973ceff1acbb",
+    "semantic_hash": ""
+  },
+  "docs/OTA_FIRMWARE_CONTRACT.md": {
+    "mtime": 1782458142.1172786,
+    "ast_hash": "0bd7ebe98f781cc18777631ce0c06779",
+    "semantic_hash": ""
+  },
+  "docs/Proof Display OTA .md": {
+    "mtime": 1782458142.1180718,
+    "ast_hash": "82abf06cf0a0a9483af338ba2085d719",
+    "semantic_hash": ""
+  },
+  "docs/QUICKSTART.md": {
+    "mtime": 1774847091.44924,
+    "ast_hash": "ce1875b91d078ca792ffd4f75f2d001e",
+    "semantic_hash": ""
+  },
+  "docs/REDIS_CLOUD_SETUP.md": {
+    "mtime": 1774847091.44924,
+    "ast_hash": "12b8b03beda86b2941c814386885e155",
+    "semantic_hash": ""
+  },
+  "docs/REDIS_CONNECTION_FIX.md": {
+    "mtime": 1774847091.4495316,
+    "ast_hash": "e7940f131ea0e086019eeede137c1f4d",
+    "semantic_hash": ""
+  },
+  "docs/SECURITY_PENTEST_REPORT.md": {
+    "mtime": 1782458142.1181445,
+    "ast_hash": "9e9bf486bdb2af4173892241ea001364",
+    "semantic_hash": ""
+  },
+  "docs/WEBHOOK_MIGRATION.md": {
+    "mtime": 1780463380.546876,
+    "ast_hash": "3ab0609b8362dd88e19b86d4ce5ff9d8",
+    "semantic_hash": ""
+  },
+  "docs/attention-polling-status.md": {
+    "mtime": 1780035760.0894883,
+    "ast_hash": "93a4e7e0b9249a458504095f35003c58",
+    "semantic_hash": ""
+  },
+  "public/index.html": {
+    "mtime": 1774847091.4519317,
+    "ast_hash": "24c024cf33192e98627f53118866e353",
+    "semantic_hash": ""
+  },
+  "redis improvement.txt": {
+    "mtime": 1774847091.452178,
+    "ast_hash": "46e18979a4ab319bcd9622be0c0a01f9",
+    "semantic_hash": ""
+  },
+  "render.yaml": {
+    "mtime": 1780035760.091446,
+    "ast_hash": "d8131cfd499551244df345811205159f",
+    "semantic_hash": ""
+  },
+  "scripts/pki/README.md": {
+    "mtime": 1780463380.5624993,
+    "ast_hash": "fa1f9b07e32bb5615d6777bebba7bb5e",
+    "semantic_hash": ""
+  },
+  "tests/unit/routes/recoveryRoutes.test.ts": {
+    "mtime": 1782458290.3690774,
+    "ast_hash": "9912fd5bf2d85ff140011fdac6cf66f5",
+    "semantic_hash": ""
+  },
+  "scripts/ota-e2e/artifacts/manifest.json": {
+    "mtime": 1782457152.6906333,
+    "ast_hash": "eba276b81b0742a3e56b9905556634d5",
+    "semantic_hash": ""
+  },
+  "src/config/swagger.ts": {
+    "mtime": 1782457152.6916335,
+    "ast_hash": "433b4be4fa2ec32b196cf48766b757cd",
+    "semantic_hash": ""
+  },
+  "src/config/swaggerSchemas.ts": {
+    "mtime": 1782457152.6916335,
+    "ast_hash": "3f3586b86aa31ba0e274d90b600c7c91",
+    "semantic_hash": ""
+  },
+  "src/services/otaService.d.ts": {
+    "mtime": 1782457152.6966336,
+    "ast_hash": "f1b5fbcbdca62bfeccf5e55422d863ac",
+    "semantic_hash": ""
+  },
+  "src/webhooks/shopifyComplianceTopics.ts": {
+    "mtime": 1782457152.6976335,
+    "ast_hash": "45b366d0343eed3124d119b75b51f5b5",
+    "semantic_hash": ""
+  },
+  "src/webhooks/webhookHandlerError.ts": {
+    "mtime": 1782457152.6976335,
+    "ast_hash": "afc40fafd41cb1aef629540bc0ec5392",
+    "semantic_hash": ""
+  },
+  "src/webhooks/webhookHandlerResponse.ts": {
+    "mtime": 1782457152.6976335,
+    "ast_hash": "f9462b3679a4e352f7381e1828256f6f",
+    "semantic_hash": ""
+  },
+  "tests/unit/config/swagger.test.ts": {
+    "mtime": 1782458666.0959177,
+    "ast_hash": "b4de0234a1df1e0224935eb0bf6bf688",
+    "semantic_hash": ""
+  },
+  "tests/unit/routes/configRoutes.test.ts": {
+    "mtime": 1782457152.6986337,
+    "ast_hash": "bc926fbcaa927ab768e0e10c84e3132a",
+    "semantic_hash": ""
+  },
+  "tests/unit/routes/lifecycleRoutes.test.ts": {
+    "mtime": 1782457152.6986337,
+    "ast_hash": "0a05f8e10180b4430350196aabae909e",
+    "semantic_hash": ""
+  },
+  "tests/unit/routes/provisioningRoutes.test.ts": {
+    "mtime": 1782457152.6986337,
+    "ast_hash": "bbd95b22172daa3ccfaa007926aa6d4b",
+    "semantic_hash": ""
+  },
+  "tests/unit/webhooks/shopifyComplianceTopics.test.ts": {
+    "mtime": 1782457152.6996336,
+    "ast_hash": "0d0d2382fcf8e2d941f470c501abf43a",
+    "semantic_hash": ""
+  },
+  "TESTING_PLAN.md": {
+    "mtime": 1782457152.6801124,
+    "ast_hash": "5c835f442ba0236b9f3fb47661c3a0b7",
+    "semantic_hash": ""
+  }
+}

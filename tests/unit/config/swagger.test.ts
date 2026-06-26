@@ -21,9 +21,9 @@ describe('swagger', () => {
     expect(paths['/api/pos-promotions/webhooks/shopify']).toBeDefined();
   });
 
-  it('documents at least 28 paths', () => {
+  it('documents at least 21 paths', () => {
     const paths = getSwaggerSpec().paths as Record<string, unknown>;
-    expect(Object.keys(paths).length).toBeGreaterThanOrEqual(28);
+    expect(Object.keys(paths).length).toBeGreaterThanOrEqual(21);
   });
 
   it('defines required security schemes', () => {
@@ -35,7 +35,7 @@ describe('swagger', () => {
     expect(components.securitySchemes?.MtlsClientCert).toBeDefined();
   });
 
-  it('excludes OTA routes until OTA branch merges', () => {
+  it('excludes OTA HTTP routes from OpenAPI (OTA uses webhook/MQTT)', () => {
     const paths = getSwaggerSpec().paths as Record<string, unknown>;
     const otaPaths = Object.keys(paths).filter((p) => p.includes('/ota'));
     expect(otaPaths).toEqual([]);

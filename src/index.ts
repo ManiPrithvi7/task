@@ -1,33 +1,51 @@
 import { StatsMqttLite } from './app';
 import { logger } from './utils/logger';
 
-// Create application instance
 const app = new StatsMqttLite();
+let shuttingDown = false;
 
-// Start the application
 app.start().catch((error) => {
-  logger.error('Fatal error during startup', { 
+  logger.error('Fatal error during startup', {
     error: error.message,
-    stack: error.stack 
+    stack: error.stack
   });
   process.exit(1);
 });
 
-// Graceful shutdown handling
 const shutdown = async (signal: string) => {
+  if (shuttingDown) {
+    logger.warn(`Received ${signal} again — forcing exit`);
+    process.exit(1);
+  }
+  shuttingDown = true;
+
   logger.info(`Received ${signal}, shutting down gracefully...`);
-  
+
+  const forceTimer = setTimeout(() => {
+    logger.error('Shutdown timed out — forcing exit');
+    process.exit(1);
+  }, 30_000);
+  forceTimer.unref();
+
   try {
     await app.stop();
+    clearTimeout(forceTimer);
     process.exit(0);
-  } catch (error: any) {
-    logger.error('Error during shutdown', { error: error.message });
+  } catch (error: unknown) {
+    clearTimeout(forceTimer);
+    logger.error('Error during shutdown', {
+      error: error instanceof Error ? error.message : String(error)
+    });
     process.exit(1);
   }
 };
 
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => {
+  void shutdown('SIGTERM');
+});
+process.on('SIGINT', () => {
+  void shutdown('SIGINT');
+});
 
 // Handle unhandled rejections
 process.on('unhandledRejection', (reason, promise) => {

@@ -1,138 +1,187 @@
-import * as fs from 'fs';
-import * as path from 'path';
-import type { RedisClientType } from 'redis';
+import { compareVersions, isVersionGreater } from '@/utils/semver';
 import {
-  assertValidSha256Hex,
-  assertValidVersionFormat,
-  checkOtaRateLimit,
-  FinalizeValidationError,
-  initOtaSigningState,
-  isOtaSigningConfirmed,
-  isValidObjectId,
-  setOtaSigningConfirmed,
-  validateFinalizeInput,
-  verifyEd25519Signature
-} from '@/services/otaService';
-import { isVersionGreater } from '@/utils/semver';
+  FirmwareRolloutStrategy
+} from '@/models/FirmwareRelease';
+import { DeviceStatus } from '@/models/Device';
 
-const OTA_PUBLIC_KEY_PATH = path.join(__dirname, '../../../scripts/ota-e2e/keys/ota_public.pem');
+jest.mock('@/models/Device', () => ({
+  Device: {
+    findOne: jest.fn(),
+    updateOne: jest.fn()
+  },
+  DeviceStatus: {
+    PROVISIONED: 'PROVISIONED',
+    ACTIVE: 'ACTIVE',
+    OFFLINE: 'OFFLINE',
+    RECOVERY: 'RECOVERY',
+    ERROR: 'ERROR'
+  },
+  DeviceOtaState: {
+    IDLE: 'idle',
+    ROLLBACK_REPORTED: 'rollback_reported'
+  }
+}));
 
-describe('ota validation helpers', () => {
-  it('accepts valid semver versions', () => {
-    expect(() => assertValidVersionFormat('1.0.0')).not.toThrow();
-    expect(() => assertValidVersionFormat('4.3.1-mvp')).not.toThrow();
-  });
+jest.mock('@/models/FirmwareRelease', () => ({
+  FirmwareRelease: {
+    find: jest.fn()
+  },
+  FirmwareReleaseStatus: { STABLE: 'stable' },
+  FirmwareRolloutStrategy: {
+    ALL: 'all',
+    PERCENTAGE: 'percentage',
+    ALLOWLIST: 'allowlist'
+  }
+}));
 
-  it('rejects invalid semver versions', () => {
-    expect(() => assertValidVersionFormat('v1.0.0')).toThrow(FinalizeValidationError);
-    expect(() => assertValidVersionFormat('bad')).toThrow(FinalizeValidationError);
-  });
+import { Device } from '@/models/Device';
+import { FirmwareRelease } from '@/models/FirmwareRelease';
+import { OtaCommandPublisher, OtaService } from '@/services/otaService';
 
-  it('accepts valid sha256 hex', () => {
-    expect(() =>
-      assertValidSha256Hex('a'.repeat(64))
-    ).not.toThrow();
-  });
+const mockStorage = {
+  createPresignedGetUrl: jest.fn().mockResolvedValue('https://objectstorage.ap-hyderabad-1.oraclecloud.com/p/par/firmware.bin')
+};
 
-  it('rejects invalid sha256 hex', () => {
-    expect(() => assertValidSha256Hex('abc')).toThrow(FinalizeValidationError);
-  });
+const otaConfig = {
+  enabled: true,
+  oci: {
+    namespace: 'ns',
+    bucket: 'firmware-bucket',
+    region: 'ap-hyderabad-1',
+    parBaseUrl: 'https://ns.objectstorage.ap-hyderabad-1.oci.customer-oci.com'
+  },
+  presignedUrlTtlSec: 900,
+  signingConfirmed: false,
+  broadcastTopic: 'proof.mqtt/broadcast/cmd',
+  downloadMode: 'presigned' as const,
+  checkRateLimitSec: 300,
+  rollbackFailureThreshold: 3
+};
 
-  it('compares versions with isVersionGreater', () => {
-    expect(isVersionGreater('1.1.0', '1.0.0')).toBe(true);
-    expect(isVersionGreater('1.0.0', '1.0.0')).toBe(false);
-    expect(isVersionGreater('0.9.0', '1.0.0')).toBe(false);
-  });
-});
-
-describe('validateFinalizeInput', () => {
-  const publicKeyPem = fs.readFileSync(OTA_PUBLIC_KEY_PATH, 'utf8');
-
-  it('throws when metadata version mismatches', () => {
-    expect(() =>
-      validateFinalizeInput({
-        version: '1.0.0',
-        sha256: 'a'.repeat(64),
-        signature: 'sig',
-        head: {
-          sizeBytes: 1024,
-          firmwareVersion: '2.0.0',
-          sha256: 'a'.repeat(64)
-        },
-        signingPublicKeyPem: publicKeyPem
-      })
-    ).toThrow(FinalizeValidationError);
-  });
-
-  it('throws when signing key is missing', () => {
-    expect(() =>
-      validateFinalizeInput({
-        version: '1.0.0',
-        sha256: 'a'.repeat(64),
-        signature: 'sig',
-        head: {
-          sizeBytes: 1024,
-          firmwareVersion: '1.0.0',
-          sha256: 'a'.repeat(64)
-        }
-      })
-    ).toThrow(FinalizeValidationError);
+describe('semver', () => {
+  it('compares dotted versions', () => {
+    expect(isVersionGreater('4.3.1', '4.3.0')).toBe(true);
+    expect(compareVersions('4.3.0', '4.3.0')).toBe(0);
+    expect(isVersionGreater('4.2.9', '4.3.0')).toBe(false);
   });
 });
 
-describe('verifyEd25519Signature', () => {
-  it('returns false for malformed signature', () => {
-    const publicKeyPem = fs.readFileSync(OTA_PUBLIC_KEY_PATH, 'utf8');
-    expect(verifyEd25519Signature('a'.repeat(64), 'not-base64-signature!!!', publicKeyPem)).toBe(false);
-  });
-});
-
-describe('checkOtaRateLimit', () => {
-  it('allows request when redis client is null', async () => {
-    await expect(checkOtaRateLimit(null, 'test:', 'device-1', 60)).resolves.toBe(true);
-  });
-
-  it('returns false when redis SET indicates existing key', async () => {
-    const client = {
-      set: jest.fn().mockResolvedValue(null)
-    } as unknown as RedisClientType;
-
-    await expect(checkOtaRateLimit(client, 'test:', 'device-1', 60)).resolves.toBe(false);
-    expect(client.set).toHaveBeenCalledWith('test:ota:check:device-1', '1', { NX: true, EX: 60 });
-  });
-
-  it('returns true when redis SET succeeds', async () => {
-    const client = {
-      set: jest.fn().mockResolvedValue('OK')
-    } as unknown as RedisClientType;
-
-    await expect(checkOtaRateLimit(client, 'test:', 'device-1', 60)).resolves.toBe(true);
-  });
-});
-
-describe('OTA signing state', () => {
+describe('OtaService.resolveUpdate', () => {
   beforeEach(() => {
-    setOtaSigningConfirmed(false);
-    initOtaSigningState(false);
+    jest.clearAllMocks();
   });
 
-  it('uses env confirmation when runtime flag is false', () => {
-    expect(isOtaSigningConfirmed(true)).toBe(true);
-    expect(isOtaSigningConfirmed(false)).toBe(false);
+  it('returns null when device is in RECOVERY', async () => {
+    (Device.findOne as jest.Mock).mockResolvedValue({
+      clientId: 'dev-1',
+      status: DeviceStatus.RECOVERY,
+      otaBlockedVersions: []
+    });
+    (FirmwareRelease.find as jest.Mock).mockReturnValue({
+      sort: () => ({
+        limit: () => Promise.resolve([])
+      })
+    });
+
+    const svc = new OtaService(otaConfig, mockStorage as never, 'http://localhost:3002');
+    const offer = await svc.resolveUpdate({ deviceId: 'dev-1', currentVersion: '4.3.0' });
+    expect(offer).toBeNull();
   });
 
-  it('uses runtime confirmation after setOtaSigningConfirmed', () => {
-    setOtaSigningConfirmed(true);
-    expect(isOtaSigningConfirmed(false)).toBe(true);
+  it('skips blocked versions', async () => {
+    (Device.findOne as jest.Mock).mockResolvedValue({
+      clientId: 'dev-1',
+      status: DeviceStatus.ACTIVE,
+      otaBlockedVersions: ['4.3.1'],
+      save: jest.fn()
+    });
+    (FirmwareRelease.find as jest.Mock).mockReturnValue({
+      sort: () => ({
+        limit: () =>
+          Promise.resolve([
+            {
+              version: '4.3.1',
+              sha256: 'a'.repeat(64),
+              signature: 'sig',
+              objectKey: 'firmware/4.3.1/firmware.bin',
+              s3Key: 'firmware/4.3.1/firmware.bin',
+              sizeBytes: 1000,
+              rollout: { strategy: FirmwareRolloutStrategy.ALL }
+            }
+          ])
+      })
+    });
+
+    const svc = new OtaService(otaConfig, mockStorage as never, 'http://localhost:3002');
+    const offer = await svc.resolveUpdate({ deviceId: 'dev-1', currentVersion: '4.3.0' });
+    expect(offer).toBeNull();
   });
 });
 
-describe('isValidObjectId', () => {
-  it('returns true for valid ObjectId strings', () => {
-    expect(isValidObjectId('507f1f77bcf86cd799439011')).toBe(true);
+describe('OtaService.recordRollbackFailure', () => {
+  it('blocks version after threshold failures', async () => {
+    const save = jest.fn();
+    const failures = new Map<string, number>([['4.3.1', 2]]);
+    (Device.findOne as jest.Mock).mockResolvedValue({
+      clientId: 'dev-1',
+      otaRollbackFailures: failures,
+      otaBlockedVersions: [],
+      save
+    });
+
+    const svc = new OtaService(otaConfig, mockStorage as never, 'http://localhost:3002');
+    const result = await svc.recordRollbackFailure('dev-1', '4.3.1', 'health check failed');
+    expect(result.blocked).toBe(true);
+    expect(result.failures).toBe(3);
+    expect(save).toHaveBeenCalled();
+  });
+});
+
+describe('OtaCommandPublisher', () => {
+  const ociUrl =
+    'https://ns.objectstorage.ap-hyderabad-1.oci.customer-oci.com/p/read/firmware.bin';
+  const proxyUrl = 'https://server.withproof.io/api/v1/ota/download/4.3.1-mvp';
+
+  const baseOffer = {
+    version: '4.3.1-mvp',
+    sha256: 'a'.repeat(64),
+    signature: 'sig',
+    sizeBytes: 1000,
+    expiresAt: new Date().toISOString()
+  };
+
+  function makePublisher(downloadMode: 'presigned' | 'proxy' = 'proxy') {
+    return new OtaCommandPublisher(
+      { publish: jest.fn().mockResolvedValue(undefined) } as never,
+      'proof.mqtt',
+      'proof.mqtt/broadcast/cmd',
+      undefined,
+      { ...otaConfig, downloadMode }
+    );
+  }
+
+  it('accepts OCI presigned download_url for MQTT publish', async () => {
+    const publisher = makePublisher();
+    await expect(
+      publisher.publishUpdateToDevice('DEVICE-17', { ...baseOffer, downloadUrl: ociUrl }, false)
+    ).resolves.toBeUndefined();
   });
 
-  it('returns false for invalid ObjectId strings', () => {
-    expect(isValidObjectId('not-an-object-id')).toBe(false);
+  it('rejects proxy download_url for MQTT publish', async () => {
+    const publisher = makePublisher('proxy');
+    await expect(
+      publisher.publishUpdateToDevice('DEVICE-17', { ...baseOffer, downloadUrl: proxyUrl }, false)
+    ).rejects.toThrow(/Refusing to publish non-OCI download_url/);
+  });
+
+  it('rejects LAN download_url for MQTT publish', async () => {
+    const publisher = makePublisher();
+    await expect(
+      publisher.publishUpdateToDevice(
+        'DEVICE-17',
+        { ...baseOffer, downloadUrl: 'http://192.168.29.95:8765/firmware.bin' },
+        false
+      )
+    ).rejects.toThrow(/Refusing to publish LAN/);
   });
 });

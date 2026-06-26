@@ -17,11 +17,11 @@ export enum DeviceStatus {
 }
 
 export enum DeviceOtaState {
-  IDLE = 'IDLE',
-  NOTIFIED = 'NOTIFIED',
-  DOWNLOADING = 'DOWNLOADING',
-  VALIDATING = 'VALIDATING',
-  ROLLBACK_REPORTED = 'ROLLBACK_REPORTED'
+  IDLE = 'idle',
+  NOTIFIED = 'notified',
+  DOWNLOADING = 'downloading',
+  VALIDATING = 'validating',
+  ROLLBACK_REPORTED = 'rollback_reported'
 }
 
 export interface IDevice extends Document {
@@ -52,12 +52,12 @@ export interface IDevice extends Document {
   // Error tracking
   errorMessage?: string;
 
-  // OTA tracking
+  // OTA tracking (otaState is telemetry-only — not used for eligibility)
   firmwareVersion?: string;
   firmwareReportedAt?: Date;
+  otaLastCheckAt?: Date;
   otaState?: DeviceOtaState;
   otaTargetVersion?: string;
-  otaLastCheckAt?: Date;
   otaBlockedVersions?: string[];
   otaRollbackFailures?: Map<string, number>;
   
@@ -144,14 +144,21 @@ const DeviceSchema = new Schema<IDevice>({
     required: false
   },
 
-  // OTA tracking
   firmwareVersion: { type: String, required: false },
   firmwareReportedAt: { type: Date, required: false },
-  otaState: { type: String, enum: Object.values(DeviceOtaState), required: false },
-  otaTargetVersion: { type: String, required: false },
   otaLastCheckAt: { type: Date, required: false },
-  otaBlockedVersions: { type: [String], default: [] },
-  otaRollbackFailures: { type: Map, of: Number, default: {} }
+  otaState: {
+    type: String,
+    enum: Object.values(DeviceOtaState),
+    required: false
+  },
+  otaTargetVersion: { type: String, required: false },
+  otaBlockedVersions: [{ type: String }],
+  otaRollbackFailures: {
+    type: Map,
+    of: Number,
+    default: undefined
+  }
 }, {
   timestamps: true, // Automatically adds createdAt and updatedAt
   collection: 'devices'

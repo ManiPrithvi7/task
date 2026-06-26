@@ -228,15 +228,9 @@ class MQTTTester {
   }
 
   async loadDevices() {
-    try {
-      const response = await fetch(`${this.baseURL}/api/devices`);
-      const devices = await response.json();
-
-      this.updateDevicesList(devices);
-      this.updateDeviceFilter(devices);
-    } catch (error) {
-      console.error('Failed to load devices:', error);
-    }
+    // Device list API removed — use WebSocket message viewer for live traffic.
+    this.updateDevicesList([]);
+    this.updateDeviceFilter([]);
   }
 
   async checkServerStatus() {

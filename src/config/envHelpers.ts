@@ -58,3 +58,27 @@ export function envBool(primary: string, defaultValue: boolean, legacy?: string[
   }
   return defaultValue;
 }
+
+const PRODUCTION_MQTT_CLIENT_ID = 'proof-server';
+
+/**
+ * MQTT brokers allow one session per client ID. In development, avoid using the
+ * production ID on the shared broker (and avoid colliding with other local npm run dev).
+ */
+export function resolveMqttClientId(): string {
+  const explicit = process.env.MQTT_CLIENT_ID?.trim();
+  const strict =
+    process.env.MQTT_CLIENT_ID_STRICT === 'true' || process.env.MQTT_CLIENT_ID_STRICT === '1';
+  const base = explicit || PRODUCTION_MQTT_CLIENT_ID;
+
+  if (strict) return base;
+
+  const env = process.env.NODE_ENV?.trim() || 'development';
+  if (env === 'development' || env === 'test') {
+    if (base === PRODUCTION_MQTT_CLIENT_ID) {
+      return `${base}-dev-${process.pid}`;
+    }
+  }
+
+  return base;
+}
