@@ -717,6 +717,11 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
         // One-time use: mark token consumed in store (Redis/memory) until JWT exp
         await provisioningService.finalizeTokenAfterSuccessfulSignCsr(provisioningToken);
 
+        deviceDoc.status = DeviceStatus.ACTIVE;
+        deviceDoc.errorMessage = undefined;
+        deviceDoc.lastSeenAt = new Date();
+        await deviceDoc.save();
+
         // Get certificate ID
         const certId = certificateDoc._id.toString();
         const expiresAt = typeof certificateDoc.expires_at === 'string'
