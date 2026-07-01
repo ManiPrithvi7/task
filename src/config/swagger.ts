@@ -22,7 +22,6 @@ const swaggerDefinition = {
     version: packageJson.version,
     description:
       'HTTP API for device provisioning, webhooks, and broker integration. ' +
-      'WebSocket traffic uses `/ws` (not covered by this spec). ' +
       'See README.md for firmware integration examples.'
   },
   servers: [{ url: '/' }]

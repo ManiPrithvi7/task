@@ -1,18 +1,16 @@
 # 🚀 MQTT Publisher Lite
 
-**Lightweight MQTT Publisher for Firmware Testing** - No external dependencies (Redis, Kafka, InfluxDB)!
+**ProofMQTT / mqtt-publisher-lite** is the Node.js backend for Proof device provisioning, mTLS MQTT ingress, OTA firmware, recovery flows, social/webhook fanout, and device metrics.
 
 ## ✨ Features
 
-- ✅ **Zero External Dependencies** - Just Node.js
-- ✅ **File-Based Storage** - All data in simple JSON files
-- ✅ **Fast Startup** - Ready in 2-3 seconds
-- ✅ **Small Footprint** - ~50MB RAM usage
 - ✅ **Self-hosted MQTT broker** - Production: `broker.withproof.io:8883` (mTLS / X.509)
-- ✅ **HTTP API** - Full REST API for device/session management
-- ✅ **WebSocket Support** - Real-time MQTT message streaming
+- ✅ **HTTP API** - REST API for provisioning, recovery, config, OTA, webhooks, and connections
+- ✅ **MongoDB** - Primary device, certificate, user/social, campaign, and release metadata
+- ✅ **Redis** - Active-device cache, provisioning token persistence, polling state, and OTA pending state
+- ✅ **InfluxDB** - Optional metrics/audit pipeline with disk queue fallback
 - ✅ **Docker Ready** - Single container deployment
-- ✅ **Perfect for Testing** - Ideal for firmware development
+- ✅ **Railway Ready** - Docker-based app service with external NanoMQ broker
 
 ---
 
@@ -83,23 +81,29 @@ Unit tests live under `tests/unit/` (mirrors `src/`). Integration: `tests/integr
 │  └──────────────────────────────────┘  │
 │                                         │
 │  ┌──────────────────────────────────┐  │
-│  │  WebSocket Server                │  │
-│  │  - /ws                           │  │
-│  └──────────────────────────────────┘  │
-│                                         │
-│  ┌──────────────────────────────────┐  │
 │  │  MQTT Client                     │  │
 │  │  → broker.withproof.io:8883    │  │
 │  │     (mqtts + client cert)      │  │
 │  └──────────────────────────────────┘  │
 │                                         │
 │  ┌──────────────────────────────────┐  │
-│  │  File Storage                    │  │
-│  │  - sessions.json                 │  │
-│  │  - devices.json                  │  │
-│  │  - users.json                    │  │
+│  │  Data Services                   │  │
+│  │  - MongoDB                       │  │
+│  │  - Redis                         │  │
+│  │  - InfluxDB / OCI                │  │
 │  └──────────────────────────────────┘  │
 └─────────────────────────────────────────┘
+```
+
+```mermaid
+flowchart LR
+  Device[Proof Device] <--> Broker[NanoMQ broker :8883 mTLS]
+  App[ProofMQTT Node service] <--> Broker
+  App --> Mongo[(MongoDB)]
+  App --> Redis[(Redis)]
+  App --> Influx[(InfluxDB)]
+  App --> OCI[(OCI Object Storage)]
+  Web[Web app / CI webhooks] --> App
 ```
 
 ---
@@ -114,6 +118,15 @@ This repo can **mark certificates revoked in MongoDB** and the Node service will
 
 **V6 hardening track:** implement broker-side auth (plugin/gateway) or migrate to a broker with first-class authn/authz plugins (e.g. EMQX).
 
+### Pilot v1 hardening
+
+- HTTP mTLS routes compare the presented client certificate fingerprint against the active MongoDB certificate record.
+- OTA admin routes require `role: admin`, an allowlisted `ADMIN_EMAIL_DOMAINS`, or an allowlisted `ADMIN_USER_IDS`.
+- Public `/health` returns only liveness; dependency details require loopback or `x-internal-health`.
+- CORS is deny-by-default unless `CORS_ALLOWED_ORIGINS` is configured.
+- WebSocket mirroring and the static dev UI have been removed.
+- Pilot OTA exception is documented in [`docs/PILOT_V1_EXCEPTIONS.md`](docs/PILOT_V1_EXCEPTIONS.md).
+
 ---
 
 ## 📡 API Endpoints
@@ -125,7 +138,17 @@ Interactive OpenAPI documentation is available at **`GET /api/docs`** (raw spec 
 GET /health
 ```
 
-**Response:**
+**Public response:**
+```json
+{
+  "status": "ok",
+  "timestamp": "2024-01-01T00:00:00.000Z"
+}
+```
+
+Internal health details are available from loopback or by sending `x-internal-health: $INTERNAL_HEALTH_SECRET`.
+
+**Internal response includes:**
 ```json
 {
   "status": "ok",
@@ -202,51 +225,11 @@ Content-Type: application/json
 
 ---
 
-## 🔌 WebSocket API
+## 📂 Storage
 
-### Connect
-```javascript
-const ws = new WebSocket('ws://localhost:3002/ws');
+MongoDB is required at startup. Redis is required for production-grade token persistence, active-device state, polling state, and OTA pending state. InfluxDB is used for metrics and audit events when configured; disk queue fallback is available for transient outages.
 
-ws.onopen = () => {
-  console.log('Connected');
-};
-
-ws.onmessage = (event) => {
-  const data = JSON.parse(event.data);
-  console.log('Message:', data);
-};
-```
-
-### Subscribe to Topic
-```javascript
-ws.send(JSON.stringify({
-  type: 'subscribe',
-  topic: 'devices/+/status'
-}));
-```
-
-### Publish Message
-```javascript
-ws.send(JSON.stringify({
-  type: 'publish',
-  topic: 'devices/test/command',
-  payload: { command: 'restart' },
-  qos: 0
-}));
-```
-
-### Ping/Pong
-```javascript
-ws.send(JSON.stringify({ type: 'ping' }));
-// Receives: { type: 'pong', timestamp: '...' }
-```
-
----
-
-## 📂 File Storage
-
-All data is stored in `./data/` directory as JSON files:
+Legacy JSON-file examples below are retained only for historical firmware-test context.
 
 ### sessions.json
 ```json

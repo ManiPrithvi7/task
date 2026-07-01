@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import * as crypto from 'crypto';
+import { logger } from '../utils/logger';
 import { DeviceCertificate, DeviceCertificateStatus } from '../models/DeviceCertificate';
 import { deviceIdFromCertPem } from '../utils/deviceKeys';
 
@@ -138,6 +139,13 @@ async function findActiveCertForSlots(deviceId: string, allowedSlots: MtlsCertSl
   });
 }
 
+function normalizeFingerprint(value: unknown): string {
+  return String(value || '')
+    .trim()
+    .replace(/:/g, '')
+    .toLowerCase();
+}
+
 export function requireMtlsDeviceCert(opts?: { allowedSlots?: MtlsCertSlot[] }) {
   const allowedSlots = opts?.allowedSlots ?? (['primary', 'staging'] as MtlsCertSlot[]);
 
@@ -159,6 +167,25 @@ export function requireMtlsDeviceCert(opts?: { allowedSlots?: MtlsCertSlot[] }) 
       return;
     }
 
+    // IMPORTANT: This middleware assumes the reverse proxy strips
+    // x-forwarded-client-cert from client requests and sets it only after
+    // successful TLS client-certificate verification.
+    const presentedFingerprint = normalizeFingerprint(identity.fingerprint256);
+    const storedFingerprint = normalizeFingerprint((certDoc as any).fingerprint);
+    if (!presentedFingerprint || presentedFingerprint !== storedFingerprint) {
+      logger.warn('mTLS fingerprint mismatch — possible cert replay attack', {
+        deviceId: identity.deviceId,
+        slot: (certDoc as any).slot || 'primary'
+      });
+      res.status(403).json({
+        success: false,
+        error: 'Certificate fingerprint mismatch',
+        code: 'CERT_FINGERPRINT_MISMATCH',
+        device_id: identity.deviceId
+      });
+      return;
+    }
+
     (req as any).deviceId = identity.deviceId;
     (req as any).mtls = {
       cn: identity.cn,
@@ -169,4 +196,3 @@ export function requireMtlsDeviceCert(opts?: { allowedSlots?: MtlsCertSlot[] }) 
     next();
   };
 }
-

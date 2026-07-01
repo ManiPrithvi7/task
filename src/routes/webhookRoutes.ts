@@ -164,7 +164,18 @@ export function createWebhookRoutes(deps: WebhookRoutesDeps): Router {
    *       503:
    *         description: Redis, MongoDB, or MQTT not ready
    */
-  router.get('/health/webhooks', (_req, res) => {
+  router.get('/health/webhooks', (req, res) => {
+    const internalSecret = process.env.INTERNAL_HEALTH_SECRET;
+    const ip = req.ip || req.socket.remoteAddress || '';
+    const isLoopback = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(ip);
+    const isInternal =
+      isLoopback ||
+      (Boolean(internalSecret) && req.headers['x-internal-health'] === internalSecret);
+    if (!isInternal) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+
     const redis = getRedisService();
     const redisOk = redis?.isRedisConnected() === true;
     const mongoOk = mongoose.connection.readyState === 1;

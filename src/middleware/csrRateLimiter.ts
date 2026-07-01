@@ -3,7 +3,9 @@
  * 
  * PKI Improvement #6: No Rate Limiting on CSR Submission → Context-Aware Thresholds.
  * 
- * Uses Redis for counter persistence across service restarts.
+ * Uses Redis for counter persistence across service restarts and falls back
+ * to per-process memory when Redis is unavailable. The fallback is acceptable
+ * for a single Pilot v1 instance, but is not shared across multiple instances.
  * 
  * Rate Limit Tiers:
  * - Per provisioned device: 10 CSRs / 15 min (CERT_RATE_LIMIT_PROVISIONED)
@@ -39,6 +41,22 @@ const DEFAULT_CONFIG: RateLimitConfig = {
   windowSeconds: parseInt(process.env.CSR_RATE_LIMIT_WINDOW || '900', 10)
 };
 
+const localCounters = new Map<string, { count: number; expiresAt: number }>();
+
+function incrementLocalCounter(key: string, ttlSeconds: number): { count: number; ttl: number } {
+  const now = Date.now();
+  const existing = localCounters.get(key);
+  if (!existing || existing.expiresAt <= now) {
+    localCounters.set(key, { count: 1, expiresAt: now + ttlSeconds * 1000 });
+    return { count: 1, ttl: ttlSeconds };
+  }
+  existing.count += 1;
+  return {
+    count: existing.count,
+    ttl: Math.max(1, Math.ceil((existing.expiresAt - now) / 1000))
+  };
+}
+
 /**
  * Increment a Redis counter and return the current count + TTL.
  * If key doesn't exist, creates with TTL.
@@ -46,13 +64,13 @@ const DEFAULT_CONFIG: RateLimitConfig = {
 async function incrementCounter(key: string, ttlSeconds: number): Promise<{ count: number; ttl: number }> {
   const redis = getRedisService();
   if (!redis) {
-    // No Redis — skip rate limiting (log warning)
-    return { count: 0, ttl: ttlSeconds };
+    logger.warn('CSR rate limiter: Redis unavailable, using local in-memory fallback', { key });
+    return incrementLocalCounter(key, ttlSeconds);
   }
 
   try {
     const client = redis.getClient();
-    if (!client) return { count: 0, ttl: ttlSeconds };
+    if (!client) return incrementLocalCounter(key, ttlSeconds);
 
     const count = await client.incr(key);
 
@@ -65,8 +83,8 @@ async function incrementCounter(key: string, ttlSeconds: number): Promise<{ coun
     return { count, ttl: ttl > 0 ? ttl : ttlSeconds };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    logger.warn('CSR rate limiter: Redis error, allowing request', { error: msg, key });
-    return { count: 0, ttl: ttlSeconds };
+    logger.warn('CSR rate limiter: Redis error, using local in-memory fallback', { error: msg, key });
+    return incrementLocalCounter(key, ttlSeconds);
   }
 }
 

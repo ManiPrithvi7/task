@@ -1,7 +1,6 @@
 import { logger } from './utils/logger';
 import { loadConfig, validateConfig, AppConfig, setMqttTlsClientPem } from './config';
 import { HttpServer } from './servers/httpServer';
-import { WebSocketServerManager } from './servers/webSocketServer';
 import { MqttClientManager } from './servers/mqttClient';
 import { StatsPublisher } from './services/statsPublisher';
 import { ConnectRefreshCoordinator } from './services/connectRefreshCoordinator';
@@ -82,7 +81,6 @@ export class StatsMqttLite {
 
 
   private httpServer!: HttpServer;
-  private webSocketServer!: WebSocketServerManager;
   private mqttClient!: MqttClientManager;
   
   // MongoDB-based services
@@ -251,7 +249,6 @@ export class StatsMqttLite {
       logger.info('');
       logger.info('📡 MQTT Broker:', `${this.config.mqtt.broker}:${this.config.mqtt.port}`);
       logger.info('🌐 HTTP API:', `http://${this.config.http.host}:${this.config.http.port}`);
-      logger.info('🔌 WebSocket:', `ws://${this.config.http.host}:${this.config.http.port}/ws`);
       logger.info('📂 Data Directory:', this.config.storage.dataDir);
       logger.info('🗃️  MongoDB:', `Connected (${this.config.mongodb.dbName})`);
       if (this.config.redis.enabled && this.redisService) {
@@ -287,7 +284,6 @@ export class StatsMqttLite {
 
     await this.initializeInstagramPoller();
     await this.initializeHttpServer();
-    await this.initializeWebSocketServer();
     await this.initializeStatsPublisher();
     this.initializeConnectRefreshCoordinator();
     this.initializeKeepAlive();
@@ -1699,17 +1695,6 @@ export class StatsMqttLite {
     }
   }
 
-  private async initializeWebSocketServer(): Promise<void> {
-    logger.info('🔌 Initializing WebSocket server...');
-    
-    this.webSocketServer = new WebSocketServerManager(
-      this.httpServer.getServer(),
-      this.mqttClient
-    );
-    
-    logger.info('✅ WebSocket server initialized');
-  }
-
   private async initializeStatsPublisher(): Promise<void> {
     logger.info('📊 Initializing stats publisher...');
     
@@ -1797,11 +1782,6 @@ export class StatsMqttLite {
       // Stop stats publisher
       if (this.statsPublisher) {
         await this.statsPublisher.stop();
-      }
-
-      // Close WebSocket server
-      if (this.webSocketServer) {
-        this.webSocketServer.close();
       }
 
       // Close HTTP server

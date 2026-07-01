@@ -35,9 +35,6 @@ RUN npm ci --only=production && \
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist
 
-# Copy public directory for static file serving
-COPY public ./public
-
 # Runtime dirs: data + mTLS PEM mount point (Render Secret Files → /etc/mqtt-certs/*)
 RUN mkdir -p data /etc/mqtt-certs && \
     chown -R nodejs:nodejs data /etc/mqtt-certs /app

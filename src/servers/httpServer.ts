@@ -1,6 +1,5 @@
 import express, { Express, Request, Response, NextFunction, Router } from 'express';
 import { createServer, Server } from 'http';
-import { join } from 'path';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
@@ -48,7 +47,16 @@ export class HttpServer {
 
   private setupMiddleware(): void {
     this.app.set('trust proxy', 1);
-    this.app.use(cors());
+    const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || '')
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean);
+    this.app.use(
+      cors({
+        origin: allowedOrigins.length > 0 ? allowedOrigins : false,
+        credentials: true
+      })
+    );
     this.app.use(helmet({
       contentSecurityPolicy: false
     }));
@@ -62,14 +70,6 @@ export class HttpServer {
     // Increase limit for sign-csr body (PEM CSR + token can be ~4–8kb)
     this.app.use(express.json({ limit: '512kb' }));
     this.app.use(express.urlencoded({ extended: true, limit: '512kb' }));
-
-    const publicPath = join(process.cwd(), 'public');
-    this.app.use(express.static(publicPath));
-    logger.info('Serving static files from', {
-      path: publicPath,
-      __dirname: __dirname,
-      cwd: process.cwd()
-    });
 
     if (this.config.requestLogging !== false) {
       this.app.use((req: Request, res: Response, next: NextFunction) => {
@@ -120,6 +120,19 @@ export class HttpServer {
      */
     this.app.get('/health', async (req: Request, res: Response) => {
       if (this.config.healthChecksEnabled === false) {
+        res.json({ status: 'ok', timestamp: new Date().toISOString() });
+        return;
+      }
+
+      const internalSecret = process.env.INTERNAL_HEALTH_SECRET;
+      const forwardedFor = String(req.headers['x-forwarded-for'] || '').split(',')[0]?.trim();
+      const ip = req.ip || req.socket.remoteAddress || '';
+      const isLoopback = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(ip) || forwardedFor === '127.0.0.1';
+      const isInternal =
+        isLoopback ||
+        (Boolean(internalSecret) && req.headers['x-internal-health'] === internalSecret);
+
+      if (!isInternal) {
         res.json({ status: 'ok', timestamp: new Date().toISOString() });
         return;
       }
@@ -268,4 +281,3 @@ export class HttpServer {
     return this.app;
   }
 }
-

@@ -29,6 +29,28 @@ export interface OtaRoutesDeps {
 export function createOtaRoutes(deps: OtaRoutesDeps): Router {
   const router = Router();
   const { otaConfig, storage, eventHandler, getRedisClient, redisKeyPrefix } = deps;
+  const pilotDownloadHits = new Map<string, { count: number; resetAt: number }>();
+
+  function isValidPilotVersion(version: string): boolean {
+    return /^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$/.test(version) || /^test:[0-9]+\.[0-9]+$/.test(version);
+  }
+
+  function checkPilotRateLimit(req: Request): { allowed: boolean; retryAfter: number } {
+    const now = Date.now();
+    const windowMs = 60_000;
+    const limit = parseInt(process.env.PILOT_OTA_RATE_LIMIT_PER_MIN || '10', 10);
+    const ip = req.ip || req.socket.remoteAddress || 'unknown';
+    const current = pilotDownloadHits.get(ip);
+    if (!current || current.resetAt <= now) {
+      pilotDownloadHits.set(ip, { count: 1, resetAt: now + windowMs });
+      return { allowed: true, retryAfter: 60 };
+    }
+    current.count += 1;
+    if (current.count > limit) {
+      return { allowed: false, retryAfter: Math.max(1, Math.ceil((current.resetAt - now) / 1000)) };
+    }
+    return { allowed: true, retryAfter: Math.max(1, Math.ceil((current.resetAt - now) / 1000)) };
+  }
 
   router.get(
     '/ota/offer/:version',
@@ -79,17 +101,69 @@ export function createOtaRoutes(deps: OtaRoutesDeps): Router {
     }
   );
 
-  // ponytail: dev-only open download test — remove after firmware validates HTTP streaming
   const DEV_TEST_OTA_VERSION = 'test:1.1';
   const DEV_TEST_FIRMWARE_PUBLIC_URL =
     'https://objectstorage.ap-hyderabad-1.oraclecloud.com/n/ax4egmknthnr/b/proof-firmware-dev-download/o/dev%2Fwifi_ap_project.bin';
 
-  router.get(/^\/ota\/download\/test:1\.1$/, (_req: Request, res: Response) => {
+  // PILOT v1 ONLY — remove or protect before GA.
+  router.get('/ota/download/:version', (req: Request, res: Response, next) => {
+    if (process.env.PILOT_MODE !== 'true') {
+      next();
+      return;
+    }
+
+    const version = decodeURIComponent(req.params.version || '').trim();
+    if (!isValidPilotVersion(version)) {
+      res.status(400).json({
+        success: false,
+        error: 'Invalid firmware version',
+        code: 'INVALID_VERSION',
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+
+    const rate = checkPilotRateLimit(req);
+    if (!rate.allowed) {
+      res.setHeader('Retry-After', String(rate.retryAfter));
+      res.status(429).json({
+        success: false,
+        error: 'OTA download rate limited',
+        code: 'PILOT_OTA_RATE_LIMITED',
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+
+    const baseUrl = process.env.PILOT_OTA_DOWNLOAD_BASE_URL?.replace(/\/+$/, '');
+    const firmwareUrl =
+      version === DEV_TEST_OTA_VERSION
+        ? DEV_TEST_FIRMWARE_PUBLIC_URL
+        : baseUrl
+          ? `${baseUrl}/${encodeURIComponent(version)}.bin`
+          : '';
+
+    logger.warn('[OTA] PILOT open firmware download accessed', {
+      version,
+      ip: req.ip || req.socket.remoteAddress || 'unknown',
+      hasPilotBaseUrl: Boolean(baseUrl)
+    });
+
+    if (!firmwareUrl) {
+      res.status(404).json({
+        success: false,
+        error: 'Pilot firmware URL not configured for this version',
+        code: 'PILOT_OTA_NOT_CONFIGURED',
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+
     res.setHeader('Content-Type', 'application/octet-stream');
-    res.setHeader('X-Firmware-Version', DEV_TEST_OTA_VERSION);
+    res.setHeader('X-Firmware-Version', version);
 
     https
-      .get(DEV_TEST_FIRMWARE_PUBLIC_URL, (ociRes) => {
+      .get(firmwareUrl, (ociRes) => {
         if (!ociRes.statusCode || ociRes.statusCode < 200 || ociRes.statusCode >= 300) {
           res.status(502).json({
             success: false,
@@ -104,7 +178,7 @@ export function createOtaRoutes(deps: OtaRoutesDeps): Router {
         ociRes.pipe(res);
       })
       .on('error', (err) => {
-        logger.error('[OTA] dev test download failed', { error: err.message });
+        logger.error('[OTA] pilot download failed', { error: err.message, version });
         if (!res.headersSent) {
           res.status(502).json({
             success: false,

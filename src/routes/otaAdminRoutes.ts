@@ -39,7 +39,7 @@ async function requireAdminAuth(
   req: Request,
   res: Response,
   authService: AuthService
-): Promise<{ userId: string } | null> {
+): Promise<{ userId: string; email?: string } | null> {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) {
     res.status(401).json({
@@ -63,7 +63,37 @@ async function requireAdminAuth(
     return null;
   }
 
-  return { userId: result.userId };
+  const role = typeof result.decoded?.role === 'string' ? result.decoded.role : undefined;
+  const email = result.userEmail || result.decoded?.email;
+  const adminDomains = (process.env.ADMIN_EMAIL_DOMAINS || '')
+    .split(',')
+    .map((domain) => domain.trim().toLowerCase())
+    .filter(Boolean);
+  const adminUserIds = (process.env.ADMIN_USER_IDS || '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+  const emailDomain = email?.split('@')[1]?.toLowerCase();
+  const isAdmin =
+    role === 'admin' ||
+    (emailDomain ? adminDomains.includes(emailDomain) : false) ||
+    adminUserIds.includes(result.userId);
+
+  if (!isAdmin) {
+    logger.warn('Admin route access denied', {
+      userId: result.userId,
+      email
+    });
+    res.status(403).json({
+      success: false,
+      error: 'Admin access required',
+      code: 'ADMIN_ACCESS_REQUIRED',
+      timestamp: new Date().toISOString()
+    });
+    return null;
+  }
+
+  return { userId: result.userId, email };
 }
 
 export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
