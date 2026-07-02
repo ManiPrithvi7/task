@@ -311,9 +311,6 @@ export class StatsPublisher {
       qos: 1,
       retain: false
     });
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/b23bd0da-dae5-4d29-96a5-e5f39343cdd6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'bf7e3f'},body:JSON.stringify({sessionId:'bf7e3f',hypothesisId:'H5',location:'statsPublisher.ts:publishTestGmb',message:'published test-gmb mock screen',data:{deviceId,topic:`${root}/${deviceId}/test-gmb`,verifiedReview:reviews},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     logger.debug('Published test-gmb screen', { deviceId, reviews, milestone: nextGoal });
   }
 

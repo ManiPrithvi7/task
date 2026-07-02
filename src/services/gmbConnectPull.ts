@@ -23,9 +23,6 @@ export class GmbConnectPull {
         knownLocationId: integrations?.gmb?.locationId
       });
     }
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/b23bd0da-dae5-4d29-96a5-e5f39343cdd6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'bf7e3f'},body:JSON.stringify({sessionId:'bf7e3f',hypothesisId:'H2',location:'gmbConnectPull.ts:publishForDevice',message:'gmb connect pull resolved context',data:{deviceId,ctxFound:Boolean(ctx),mqttPublishEnabled:this.mqttPublishEnabled,verifiedReview:ctx?.verifiedReviewCount??null,rating:ctx?.averageRating??null},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     if (!ctx) {
       logger.info('[GMB_CONNECT] No GMB snapshot to publish', {
         deviceId,
@@ -51,11 +48,6 @@ export class GmbConnectPull {
       this.mqttPublishEnabled,
       { userId: ctx.userId, deviceId }
     );
-
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/b23bd0da-dae5-4d29-96a5-e5f39343cdd6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'bf7e3f'},body:JSON.stringify({sessionId:'bf7e3f',hypothesisId:'H3',location:'gmbConnectPull.ts:publishForDevice',message:'gmb connect pull publishGmbScreen completed',data:{deviceId,topic:`${topicRoot}/${deviceId}/gmb`},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-
     logger.debug('[GMB_CONNECT] Published GMB snapshot from Mongo', {
       deviceId,
       verifiedReview: ctx.verifiedReviewCount,

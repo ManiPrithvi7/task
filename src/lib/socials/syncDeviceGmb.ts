@@ -40,9 +40,6 @@ async function getGmbApiAuth(
 ): Promise<GmbApiAuth | null> {
   const oauth = await getValidOAuth2Client(userId, webhookConfig);
   if (oauth) {
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/b23bd0da-dae5-4d29-96a5-e5f39343cdd6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'bf7e3f'},body:JSON.stringify({sessionId:'bf7e3f',runId:'post-fix',hypothesisId:'H7',location:'syncDeviceGmb.ts:getGmbApiAuth',message:'gmb sync auth selected',data:{userId,mode:'refreshed_oauth_client'},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     return oauth as unknown as GmbApiAuth;
   }
 
@@ -67,9 +64,6 @@ async function getGmbApiAuth(
 
   if (social.accessToken.trim()) {
     logger.info('[GMB_SYNC] Using stored access token (no OAuth app creds on server)', { userId });
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/b23bd0da-dae5-4d29-96a5-e5f39343cdd6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'bf7e3f'},body:JSON.stringify({sessionId:'bf7e3f',runId:'post-fix',hypothesisId:'H7',location:'syncDeviceGmb.ts:getGmbApiAuth',message:'gmb sync auth selected',data:{userId,mode:'stored_access_token_oauth_client'},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     return createAccessTokenOAuthClient(social.accessToken);
   }
 
@@ -123,9 +117,6 @@ async function pickAccessibleLocation(
   for (const candidate of accountCandidates) {
     try {
       const locations = await gmb.listLocations(auth, candidate);
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/b23bd0da-dae5-4d29-96a5-e5f39343cdd6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'bf7e3f'},body:JSON.stringify({sessionId:'bf7e3f',runId:'post-fix',hypothesisId:'H8',location:'syncDeviceGmb.ts:pickAccessibleLocation',message:'gmb listLocations result',data:{candidate,locationCount:locations.length},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       const first = locations.find((loc) => typeof loc.name === 'string' && loc.name.length > 0);
       if (first?.name) {
         return { resourceName: first.name, title: first.title ?? undefined };
@@ -136,24 +127,15 @@ async function pickAccessibleLocation(
         candidate,
         error
       });
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/b23bd0da-dae5-4d29-96a5-e5f39343cdd6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'bf7e3f'},body:JSON.stringify({sessionId:'bf7e3f',runId:'post-fix',hypothesisId:'H8',location:'syncDeviceGmb.ts:pickAccessibleLocation',message:'gmb listLocations failed',data:{candidate,error},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
     }
   }
 
   try {
     const accounts = await gmb.listAllAccounts(auth);
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/b23bd0da-dae5-4d29-96a5-e5f39343cdd6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'bf7e3f'},body:JSON.stringify({sessionId:'bf7e3f',runId:'post-fix',hypothesisId:'H9',location:'syncDeviceGmb.ts:pickAccessibleLocation',message:'gmb listAllAccounts result',data:{accountCount:accounts.length,accounts:accounts.map((a)=>a.name).filter(Boolean).slice(0,5)},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     for (const account of accounts) {
       if (!account.name || accountCandidates.includes(account.name)) continue;
       try {
         const locations = await gmb.listLocations(auth, account.name);
-        // #region agent log
-        fetch('http://127.0.0.1:7244/ingest/b23bd0da-dae5-4d29-96a5-e5f39343cdd6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'bf7e3f'},body:JSON.stringify({sessionId:'bf7e3f',runId:'post-fix',hypothesisId:'H9',location:'syncDeviceGmb.ts:pickAccessibleLocation',message:'gmb fallback listLocations result',data:{candidate:account.name,locationCount:locations.length},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         const first = locations.find((loc) => typeof loc.name === 'string' && loc.name.length > 0);
         if (first?.name) {
           return { resourceName: first.name, title: first.title ?? undefined };
@@ -164,18 +146,12 @@ async function pickAccessibleLocation(
           candidate: account.name,
           error
         });
-        // #region agent log
-        fetch('http://127.0.0.1:7244/ingest/b23bd0da-dae5-4d29-96a5-e5f39343cdd6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'bf7e3f'},body:JSON.stringify({sessionId:'bf7e3f',runId:'post-fix',hypothesisId:'H9',location:'syncDeviceGmb.ts:pickAccessibleLocation',message:'gmb fallback listLocations failed',data:{candidate:account.name,error},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
       }
     }
   } catch (err: unknown) {
     logger.warn('[GMB_SYNC] listAllAccounts failed', {
       error: gmbApiErrorMeta(err)
     });
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/b23bd0da-dae5-4d29-96a5-e5f39343cdd6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'bf7e3f'},body:JSON.stringify({sessionId:'bf7e3f',runId:'post-fix',hypothesisId:'H9',location:'syncDeviceGmb.ts:pickAccessibleLocation',message:'gmb listAllAccounts failed',data:{error:gmbApiErrorMeta(err)},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
   }
 
   return null;
@@ -213,9 +189,6 @@ export async function syncGmbLocationForDevice(
         webhookConfig.googleBusinessClientId && webhookConfig.googleBusinessClientSecret
       )
     });
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/b23bd0da-dae5-4d29-96a5-e5f39343cdd6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'bf7e3f'},body:JSON.stringify({sessionId:'bf7e3f',runId:'post-fix',hypothesisId:'H7',location:'syncDeviceGmb.ts',message:'gmb sync auth unavailable',data:{deviceId,userId,hasAccessToken:Boolean(social.accessToken?.trim())},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     return null;
   }
   const picked = await pickAccessibleLocation(auth, profile.accountId, opts?.knownLocationId);
@@ -236,9 +209,6 @@ export async function syncGmbLocationForDevice(
       hint:
         'Google returned 0 locations. Verify a business location exists in Google Business Profile and is linked to this account.'
     });
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/b23bd0da-dae5-4d29-96a5-e5f39343cdd6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'bf7e3f'},body:JSON.stringify({sessionId:'bf7e3f',runId:'post-fix',hypothesisId:'H10',location:'syncDeviceGmb.ts',message:'gmb sync no locations from api',data:{deviceId,userId,accountId:profile.accountId,accountType:accountType??null,knownLocationId:opts?.knownLocationId??null},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     return null;
   }
 
@@ -278,11 +248,6 @@ export async function syncGmbLocationForDevice(
     verifiedReviewCount: summary.totalReviewCount,
     averageRating: summary.averageRating
   });
-
-  // #region agent log
-  fetch('http://127.0.0.1:7244/ingest/b23bd0da-dae5-4d29-96a5-e5f39343cdd6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'bf7e3f'},body:JSON.stringify({sessionId:'bf7e3f',runId:'post-fix',hypothesisId:'H2-fix',location:'syncDeviceGmb.ts',message:'gmb api sync success',data:{deviceId,userId,locationId:picked.resourceName,verifiedReviewCount:summary.totalReviewCount,averageRating:summary.averageRating},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
-
   return {
     userId,
     deviceId,
