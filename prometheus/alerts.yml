@@ -1,0 +1,61 @@
+apiVersion: 1
+
+# Prometheus Alert Configuration for MQTT Publisher Lite
+# Created: 2026-07-02
+# Note: This includes HTTP-only alerts. MQTT fleet alerts require metrics that don't exist yet (p3.2 follow-up).
+
+groups:
+- name: http-alerts
+  rules:
+  - alert: HighErrorRate
+    expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.1
+    for: 5m
+    labels:
+      severity: critical
+      category: http
+    annotations:
+      summary: "High HTTP error rate detected"
+      description: "HTTP error rate has been {{ $value | humanizePercentage }} for the last 5 minutes. {{ $value | humanize1ce1s }} errors per second."
+      runbook: "#/runbooks/http-high-error-rate"
+      documentation: "#/monitoring/http-alerts"
+
+  - alert: ErrorRateSpike
+    expr: increase(http_requests_total{status=~"5.."}[1m]) / rate(http_requests_total[1m]) > 0.05
+    for: 1m
+    labels:
+      severity: warning
+      category: http
+    annotations:
+      summary: "HTTP error rate spike detected"
+      description: "Error rate increased by {{ $value | humanizePercentage }} in the last minute. Consider investigating potential issues."
+      runbook: "#/runbooks/http-error-spike"
+      documentation: "#/monitoring/http-alerts"
+
+  - alert: HighResponseTime
+    expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 1.0
+    for: 5m
+    labels:
+      severity: warning
+      category: http
+    annotations:
+      summary: "High HTTP response time detected"
+      description: "95th percentile HTTP response time is {{ $value }}s for the last 5 minutes. Response time may be degrading."
+      runbook: "#/runbooks/http-high-response-time"
+      documentation: "#/monitoring/http-alerts"
+
+  - alert: SlowHealthCheck
+    expr: rate(http_request_duration_seconds_sum{path="/health"}[5m]) / rate(http_request_duration_seconds_count{path="/health"}[5m]) > 0.5
+    for: 5m
+    labels:
+      severity: info
+      category: health
+    annotations:
+      summary: "Health check response time increasing"
+      description: "Health check response time is {{ $value }}s, above the 0.5s threshold. Service health checks may be responding slowly."
+      runbook: "#/runbooks/health-check-slow"
+      documentation: "#/monitoring/health-checks"
+
+# MQTT Fleet Alerts - Deferred until metrics are implemented
+# Current available metrics: http_requests_total, http_request_duration_seconds
+# Missing metrics: mqtt_connected_devices, mqtt_messages_received_total, mqtt_published_messages_total
+# See POST-PILOT_ROADMAP.md for MQTT fleet alerting implementation

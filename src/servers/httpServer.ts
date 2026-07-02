@@ -1,4 +1,5 @@
 import express, { Express, Request, Response, NextFunction, Router, RequestHandler } from 'express';
+import rateLimit from 'express-rate-limit';
 import { createServer, Server } from 'http';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -75,6 +76,31 @@ export class HttpServer {
     this.app.use(correlationIdMiddleware);
     this.app.use(metricsMiddleware);
 
+    const globalLimiter = rateLimit({
+      windowMs: parseInt(process.env.GLOBAL_RATE_LIMIT_WINDOW_MS || '900000', 10),
+      max: parseInt(process.env.GLOBAL_RATE_LIMIT_MAX_REQUESTS || '1000', 10),
+      standardHeaders: true,
+      legacyHeaders: false,
+      message: {
+        error: 'Too many requests',
+        code: 'GLOBAL_RATE_LIMIT_EXCEEDED',
+        timestamp: new Date().toISOString()
+      },
+      skip: (req) => {
+        const path = req.path;
+        if (path === '/health' || path === '/ready' || path === '/api/docs') {
+          return true;
+        }
+        if (path.startsWith('/api/webhooks/')) {
+          return true;
+        }
+        if (path === '/metrics') {
+          return true;
+        }
+        return false;
+      }
+    });
+
     if (this.config.requestLogging !== false) {
       this.app.use((req: Request, res: Response, next: NextFunction) => {
         const start = Date.now();
@@ -102,6 +128,8 @@ export class HttpServer {
         next();
       });
     }
+
+    this.app.use(globalLimiter);
   }
 
   private setupRoutes(): void {
