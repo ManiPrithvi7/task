@@ -7,6 +7,8 @@
 import { createClient, RedisClientType } from 'redis';
 import { logger } from '../utils/logger';
 
+const REDIS_LOG_PREFIX = '[Redis]';
+
 export interface RedisConfig {
   /** Preferred: single URL (Upstash). Example: rediss://default:...@host:6379 */
   url?: string;
@@ -19,9 +21,47 @@ export class RedisService {
   private config: RedisConfig;
   private isConnected: boolean = false;
   private heartbeatTimer: NodeJS.Timeout | null = null;
+  private lastLoggedConnected: boolean | null = null;
 
   constructor(config: RedisConfig) {
     this.config = config;
+    logger.debug(`${REDIS_LOG_PREFIX} constructor`, {
+      configured: !!(config.url && config.url.trim().length > 0),
+      db: config.db ?? 0,
+      keyPrefix: config.keyPrefix || 'mqtt-lite:'
+    });
+  }
+
+  private logCall(
+    fn: string,
+    phase: 'enter' | 'exit' | 'skip' | 'result',
+    meta?: Record<string, unknown>
+  ): void {
+    logger.debug(`${REDIS_LOG_PREFIX} ${fn} ${phase}`, meta);
+  }
+
+  private async traceAsync<T>(
+    fn: string,
+    meta: Record<string, unknown> | undefined,
+    operation: () => Promise<T>
+  ): Promise<T> {
+    const start = performance.now();
+    this.logCall(fn, 'enter', meta);
+    try {
+      const result = await operation();
+      this.logCall(fn, 'exit', {
+        ...meta,
+        durationMs: Math.round(performance.now() - start)
+      });
+      return result;
+    } catch (error) {
+      this.logCall(fn, 'exit', {
+        ...meta,
+        durationMs: Math.round(performance.now() - start),
+        error: error instanceof Error ? error.message : String(error)
+      });
+      throw error;
+    }
   }
 
   private safeTargetForLogs(): { mode: 'url' | 'none'; host?: string; port?: number; tls?: boolean } {
@@ -46,20 +86,25 @@ export class RedisService {
    * Check if Redis is configured (REDIS_URL).
    */
   isRedisConfigured(): boolean {
-    return !!(this.config.url && this.config.url.trim().length > 0);
+    const configured = !!(this.config.url && this.config.url.trim().length > 0);
+    this.logCall('isRedisConfigured', 'exit', { configured });
+    return configured;
   }
 
   /**
    * Connect to Redis using REDIS_URL (Upstash).
    */
   async connect(): Promise<void> {
+    return this.traceAsync('connect', { alreadyConnected: this.isConnected }, async () => {
     try {
       if (this.isConnected && this.client) {
+        this.logCall('connect', 'skip', { reason: 'already_connected' });
         logger.info('Redis already connected');
         return;
       }
 
       if (!this.isRedisConfigured()) {
+        this.logCall('connect', 'skip', { reason: 'not_configured' });
         logger.warn('Redis is enabled but REDIS_URL is not set. Skipping connection.');
         this.isConnected = false;
         return;
@@ -70,9 +115,9 @@ export class RedisService {
           logger.error('Redis reconnect attempts exhausted', { retries });
           return new Error('Redis reconnect attempts exhausted');
         }
-        const base = Math.min(1000 * Math.pow(2, retries), 15000);
-        const jitter = Math.floor(Math.random() * 250);
-        return base + jitter;
+        const delayMs = Math.min(1000 * Math.pow(2, retries), 15000) + Math.floor(Math.random() * 250);
+        logger.debug(`${REDIS_LOG_PREFIX} reconnectStrategy`, { retries, delayMs });
+        return delayMs;
       };
 
       const target = this.safeTargetForLogs();
@@ -131,14 +176,17 @@ export class RedisService {
       }
       throw new Error(`Redis connection failed: ${errorMessage}`);
     }
+    });
   }
 
   /**
    * Disconnect from Redis
    */
   async disconnect(): Promise<void> {
+    return this.traceAsync('disconnect', { hasClient: !!this.client }, async () => {
     try {
       if (!this.client) {
+        this.logCall('disconnect', 'skip', { reason: 'no_client' });
         logger.debug('Redis already disconnected');
         return;
       }
@@ -163,6 +211,7 @@ export class RedisService {
       this.client = null;
       this.isConnected = false;
     }
+    });
   }
 
   /**
@@ -170,6 +219,7 @@ export class RedisService {
    */
   getClient(): RedisClientType {
     if (!this.client) {
+      logger.error(`${REDIS_LOG_PREFIX} getClient failed`, { reason: 'not_initialized' });
       throw new Error('Redis client not initialized. Call connect() first.');
     }
     return this.client;
@@ -179,54 +229,76 @@ export class RedisService {
    * Check if Redis is connected
    */
   isRedisConnected(): boolean {
-    return this.isConnected && this.client?.isOpen === true;
+    const connected = this.isConnected && this.client?.isOpen === true;
+    if (connected !== this.lastLoggedConnected) {
+      this.logCall('isRedisConnected', 'result', {
+        connected,
+        isConnectedFlag: this.isConnected,
+        clientOpen: this.client?.isOpen ?? false
+      });
+      this.lastLoggedConnected = connected;
+    }
+    return connected;
   }
 
   /**
    * Health check
    */
   async healthCheck(): Promise<boolean> {
+    return this.traceAsync('healthCheck', undefined, async () => {
     try {
       if (!this.client || !this.isConnected) {
+        this.logCall('healthCheck', 'skip', { reason: 'not_connected' });
         return false;
       }
 
       const pong = await this.client.ping();
-      return pong === 'PONG';
+      const healthy = pong === 'PONG';
+      this.logCall('healthCheck', 'result', { healthy, pong });
+      return healthy;
     } catch (error) {
       logger.error('Redis health check failed', {
         error: error instanceof Error ? error.message : 'Unknown error'
       });
       return false;
     }
+    });
   }
 
   /**
    * Setup event handlers
    */
   private setupEventHandlers(): void {
-    if (!this.client) return;
+    if (!this.client) {
+      this.logCall('setupEventHandlers', 'skip', { reason: 'no_client' });
+      return;
+    }
+
+    this.logCall('setupEventHandlers', 'enter');
 
     this.client.on('connect', () => {
-      logger.info('Redis connection established');
+      logger.info(`${REDIS_LOG_PREFIX} event:connect`);
     });
 
     this.client.on('ready', () => {
-      logger.info('Redis ready to accept commands');
+      logger.info(`${REDIS_LOG_PREFIX} event:ready`);
       this.isConnected = true;
+      this.lastLoggedConnected = null;
       this.startHeartbeat();
     });
 
     this.client.on('end', () => {
-      logger.warn('Redis connection ended');
+      logger.warn(`${REDIS_LOG_PREFIX} event:end`);
       this.isConnected = false;
+      this.lastLoggedConnected = null;
       this.stopHeartbeat();
     });
 
     this.client.on('reconnecting', () => {
-      logger.info('Redis reconnecting...');
+      logger.info(`${REDIS_LOG_PREFIX} event:reconnecting`);
     });
 
+    this.logCall('setupEventHandlers', 'exit');
   }
 
   /**
@@ -237,8 +309,10 @@ export class RedisService {
     keyCount: number;
     memory: string;
   }> {
+    return this.traceAsync('getStats', { keyPrefix: this.config.keyPrefix || 'mqtt-lite:' }, async () => {
     try {
       if (!this.isRedisConnected() || !this.client) {
+        this.logCall('getStats', 'skip', { reason: 'not_connected' });
         return {
           connected: false,
           keyCount: 0,
@@ -247,11 +321,32 @@ export class RedisService {
       }
 
       const keyPattern = `${this.config.keyPrefix || 'mqtt-lite:'}*`;
+      const keysStart = performance.now();
       const keys = await this.client.keys(keyPattern);
+      const keysDurationMs = Math.round(performance.now() - keysStart);
+
+      const infoStart = performance.now();
       const info = await this.client.info('memory');
-      
+      const infoDurationMs = Math.round(performance.now() - infoStart);
+
+      if (keysDurationMs > 100 || keys.length > 1000) {
+        logger.warn(`${REDIS_LOG_PREFIX} getStats: KEYS scan slow or large`, {
+          keyPattern,
+          keyCount: keys.length,
+          keysDurationMs,
+          hint: 'Consider SCAN instead of KEYS for production stats'
+        });
+      }
+
       const memoryMatch = info.match(/used_memory_human:([^\r\n]+)/);
       const memory = memoryMatch ? memoryMatch[1] : 'Unknown';
+
+      this.logCall('getStats', 'result', {
+        keyCount: keys.length,
+        memory,
+        keysDurationMs,
+        infoDurationMs
+      });
 
       return {
         connected: true,
@@ -266,17 +361,35 @@ export class RedisService {
         memory: 'Error'
       };
     }
+    });
   }
 
   private startHeartbeat(): void {
-    if (this.heartbeatTimer) return;
+    if (this.heartbeatTimer) {
+      this.logCall('startHeartbeat', 'skip', { reason: 'already_running' });
+      return;
+    }
 
+    this.logCall('startHeartbeat', 'enter', { intervalMs: 30000 });
     this.heartbeatTimer = setInterval(async () => {
+      const start = performance.now();
       try {
-        if (!this.client || !this.isConnected || !this.client.isOpen) return;
+        if (!this.client || !this.isConnected || !this.client.isOpen) {
+          this.logCall('heartbeat', 'skip', {
+            reason: 'not_ready',
+            hasClient: !!this.client,
+            isConnected: this.isConnected,
+            clientOpen: this.client?.isOpen ?? false
+          });
+          return;
+        }
         await this.client.ping();
+        logger.debug(`${REDIS_LOG_PREFIX} heartbeat ok`, {
+          durationMs: Math.round(performance.now() - start)
+        });
       } catch (err) {
         logger.warn('Redis heartbeat ping failed', {
+          durationMs: Math.round(performance.now() - start),
           error: err instanceof Error ? err.message : String(err)
         });
       }
@@ -284,9 +397,14 @@ export class RedisService {
   }
 
   private stopHeartbeat(): void {
-    if (!this.heartbeatTimer) return;
+    if (!this.heartbeatTimer) {
+      this.logCall('stopHeartbeat', 'skip', { reason: 'not_running' });
+      return;
+    }
+    this.logCall('stopHeartbeat', 'enter');
     clearInterval(this.heartbeatTimer);
     this.heartbeatTimer = null;
+    this.logCall('stopHeartbeat', 'exit');
   }
 }
 
@@ -294,10 +412,18 @@ export class RedisService {
 let redisService: RedisService | null = null;
 
 export function getRedisService(): RedisService | null {
+  logger.debug(`${REDIS_LOG_PREFIX} getRedisService`, {
+    available: redisService !== null
+  });
   return redisService;
 }
 
 export function createRedisService(config: RedisConfig): RedisService {
+  logger.debug(`${REDIS_LOG_PREFIX} createRedisService`, {
+    hasUrl: !!(config.url && config.url.trim()),
+    db: config.db ?? 0,
+    keyPrefix: config.keyPrefix || 'mqtt-lite:'
+  });
   redisService = new RedisService(config);
   return redisService;
 }

@@ -1723,7 +1723,8 @@ export class StatsMqttLite {
   private initializeConnectRefreshCoordinator(): void {
     const gmbConnectPull = new GmbConnectPull(
       this.mqttClient,
-      this.config.webhooks.mqttPublishEnabled
+      this.config.webhooks.mqttPublishEnabled,
+      this.config.webhooks
     );
     this.connectRefreshCoordinator = new ConnectRefreshCoordinator({
       mqttClient: this.mqttClient,

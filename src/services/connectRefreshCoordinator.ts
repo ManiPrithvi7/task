@@ -24,10 +24,11 @@ export class ConnectRefreshCoordinator {
   constructor(private readonly deps: ConnectRefreshCoordinatorDeps) {}
 
   async refresh(deviceId: string): Promise<void> {
-    if (await this.isDebounced(deviceId)) {
-      logger.debug('[CONNECT_REFRESH] Skipped — debounced', { deviceId });
-      return;
-    }
+    const promotionDebounced = await this.isDebounced(deviceId);
+
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/b23bd0da-dae5-4d29-96a5-e5f39343cdd6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'bf7e3f'},body:JSON.stringify({sessionId:'bf7e3f',runId:'post-fix',hypothesisId:'H6',location:'connectRefreshCoordinator.ts:refresh',message:'connect refresh entered',data:{deviceId,promotionDebounced},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
     const root = this.deps.mqttClient.getTopicRoot();
     const { mqttClient, instagramPoller, gmbConnectPull, statsPublisher } = this.deps;
@@ -48,20 +49,24 @@ export class ConnectRefreshCoordinator {
       logger.warn('[CONNECT_REFRESH] MQTT not ready — screen publishes may retry inline', { deviceId });
     }
 
-    const clearedHashes = await clearAllPublishHashesForDevice(deviceId);
+    const clearedHashes = promotionDebounced
+      ? 0
+      : await clearAllPublishHashesForDevice(deviceId);
 
     if (!integrations) {
       logger.warn('[CONNECT_REFRESH] No integrations cached or found', {
         deviceId,
         userId: device.userId
       });
-      try {
-        await statsPublisher.publishPromotionForDevice(deviceId, root, { force: true });
-      } catch (err: unknown) {
-        logger.warn('[CONNECT_REFRESH] Promotion publish failed', {
-          deviceId,
-          error: err instanceof Error ? err.message : String(err)
-        });
+      if (!promotionDebounced) {
+        try {
+          await statsPublisher.publishPromotionForDevice(deviceId, root, { force: true });
+        } catch (err: unknown) {
+          logger.warn('[CONNECT_REFRESH] Promotion publish failed', {
+            deviceId,
+            error: err instanceof Error ? err.message : String(err)
+          });
+        }
       }
       return;
     }
@@ -76,23 +81,40 @@ export class ConnectRefreshCoordinator {
       tasks.push(gmbConnectPull.publishForDevice(deviceId, root));
     }
 
+    if (promotionDebounced) {
+      logger.info('[CONNECT_REFRESH] Screen pulls only (promotion debounced)', {
+        deviceId,
+        hasGmb: Boolean(integrations.gmb),
+        hasInstagram: Boolean(integrations.instagram)
+      });
+    }
+
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/b23bd0da-dae5-4d29-96a5-e5f39343cdd6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'bf7e3f'},body:JSON.stringify({sessionId:'bf7e3f',runId:'post-fix',hypothesisId:'H1',location:'connectRefreshCoordinator.ts:refresh',message:'connect refresh integration gate',data:{deviceId,userId:device.userId,promotionDebounced,hasGmb:Boolean(integrations.gmb),hasInstagram:Boolean(integrations.instagram),gmbTaskQueued:Boolean(integrations.gmb),taskCount:tasks.length},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+
     const screenPulls = await Promise.allSettled(tasks);
 
-    try {
-      await statsPublisher.publishPromotionForDevice(deviceId, root, { force: true });
-      logger.info('[CONNECT_REFRESH] Promotion published (connect force)', { deviceId, clearedHashes });
-    } catch (err: unknown) {
-      logger.warn('[CONNECT_REFRESH] Promotion publish failed', {
-        deviceId,
-        clearedHashes,
-        error: err instanceof Error ? err.message : String(err)
-      });
+    if (!promotionDebounced) {
+      try {
+        await statsPublisher.publishPromotionForDevice(deviceId, root, { force: true });
+        logger.info('[CONNECT_REFRESH] Promotion published (connect force)', { deviceId, clearedHashes });
+      } catch (err: unknown) {
+        logger.warn('[CONNECT_REFRESH] Promotion publish failed', {
+          deviceId,
+          clearedHashes,
+          error: err instanceof Error ? err.message : String(err)
+        });
+      }
     }
 
     const failed = screenPulls.filter((r) => r.status === 'rejected');
     if (failed.length > 0) {
       logger.debug('[CONNECT_REFRESH] Some screen pulls failed', { deviceId, failed: failed.length });
     }
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/b23bd0da-dae5-4d29-96a5-e5f39343cdd6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'bf7e3f'},body:JSON.stringify({sessionId:'bf7e3f',runId:'post-fix',hypothesisId:'H4',location:'connectRefreshCoordinator.ts:refresh',message:'connect refresh screen pulls settled',data:{deviceId,promotionDebounced,total:screenPulls.length,rejected:failed.length,rejectedReasons:failed.map((r)=>r.status==='rejected'?(r.reason instanceof Error?r.reason.message:String(r.reason)):null)},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
   }
 
   private async refreshInstagram(deviceId: string): Promise<void> {

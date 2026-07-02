@@ -22,6 +22,9 @@ export async function resolveGmbContextForDevice(deviceId: string): Promise<Devi
     const deviceDoc = await Device.findOne({ clientId: deviceId }).select({ userId: 1 }).lean();
     if (!deviceDoc?.userId) {
       logger.debug('[GMB_DEVICE] No user linked to device', { deviceId });
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/b23bd0da-dae5-4d29-96a5-e5f39343cdd6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'bf7e3f'},body:JSON.stringify({sessionId:'bf7e3f',hypothesisId:'H2',location:'resolveDeviceGmb.ts',message:'gmb resolve early exit',data:{deviceId,reason:'no_user'},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       return null;
     }
 
@@ -35,6 +38,9 @@ export async function resolveGmbContextForDevice(deviceId: string): Promise<Devi
 
     if (!social) {
       logger.debug('[GMB_DEVICE] No GOOGLE_BUSINESS social for user', { deviceId, userId });
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/b23bd0da-dae5-4d29-96a5-e5f39343cdd6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'bf7e3f'},body:JSON.stringify({sessionId:'bf7e3f',hypothesisId:'H2',location:'resolveDeviceGmb.ts',message:'gmb resolve early exit',data:{deviceId,userId,reason:'no_social'},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       return null;
     }
 
@@ -42,6 +48,9 @@ export async function resolveGmbContextForDevice(deviceId: string): Promise<Devi
     const profileIds = profiles.map((p) => p._id);
     if (profileIds.length === 0) {
       logger.debug('[GMB_DEVICE] No GoogleBusinessProfile rows', { deviceId, userId });
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/b23bd0da-dae5-4d29-96a5-e5f39343cdd6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'bf7e3f'},body:JSON.stringify({sessionId:'bf7e3f',hypothesisId:'H2',location:'resolveDeviceGmb.ts',message:'gmb resolve early exit',data:{deviceId,userId,reason:'no_profile',socialId:String(social._id)},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       return null;
     }
 
@@ -53,8 +62,15 @@ export async function resolveGmbContextForDevice(deviceId: string): Promise<Devi
 
     if (!locationRecord) {
       logger.debug('[GMB_DEVICE] No GoogleBusinessLocation for profiles', { deviceId, userId });
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/b23bd0da-dae5-4d29-96a5-e5f39343cdd6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'bf7e3f'},body:JSON.stringify({sessionId:'bf7e3f',hypothesisId:'H2',location:'resolveDeviceGmb.ts',message:'gmb resolve early exit',data:{deviceId,userId,reason:'no_location',profileCount:profileIds.length},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       return null;
     }
+
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/b23bd0da-dae5-4d29-96a5-e5f39343cdd6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'bf7e3f'},body:JSON.stringify({sessionId:'bf7e3f',hypothesisId:'H2',location:'resolveDeviceGmb.ts',message:'gmb resolve success',data:{deviceId,userId,verifiedReviewCount:locationRecord.totalReviewCount??0,averageRating:locationRecord.averageRating??null},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
     return {
       userId,

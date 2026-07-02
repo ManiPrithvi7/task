@@ -92,6 +92,10 @@ export async function publishGmbScreen(
     }
   }
 
+  // #region agent log
+  fetch('http://127.0.0.1:7244/ingest/b23bd0da-dae5-4d29-96a5-e5f39343cdd6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'bf7e3f'},body:JSON.stringify({sessionId:'bf7e3f',hypothesisId:'H3',location:'publishGmbScreen.ts',message:'gmb screen publish result',data:{clientId,topic,mqttPublishEnabled,published,success,errorMessage:errorMessage??null,verifiedReview:input.verifiedReview},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
+
   if (audit) {
     await webhookInfluxBatch((influx) =>
       influx.writeWebhookMqttDelivery(

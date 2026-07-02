@@ -12,6 +12,7 @@ import {
   buildBrandCanvasPayload,
   getCachedBrandCanvasAd
 } from './brandCanvasService';
+import { getUserIntegrations } from './userIntegrationCache';
 
 /**
  * Canonical PROOF Display v6 GMB payloads for `.../gmb` (firmware listens here for celebration flows).
@@ -167,14 +168,23 @@ export class StatsPublisher {
 
       for (const device of activeDevices) {
         try {
-          // test-gmb: muted progression only (no celebration) — all Redis-active devices, no provisioning gate.
-          // gmb: canonical v6 + celebrations — published later only for active + provisioned devices.
-          try {
-            await this.publishTestGmb(device.deviceId, root);
-          } catch (err: unknown) {
-            logger.warn('Failed to publish test GMB screen', {
+          // test-gmb: dev/QA mock only. Skip when user has GMB connected (real data via connect pull + webhooks).
+          const publishTestGmb =
+            process.env.STATS_PUBLISHER_TEST_GMB === 'true' ||
+            !(device.userId && (await getUserIntegrations(device.userId))?.gmb);
+          if (publishTestGmb) {
+            try {
+              await this.publishTestGmb(device.deviceId, root);
+            } catch (err: unknown) {
+              logger.warn('Failed to publish test GMB screen', {
+                deviceId: device.deviceId,
+                error: err instanceof Error ? err.message : String(err)
+              });
+            }
+          } else {
+            logger.info('[PUBLISH_CYCLE] Skipping test-gmb — user has GMB integration', {
               deviceId: device.deviceId,
-              error: err instanceof Error ? err.message : String(err)
+              userId: device.userId
             });
           }
 
@@ -301,6 +311,9 @@ export class StatsPublisher {
       qos: 1,
       retain: false
     });
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/b23bd0da-dae5-4d29-96a5-e5f39343cdd6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'bf7e3f'},body:JSON.stringify({sessionId:'bf7e3f',hypothesisId:'H5',location:'statsPublisher.ts:publishTestGmb',message:'published test-gmb mock screen',data:{deviceId,topic:`${root}/${deviceId}/test-gmb`,verifiedReview:reviews},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     logger.debug('Published test-gmb screen', { deviceId, reviews, milestone: nextGoal });
   }
 
