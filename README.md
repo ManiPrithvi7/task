@@ -350,7 +350,7 @@ curl -X POST http://localhost:3002/api/publish \
 #### Test WebSocket
 ```bash
 # Using wscat
-npm install -g wscat
+bunx wscat
 wscat -c ws://localhost:3002/ws
 
 # Subscribe to topic
@@ -527,7 +527,7 @@ See `.env.example` for production broker (`broker.withproof.io:8883`), PKI scrip
 ### Can't connect to MQTT broker
 ```bash
 # TLS handshake + mTLS (matches app startup pre-check)
-npm run test:mqtt-mtls
+bun run scripts/test-mqtt-mtls.ts
 
 # TCP reachability on mTLS port
 openssl s_client -connect broker.withproof.io:8883 -servername broker.withproof.io </dev/null

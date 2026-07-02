@@ -293,21 +293,21 @@ $ git commit -m "chore: Bun migration, ESLint, metrics, CI/CD, Railway deploy"
 ## "PHASE 2 COMPLETE" Definition
 
 ALL must be true:
-- [ ] `bun run build` passes
-- [ ] `bun run lint` passes (0 errors)
-- [ ] `bun run typecheck` passes
-- [ ] `bun test tests/unit` passes (or documented Jest fallback)
-- [ ] `render.yaml` deleted
-- [ ] No Render refs in `src/app.ts`
-- [ ] `railway.json` has healthcheck
-- [ ] `.eslintrc.json` exists (no type-checking rules)
-- [ ] `.husky/pre-commit` executable
-- [ ] Correlation ID middleware wired
-- [ ] Prometheus metrics wired
-- [ ] `.github/workflows/ci.yml` pinned to Bun 1.1.0
-- [ ] README uses `bun` not `npm`
-- [ ] Git commit made
-- [ ] Git status clean
+- [x] `bun run build` passes
+- [x] `bun run lint` passes (0 errors)
+- [x] `bun run typecheck` passes
+- [x] `bun test tests/unit` passes (or documented Jest fallback)
+- [x] `render.yaml` deleted
+- [x] No Render refs in `src/app.ts`
+- [x] `railway.json` has healthcheck
+- [x] `.eslintrc.json` exists (no type-checking rules)
+- [x] `.husky/pre-commit` executable
+- [x] Correlation ID middleware wired
+- [x] Prometheus metrics wired
+- [x] `.github/workflows/ci.yml` pinned to Bun 1.1.0
+- [x] README uses `bun` not `npm`
+- [x] Git commit made
+- [x] Git status clean
 
 **Do not claim Phase 2 complete until every box is checked with evidence.**
 
