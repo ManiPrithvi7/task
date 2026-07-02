@@ -8,4 +8,5 @@ node_modules/
 dist/
 graphify-out/
 session-*.md
+.env
 *.env
