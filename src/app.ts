@@ -434,7 +434,7 @@ export class StatsMqttLite {
         const isLocalhost = h === 'localhost' || h === '127.0.0.1' || h === '::1';
         if (isLocalhost) {
           throw new Error(
-            'REDIS_URL points to localhost. On Render and other cloud platforms there is no Redis on localhost. ' +
+            'REDIS_URL points to localhost. On cloud platforms there is no Redis on localhost. ' +
             'Set REDIS_URL to your external Redis (e.g. Upstash). To run without Redis, set REDIS_ENABLED=false.'
           );
         }
@@ -1737,31 +1737,29 @@ export class StatsMqttLite {
   }
 
   private initializeKeepAlive(): void {
-    // Keep-alive for Render.com free tier (prevents spin-down)
-    // Pings self every 10 minutes to keep service awake (5-minute safety margin)
-    const keepAliveInterval = 10 * 60 * 1000;  // 10 minutes
-    
+    if (process.env.ENABLE_SELF_KEEPALIVE !== 'true') {
+      return;
+    }
+
+    const keepAliveInterval = 10 * 60 * 1000;
+
     this.keepAliveTimer = setInterval(() => {
-      const url = `http://localhost:${this.config.http.port}/health`;
-      
-      // Use native fetch (Node 18+) or http module
-      const http = require('http');
-      http.get(url, (res: any) => {
-        logger.debug('Keep-alive ping sent', { 
-          status: res.statusCode,
-          interval: '10min'
+      const url = `http://127.0.0.1:${this.config.http.port}/health`;
+      fetch(url)
+        .then((res) => {
+          logger.debug('Keep-alive ping sent', {
+            status: res.status,
+            interval: '10min'
+          });
+        })
+        .catch((err: unknown) => {
+          logger.debug('Keep-alive ping failed (normal if external monitoring exists)', {
+            error: err instanceof Error ? err.message : String(err)
+          });
         });
-      }).on('error', (err: any) => {
-        logger.debug('Keep-alive ping failed (normal if external monitoring exists)', { 
-          error: err.message 
-        });
-      });
     }, keepAliveInterval);
-    
-    logger.info('🔄 Keep-alive enabled for free tier', { 
-      interval: '10 minutes',
-      note: 'Prevents Render.com spin-down (5min safety margin)'
-    });
+
+    logger.info('Keep-alive enabled', { interval: '10 minutes' });
   }
 
   async stop(): Promise<void> {

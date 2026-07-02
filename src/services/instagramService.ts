@@ -1368,6 +1368,8 @@ export class InstagramDirectFetchInvoker implements InstagramFetchInvoker {
     };
 
     const workers = Array.from({ length: Math.min(concurrency, queue.length) }, async () => {
+      // ponytail: worker pool drains shared queue until empty
+      // eslint-disable-next-line no-constant-condition
       while (true) {
         const next = queue.shift();
         if (!next) return;

@@ -685,7 +685,7 @@ export function loadConfig(): AppConfig {
       }
     },
     http: {
-      port: parseInt(process.env.PORT || process.env.HTTP_PORT || '3002'),  // Render uses PORT
+      port: parseInt(process.env.PORT || process.env.HTTP_PORT || '3002'),
       host: process.env.HTTP_HOST || '0.0.0.0',
       requestLogging: envBool('ENABLE_REQUEST_LOGGING', true),
       healthChecksEnabled: envBool('ENABLE_HEALTH_CHECKS', true)

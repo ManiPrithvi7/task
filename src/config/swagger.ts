@@ -49,11 +49,12 @@ export function setupSwaggerUi(app: Express): void {
     res.json(getSwaggerSpec());
   });
 
+  // ponytail: swagger-ui-express ships mismatched @types/express nested under @types/compression
   app.use(
     '/api/docs',
-    swaggerUi.serve,
+    ...(swaggerUi.serve as any),
     swaggerUi.setup(getSwaggerSpec(), {
       customSiteTitle: 'StatsMQTT Lite API'
-    })
+    }) as any
   );
 }

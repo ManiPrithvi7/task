@@ -1,10 +1,12 @@
-import express, { Express, Request, Response, NextFunction, Router } from 'express';
+import express, { Express, Request, Response, NextFunction, Router, RequestHandler } from 'express';
 import { createServer, Server } from 'http';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
 import { logger } from '../utils/logger';
 import { setupSwaggerUi } from '../config/swagger';
+import { correlationIdMiddleware } from '../middleware/correlationId';
+import { metricsMiddleware, metricsHandler } from '../middleware/metrics';
 import { SessionService } from '../services/sessionService';
 import { DeviceService } from '../services/deviceService';
 import { MqttClientManager } from './mqttClient';
@@ -60,7 +62,7 @@ export class HttpServer {
     this.app.use(helmet({
       contentSecurityPolicy: false
     }));
-    this.app.use(compression());
+    this.app.use(compression() as unknown as RequestHandler);
 
     // Webhook HMAC routes must run before express.json() (raw body preserved).
     for (const router of this.earlyRouters) {
@@ -70,6 +72,8 @@ export class HttpServer {
     // Increase limit for sign-csr body (PEM CSR + token can be ~4–8kb)
     this.app.use(express.json({ limit: '512kb' }));
     this.app.use(express.urlencoded({ extended: true, limit: '512kb' }));
+    this.app.use(correlationIdMiddleware);
+    this.app.use(metricsMiddleware);
 
     if (this.config.requestLogging !== false) {
       this.app.use((req: Request, res: Response, next: NextFunction) => {
@@ -102,6 +106,7 @@ export class HttpServer {
 
   private setupRoutes(): void {
     setupSwaggerUi(this.app);
+    this.app.get('/metrics', metricsHandler);
 
     /**
      * @swagger
@@ -235,7 +240,7 @@ export class HttpServer {
     });
 
     // Error handler
-    this.app.use((error: any, req: Request, res: Response, next: NextFunction) => {
+    this.app.use((error: any, req: Request, res: Response, _next: NextFunction) => {
       logger.error('Unhandled error', {
         error: error.message,
         path: req.path

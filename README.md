@@ -1,6 +1,6 @@
 # 🚀 MQTT Publisher Lite
 
-**ProofMQTT / mqtt-publisher-lite** is the Node.js backend for Proof device provisioning, mTLS MQTT ingress, OTA firmware, recovery flows, social/webhook fanout, and device metrics.
+**ProofMQTT / mqtt-publisher-lite** is the Bun/TypeScript backend for Proof device provisioning, mTLS MQTT ingress, OTA firmware, recovery flows, social/webhook fanout, and device metrics.
 
 ## ✨ Features
 
@@ -18,8 +18,7 @@
 
 ### 1. Install Dependencies
 ```bash
-cd services/mqtt-publisher-lite
-npm install
+bun install
 ```
 
 ### 2. Configure
@@ -31,21 +30,34 @@ cp .env.example .env
 ### 3. Run
 ```bash
 # Development mode
-npm run dev
+bun run dev
 
 # Production mode
-npm run build
-npm start
+bun run build
+bun run start
 ```
 
 ### 4. Test
 ```bash
 # Run automated tests
-npm test
+bun test
 
 # Or manually test
 curl http://localhost:3002/health
 ```
+
+---
+
+## 🚂 Railway Deployment
+
+This application deploys on [Railway](https://railway.app) using the repo `Dockerfile` and `railway.json`:
+
+1. Create a new Railway project and connect this repository.
+2. Set required secrets in the Railway dashboard (`MONGODB_URI`, `REDIS_URL`, `JWT_SECRET`, `MQTT_TLS_*_BASE64`, etc.).
+3. Railway builds the Docker image and exposes the service on `PORT` (default `3002`).
+4. Health checks use `GET /health`; internal metrics use `GET /metrics` with `x-internal-health` when `INTERNAL_HEALTH_SECRET` is set.
+
+The service will be available at `https://<your-service>.up.railway.app`.
 
 ---
 
@@ -61,7 +73,7 @@ curl http://localhost:3002/health
 | CSR / device certificates | [`docs/CSR_REQUIREMENTS_VALIDATION.md`](docs/CSR_REQUIREMENTS_VALIDATION.md) |
 | Attention IoT polling | [`docs/attention-polling-status.md`](docs/attention-polling-status.md) |
 
-Unit tests live under `tests/unit/` (mirrors `src/`). Integration: `tests/integration/connections.ts` (`npm run test:connections`). Ops scripts: `scripts/` (e.g. `scripts/integration-test.sh`, `scripts/run-migration.sh`).
+Unit tests live under `tests/unit/` (mirrors `src/`). Integration: `tests/integration/connections.ts` (`bun run test:connections`). Ops scripts: `scripts/` (e.g. `scripts/integration-test.sh`, `scripts/run-migration.sh`).
 
 ---
 
@@ -319,7 +331,7 @@ services:
 
 ### Run Tests
 ```bash
-npm test
+bun test
 ```
 
 ### Manual Testing
@@ -327,7 +339,7 @@ npm test
 #### Test MQTT Connection
 ```bash
 # mTLS smoke test (same TLS path as the running app)
-npm run test:mqtt-mtls
+bun run scripts/test-mqtt-mtls.ts
 
 # Publish via HTTP API (app connects to broker.withproof.io:8883)
 curl -X POST http://localhost:3002/api/publish \
@@ -377,7 +389,7 @@ MQTT_TLS_CLIENT_CERT_BASE64=...
 MQTT_TLS_CLIENT_KEY_BASE64=...
 ```
 
-Generate client material: `npm run pki -- app-client` (see `scripts/pki/README.md`). If `MQTT_BROKER` is a Railway TCP proxy (`*.proxy.rlwy.net`), set `MQTT_TLS_SERVERNAME=broker.withproof.io`.
+Generate client material: `bun run scripts/pki/pki.ts app-client` (see `scripts/pki/README.md`). If `MQTT_BROKER` is a Railway TCP proxy (`*.proxy.rlwy.net`), set `MQTT_TLS_SERVERNAME=broker.withproof.io`.
 
 ### Core (MQTT & HTTP)
 
@@ -390,7 +402,7 @@ Generate client material: `npm run pki -- app-client` (see `scripts/pki/README.m
 | `MQTT_TOPIC_ROOT` | `proof.mqtt` | Topic root for device paths |
 | `MQTT_RECONNECT_PERIOD` | `2000` | mqtt.js reconnect interval (ms) |
 | `MQTT_MAX_RECONNECT_ATTEMPTS` | `0` | Reconnect cap (`0` = infinite) |
-| `PORT` / `HTTP_PORT` | `3002` | HTTP server port (`PORT` used on Render) |
+| `PORT` / `HTTP_PORT` | `3002` | HTTP server port (Railway sets `PORT`) |
 | `HTTP_HOST` | `0.0.0.0` | HTTP bind address |
 | `NODE_ENV` | `development` | Runtime environment |
 | `LOG_LEVEL` | `info` | Winston log level (`debug`, `info`, `warn`, `error`) |
@@ -524,7 +536,7 @@ openssl s_client -connect broker.withproof.io:8883 -servername broker.withproof.
 # broker=broker.withproof.io port=8883 tlsServername=broker.withproof.io mqttAuth=X.509 only
 ```
 
-Ensure `MQTT_TLS_*_BASE64` PEMs match the broker trust chain (`npm run pki:verify`). Plain `mosquitto_pub` on port 1883 does not apply to this deployment.
+Ensure `MQTT_TLS_*_BASE64` PEMs match the broker trust chain (`./scripts/pki/verify-broker-tls.sh`). Plain `mosquitto_pub` on port 1883 does not apply to this deployment.
 
 ### Port 3002 already in use
 ```bash
@@ -671,8 +683,8 @@ MIT License
 
 For issues or questions:
 1. Check this README
-2. Review logs: `npm run dev`
-3. Test connectivity: `npm test`
+2. Review logs: `bun run dev`
+3. Test connectivity: `bun test`
 4. Check data files in `./data/`
 
 ---

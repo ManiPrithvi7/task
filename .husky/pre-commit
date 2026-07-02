@@ -1,0 +1,8 @@
+#!/bin/sh
+. "$(dirname "$0")/_/husky.sh"
+if git diff --cached --name-only | grep -qE '\.(key|p12|pfx)$'; then
+  echo "ERROR: Private key files detected."
+  exit 1
+fi
+bun run lint
+bun run typecheck

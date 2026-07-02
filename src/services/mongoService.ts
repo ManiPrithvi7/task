@@ -115,7 +115,7 @@ export class MongoService {
     try {
       // Match MongoDB URI pattern: mongodb://[username:password@]host[:port]/database
       // or mongodb+srv://[username:password@]host/database
-      const uriRegex = /^(mongodb(?:\+srv)?:\/\/)(?:[^:]+:[^@]+@)?([^\/]+)(\/.*)?$/;
+      const uriRegex = /^(mongodb(?:\+srv)?:\/\/)(?:[^:]+:[^@]+@)?([^/]+)(\/.*)?$/;
       const match = uri.match(uriRegex);
       
       if (match) {

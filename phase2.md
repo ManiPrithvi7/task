@@ -344,12 +344,16 @@ ALL must be true:
 - [x] **2E.1**: Created GitHub Actions CI workflow
 - [x] **2E.2**: Updated README with bun commands and Railway instructions
 
-**Final Verification (Completed)**
-- [x] **bun run build**: Build process successful
-- [x] **bun run lint**: Linting completed with 0 errors
-- [x] **bun run typecheck**: Type checking successful
-- [x] **bun test tests/unit**: Unit tests pass (Bun test environment)
-- [x] **git status --short**: Clean working directory
-- [x] **git log --oneline -3**: Phase 2 commit verified
+**Final Verification (Completed — 2026-07-02)**
+- [x] **bun run build**: passes (`--packages=external` for oci/swagger deps)
+- [x] **bun run lint**: 0 errors (165 legacy warnings)
+- [x] **bun run typecheck**: passes (TypeScript 5.7)
+- [x] **bun test tests/unit**: 116 tests pass (added `supertest` devDep)
+- [x] **git commit**: `chore: Bun migration, ESLint, metrics, CI/CD, Railway deploy`
+
+**Implementation notes**
+- `tsconfig.eslint.json` includes `tests/` for typed ESLint
+- Keep-alive gated behind `ENABLE_SELF_KEEPALIVE=true` (off by default on Railway)
+- `render.yaml` removed; `railway.json` deploy block added
 
 ---
