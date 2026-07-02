@@ -3,43 +3,45 @@
  * Exports all Mongoose models with enums
  */
 
-export { User, IUser } from './User';
-export { Device, IDevice, DeviceStatus } from './Device';
-export { Social, ISocial, Provider } from './Social';
-export { DeviceACL, IDeviceACL, DeviceTier } from './DeviceACL';
-export { DeviceCertificate, IDeviceCertificate, DeviceCertificateStatus } from './DeviceCertificate';
-export { Ad, IAd, AdStatus, AdType } from './Ad';
-export { ShopifyProfile, IShopifyProfile } from './ShopifyProfile';
-export { SquareProfile, ISquareProfile } from './SquareProfile';
-export {
-  GoogleBusinessProfile,
-  IGoogleBusinessProfile
-} from './GoogleBusinessProfile';
-export {
-  GoogleBusinessLocation,
-  IGoogleBusinessLocation
-} from './GoogleBusinessLocation';
-export {
-  GoogleBusinessReview,
-  IGoogleBusinessReview
-} from './GoogleBusinessReview';
-export {
-  DeviceTransactionLog,
-  IDeviceTransactionLog
-} from './DeviceTransactionLog';
-export {
-  Campaign,
-  ICampaign,
-  CampaignStatus,
-  DiscountType,
-  TargetType,
-  ScheduleType
-} from './Campaign';
-export { Redemption, IRedemption } from './Redemption';
-export {
-  FirmwareRelease,
-  IFirmwareRelease,
-  FirmwareReleaseStatus,
-  FirmwareRolloutStrategy,
-  IFirmwareRollout
-} from './FirmwareRelease';
+export { User } from './User';
+export type { IUser } from './User';
+
+export { Device, DeviceStatus } from './Device';
+export type { IDevice } from './Device';
+
+export { Social, Provider } from './Social';
+export type { ISocial } from './Social';
+
+export { DeviceACL, DeviceTier } from './DeviceACL';
+export type { IDeviceACL } from './DeviceACL';
+
+export { DeviceCertificate, DeviceCertificateStatus } from './DeviceCertificate';
+export type { IDeviceCertificate } from './DeviceCertificate';
+
+export { Ad, AdStatus, AdType } from './Ad';
+export type { IAd } from './Ad';
+
+export { ShopifyProfile } from './ShopifyProfile';
+export type { IShopifyProfile } from './ShopifyProfile';
+
+export { SquareProfile } from './SquareProfile';
+export type { ISquareProfile } from './SquareProfile';
+export { GoogleBusinessProfile } from './GoogleBusinessProfile';
+export type { IGoogleBusinessProfile } from './GoogleBusinessProfile';
+
+export { GoogleBusinessLocation } from './GoogleBusinessLocation';
+export type { IGoogleBusinessLocation } from './GoogleBusinessLocation';
+
+export { GoogleBusinessReview } from './GoogleBusinessReview';
+export type { IGoogleBusinessReview } from './GoogleBusinessReview';
+
+export { DeviceTransactionLog } from './DeviceTransactionLog';
+export type { IDeviceTransactionLog } from './DeviceTransactionLog';
+export { Campaign, CampaignStatus, DiscountType, TargetType, ScheduleType } from './Campaign';
+export type { ICampaign } from './Campaign';
+
+export { Redemption } from './Redemption';
+export type { IRedemption } from './Redemption';
+
+export { FirmwareRelease, FirmwareReleaseStatus, FirmwareRolloutStrategy } from './FirmwareRelease';
+export type { IFirmwareRelease, IFirmwareRollout } from './FirmwareRelease';

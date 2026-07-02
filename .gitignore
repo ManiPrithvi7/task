@@ -1,5 +1,6 @@
 # Private key material — NEVER commit. Use env/base64 injection.
 *.key
+*.crt
 *.p12
 *.pfx
 *.key.der

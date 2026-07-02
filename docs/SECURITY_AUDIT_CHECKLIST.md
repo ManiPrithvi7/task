@@ -99,6 +99,89 @@ issues:
     p2_status: "Phase 2 established pattern"
     remediation: "Document base image integrity verification in security checklist"
 
+  # Bun Runtime Security (Pilot v1)
+
+  - id: M-9
+    category: "Bun Runtime Security"
+    severity: "Low"
+    status: "✅ Implemented"
+    description: "Bun version pinned in CI and container build"
+    location: "CI config, Dockerfile"
+    p2_status: "Pinned (pilot policy)"
+    remediation: "N/A - version pinning in place"
+
+  - id: M-10
+    category: "Bun Runtime Security"
+    severity: "Low"
+    status: "✅ Implemented"
+    description: "Container runs as non-root user"
+    location: "Dockerfile"
+    p2_status: "Non-root user (bunjs)"
+    remediation: "N/A - non-root user in place"
+
+  - id: M-11
+    category: "Bun Runtime Security"
+    severity: "Low"
+    status: "✅ Implemented (Bun default)"
+    description: "npm lifecycle scripts disabled by default by Bun"
+    location: "Bun package manager behavior"
+    p2_status: "Relies on Bun default behavior"
+    remediation: "N/A - default-off lifecycle scripts"
+
+  - id: M-12
+    category: "Bun Runtime Security"
+    severity: "Medium"
+    status: "⚠️ Pending"
+    description: "Subscribe/monitor Bun security advisories and releases"
+    location: "Operational process"
+    p2_status: "Not yet formalized"
+    remediation: "Track `https://github.com/oven-sh/bun/security/advisories` and Bun release notes; treat upgrades as staged changes"
+
+  - id: M-13
+    category: "Bun Runtime Security"
+    severity: "Medium"
+    status: "⚠️ Pending"
+    description: "Review Bun lockfile on dependency updates"
+    location: "bun.lockb / bun.lock"
+    p2_status: "Not yet formalized"
+    remediation: "Review dependency diffs on updates; if using `bun.lockb`, generate a readable view during review"
+
+  - id: M-14
+    category: "Bun Runtime Security"
+    severity: "Medium"
+    status: "⚠️ Pending (post-pilot)"
+    description: "Consider container sandboxing (seccomp/AppArmor) due to lack of runtime permission model"
+    location: "Container runtime policy"
+    p2_status: "Not applied for pilot"
+    remediation: "Add a restrictive seccomp/AppArmor profile in GA if threat model warrants it"
+
+  - id: M-15
+    category: "Bun Runtime Security"
+    severity: "Medium"
+    status: "⚠️ Pending"
+    description: "Enable Railway private networking for MongoDB/Redis"
+    location: "Railway project networking"
+    p2_status: "Not yet configured"
+    remediation: "Ensure database services communicate over Railway private networking where supported"
+
+  - id: M-16
+    category: "Bun Runtime Security"
+    severity: "High"
+    status: "⚠️ Pending"
+    description: "Configure MongoDB Atlas IP allowlist for Railway egress"
+    location: "MongoDB Atlas network access settings"
+    p2_status: "Not yet configured"
+    remediation: "Allowlist Railway egress IPs; deny all other sources"
+
+  - id: M-17
+    category: "Bun Runtime Security"
+    severity: "High"
+    status: "⚠️ Pending"
+    description: "Verify MQTT broker firewall (broker.withproof.io:8883) only accepts Railway egress + device IPs"
+    location: "MQTT broker firewall / security groups"
+    p2_status: "Not yet verified"
+    remediation: "Restrict inbound to required Railway egress + known device networks; verify 8883 mTLS remains enforced"
+
   # Post-Pilot/GA Phase 3 Follow-ups (Would Go in POST-PILOT_ROADMAP.md)
   # These are documented here for Phase 3 perspective but belong in the roadmap
 
