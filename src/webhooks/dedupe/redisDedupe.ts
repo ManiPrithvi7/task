@@ -1,45 +1,8 @@
-import { createHash } from 'crypto';
 import { getRedisService } from '../../services/redisService';
 import { logger } from '../../utils/logger';
 
 const DEDUPE_TTL_SEC = 86400;
 const KEY_PREFIX = 'webhook:dedupe:';
-
-export function buildShopifyDedupeKey(
-  shop: string,
-  topic: string,
-  rawBody: string
-): string {
-  let orderId: string | null = null;
-  try {
-    const parsed = JSON.parse(rawBody) as Record<string, unknown>;
-    const id =
-      typeof parsed.checkout_id === 'number'
-        ? String(parsed.checkout_id)
-        : typeof parsed.checkout_id === 'string'
-          ? parsed.checkout_id
-          : typeof parsed.id === 'number'
-            ? String(parsed.id)
-            : typeof parsed.id === 'string'
-              ? parsed.id
-              : null;
-    orderId = id;
-  } catch {
-    /* fall through to hash */
-  }
-  const dedupePart = orderId?.trim() || createHash('sha256').update(rawBody).digest('hex');
-  return `shopify:${shop}:${topic}:${dedupePart}`;
-}
-
-export function buildSquareDedupeKey(
-  merchantId: string,
-  eventType: string,
-  eventId: string | null,
-  rawBody: string
-): string {
-  const dedupePart = eventId?.trim() || createHash('sha256').update(rawBody).digest('hex');
-  return `square:${merchantId}:${eventType}:${dedupePart}`;
-}
 
 /**
  * Returns true if this is a new event (should process). False if duplicate.

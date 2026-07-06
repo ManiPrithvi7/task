@@ -14,7 +14,6 @@ import { GoogleBusinessReview } from '../models/GoogleBusinessReview';
 import { GoogleBusinessLocation } from '../models/GoogleBusinessLocation';
 import { resolveDevicesForUser } from './resolve/resolveDevices';
 import { publishGmbScreen } from './delivery/publishGmbScreen';
-import { DeviceTransactionLog } from '../models/DeviceTransactionLog';
 import mongoose from 'mongoose';
 import { logger } from '../utils/logger';
 
@@ -122,24 +121,9 @@ async function runGmbEnrichment(
         reviewId: stored.reviewId,
         qrText: 'https://g.page/r/review'
       },
-      ctx.webhookConfig.mqttPublishEnabled
+      ctx.webhookConfig.mqttPublishEnabled,
+      { userId: ctx.userId, deviceId: device.clientId }
     );
-
-    if (device.deviceObjectId) {
-      try {
-        await DeviceTransactionLog.create({
-          deviceId: new mongoose.Types.ObjectId(device.deviceObjectId),
-          userId: new mongoose.Types.ObjectId(ctx.userId),
-          eventType: 'review_push',
-          loggedAt: new Date(),
-          metadata: { reviewId: stored.reviewId, enriched: true }
-        });
-      } catch (logErr) {
-        logger.warn('[GMB_ENRICHMENT] Transaction log failed', {
-          error: logErr instanceof Error ? logErr.message : String(logErr)
-        });
-      }
-    }
   }
 
   logger.info('[GMB_ENRICHMENT] Enriched review upserted and republished', {

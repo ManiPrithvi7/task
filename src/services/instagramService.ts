@@ -23,6 +23,7 @@ import { getInfluxService } from './influxService';
 import { getActiveDeviceCache } from './deviceService';
 import {
   fetchInstagramProfileMetrics,
+  IG_PROFILE_API_ENDPOINT,
   InstagramProfileFetchError
 } from '../lib/socials/instagramMetrics';
 import { ensureFreshInstagramAccessToken } from '../lib/socials/instagramTokenRefresh';
@@ -370,7 +371,7 @@ export class InstagramCircuitBreaker {
         { flush: true }
       );
     } catch (err: unknown) {
-      logger.debug('[IG_CIRCUIT] Influx circuit event write failed (ignored)', {
+      logger.error('[IG_CIRCUIT] Influx circuit event write failed', {
         state,
         reason,
         error: err instanceof Error ? err.message : String(err)
@@ -485,6 +486,9 @@ export interface InstagramFetchResult {
   instagramAccountId: string;
   userId?: string;
   cacheHit: boolean;
+  apiEndpoint?: string;
+  primaryResponseSha256?: string;
+  detailsResponseSha256?: string;
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -509,17 +513,21 @@ export async function fetchInstagramMetrics(
       userId: account.userId || undefined
     });
 
-    const fields = await fetchInstagramProfileMetrics(accessToken);
-    if (!fields) {
+    const profileResult = await fetchInstagramProfileMetrics(accessToken);
+    if (!profileResult) {
       return {
         success: false,
         error: 'Instagram profile metrics unavailable',
         apiResponseTimeMs: Date.now() - startTime,
         instagramAccountId: account.instagramAccountId,
         userId: account.userId || undefined,
-        cacheHit: false
+        cacheHit: false,
+        apiEndpoint: IG_PROFILE_API_ENDPOINT
       };
     }
+
+    const fields = profileResult.metrics;
+    const audit = profileResult.audit;
 
     const apiResponseTimeMs = Date.now() - startTime;
 
@@ -544,7 +552,11 @@ export async function fetchInstagramMetrics(
       apiResponseTimeMs,
       instagramAccountId: account.instagramAccountId,
       userId: account.userId || undefined,
-      cacheHit: false
+      cacheHit: false,
+      apiEndpoint: audit.apiEndpoint,
+      primaryResponseSha256: audit.primaryResponseSha256,
+      detailsResponseSha256: audit.detailsResponseSha256,
+      httpStatus: audit.httpStatus
     };
   } catch (error: unknown) {
     const apiResponseTimeMs = Date.now() - startTime;
@@ -568,7 +580,10 @@ export async function fetchInstagramMetrics(
         apiResponseTimeMs,
         instagramAccountId: account.instagramAccountId,
         userId: account.userId || undefined,
-        cacheHit: false
+        cacheHit: false,
+        apiEndpoint: err instanceof InstagramProfileFetchError ? err.apiEndpoint : IG_PROFILE_API_ENDPOINT,
+        primaryResponseSha256:
+          err instanceof InstagramProfileFetchError ? err.primaryResponseSha256 : undefined
       };
     }
 
@@ -590,7 +605,11 @@ export async function fetchInstagramMetrics(
       apiResponseTimeMs,
       instagramAccountId: account.instagramAccountId,
       userId: account.userId || undefined,
-      cacheHit: false
+      cacheHit: false,
+      httpStatus: err.httpStatus,
+      apiEndpoint: err instanceof InstagramProfileFetchError ? err.apiEndpoint : IG_PROFILE_API_ENDPOINT,
+      primaryResponseSha256:
+        err instanceof InstagramProfileFetchError ? err.primaryResponseSha256 : undefined
     };
   }
 }
@@ -744,7 +763,7 @@ export async function publishInstagramScreenIfChanged(
           { flush: false }
         );
       } catch (influxErr: unknown) {
-        logger.debug('[IG_SCREEN] Influx MQTT delivery write failed (ignored)', {
+        logger.error('[IG_SCREEN] Influx MQTT delivery write failed', {
           deviceId,
           error: influxErr instanceof Error ? influxErr.message : String(influxErr)
         });
@@ -789,7 +808,7 @@ export async function publishInstagramScreenIfChanged(
           { flush: false }
         );
       } catch (influxErr: unknown) {
-        logger.debug('[IG_SCREEN] Influx MQTT delivery write failed (ignored)', {
+        logger.error('[IG_SCREEN] Influx MQTT delivery write failed', {
           deviceId,
           error: influxErr instanceof Error ? influxErr.message : String(influxErr)
         });
@@ -821,6 +840,9 @@ export type NormalizedDeviceFetchResult = {
   http_status?: number;
   retry_after_seconds?: number;
   error_code?: string | number;
+  api_endpoint?: string;
+  primary_response_sha256?: string;
+  details_response_sha256?: string;
 };
 
 async function readCachedFollowers(deviceId: string): Promise<number | null> {
@@ -924,6 +946,9 @@ export async function applyInstagramServerlessDeviceOutcome(
           retryAfterSeconds: row.retry_after_seconds,
           cacheHit: row.cache_hit,
           mediaCount: row.media_count,
+          apiEndpoint: row.api_endpoint,
+          primaryResponseSha256: row.primary_response_sha256,
+          detailsResponseSha256: row.details_response_sha256,
           errorMessage: row.success ? undefined : (row.error || 'unknown'),
           errorCode: row.success ? undefined : row.error_code,
           timestamp: auditTs
@@ -961,7 +986,12 @@ export async function applyInstagramServerlessDeviceOutcome(
         await influx.writeInstagramAttentionE2eLatency(deviceId, trigger, e2eMs, auditTs, { flush: false });
       }
     } catch (err: unknown) {
-      logger.debug('[IG_SERVERLESS] Influx write failed (ignored)', { deviceId, error: err instanceof Error ? err.message : String(err) });
+      logger.error('[IG_SERVERLESS] Influx write failed', {
+        deviceId,
+        trigger,
+        correlationId: cid,
+        error: err instanceof Error ? err.message : String(err)
+      });
     }
   }
 
@@ -971,7 +1001,11 @@ export async function applyInstagramServerlessDeviceOutcome(
     try {
       await influx.flushWrites();
     } catch (err: unknown) {
-      logger.debug('[IG_SERVERLESS] Influx flush failed (ignored)', { deviceId, error: err instanceof Error ? err.message : String(err) });
+      logger.error('[IG_SERVERLESS] Influx flush failed', {
+        deviceId,
+        trigger,
+        error: err instanceof Error ? err.message : String(err)
+      });
     }
   }
 }
@@ -1262,6 +1296,15 @@ function toNormalizedRow(deviceId: string, result: InstagramFetchResult): Normal
   if (result.errorCode !== undefined) {
     row.error_code = result.errorCode;
   }
+  if (result.apiEndpoint) {
+    row.api_endpoint = result.apiEndpoint;
+  }
+  if (result.primaryResponseSha256) {
+    row.primary_response_sha256 = result.primaryResponseSha256;
+  }
+  if (result.detailsResponseSha256) {
+    row.details_response_sha256 = result.detailsResponseSha256;
+  }
   return row;
 }
 
@@ -1339,20 +1382,18 @@ export class InstagramDirectFetchInvoker implements InstagramFetchInvoker {
           deviceId,
           trigger: opts.trigger
         });
-        if (attentionLike && deviceIds.length === 1) {
-          await applyInstagramServerlessDeviceOutcome(
-            {
-              deviceId,
-              success: false,
-              fetched_at: new Date().toISOString(),
-              error: 'no_instagram_credentials'
-            },
-            this.mqttClient,
-            topicRoot,
-            opts.trigger,
-            cid
-          );
-        }
+        await applyInstagramServerlessDeviceOutcome(
+          {
+            deviceId,
+            success: false,
+            fetched_at: new Date().toISOString(),
+            error: 'no_instagram_credentials'
+          },
+          this.mqttClient,
+          topicRoot,
+          opts.trigger,
+          cid
+        );
         return;
       }
 

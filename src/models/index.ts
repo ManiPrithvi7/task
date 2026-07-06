@@ -35,8 +35,6 @@ export type { IGoogleBusinessLocation } from './GoogleBusinessLocation';
 export { GoogleBusinessReview } from './GoogleBusinessReview';
 export type { IGoogleBusinessReview } from './GoogleBusinessReview';
 
-export { DeviceTransactionLog } from './DeviceTransactionLog';
-export type { IDeviceTransactionLog } from './DeviceTransactionLog';
 export { Campaign, CampaignStatus, DiscountType, TargetType, ScheduleType } from './Campaign';
 export type { ICampaign } from './Campaign';
 

@@ -272,9 +272,7 @@ export class StatsMqttLite {
   }
 
   private async initializePhase2(): Promise<void> {
-    if (this.config.influxdb?.enabled) {
-      logger.info('📈 Initializing InfluxDB...');
-    }
+    logger.info('📈 Initializing InfluxDB...');
     await this.initializeInfluxDB();
     await this.initializePkiGovernance();
 
@@ -489,39 +487,25 @@ export class StatsMqttLite {
   }
 
   private async initializeInfluxDB(): Promise<void> {
-    if (!this.config.influxdb?.enabled) {
-      logger.info('📈 InfluxDB not configured (unset INFLUXDB_TOKEN to skip; set token + URL/org/bucket to enable)');
-      return;
-    }
-
     try {
       this.influxService = createInfluxService(this.config.influxdb);
       const healthy = await this.influxService.healthCheck();
 
-      if (healthy) {
-        logger.info('📈 InfluxDB connected', {
-          url: this.config.influxdb.url,
-          org: this.config.influxdb.org,
-          bucket: this.config.influxdb.bucket
-        });
-        return;
+      if (!healthy) {
+        await resetInfluxService();
+        this.influxService = undefined;
+        throw new Error(
+          'InfluxDB unreachable or misconfigured. Verify INFLUXDB_URL, INFLUXDB_TOKEN, INFLUXDB_ORG, INFLUXDB_BUCKET.'
+        );
       }
 
-      if (this.config.influxdb.diskQueueEnabled) {
-        logger.warn('📈 InfluxDB HTTP check failed — disk write-ahead queue is active (no persistent socket; batches flush over HTTP)', {
-          url: this.config.influxdb.url,
-          diskQueuePath: this.config.influxdb.diskQueuePath,
-          flushMs: this.config.influxdb.diskQueueFlushMs
-        });
-        return;
-      }
-
-      await resetInfluxService();
-      this.influxService = undefined;
-
-      const hint =
-        'Verify InfluxDB is up, INFLUXDB_URL, INFLUXDB_TOKEN, INFLUXDB_ORG, INFLUXDB_BUCKET. For strict startup, keep INFLUXDB_DISK_QUEUE=false. To skip Influx, remove INFLUXDB_TOKEN.';
-      throw new Error(`InfluxDB unreachable or misconfigured (${hint})`);
+      logger.info('📈 InfluxDB connected', {
+        url: this.config.influxdb.url,
+        org: this.config.influxdb.org,
+        bucket: this.config.influxdb.bucket,
+        diskQueue: this.config.influxdb.diskQueueEnabled,
+        diskQueueSync: this.config.influxdb.diskQueueSyncOnAppend
+      });
     } catch (err: unknown) {
       await resetInfluxService();
       this.influxService = undefined;

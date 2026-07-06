@@ -66,6 +66,9 @@ export interface InstagramFetchAuditInfluxInput {
   retryAfterSeconds?: number;
   cacheHit?: boolean;
   mediaCount?: number;
+  apiEndpoint?: string;
+  primaryResponseSha256?: string;
+  detailsResponseSha256?: string;
   /** Defaults to now */
   timestamp?: Date;
 }
@@ -100,27 +103,13 @@ export interface InstagramCircuitEventInfluxInput {
   timestamp?: Date;
 }
 
-export type WebhookPlatform = 'shopify' | 'square' | 'gmb';
+export type WebhookPlatform = 'gmb';
 
 export interface WebhookReceivedInfluxInput {
   platform: WebhookPlatform;
   eventType: string;
   verified: boolean;
-  shopDomain?: string;
-  merchantId?: string;
   locationId?: string;
-  timestamp?: Date;
-}
-
-export interface WebhookOrderInfluxInput {
-  platform: 'shopify' | 'square';
-  deviceId: string;
-  userId: string;
-  orderId: string;
-  totalAmount?: number;
-  currency?: string;
-  itemCount?: number;
-  topSellerLine?: string;
   timestamp?: Date;
 }
 
@@ -173,7 +162,12 @@ export class InfluxService {
       token: this.config.token
     });
 
-    this.writeApi = this.client.getWriteApi(this.config.org, this.config.bucket);
+    this.writeApi = this.client.getWriteApi(this.config.org, this.config.bucket, 'ns', {
+      batchSize: this.config.clientBatchSize,
+      flushInterval: this.config.clientFlushIntervalMs,
+      maxRetries: 3,
+      maxBufferLines: 50_000
+    });
     this.queryApi = this.client.getQueryApi(this.config.org);
 
     this.writeApi.useDefaultTags({ service: 'mqtt-publisher-lite' });
@@ -183,7 +177,8 @@ export class InfluxService {
         queuePath: config.diskQueuePath,
         flushIntervalMs: config.diskQueueFlushMs,
         batchMax: config.diskQueueBatchMax,
-        maxLinesPerFile: config.diskQueueMaxLinesPerFile
+        maxLinesPerFile: config.diskQueueMaxLinesPerFile,
+        syncOnAppend: config.diskQueueSyncOnAppend
       });
       this.diskQueue.start(async (lines) => {
         if (lines.length === 0) return;
@@ -191,6 +186,11 @@ export class InfluxService {
         await this.writeApi.flush();
       });
     }
+  }
+
+  /** Truncate audit string fields to configured max length. */
+  private truncateAuditField(value: string): string {
+    return value.slice(0, this.config.auditMaxFieldLength);
   }
 
   /** Direct HTTP write vs disk WAL (HTTP batches on flush worker). */
@@ -316,6 +316,7 @@ export class InfluxService {
 
       if (input.correlationId) point.tag('correlation_id', input.correlationId);
       if (input.instagramAccountId) point.tag('instagram_account_id', input.instagramAccountId);
+      if (input.apiEndpoint) point.tag('api_endpoint', input.apiEndpoint);
       if (!input.success && input.errorCode !== undefined && input.errorCode !== null && String(input.errorCode) !== '') {
         point.tag('error_code', String(input.errorCode));
       }
@@ -341,7 +342,13 @@ export class InfluxService {
         point.intField('media_count', Math.round(input.mediaCount));
       }
       if (!input.success && input.errorMessage) {
-        point.stringField('error_message', input.errorMessage.slice(0, 4096));
+        point.stringField('error_message', this.truncateAuditField(input.errorMessage));
+      }
+      if (input.primaryResponseSha256) {
+        point.stringField('primary_response_sha256', input.primaryResponseSha256);
+      }
+      if (input.detailsResponseSha256) {
+        point.stringField('details_response_sha256', input.detailsResponseSha256);
       }
 
       point.timestamp(input.timestamp ?? new Date());
@@ -428,95 +435,9 @@ export class InfluxService {
       .tag('platform', input.platform)
       .tag('event_type', input.eventType || 'unknown')
       .tag('verified', input.verified ? 'true' : 'false');
-    if (input.shopDomain) point.tag('shop_domain', input.shopDomain);
-    if (input.merchantId) point.tag('merchant_id', input.merchantId);
     if (input.locationId) point.tag('location_id', input.locationId);
     point.timestamp(input.timestamp ?? new Date());
     await this.submitPoint(point, opts?.flush !== false);
-  }
-
-  /** Transaction audit for paid POS webhooks. */
-  async writeWebhookOrder(
-    input: WebhookOrderInfluxInput,
-    opts?: { flush?: boolean }
-  ): Promise<void> {
-    const point = new Point('webhook_order')
-      .tag('platform', input.platform)
-      .tag('device_id', input.deviceId)
-      .tag('user_id', input.userId)
-      .tag('order_id', input.orderId);
-    if (typeof input.totalAmount === 'number' && Number.isFinite(input.totalAmount)) {
-      point.floatField('total_amount', input.totalAmount);
-    }
-    if (input.currency) point.stringField('currency', input.currency);
-    if (typeof input.itemCount === 'number' && Number.isFinite(input.itemCount)) {
-      point.intField('item_count', Math.max(0, Math.round(input.itemCount)));
-    }
-    if (input.topSellerLine?.trim()) {
-      point.stringField('top_seller_line', input.topSellerLine.trim().slice(0, 512));
-    }
-    point.timestamp(input.timestamp ?? new Date());
-    await this.submitPoint(point, opts?.flush !== false);
-  }
-
-  /**
-   * Distinct paid orders today for a user (POS source of truth).
-   * Counts unique order_id tags on webhook_order since startTime.
-   */
-  async queryPosDailyOrderCount(
-    userId: string,
-    startTime: Date,
-    platform?: 'shopify' | 'square'
-  ): Promise<number> {
-    try {
-      const startIso = startTime.toISOString();
-      const safeUserId = userId.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-      const platformFilter = platform
-        ? `|> filter(fn: (r) => r.platform == "${platform}")`
-        : '';
-
-      const query = `
-        from(bucket: "${this.config.bucket}")
-          |> range(start: ${startIso})
-          |> filter(fn: (r) => r._measurement == "webhook_order")
-          |> filter(fn: (r) => r.user_id == "${safeUserId}")
-          ${platformFilter}
-          |> group(columns: ["order_id"])
-          |> first()
-          |> group()
-          |> count(column: "order_id")
-      `;
-
-      let count = 0;
-
-      await new Promise<void>((resolve, reject) => {
-        this.queryApi.queryRows(query, {
-          next(row, tableMeta) {
-            const o = tableMeta.toObject(row) as Record<string, unknown>;
-            const v = o._value ?? o.order_id;
-            if (typeof v === 'number' && Number.isFinite(v)) {
-              count = Math.max(0, Math.round(v));
-            } else if (typeof v === 'string' && /^\d+$/.test(v)) {
-              count = Math.max(0, parseInt(v, 10));
-            }
-          },
-          error(error) {
-            logger.error('[INFLUX_POS] queryPosDailyOrderCount error', { error: error.message, userId });
-            reject(error);
-          },
-          complete() {
-            resolve();
-          }
-        });
-      });
-
-      logger.debug('[INFLUX_POS] queryPosDailyOrderCount', { userId, platform, count, startIso });
-      return count;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('[INFLUX_POS] queryPosDailyOrderCount failed', { userId, error: errorMessage });
-      throw error;
-    }
   }
 
   /** User/device mapping traceability after resolve attempt. */
@@ -530,7 +451,7 @@ export class InfluxService {
       .tag('user_id', input.userId?.trim() || 'unknown')
       .intField('resolved_device_count', Math.max(0, Math.round(input.resolvedDeviceCount)));
     if (input.errorMessage) {
-      point.stringField('error_message', input.errorMessage.slice(0, 4096));
+      point.stringField('error_message', this.truncateAuditField(input.errorMessage));
     }
     point.timestamp(input.timestamp ?? new Date());
     await this.submitPoint(point, opts?.flush !== false);
@@ -550,7 +471,7 @@ export class InfluxService {
       .intField('payload_size_bytes', Math.max(0, Math.round(input.payloadSizeBytes)))
       .stringField('payload_sha256', input.payloadSha256);
     if (!input.success && input.errorMessage) {
-      point.stringField('error_message', input.errorMessage.slice(0, 4096));
+      point.stringField('error_message', this.truncateAuditField(input.errorMessage));
     }
     point.timestamp(input.timestamp ?? new Date());
     await this.submitPoint(point, opts?.flush !== false);
@@ -571,7 +492,7 @@ export class InfluxService {
       .booleanField('was_heartbeat', input.wasHeartbeat)
       .intField('payload_size_bytes', Math.max(0, Math.round(input.payloadSizeBytes)));
     if (!input.success && input.errorMessage) {
-      point.stringField('error_message', input.errorMessage.slice(0, 4096));
+      point.stringField('error_message', this.truncateAuditField(input.errorMessage));
     }
     point.timestamp(input.timestamp ?? new Date());
     await this.submitPoint(point, opts?.flush !== false);
@@ -767,7 +688,7 @@ export class InfluxService {
       if (typeof data.sequence === 'number') point.intField('sequence', data.sequence);
       if (data.hash) point.stringField('hash', data.hash);
       if (data.previousHash) point.stringField('previous_hash', data.previousHash);
-      if (data.details) point.stringField('details', JSON.stringify(data.details));
+      if (data.details) point.stringField('details', this.truncateAuditField(JSON.stringify(data.details)));
 
       point.intField('count', 1);
       point.timestamp(new Date());
@@ -777,7 +698,8 @@ export class InfluxService {
       logger.debug('PKI audit event written to InfluxDB', { event: data.event, deviceId: data.deviceId });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.warn('Failed to write PKI audit to InfluxDB', { event: data.event, error: errorMessage });
+      logger.error('Failed to write PKI audit to InfluxDB', { event: data.event, error: errorMessage });
+      throw error;
     }
   }
 
@@ -886,7 +808,8 @@ export class InfluxService {
       logger.debug('CT log entry written to InfluxDB', { index: data.index, deviceId: data.deviceId });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.warn('Failed to write CT log entry to InfluxDB', { index: data.index, error: errorMessage });
+      logger.error('Failed to write CT log entry to InfluxDB', { index: data.index, error: errorMessage });
+      throw error;
     }
   }
 

@@ -10,6 +10,8 @@ export interface InfluxDiskQueueOptions {
   batchMax: number;
   /** Safety cap per drain file (prevents loading gigabytes into RAM). */
   maxLinesPerFile: number;
+  /** When true, fsync after every append (power-loss safe). */
+  syncOnAppend: boolean;
 }
 
 /**
@@ -34,8 +36,12 @@ export class InfluxDiskQueue {
     logger.info('[INFLUX_QUEUE] Disk queue started', {
       path: this.opts.queuePath,
       flushMs: this.opts.flushIntervalMs,
-      batchMax: this.opts.batchMax
+      batchMax: this.opts.batchMax,
+      syncOnAppend: this.opts.syncOnAppend
     });
+    if (this.opts.syncOnAppend) {
+      logger.info('[INFLUX_QUEUE] syncOnAppend=true (fsync per append)');
+    }
   }
 
   stopTimer(): void {
@@ -49,9 +55,20 @@ export class InfluxDiskQueue {
     if (!line) return Promise.resolve();
 
     const dir = path.dirname(this.opts.queuePath);
+    const payload = `${line}\n`;
     const run = async (): Promise<void> => {
       await fs.mkdir(dir, { recursive: true });
-      await fs.appendFile(this.opts.queuePath, `${line}\n`, 'utf8');
+      if (this.opts.syncOnAppend) {
+        const handle = await fs.open(this.opts.queuePath, 'a');
+        try {
+          await handle.writeFile(payload, 'utf8');
+          await handle.sync();
+        } finally {
+          await handle.close();
+        }
+      } else {
+        await fs.appendFile(this.opts.queuePath, payload, 'utf8');
+      }
     };
 
     const p = this.chain.then(run);

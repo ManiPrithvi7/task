@@ -25,7 +25,7 @@
     "semantic_hash": ""
   },
   "scripts/attention-roadmap-smoke.ts": {
-    "mtime": 1782971832.9357831,
+    "mtime": 1783335769.3450594,
     "ast_hash": "2eb2296fc87aa85d860afa9f3f27026f",
     "semantic_hash": ""
   },
@@ -155,8 +155,8 @@
     "semantic_hash": ""
   },
   "src/app.ts": {
-    "mtime": 1782991528.7581496,
-    "ast_hash": "57b4e2aaf0eeec495b99a56ae62c66ef",
+    "mtime": 1783338054.4734697,
+    "ast_hash": "93dae092a106801553c2faccbede6e6a",
     "semantic_hash": ""
   },
   "src/config/connectionsConfig.ts": {
@@ -170,8 +170,8 @@
     "semantic_hash": ""
   },
   "src/config/index.ts": {
-    "mtime": 1782976022.1916826,
-    "ast_hash": "03ffd69460551200355dd19154d8c819",
+    "mtime": 1783338040.686379,
+    "ast_hash": "b3cbe0b53e739a0cc19fe00618e9a7b7",
     "semantic_hash": ""
   },
   "src/config/mongoConnection.ts": {
@@ -210,8 +210,8 @@
     "semantic_hash": ""
   },
   "src/lib/socials/instagramMetrics.ts": {
-    "mtime": 1780550950.7626357,
-    "ast_hash": "53c6180c651806f5b6d75af3ad429aea",
+    "mtime": 1783338174.724345,
+    "ast_hash": "af5c711d7600a024ca7e4680d5855a80",
     "semantic_hash": ""
   },
   "src/lib/socials/instagramTokenRefresh.ts": {
@@ -269,11 +269,6 @@
     "ast_hash": "f7d6b83a3bf24ac58368c595967ea834",
     "semantic_hash": ""
   },
-  "src/models/DeviceTransactionLog.ts": {
-    "mtime": 1780463380.55293,
-    "ast_hash": "f32c5ba075cb4686feb93969d79b0396",
-    "semantic_hash": ""
-  },
   "src/models/FirmwareRelease.ts": {
     "mtime": 1782458175.212134,
     "ast_hash": "7ef172714a42a0fa38e803585b50fa2f",
@@ -320,8 +315,8 @@
     "semantic_hash": ""
   },
   "src/models/index.ts": {
-    "mtime": 1782984041.6632082,
-    "ast_hash": "b5554e211d0261909956d86a5c3f696f",
+    "mtime": 1783338279.9514904,
+    "ast_hash": "dcbe77522472949daad1e6347c508c53",
     "semantic_hash": ""
   },
   "src/routes/configRoutes.ts": {
@@ -435,18 +430,18 @@
     "semantic_hash": ""
   },
   "src/services/influxDiskQueue.ts": {
-    "mtime": 1780035760.095372,
-    "ast_hash": "b5242dc7fcc73d383ad287ab608d6124",
+    "mtime": 1783338060.9022112,
+    "ast_hash": "9605a3481363bb6b8b51047fa1be33ee",
     "semantic_hash": ""
   },
   "src/services/influxService.ts": {
-    "mtime": 1780558193.604492,
-    "ast_hash": "728f7913ef28ddee6e94e2effbd19bd2",
+    "mtime": 1783338118.247466,
+    "ast_hash": "bc962eecee6032a59b1799849a91531b",
     "semantic_hash": ""
   },
   "src/services/instagramService.ts": {
-    "mtime": 1782976647.6362069,
-    "ast_hash": "93e1c007550b7f77e9bca3c04bdd4e27",
+    "mtime": 1783338242.6850092,
+    "ast_hash": "9cae09d2be579f0d16d01249d3b12192",
     "semantic_hash": ""
   },
   "src/services/metrics/dailyMetricsLua.ts": {
@@ -545,8 +540,8 @@
     "semantic_hash": ""
   },
   "src/services/webhookMetrics.ts": {
-    "mtime": 1780463380.5551229,
-    "ast_hash": "a8dee85d60c491c3cca8113d3184ab3d",
+    "mtime": 1783338264.6014898,
+    "ast_hash": "0f49c43291a13e3a03f05ae2910790b9",
     "semantic_hash": ""
   },
   "src/storage/localActiveDeviceStore.ts": {
@@ -630,8 +625,8 @@
     "semantic_hash": ""
   },
   "src/webhooks/dedupe/redisDedupe.ts": {
-    "mtime": 1780463380.55528,
-    "ast_hash": "b8341d9a69acb888615e761055236ad1",
+    "mtime": 1783338264.2966425,
+    "ast_hash": "6eea731b8c4b41c3a78b7edf33b1ecdf",
     "semantic_hash": ""
   },
   "src/webhooks/delivery/publishGmbScreen.ts": {
@@ -645,13 +640,13 @@
     "semantic_hash": ""
   },
   "src/webhooks/gmbEnrichmentWorker.ts": {
-    "mtime": 1780463380.5556176,
-    "ast_hash": "6225d4437b6a2a2d59461427c3d93f39",
+    "mtime": 1783338272.1362333,
+    "ast_hash": "c4da67feef498d0ef1c60d0108b5e991",
     "semantic_hash": ""
   },
   "src/webhooks/gmbHandler.ts": {
-    "mtime": 1780463380.5557148,
-    "ast_hash": "a7d7d6ab3953aee66eee2ec5a44ba222",
+    "mtime": 1783338260.2563376,
+    "ast_hash": "1d54f7e60540ad384a5aec373b3f2ee8",
     "semantic_hash": ""
   },
   "src/webhooks/gmbReviewCache.ts": {
@@ -660,8 +655,8 @@
     "semantic_hash": ""
   },
   "src/webhooks/influxAudit.ts": {
-    "mtime": 1780463380.555807,
-    "ast_hash": "32f2cfc0fa963481e79aae57cf907e0e",
+    "mtime": 1783338120.2326205,
+    "ast_hash": "61b3392e30d7f984a31700e54aa4cf76",
     "semantic_hash": ""
   },
   "src/webhooks/resolve/gmbSocial.ts": {
@@ -790,8 +785,8 @@
     "semantic_hash": ""
   },
   "tests/unit/webhooks/dedupe/redisDedupe.test.ts": {
-    "mtime": 1780573112.2590826,
-    "ast_hash": "6d916a715f2c24873588cb3df367ae46",
+    "mtime": 1783338282.1675065,
+    "ast_hash": "48c823772c8a2df6b54347b234673edf",
     "semantic_hash": ""
   },
   "tsconfig.json": {
@@ -805,7 +800,7 @@
     "semantic_hash": ""
   },
   "OTA_E2E_TEST.md": {
-    "mtime": 1782971832.9357831,
+    "mtime": 1783335769.3440595,
     "ast_hash": "b9aee5dba9ac48004eb1228ea2d4b0db",
     "semantic_hash": ""
   },
@@ -865,8 +860,8 @@
     "semantic_hash": ""
   },
   "docs/WEBHOOK_MIGRATION.md": {
-    "mtime": 1780463380.546876,
-    "ast_hash": "3ab0609b8362dd88e19b86d4ce5ff9d8",
+    "mtime": 1783338290.068669,
+    "ast_hash": "a40c5b7826e1cfeb4d7268c9450380ae",
     "semantic_hash": ""
   },
   "docs/attention-polling-status.md": {
@@ -909,11 +904,6 @@
     "ast_hash": "f1b5fbcbdca62bfeccf5e55422d863ac",
     "semantic_hash": ""
   },
-  "src/webhooks/shopifyComplianceTopics.ts": {
-    "mtime": 1782459085.13288,
-    "ast_hash": "45b366d0343eed3124d119b75b51f5b5",
-    "semantic_hash": ""
-  },
   "src/webhooks/webhookHandlerError.ts": {
     "mtime": 1782459085.1330056,
     "ast_hash": "afc40fafd41cb1aef629540bc0ec5392",
@@ -942,11 +932,6 @@
   "tests/unit/routes/provisioningRoutes.test.ts": {
     "mtime": 1782459085.1331623,
     "ast_hash": "bbd95b22172daa3ccfaa007926aa6d4b",
-    "semantic_hash": ""
-  },
-  "tests/unit/webhooks/shopifyComplianceTopics.test.ts": {
-    "mtime": 1782459085.1332362,
-    "ast_hash": "0d0d2382fcf8e2d941f470c501abf43a",
     "semantic_hash": ""
   },
   "TESTING_PLAN.md": {
@@ -1147,6 +1132,26 @@
   "src/lib/socials/syncDeviceGmb.ts": {
     "mtime": 1782994178.9015043,
     "ast_hash": "7287635f170bc0c1cad1defa750ee566",
+    "semantic_hash": ""
+  },
+  "tests/unit/config/influxConfig.test.ts": {
+    "mtime": 1783338332.1343462,
+    "ast_hash": "dc70d507dae747daaf61082503459cf3",
+    "semantic_hash": ""
+  },
+  "tests/unit/lib/instagramMetricsAudit.test.ts": {
+    "mtime": 1783338293.8215337,
+    "ast_hash": "2a15d6aa3a85d7ecff246c2668ba8766",
+    "semantic_hash": ""
+  },
+  "tests/unit/services/influxDiskQueue.test.ts": {
+    "mtime": 1783338293.523924,
+    "ast_hash": "0a2adb5a6d861717d765cb4d68e12196",
+    "semantic_hash": ""
+  },
+  "tests/unit/webhooks/gmbEnrichmentWorker.test.ts": {
+    "mtime": 1783338332.2178087,
+    "ast_hash": "4d3f14ed623c433c9013d48d2d415fad",
     "semantic_hash": ""
   }
 }

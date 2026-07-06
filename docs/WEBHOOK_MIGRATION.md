@@ -1,37 +1,32 @@
-# Webhook → MQTT migration (ops)
+# Webhook → MQTT (GMB MVP)
 
-## Production cutover (statsmqtt only)
+## Scope
 
-1. **Deploy** with shadow first:
-   ```bash
-   WEBHOOK_ENABLED=true
-   WEBHOOK_PUBLIC_BASE_URL=https://<mqtt-public-host>   # required; no trailing slash
-   WEBHOOK_MQTT_PUBLISH_ENABLED=false
-   REDIS_URL=... MONGODB_URI=...
-   SHOPIFY_CLIENT_SECRET=...
-   SQUARE_WEBHOOK_SIGNATURE_KEY=...   # or SQUARE_WEBHOOK_SIGNATURE_KEY_<merchantId>
-   # GMB audience is derived automatically from WEBHOOK_PUBLIC_BASE_URL:
-   #   https://<mqtt-public-host>/api/webhooks/google-business-reviews
-   # Do NOT set GMB_PUBSUB_AUDIENCE unless WEBHOOK_PUBLIC_BASE_URL is absent.
-   ```
-2. **Validate:** `GET https://<host>/health/webhooks` → `ready: true`; send test webhooks; grep `webhook_latency` (expect `dedupeHit` on retries).
-3. **Point platforms** (order): Shopify → Square → GMB Pub/Sub push URL (same paths on mqtt host).
-4. **Go live:** `WEBHOOK_MQTT_PUBLISH_ENABLED=true`; confirm devices on `proof.mqtt/{clientId}/pos|gmb`.
-5. **Statsnapp** (after stable): stub/remove webhook routes + outbox cron; archive pending outbox jobs — do not dual-deliver.
+This service handles **Google Business Profile (GMB) review webhooks** only. Shopify/Square POS webhook ingress is out of scope for the `production_v2` MVP.
 
-LB: route webhook paths only when `/health/webhooks` is 200.
+## Production setup
 
-## Implemented (dev complete)
+```bash
+WEBHOOK_ENABLED=true
+WEBHOOK_PUBLIC_BASE_URL=https://<mqtt-public-host>   # no trailing slash
+WEBHOOK_MQTT_PUBLISH_ENABLED=true
+REDIS_URL=... MONGODB_URI=...
+INFLUXDB_URL=...
+INFLUXDB_TOKEN=...
+INFLUXDB_ORG=...
+INFLUXDB_BUCKET=...
+# GMB audience derived from WEBHOOK_PUBLIC_BASE_URL + /api/webhooks/google-business-reviews
+```
 
-- Square: `x-square-hmacsha256-signature`, HMAC `url+body`, POS MQTT on `payment.created|updated`
-- Shopify/GMB: verify, dedupe, MQTT screen publish, async metrics/enrichment
-- `redemptionCount` $inc on new Redemption
-- `GET /health/webhooks` — redis + mongo + mqtt
+1. Validate: `GET https://<host>/health/webhooks` → `ready: true` (internal probe).
+2. Point GMB Pub/Sub push to `POST /api/webhooks/google-business-reviews`.
+3. Confirm devices receive updates on `proof.mqtt/{clientId}/gmb`.
+4. Audit trail: Influx measurements `webhook_received`, `webhook_device_resolution`, `webhook_mqtt_delivery`, `milestone_crossed`.
 
 ## Shadow mode
 
-`WEBHOOK_MQTT_PUBLISH_ENABLED=false` — verify, dedupe, `webhook_latency`; no broker publish.
+`WEBHOOK_MQTT_PUBLISH_ENABLED=false` — verify, dedupe, latency metrics; no broker publish.
 
-## Env reference
+## Health
 
-See `.env.example` (Webhook ingress section).
+`GET /health/webhooks` (internal) checks Redis, MongoDB, and MQTT readiness.

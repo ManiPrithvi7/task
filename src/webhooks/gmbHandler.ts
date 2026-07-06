@@ -19,8 +19,6 @@ import {
 import { webhookInfluxBatch, flushWebhookInflux } from './influxAudit';
 import { WebhookLatencyTracker } from '../services/webhookMetrics';
 import { logger } from '../utils/logger';
-import { DeviceTransactionLog } from '../models/DeviceTransactionLog';
-import mongoose from 'mongoose';
 
 const ack = async (res: Response, message: string, extra?: Record<string, unknown>) => {
   await flushWebhookInflux();
@@ -225,22 +223,6 @@ export async function handleGmbWebhook(req: Request, res: Response, deps: Webhoo
       lastTopic = result.topic;
       lastClientId = device.clientId;
       published = published || result.published;
-
-      if (device.deviceObjectId) {
-        try {
-          await DeviceTransactionLog.create({
-            deviceId: new mongoose.Types.ObjectId(device.deviceObjectId),
-            userId: new mongoose.Types.ObjectId(ctx.userId),
-            eventType: 'review_push',
-            loggedAt: new Date(),
-            metadata: { reviewId: notification.review, fastPath: true }
-          });
-        } catch (logErr) {
-          logger.warn('[GMB_WEBHOOK] Transaction log failed', {
-            error: logErr instanceof Error ? logErr.message : String(logErr)
-          });
-        }
-      }
     }
 
     scheduleGmbEnrichment(notification, {

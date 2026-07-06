@@ -1,6 +1,6 @@
 import { logger } from '../utils/logger';
 
-export type WebhookProvider = 'shopify' | 'square' | 'gmb';
+export type WebhookProvider = 'gmb';
 
 export type WebhookLatencyStages = {
   provider: WebhookProvider;

@@ -390,22 +390,25 @@ export interface InstagramPollingConfig {
 }
 
 export interface InfluxDBConfig {
-  /**
-   * Implicit: non-empty INFLUXDB_TOKEN. No INFLUXDB_ENABLED flag — unset token to skip Influx locally.
-   * With disk queue (default): startup continues if HTTP checks fail; writes buffer to DATA_DIR.
-   * With INFLUXDB_DISK_QUEUE=false: startup fails if Influx health fails (legacy strict mode).
-   */
-  enabled: boolean;
+  /** Required primary dependency — validated in validateConfig (INFLUXDB_TOKEN). */
   url: string;
   token: string;
   org: string;
   bucket: string;
   /** Default true — append line protocol to disk; background worker POSTs batches over HTTP. */
   diskQueueEnabled: boolean;
+  /** fsync after every WAL append when true (power-loss safe; higher I/O). */
+  diskQueueSyncOnAppend: boolean;
   diskQueuePath: string;
   diskQueueFlushMs: number;
   diskQueueBatchMax: number;
   diskQueueMaxLinesPerFile: number;
+  /** Influx JS WriteApi batchSize. */
+  clientBatchSize: number;
+  /** Influx JS WriteApi flushInterval (ms). */
+  clientFlushIntervalMs: number;
+  /** Max length for audit string fields (error_message, details JSON, etc.). */
+  auditMaxFieldLength: number;
 }
 
 export type { OtaDownloadMode };
@@ -469,7 +472,7 @@ export interface AppConfig {
   app: AppEnvConfig;
   features: AppFeaturesConfig;
   webhooks: WebhookConfig;
-  influxdb?: InfluxDBConfig;
+  influxdb: InfluxDBConfig;
   instagramPolling?: InstagramPollingConfig;
   /**
    * Optional serverless worker URL. When set, all poller fetches POST here.
@@ -636,11 +639,11 @@ export function loadConfig(): AppConfig {
     process.env.INFLUXDB_HOST?.trim() ||
     'http://localhost:8086';
   const influxUrl = normalizeInfluxDbUrl(influxUrlRaw);
-  /** Influx runs when a token is set and metrics collection is not disabled. */
-  const influxEnabled = metricsCollectionEnabled && influxToken.length > 0;
   const influxDiskQueueDisabled =
     process.env.INFLUXDB_DISK_QUEUE === 'false' || process.env.INFLUXDB_DISK_QUEUE === '0';
-  const influxDiskQueueEnabled = influxEnabled && !influxDiskQueueDisabled;
+  const influxDiskQueueEnabled = !influxDiskQueueDisabled;
+  const influxDiskQueueSyncOnAppend =
+    process.env.INFLUXDB_DISK_QUEUE_SYNC === 'true' || process.env.INFLUXDB_DISK_QUEUE_SYNC === '1';
   const influxQueuePathRaw = process.env.INFLUXDB_DISK_QUEUE_PATH?.trim();
   const influxQueuePath = influxQueuePathRaw
     ? path.isAbsolute(influxQueuePathRaw)
@@ -649,7 +652,7 @@ export function loadConfig(): AppConfig {
     : path.join(path.resolve(dataDir), 'influx-write-queue.lines');
   const influxQueueFlushMs = Math.max(
     1000,
-    envInt('INFLUXDB_QUEUE_FLUSH_MS', 5000, ['BATCH_TIMEOUT'])
+    envInt('INFLUXDB_QUEUE_FLUSH_MS', 1000, ['BATCH_TIMEOUT'])
   );
   const influxQueueBatchMax = Math.max(
     1,
@@ -658,6 +661,17 @@ export function loadConfig(): AppConfig {
   const influxQueueMaxLinesRaw = parseInt(process.env.INFLUXDB_QUEUE_MAX_LINES_PER_FILE || '100000', 10);
   const influxQueueMaxLinesPerFile =
     Number.isFinite(influxQueueMaxLinesRaw) && influxQueueMaxLinesRaw > 0 ? influxQueueMaxLinesRaw : 100_000;
+  const influxClientBatchSize = Math.max(
+    1,
+    parseInt(process.env.INFLUXDB_CLIENT_BATCH_SIZE || '500', 10) || 500
+  );
+  const influxClientFlushIntervalMs = Math.max(
+    100,
+    parseInt(process.env.INFLUXDB_CLIENT_FLUSH_INTERVAL_MS || '1000', 10) || 1000
+  );
+  const influxAuditMaxFieldRaw = parseInt(process.env.INFLUX_AUDIT_MAX_FIELD_LENGTH || '4096', 10);
+  const influxAuditMaxFieldLength =
+    Number.isFinite(influxAuditMaxFieldRaw) && influxAuditMaxFieldRaw > 0 ? influxAuditMaxFieldRaw : 4096;
 
   const config: AppConfig = {
     mqtt: {
@@ -758,17 +772,20 @@ export function loadConfig(): AppConfig {
     webhooks: loadWebhookConfig(),
     instagramServerless,
     influxdb: {
-      enabled: influxEnabled,
       url: influxUrl,
       token: influxToken,
       org: process.env.INFLUXDB_ORG?.trim() || 'statsmqtt',
       /** Matches typical Influx 2 Docker init (e.g. DOCKER_INFLUXDB_INIT_BUCKET); override via INFLUXDB_BUCKET. */
       bucket: process.env.INFLUXDB_BUCKET?.trim() || 'metrics',
       diskQueueEnabled: influxDiskQueueEnabled,
+      diskQueueSyncOnAppend: influxDiskQueueSyncOnAppend,
       diskQueuePath: influxQueuePath,
       diskQueueFlushMs: influxQueueFlushMs,
       diskQueueBatchMax: influxQueueBatchMax,
-      diskQueueMaxLinesPerFile: influxQueueMaxLinesPerFile
+      diskQueueMaxLinesPerFile: influxQueueMaxLinesPerFile,
+      clientBatchSize: influxClientBatchSize,
+      clientFlushIntervalMs: influxClientFlushIntervalMs,
+      auditMaxFieldLength: influxAuditMaxFieldLength
     },
     instagramPolling
   };
@@ -834,16 +851,15 @@ export function loadConfig(): AppConfig {
       port: config.redis.url ? '(via REDIS_URL)' : 'not set',
       keyPrefix: config.redis.keyPrefix
     },
-    influxdb: config.influxdb?.enabled
-      ? {
-          url: config.influxdb.url,
-          org: config.influxdb.org,
-          bucket: config.influxdb.bucket,
-          diskQueue: config.influxdb.diskQueueEnabled,
-          diskQueuePath: config.influxdb.diskQueueEnabled ? config.influxdb.diskQueuePath : undefined,
-          token: '(set)'
-        }
-      : { configured: false, hint: 'set INFLUXDB_TOKEN (optional INFLUXDB_URL)' },
+    influxdb: {
+      url: config.influxdb.url,
+      org: config.influxdb.org,
+      bucket: config.influxdb.bucket,
+      diskQueue: config.influxdb.diskQueueEnabled,
+      diskQueueSync: config.influxdb.diskQueueSyncOnAppend,
+      diskQueuePath: config.influxdb.diskQueueEnabled ? config.influxdb.diskQueuePath : undefined,
+      token: config.influxdb.token ? '(set)' : 'MISSING'
+    },
     env: config.app.env,
     logLevel: config.app.logLevel
   });
@@ -886,6 +902,19 @@ export function validateConfig(config: AppConfig): void {
   }
   if (!config.mongodb.uri) {
     throw new Error('MongoDB URI is REQUIRED. Set MONGODB_URI environment variable.');
+  }
+
+  if (process.env.ENABLE_METRICS_COLLECTION === 'false') {
+    throw new Error('ENABLE_METRICS_COLLECTION=false is not allowed — InfluxDB audit is required.');
+  }
+  if (!config.influxdb.token) {
+    throw new Error('INFLUXDB_TOKEN is REQUIRED. Set INFLUXDB_TOKEN environment variable.');
+  }
+  if (!config.influxdb.org?.trim()) {
+    throw new Error('INFLUXDB_ORG is REQUIRED.');
+  }
+  if (!config.influxdb.bucket?.trim()) {
+    throw new Error('INFLUXDB_BUCKET is REQUIRED.');
   }
 
   if (config.ota?.enabled) {
