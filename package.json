@@ -13,6 +13,7 @@
     "lint:fix": "eslint src/ tests/ --ext .ts --fix",
     "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
     "coverage": "bun test --coverage",
+    "check": "bun run lint && bun run typecheck && bun run build && bun run test:unit",
     "typecheck": "tsc --noEmit",
     "prepare": "husky"
   },

@@ -26,6 +26,7 @@ import type { IFirmwareStorage, ObjectHeadResult } from './firmwareStorageServic
 import { OciStorageError } from './ociStorageErrors';
 import { getActiveDeviceCache } from './deviceService';
 import { AuditEventType, getAuditService } from './auditService';
+import { getOtaReleaseLog } from './otaReleaseLog';
 import { getReleaseObjectKey } from '../utils/firmwareReleaseKey';
 import {
   buildOtaMqttDownloadUrl,
@@ -85,6 +86,14 @@ export function assertValidSha256Hex(sha256: string): void {
   if (!/^[a-f0-9]{64}$/.test(sha256)) {
     throw new FinalizeValidationError('sha256 must be 64 lowercase hex characters', 'INVALID_SHA256');
   }
+}
+
+export function computeSigningKeyFingerprint(publicKeyPem: string): string {
+  const pubKey = crypto.createPublicKey(publicKeyPem);
+  return crypto.createHash('sha256')
+    .update(pubKey.export({ type: 'spki', format: 'der' }))
+    .digest('hex')
+    .slice(0, 16);
 }
 
 export function verifyEd25519Signature(
@@ -177,6 +186,7 @@ export interface OtaActiveRelease {
   objectKey: string;
   sizeBytes: number;
   releasedAt: string;
+  keyFingerprint?: string;
 }
 
 export class OtaRedisState {
@@ -324,6 +334,13 @@ export class OtaCommandPublisher {
                   error: err instanceof Error ? err.message : String(err)
                 });
               });
+              void getAuditService()
+                ?.logEvent({
+                  event: AuditEventType.OTA_COMMAND_DELIVERED,
+                  deviceId,
+                  details: { version: offer.version, sha256: offer.sha256, keyFingerprint: offer.keyFingerprint }
+                })
+                .catch(() => undefined);
             }
           : undefined
       }
@@ -338,6 +355,14 @@ export class OtaCommandPublisher {
         }
       }
     );
+
+    void getAuditService()
+      ?.logEvent({
+        event: AuditEventType.OTA_COMMAND_ISSUED,
+        deviceId,
+        details: { version: offer.version, sha256: offer.sha256, force, topic, keyFingerprint: offer.keyFingerprint }
+      })
+      .catch(() => undefined);
 
     logger.info('[OTA] Published ota_update cmd', { deviceId, version: offer.version, topic });
   }
@@ -356,12 +381,20 @@ export class OtaCommandPublisher {
       issued_at: new Date().toISOString()
     };
 
+    const topic = this.broadcastTopic;
     await this.mqttClient.publish({
-      topic: this.broadcastTopic,
+      topic,
       payload: JSON.stringify(payload),
       qos: 1,
       retain: false
     });
+
+    void getAuditService()
+      ?.logEvent({
+        event: AuditEventType.OTA_COMMAND_ISSUED,
+        details: { version: offer.version, sha256: offer.sha256, force, topic, broadcast: true, keyFingerprint: offer.keyFingerprint }
+      })
+      .catch(() => undefined);
 
     logger.info('[OTA] Published broadcast ota_update', {
       version: offer.version,
@@ -414,14 +447,21 @@ export class OtaEventHandler {
     const key = eventKey(payload);
     if (!key) return;
 
-    switch (key) {
-      case 'ota_progress':
-        await this.otaService.updateOtaState(deviceId, DeviceOtaState.DOWNLOADING);
-        break;
+    const device = await Device.findOne({ clientId: deviceId }).select({ firmwareVersion: 1, otaState: 1 }).lean();
+    const previousFirmwareVersion = device?.firmwareVersion || 'unknown';
 
-      case 'ota_validating':
-        await this.otaService.updateOtaState(deviceId, DeviceOtaState.VALIDATING);
+    const active = await this.otaService.getActiveReleaseMeta().catch(() => null);
+
+    switch (key) {
+      case 'ota_progress': {
+        await this.otaService.updateOtaState(deviceId, DeviceOtaState.DOWNLOADING, device?.otaState);
         break;
+      }
+
+      case 'ota_validating': {
+        await this.otaService.updateOtaState(deviceId, DeviceOtaState.VALIDATING, device?.otaState);
+        break;
+      }
 
       case 'ota_success': {
         const version = payload.version || '';
@@ -433,7 +473,12 @@ export class OtaEventHandler {
           ?.logEvent({
             event: AuditEventType.OTA_SUCCESS,
             deviceId,
-            details: { version }
+            details: {
+              version,
+              sha256: active?.sha256,
+              signingKeyFingerprint: active?.keyFingerprint,
+              previousFirmwareVersion
+            }
           })
           .catch(() => undefined);
         break;
@@ -455,7 +500,15 @@ export class OtaEventHandler {
           ?.logEvent({
             event: AuditEventType.OTA_ROLLBACK,
             deviceId,
-            details: { version, reason, failures, blocked }
+            details: {
+              version,
+              sha256: active?.sha256,
+              signingKeyFingerprint: active?.keyFingerprint,
+              previousFirmwareVersion,
+              reason,
+              failures,
+              blocked
+            }
           })
           .catch(() => undefined);
 
@@ -525,6 +578,7 @@ export interface OtaUpdateOffer {
   signature: string;
   sizeBytes: number;
   expiresAt: string;
+  keyFingerprint?: string;
 }
 
 export interface ResolveUpdateInput {
@@ -561,10 +615,24 @@ export class OtaService {
     const device = await Device.findOne({ clientId: input.deviceId });
     if (!device) {
       logger.warn('[OTA] Device not found for check', { deviceId: input.deviceId });
+      void getAuditService()
+        ?.logEvent({
+          event: AuditEventType.OTA_CHECK_NO_UPDATE,
+          deviceId: input.deviceId,
+          details: { currentVersion: input.currentVersion, reason: 'device_not_found' }
+        })
+        .catch(() => undefined);
       return null;
     }
 
     if (!this.isDeviceEligible(device)) {
+      void getAuditService()
+        ?.logEvent({
+          event: AuditEventType.OTA_CHECK_NO_UPDATE,
+          deviceId: input.deviceId,
+          details: { currentVersion: input.currentVersion, reason: 'device_not_eligible', status: device.status }
+        })
+        .catch(() => undefined);
       return null;
     }
 
@@ -584,12 +652,30 @@ export class OtaService {
         device.otaLastCheckAt = new Date();
         device.otaTargetVersion = release.version;
         await device.save();
+
+        void getAuditService()
+          ?.logEvent({
+            event: AuditEventType.OTA_CHECK_OFFERED,
+            deviceId: input.deviceId,
+            details: { version: release.version, currentVersion: input.currentVersion, downloadUrl: offer.downloadUrl }
+          })
+          .catch(() => undefined);
+
         return offer;
       }
     }
 
     device.otaLastCheckAt = new Date();
     await device.save();
+
+    void getAuditService()
+      ?.logEvent({
+        event: AuditEventType.OTA_CHECK_NO_UPDATE,
+        deviceId: input.deviceId,
+        details: { currentVersion: input.currentVersion, reason: 'no_newer_release' }
+      })
+      .catch(() => undefined);
+
     return null;
   }
 
@@ -618,16 +704,30 @@ export class OtaService {
       };
     }
 
+    const signingKeyPem = this.otaConfig.signingPublicKeyPem;
+    const keyFingerprint = signingKeyPem ? computeSigningKeyFingerprint(signingKeyPem) : undefined;
+
     try {
       const head = await this.storage.headObject(objectKey);
+
       validateFinalizeInput({
         version,
         sha256,
         signature,
         head,
-        signingPublicKeyPem: this.otaConfig.signingPublicKeyPem,
+        signingPublicKeyPem: signingKeyPem,
         signingPublicKeyPath: this.otaConfig.signingPublicKeyPath
       });
+
+      void getAuditService()
+        ?.logEvent({
+          event: AuditEventType.OTA_RELEASE_VALIDATED,
+          details: {
+            version, sha256, signature, keyFingerprint,
+            result: true, source: 'webhook'
+          }
+        })
+        .catch(() => undefined);
 
       const shaOk = await this.storage.verifySha256(objectKey, sha256);
       if (!shaOk) {
@@ -676,12 +776,15 @@ export class OtaService {
           signature: release.signature,
           objectKey,
           sizeBytes: release.sizeBytes,
-          releasedAt: releasedAtIso
+          releasedAt: releasedAtIso,
+          keyFingerprint
         });
 
         const eligibleIds = await this.listEligibleDeviceIds();
         await this.otaRedisState.seedPendingFleet(release.version, eligibleIds);
       }
+
+      void getOtaReleaseLog()?.addEntry(version, sha256, objectKey, keyFingerprint, input.releasedAt ? new Date(input.releasedAt) : undefined).catch(() => undefined);
 
       let pushedCount = 0;
       if (shouldPush) {
@@ -711,6 +814,12 @@ export class OtaService {
       return { ok: true, version, broadcast: shouldPush, created };
     } catch (err: unknown) {
       if (err instanceof FinalizeValidationError) {
+        void getAuditService()
+          ?.logEvent({
+            event: AuditEventType.OTA_RELEASE_VALIDATED,
+            details: { version, sha256, keyFingerprint, result: false, code: err.code, error: err.message, source: 'webhook' }
+          })
+          .catch(() => undefined);
         return {
           ok: false,
           httpStatus: err.httpStatus,
@@ -878,6 +987,9 @@ export class OtaService {
     try {
       const expiresAt = new Date(Date.now() + this.otaConfig.presignedUrlTtlSec * 1000);
       const downloadUrl = await buildOtaMqttDownloadUrl(release, this.otaConfig, this.storage);
+      const keyFingerprint = this.otaConfig.signingPublicKeyPem
+        ? computeSigningKeyFingerprint(this.otaConfig.signingPublicKeyPem)
+        : undefined;
 
       return {
         version: release.version,
@@ -885,7 +997,8 @@ export class OtaService {
         sha256: release.sha256,
         signature: release.signature,
         sizeBytes: release.sizeBytes,
-        expiresAt: expiresAt.toISOString()
+        expiresAt: expiresAt.toISOString(),
+        keyFingerprint
       };
     } catch (err: unknown) {
       logger.error('[OTA] Failed to build offer', {
@@ -901,6 +1014,17 @@ export class OtaService {
       version,
       status: FirmwareReleaseStatus.STABLE
     });
+  }
+
+  async getActiveReleaseMeta(): Promise<{ sha256?: string; keyFingerprint?: string; signature?: string } | null> {
+    if (!this.otaRedisState) return null;
+    const active = await this.otaRedisState.getActiveRelease();
+    if (!active) return null;
+    return {
+      sha256: active.sha256,
+      signature: active.signature,
+      keyFingerprint: active.keyFingerprint,
+    };
   }
 
   async recordRollbackFailure(
@@ -927,6 +1051,14 @@ export class OtaService {
       blockedVersions.add(version);
       device.otaBlockedVersions = Array.from(blockedVersions);
       blocked = true;
+
+      void getAuditService()
+        ?.logEvent({
+          event: AuditEventType.OTA_DEVICE_BLOCKED,
+          deviceId,
+          details: { version, failures: next, threshold }
+        })
+        .catch(() => undefined);
     }
 
     if (reason) {
@@ -951,8 +1083,18 @@ export class OtaService {
     );
   }
 
-  async updateOtaState(deviceId: string, state: DeviceOtaState): Promise<void> {
+  async updateOtaState(deviceId: string, state: DeviceOtaState, previousState?: string): Promise<void> {
+    const device = await Device.findOne({ clientId: deviceId }).select({ otaState: 1 });
+    const oldState = previousState || device?.otaState || 'unknown';
     await Device.updateOne({ clientId: deviceId }, { $set: { otaState: state } });
+
+    void getAuditService()
+      ?.logEvent({
+        event: AuditEventType.OTA_DEVICE_STATE_CHANGED,
+        deviceId,
+        details: { fromState: oldState, toState: state }
+      })
+      .catch(() => undefined);
   }
 
   async updateFirmwareVersion(deviceId: string, version: string): Promise<void> {

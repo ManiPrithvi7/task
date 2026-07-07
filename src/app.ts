@@ -56,6 +56,8 @@ import {
   OtaEventHandler,
   OtaRedisState
 } from './services/otaService';
+import { initOtaSigningKeyAudit } from './services/otaSigningKeyService';
+import { createOtaReleaseLog, getOtaReleaseLog } from './services/otaReleaseLog';
 import { createRecoverySessionService } from './services/recoverySessionService';
 import { getTokenStore } from './storage/tokenStore';
 import * as dns from 'dns';
@@ -495,7 +497,7 @@ export class StatsMqttLite {
         await resetInfluxService();
         this.influxService = undefined;
         throw new Error(
-          'InfluxDB unreachable or misconfigured. Verify INFLUXDB_URL, INFLUXDB_TOKEN, INFLUXDB_ORG, INFLUXDB_BUCKET.'
+          'InfluxDB unreachable or misconfigured. Verify INFLUXDB_URL, INFLUXDB_TOKEN, INFLUXDB_ORG, INFLUXDB_BUCKET, INFLUXDB_COMPLIANCE_BUCKET.'
         );
       }
 
@@ -503,6 +505,7 @@ export class StatsMqttLite {
         url: this.config.influxdb.url,
         org: this.config.influxdb.org,
         bucket: this.config.influxdb.bucket,
+        complianceBucket: this.config.influxdb.complianceBucket,
         diskQueue: this.config.influxdb.diskQueueEnabled,
         diskQueueSync: this.config.influxdb.diskQueueSyncOnAppend
       });
@@ -1628,6 +1631,16 @@ export class StatsMqttLite {
 
     this.firmwareStorageService = createFirmwareStorageService(this.config.ota);
     initOtaSigningState(this.config.ota.signingConfirmed);
+    if (this.config.ota.signingPublicKeyPem) {
+      initOtaSigningKeyAudit(this.config.ota.signingPublicKeyPem, 'env');
+    } else if (this.config.ota.signingPublicKeyPath) {
+      try {
+        const pem = require('fs').readFileSync(this.config.ota.signingPublicKeyPath, 'utf8');
+        initOtaSigningKeyAudit(pem, 'file');
+      } catch {
+        /* key file audit best-effort */
+      }
+    }
     void this.firmwareStorageService
       .verifyBucketAccess()
       .catch((err: unknown) => {
@@ -1663,6 +1676,13 @@ export class StatsMqttLite {
       this.otaRedisState
     );
     this.otaEventHandler = new OtaEventHandler(this.otaService, this.otaCommandPublisher);
+
+    const otaReleaseLog = createOtaReleaseLog();
+    void otaReleaseLog.initialize().catch((err: unknown) => {
+      logger.warn('[OTA] Release log initialization failed (non-fatal)', {
+        error: err instanceof Error ? err.message : String(err)
+      });
+    });
 
     logger.info('✅ OTA services initialized', {
       mqttDownloadMode: 'presigned',

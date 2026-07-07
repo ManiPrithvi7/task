@@ -7,6 +7,7 @@ import { DeviceStatus } from '@/models/Device';
 jest.mock('@/models/Device', () => ({
   Device: {
     findOne: jest.fn(),
+    find: jest.fn(),
     updateOne: jest.fn()
   },
   DeviceStatus: {
@@ -24,9 +25,11 @@ jest.mock('@/models/Device', () => ({
 
 jest.mock('@/models/FirmwareRelease', () => ({
   FirmwareRelease: {
-    find: jest.fn()
+    find: jest.fn(),
+    findOne: jest.fn(),
+    findOneAndUpdate: jest.fn()
   },
-  FirmwareReleaseStatus: { STABLE: 'stable' },
+  FirmwareReleaseStatus: { STABLE: 'stable', DRAFT: 'draft' },
   FirmwareRolloutStrategy: {
     ALL: 'all',
     PERCENTAGE: 'percentage',
@@ -34,13 +37,51 @@ jest.mock('@/models/FirmwareRelease', () => ({
   }
 }));
 
+jest.mock('@/services/deviceService', () => ({
+  getActiveDeviceCache: jest.fn().mockReturnValue({
+    getAllActive: jest.fn().mockResolvedValue([])
+  })
+}));
+
+jest.mock('@/services/otaReleaseLog', () => ({
+  getOtaReleaseLog: jest.fn().mockReturnValue(null)
+}));
+
+const mockLogEvent = jest.fn().mockResolvedValue(undefined);
+
+jest.mock('@/services/auditService', () => ({
+  AuditEventType: {
+    OTA_RELEASE_VALIDATED: 'OTA_RELEASE_VALIDATED',
+    OTA_RELEASE_PROMOTED: 'OTA_RELEASE_PROMOTED',
+    OTA_PUSH_SENT: 'OTA_PUSH_SENT',
+    OTA_CHECK_NO_UPDATE: 'OTA_CHECK_NO_UPDATE',
+    OTA_CHECK_OFFERED: 'OTA_CHECK_OFFERED',
+    OTA_COMMAND_ISSUED: 'OTA_COMMAND_ISSUED',
+    OTA_COMMAND_DELIVERED: 'OTA_COMMAND_DELIVERED',
+    OTA_DEVICE_STATE_CHANGED: 'OTA_DEVICE_STATE_CHANGED',
+    OTA_DEVICE_BLOCKED: 'OTA_DEVICE_BLOCKED',
+    OTA_SUCCESS: 'OTA_SUCCESS',
+    OTA_ROLLBACK: 'OTA_ROLLBACK'
+  },
+  getAuditService: jest.fn().mockReturnValue({ logEvent: mockLogEvent })
+}));
+
 import { Device } from '@/models/Device';
 import { FirmwareRelease } from '@/models/FirmwareRelease';
+import type { IFirmwareStorage } from '@/services/firmwareStorageService';
 import { OtaCommandPublisher, OtaService } from '@/services/otaService';
 
 const mockStorage = {
   createPresignedGetUrl: jest.fn().mockResolvedValue('https://objectstorage.ap-hyderabad-1.oraclecloud.com/p/par/firmware.bin')
 };
+
+const TEST_SIGNING_KEY_PEM = `-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAR5TPk29aGcfmwOnUhgDi0cm14fPExUM2R5tMbXfw+jg=
+-----END PUBLIC KEY-----`;
+
+const TEST_KEY_FINGERPRINT = '5b138628120cf118';
+
+const VALID_SIGNATURE = 'CmmD2ISF07vIwPXDczMVrEl+UkS3Hec4/CnBReSFkcph24fN7GiwxGbiFO9t+BK70tQtKLLIXHYu+XcIc2OKAg==';
 
 const otaConfig = {
   enabled: true,
@@ -55,7 +96,8 @@ const otaConfig = {
   broadcastTopic: 'proof.mqtt/broadcast/cmd',
   downloadMode: 'presigned' as const,
   checkRateLimitSec: 300,
-  rollbackFailureThreshold: 3
+  rollbackFailureThreshold: 3,
+  signingPublicKeyPem: TEST_SIGNING_KEY_PEM
 };
 
 describe('semver', () => {
@@ -134,6 +176,112 @@ describe('OtaService.recordRollbackFailure', () => {
     expect(result.blocked).toBe(true);
     expect(result.failures).toBe(3);
     expect(save).toHaveBeenCalled();
+  });
+});
+
+describe('OtaService.ingestRelease', () => {
+  const mockStorage = {
+    headObject: jest.fn(),
+    verifySha256: jest.fn(),
+    buildObjectKey: jest.fn(),
+    createPresignedPutUrl: jest.fn(),
+    createPresignedGetUrl: jest.fn()
+  };
+
+  const mockRedisState = {
+    setActiveRelease: jest.fn(),
+    seedPendingFleet: jest.fn(),
+    getActiveRelease: jest.fn()
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('includes keyFingerprint in setActiveRelease', async () => {
+    mockStorage.headObject.mockResolvedValue({ sizeBytes: 1000, firmwareVersion: '4.3.1', sha256: 'a'.repeat(64) });
+    mockStorage.verifySha256.mockResolvedValue(true);
+    (Device.find as jest.Mock).mockReturnValue({ select: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue([]) }) });
+    (FirmwareRelease.findOne as jest.Mock).mockResolvedValue(null);
+    (FirmwareRelease.findOneAndUpdate as jest.Mock).mockResolvedValue({
+      version: '4.3.1',
+      sha256: 'a'.repeat(64),
+      signature: VALID_SIGNATURE,
+      objectKey: 'firmware/4.3.1/firmware.bin',
+      s3Key: 'firmware/4.3.1/firmware.bin',
+      sizeBytes: 1000,
+      status: 'stable',
+      releasedAt: new Date()
+    });
+
+    const svc = new OtaService(otaConfig, mockStorage as never, 'http://localhost:3002', undefined, mockRedisState as never);
+    const result = await svc.ingestRelease({
+      version: '4.3.1',
+      objectKey: 'firmware/4.3.1/firmware.bin',
+      sha256: 'a'.repeat(64),
+      signature: VALID_SIGNATURE,
+      broadcast: false
+    });
+
+    expect(result).toEqual({ ok: true, version: '4.3.1', broadcast: false, created: true });
+    expect(mockRedisState.setActiveRelease).toHaveBeenCalledWith(
+      expect.objectContaining({ keyFingerprint: TEST_KEY_FINGERPRINT })
+    );
+  });
+
+  it('logs OTA_RELEASE_VALIDATED with result:false on FinalizeValidationError', async () => {
+    mockStorage.headObject.mockResolvedValue({ sizeBytes: 1000, firmwareVersion: '4.3.1', sha256: 'b'.repeat(64) });
+
+    const svc = new OtaService(otaConfig, mockStorage as never, 'http://localhost:3002');
+    const result = await svc.ingestRelease({
+      version: '4.3.1',
+      objectKey: 'firmware/4.3.1/firmware.bin',
+      sha256: 'a'.repeat(64),
+      signature: VALID_SIGNATURE,
+      broadcast: false
+    });
+
+    expect(result).toEqual({ ok: false, httpStatus: 400, code: 'METADATA_SHA256_MISMATCH', error: expect.any(String) });
+    expect(mockLogEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'OTA_RELEASE_VALIDATED', details: expect.objectContaining({ result: false, code: 'METADATA_SHA256_MISMATCH', keyFingerprint: TEST_KEY_FINGERPRINT }) })
+    );
+  });
+});
+
+describe('OtaService.resolveUpdate buildOffer', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('returns keyFingerprint in offer when signing key is configured', async () => {
+    (Device.findOne as jest.Mock).mockResolvedValue({
+      clientId: 'dev-1',
+      status: DeviceStatus.ACTIVE,
+      otaBlockedVersions: [],
+      save: jest.fn()
+    });
+    (FirmwareRelease.find as jest.Mock).mockReturnValue({
+      sort: () => ({
+        limit: () =>
+          Promise.resolve([
+            {
+              version: '4.3.1',
+              sha256: 'a'.repeat(64),
+              signature: 'sig',
+              objectKey: 'firmware/4.3.1/firmware.bin',
+              s3Key: 'firmware/4.3.1/firmware.bin',
+              sizeBytes: 1000,
+              rollout: { strategy: FirmwareRolloutStrategy.ALL }
+            }
+          ])
+      })
+    });
+
+    const svc = new OtaService(otaConfig, mockStorage as never, 'http://localhost:3002');
+    const offer = await svc.resolveUpdate({ deviceId: 'dev-1', currentVersion: '4.3.0' });
+
+    expect(offer).not.toBeNull();
+    expect(offer!.keyFingerprint).toBe(TEST_KEY_FINGERPRINT);
   });
 });
 

@@ -394,7 +394,10 @@ export interface InfluxDBConfig {
   url: string;
   token: string;
   org: string;
+  /** Operational metrics bucket (e.g. device_metrics, social_metrics). Default: metrics */
   bucket: string;
+  /** Compliance/PKI bucket (e.g. pki_audit, ct_log). Default: pki_compliance */
+  complianceBucket: string;
   /** Default true — append line protocol to disk; background worker POSTs batches over HTTP. */
   diskQueueEnabled: boolean;
   /** fsync after every WAL append when true (power-loss safe; higher I/O). */
@@ -409,6 +412,8 @@ export interface InfluxDBConfig {
   clientFlushIntervalMs: number;
   /** Max length for audit string fields (error_message, details JSON, etc.). */
   auditMaxFieldLength: number;
+  /** Log every write to console (development mode). */
+  logWrites: boolean;
 }
 
 export type { OtaDownloadMode };
@@ -777,6 +782,7 @@ export function loadConfig(): AppConfig {
       org: process.env.INFLUXDB_ORG?.trim() || 'statsmqtt',
       /** Matches typical Influx 2 Docker init (e.g. DOCKER_INFLUXDB_INIT_BUCKET); override via INFLUXDB_BUCKET. */
       bucket: process.env.INFLUXDB_BUCKET?.trim() || 'metrics',
+      complianceBucket: process.env.INFLUXDB_COMPLIANCE_BUCKET?.trim() || 'pki_compliance',
       diskQueueEnabled: influxDiskQueueEnabled,
       diskQueueSyncOnAppend: influxDiskQueueSyncOnAppend,
       diskQueuePath: influxQueuePath,
@@ -785,7 +791,8 @@ export function loadConfig(): AppConfig {
       diskQueueMaxLinesPerFile: influxQueueMaxLinesPerFile,
       clientBatchSize: influxClientBatchSize,
       clientFlushIntervalMs: influxClientFlushIntervalMs,
-      auditMaxFieldLength: influxAuditMaxFieldLength
+      auditMaxFieldLength: influxAuditMaxFieldLength,
+      logWrites: envString('NODE_ENV', 'development') === 'development'
     },
     instagramPolling
   };
@@ -855,6 +862,7 @@ export function loadConfig(): AppConfig {
       url: config.influxdb.url,
       org: config.influxdb.org,
       bucket: config.influxdb.bucket,
+      complianceBucket: config.influxdb.complianceBucket,
       diskQueue: config.influxdb.diskQueueEnabled,
       diskQueueSync: config.influxdb.diskQueueSyncOnAppend,
       diskQueuePath: config.influxdb.diskQueueEnabled ? config.influxdb.diskQueuePath : undefined,
@@ -915,6 +923,9 @@ export function validateConfig(config: AppConfig): void {
   }
   if (!config.influxdb.bucket?.trim()) {
     throw new Error('INFLUXDB_BUCKET is REQUIRED.');
+  }
+  if (!config.influxdb.complianceBucket?.trim()) {
+    throw new Error('INFLUXDB_COMPLIANCE_BUCKET is REQUIRED.');
   }
 
   if (config.ota?.enabled) {

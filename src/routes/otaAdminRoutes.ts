@@ -16,6 +16,7 @@ import type { IFirmwareStorage } from '../services/firmwareStorageService';
 import { OciStorageError } from '../services/ociStorageErrors';
 import {
   FinalizeValidationError,
+  computeSigningKeyFingerprint,
   validateFinalizeInput
 } from '../services/otaService';
 import { isOtaSigningConfirmed, setOtaSigningConfirmed } from '../services/otaService';
@@ -24,6 +25,7 @@ import { buildOtaMqttDownloadUrl } from '../utils/otaDownloadUrl';
 import type { OtaCommandPublisher } from '../services/otaService';
 import type { OtaService } from '../services/otaService';
 import { AuditEventType, getAuditService } from '../services/auditService';
+import { getOtaReleaseLog } from '../services/otaReleaseLog';
 import { logger } from '../utils/logger';
 
 export interface OtaAdminRoutesDeps {
@@ -179,16 +181,28 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
       return;
     }
 
+    const signingKeyPem = otaConfig.signingPublicKeyPem;
+    const keyFingerprint = signingKeyPem ? computeSigningKeyFingerprint(signingKeyPem) : undefined;
+
     try {
       const head = await storage.headObject(objectKey);
+
       validateFinalizeInput({
         version,
         sha256,
         signature,
         head,
-        signingPublicKeyPem: otaConfig.signingPublicKeyPem,
+        signingPublicKeyPem: signingKeyPem,
         signingPublicKeyPath: otaConfig.signingPublicKeyPath
       });
+
+      void getAuditService()
+        ?.logEvent({
+          event: AuditEventType.OTA_RELEASE_VALIDATED,
+          userId: auth.userId,
+          details: { version, sha256, signature, keyFingerprint, result: true }
+        })
+        .catch(() => undefined);
 
       const shaOk = await storage.verifySha256(objectKey, sha256);
       if (!shaOk) {
@@ -236,6 +250,13 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
       });
     } catch (err: unknown) {
       if (err instanceof FinalizeValidationError) {
+        void getAuditService()
+          ?.logEvent({
+            event: AuditEventType.OTA_RELEASE_VALIDATED,
+            userId: auth.userId,
+            details: { version, sha256, keyFingerprint: keyFingerprint || undefined, result: false, code: err.code, error: err.message }
+          })
+          .catch(() => undefined);
         res.status(err.httpStatus).json({
           success: false,
           error: err.message,
@@ -315,6 +336,10 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
           details: { version }
         })
         .catch(() => undefined);
+
+      const signingKeyPem = otaConfig.signingPublicKeyPem;
+      const keyFingerprint = signingKeyPem ? computeSigningKeyFingerprint(signingKeyPem) : undefined;
+      void getOtaReleaseLog()?.addEntry(version, release.sha256, objectKey, keyFingerprint, release.releasedAt).catch(() => undefined);
 
       res.json({
         success: true,

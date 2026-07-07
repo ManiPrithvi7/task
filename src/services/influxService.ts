@@ -2,9 +2,13 @@
  * InfluxDB Service for mqtt-publisher-lite
  * Time-series metrics storage for device, social media, and system metrics.
  *
+ * Dual-bucket architecture:
+ *   metrics      — operational time-series (device_metrics, social_metrics, instagram_fetch_audit, etc.)
+ *   pki_compliance — PKI hash chain + CT log (pki_audit, ct_log)
+ *
  * Local: docker compose InfluxDB 2.x (e.g. 8086).
  * Hosted: set INFLUXDB_URL to the public HTTPS origin only — no port when TLS terminates at the proxy (e.g. Render → container :10000).
- * Config via env: INFLUXDB_URL, INFLUXDB_TOKEN, INFLUXDB_ORG, INFLUXDB_BUCKET
+ * Config via env: INFLUXDB_URL, INFLUXDB_TOKEN, INFLUXDB_ORG, INFLUXDB_BUCKET, INFLUXDB_COMPLIANCE_BUCKET
  */
 
 import { InfluxDB, Point, WriteApi, QueryApi } from '@influxdata/influxdb-client';
@@ -147,12 +151,25 @@ export interface MilestoneCrossedInfluxInput {
   timestamp?: Date;
 }
 
+export const BucketTarget = {
+  METRICS: 'metrics' as const,
+  COMPLIANCE: 'compliance' as const,
+} as const;
+
+export type BucketTarget = (typeof BucketTarget)[keyof typeof BucketTarget];
+
 export class InfluxService {
   private client: InfluxDB;
-  private writeApi: WriteApi;
+  private metricsWriteApi: WriteApi;
+  private complianceWriteApi: WriteApi;
   private queryApi: QueryApi;
   private config: InfluxDBConfig;
-  private diskQueue: InfluxDiskQueue | null = null;
+  private metricsDiskQueue: InfluxDiskQueue | null = null;
+  private complianceDiskQueue: InfluxDiskQueue | null = null;
+
+  private resolveBucket(target: BucketTarget): string {
+    return target === BucketTarget.COMPLIANCE ? this.config.complianceBucket : this.config.bucket;
+  }
 
   constructor(config: InfluxDBConfig) {
     this.config = config;
@@ -162,28 +179,52 @@ export class InfluxService {
       token: this.config.token
     });
 
-    this.writeApi = this.client.getWriteApi(this.config.org, this.config.bucket, 'ns', {
+    this.metricsWriteApi = this.client.getWriteApi(this.config.org, this.config.bucket, 'ns', {
       batchSize: this.config.clientBatchSize,
       flushInterval: this.config.clientFlushIntervalMs,
       maxRetries: 3,
       maxBufferLines: 50_000
     });
+    this.complianceWriteApi = this.client.getWriteApi(this.config.org, this.config.complianceBucket, 'ns', {
+      batchSize: this.config.clientBatchSize,
+      flushInterval: this.config.clientFlushIntervalMs,
+      maxRetries: 5,
+      maxBufferLines: 50_000
+    });
     this.queryApi = this.client.getQueryApi(this.config.org);
 
-    this.writeApi.useDefaultTags({ service: 'mqtt-publisher-lite' });
+    this.metricsWriteApi.useDefaultTags({ service: 'mqtt-publisher-lite' });
+    this.complianceWriteApi.useDefaultTags({ service: 'mqtt-publisher-lite' });
 
     if (config.diskQueueEnabled) {
-      this.diskQueue = new InfluxDiskQueue({
-        queuePath: config.diskQueuePath,
+      const metricsQueuePath = `${config.diskQueuePath}.metrics`;
+      this.metricsDiskQueue = new InfluxDiskQueue({
+        queuePath: metricsQueuePath,
         flushIntervalMs: config.diskQueueFlushMs,
         batchMax: config.diskQueueBatchMax,
         maxLinesPerFile: config.diskQueueMaxLinesPerFile,
         syncOnAppend: config.diskQueueSyncOnAppend
       });
-      this.diskQueue.start(async (lines) => {
+      this.metricsDiskQueue.start(async (lines) => {
         if (lines.length === 0) return;
-        this.writeApi.writeRecords(lines);
-        await this.writeApi.flush();
+        this.logInfluxBatchFlush(lines, 'metrics_disk_queue_worker');
+        this.metricsWriteApi.writeRecords(lines);
+        await this.metricsWriteApi.flush();
+      });
+
+      const complianceQueuePath = `${config.diskQueuePath}.compliance`;
+      this.complianceDiskQueue = new InfluxDiskQueue({
+        queuePath: complianceQueuePath,
+        flushIntervalMs: config.diskQueueFlushMs,
+        batchMax: config.diskQueueBatchMax,
+        maxLinesPerFile: config.diskQueueMaxLinesPerFile,
+        syncOnAppend: true
+      });
+      this.complianceDiskQueue.start(async (lines) => {
+        if (lines.length === 0) return;
+        this.logInfluxBatchFlush(lines, 'compliance_disk_queue_worker');
+        this.complianceWriteApi.writeRecords(lines);
+        await this.complianceWriteApi.flush();
       });
     }
   }
@@ -193,15 +234,42 @@ export class InfluxService {
     return value.slice(0, this.config.auditMaxFieldLength);
   }
 
-  /** Direct HTTP write vs disk WAL (HTTP batches on flush worker). */
-  private async submitPoint(point: Point, flushImmediately: boolean): Promise<void> {
-    if (this.diskQueue) {
+  private logInfluxPoint(point: Point, target: BucketTarget, flushImmediately: boolean): void {
+    if (!this.config.logWrites) return;
+    const bucket = this.resolveBucket(target);
+    logger.info('InfluxDB write', {
+      bucket,
+      destination: this.metricsDiskQueue ? 'disk_queue' : 'write_api',
+      flushImmediately,
+      line: point.toLineProtocol() ?? ''
+    });
+  }
+
+  private logInfluxBatchFlush(lines: string[], source: string): void {
+    if (!this.config.logWrites || lines.length === 0) return;
+    logger.info('InfluxDB batch flush', { source, count: lines.length, lines });
+  }
+
+  private writeApiFor(target: BucketTarget): WriteApi {
+    return target === BucketTarget.COMPLIANCE ? this.complianceWriteApi : this.metricsWriteApi;
+  }
+
+  private diskQueueFor(target: BucketTarget): InfluxDiskQueue | null {
+    return target === BucketTarget.COMPLIANCE ? this.complianceDiskQueue : this.metricsDiskQueue;
+  }
+
+  /** route to correct disk queue or WriteApi based on bucket target. */
+  private async submitPoint(point: Point, target: BucketTarget, flushImmediately: boolean): Promise<void> {
+    this.logInfluxPoint(point, target, flushImmediately);
+    const queue = this.diskQueueFor(target);
+    if (queue) {
       const line = point.toLineProtocol();
-      await this.diskQueue.enqueue(line ?? '');
+      await queue.enqueue(line ?? '');
       return;
     }
-    this.writeApi.writePoint(point);
-    if (flushImmediately) await this.writeApi.flush();
+    const api = this.writeApiFor(target);
+    api.writePoint(point);
+    if (flushImmediately) await api.flush();
   }
 
   /**
@@ -228,7 +296,7 @@ export class InfluxService {
         point.timestamp(new Date());
       }
 
-      await this.submitPoint(point, true);
+      await this.submitPoint(point, BucketTarget.METRICS, true);
 
       logger.debug('Device metrics written to InfluxDB', { deviceId });
     } catch (error) {
@@ -261,7 +329,7 @@ export class InfluxService {
 
       point.timestamp(new Date());
 
-      await this.submitPoint(point, true);
+      await this.submitPoint(point, BucketTarget.METRICS, true);
 
       logger.debug('Social metrics written to InfluxDB', { platform, userId });
     } catch (error) {
@@ -288,7 +356,7 @@ export class InfluxService {
 
       point.timestamp(new Date());
 
-      await this.submitPoint(point, true);
+      await this.submitPoint(point, BucketTarget.METRICS, true);
 
       logger.debug('System metrics written to InfluxDB');
     } catch (error) {
@@ -353,7 +421,7 @@ export class InfluxService {
 
       point.timestamp(input.timestamp ?? new Date());
 
-      await this.submitPoint(point, opts?.flush !== false);
+      await this.submitPoint(point, BucketTarget.METRICS, opts?.flush !== false);
 
       logger.debug('Instagram fetch audit written to InfluxDB', { deviceId: input.deviceId, success: input.success });
     } catch (error) {
@@ -379,7 +447,7 @@ export class InfluxService {
       point.intField('media_count', Math.round(opts.mediaCount));
     }
     point.timestamp(timestamp ?? new Date());
-    await this.submitPoint(point, opts?.flush !== false);
+    await this.submitPoint(point, BucketTarget.METRICS, opts?.flush !== false);
   }
 
   /** Unified milestone crossing (Instagram followers or GMB review count). */
@@ -402,7 +470,7 @@ export class InfluxService {
       point.tag('location_id', input.locationId);
     }
     point.timestamp(input.timestamp ?? new Date());
-    await this.submitPoint(point, opts?.flush !== false);
+    await this.submitPoint(point, BucketTarget.METRICS, opts?.flush !== false);
   }
 
   /** @deprecated Use writeMilestoneCrossed with platform=instagram */
@@ -437,7 +505,7 @@ export class InfluxService {
       .tag('verified', input.verified ? 'true' : 'false');
     if (input.locationId) point.tag('location_id', input.locationId);
     point.timestamp(input.timestamp ?? new Date());
-    await this.submitPoint(point, opts?.flush !== false);
+    await this.submitPoint(point, BucketTarget.METRICS, opts?.flush !== false);
   }
 
   /** User/device mapping traceability after resolve attempt. */
@@ -454,7 +522,7 @@ export class InfluxService {
       point.stringField('error_message', this.truncateAuditField(input.errorMessage));
     }
     point.timestamp(input.timestamp ?? new Date());
-    await this.submitPoint(point, opts?.flush !== false);
+    await this.submitPoint(point, BucketTarget.METRICS, opts?.flush !== false);
   }
 
   /** Proof of MQTT screen publish attempt (success, shadow skip, or broker failure). */
@@ -474,7 +542,7 @@ export class InfluxService {
       point.stringField('error_message', this.truncateAuditField(input.errorMessage));
     }
     point.timestamp(input.timestamp ?? new Date());
-    await this.submitPoint(point, opts?.flush !== false);
+    await this.submitPoint(point, BucketTarget.METRICS, opts?.flush !== false);
   }
 
   /** Proof of MQTT screen publish attempt (success or broker failure). */
@@ -495,7 +563,7 @@ export class InfluxService {
       point.stringField('error_message', this.truncateAuditField(input.errorMessage));
     }
     point.timestamp(input.timestamp ?? new Date());
-    await this.submitPoint(point, opts?.flush !== false);
+    await this.submitPoint(point, BucketTarget.METRICS, opts?.flush !== false);
   }
 
   /** Circuit breaker state transitions (open / closed). */
@@ -510,7 +578,7 @@ export class InfluxService {
       point.intField('retry_after_seconds', Math.max(1, Math.round(input.retryAfterSeconds)));
     }
     point.timestamp(input.timestamp ?? new Date());
-    await this.submitPoint(point, opts?.flush !== false);
+    await this.submitPoint(point, BucketTarget.METRICS, opts?.flush !== false);
   }
 
   async writeInstagramAttentionE2eLatency(
@@ -525,16 +593,18 @@ export class InfluxService {
       .tag('trigger', triggerType)
       .intField('latency_ms', Math.round(latencyMs))
       .timestamp(timestamp ?? new Date());
-    await this.submitPoint(point, opts?.flush !== false);
+    await this.submitPoint(point, BucketTarget.METRICS, opts?.flush !== false);
   }
 
-  /** Flush buffered writes (use after multiple writes with `{ flush: false }`). */
+  /** Flush buffered writes for both buckets. */
   async flushWrites(): Promise<void> {
-    if (this.diskQueue) {
-      await this.diskQueue.flushNow();
-      return;
-    }
-    await this.writeApi.flush();
+    const metricsDone = this.metricsDiskQueue
+      ? this.metricsDiskQueue.flushNow()
+      : this.metricsWriteApi.flush();
+    const complianceDone = this.complianceDiskQueue
+      ? this.complianceDiskQueue.flushNow()
+      : this.complianceWriteApi.flush();
+    await Promise.all([metricsDone, complianceDone]);
   }
 
   /**
@@ -545,7 +615,7 @@ export class InfluxService {
       const end = endTime || new Date().toISOString();
 
       const query = `
-        from(bucket: "${this.config.bucket}")
+        from(bucket: "${this.resolveBucket(BucketTarget.METRICS)}")
           |> range(start: ${startTime}, stop: ${end})
           |> filter(fn: (r) => r._measurement == "device_metrics")
           |> filter(fn: (r) => r.device_id == "${deviceId}")
@@ -584,7 +654,7 @@ export class InfluxService {
       const end = endTime || new Date().toISOString();
 
       const query = `
-        from(bucket: "${this.config.bucket}")
+        from(bucket: "${this.resolveBucket(BucketTarget.METRICS)}")
           |> range(start: ${startTime}, stop: ${end})
           |> filter(fn: (r) => r._measurement == "social_metrics")
           |> filter(fn: (r) => r.platform == "${platform}")
@@ -622,7 +692,7 @@ export class InfluxService {
   async getLatestDeviceMetrics(deviceId: string): Promise<Record<string, unknown> | null> {
     try {
       const query = `
-        from(bucket: "${this.config.bucket}")
+        from(bucket: "${this.resolveBucket(BucketTarget.METRICS)}")
           |> range(start: -1h)
           |> filter(fn: (r) => r._measurement == "device_metrics")
           |> filter(fn: (r) => r.device_id == "${deviceId}")
@@ -693,7 +763,7 @@ export class InfluxService {
       point.intField('count', 1);
       point.timestamp(new Date());
 
-      await this.submitPoint(point, true);
+      await this.submitPoint(point, BucketTarget.COMPLIANCE, true);
 
       logger.debug('PKI audit event written to InfluxDB', { event: data.event, deviceId: data.deviceId });
     } catch (error) {
@@ -732,7 +802,7 @@ export class InfluxService {
       if (data.deviceId) point.tag('device_id', data.deviceId);
       point.timestamp(new Date());
 
-      await this.submitPoint(point, true);
+      await this.submitPoint(point, BucketTarget.METRICS, true);
 
       logger.debug('Rate limit event written to InfluxDB', { limitType: data.limitType, endpoint: data.endpoint });
     } catch (error) {
@@ -748,7 +818,7 @@ export class InfluxService {
     try {
       const end = endTime || new Date().toISOString();
       let fluxQuery = `
-        from(bucket: "${this.config.bucket}")
+        from(bucket: "${this.resolveBucket(BucketTarget.COMPLIANCE)}")
           |> range(start: ${startTime}, stop: ${end})
           |> filter(fn: (r) => r._measurement == "pki_audit")
       `;
@@ -803,7 +873,7 @@ export class InfluxService {
         .stringField('serial_number', data.serialNumber)
         .timestamp(data.issuedAt);
 
-      await this.submitPoint(point, true);
+      await this.submitPoint(point, BucketTarget.COMPLIANCE, true);
 
       logger.debug('CT log entry written to InfluxDB', { index: data.index, deviceId: data.deviceId });
     } catch (error) {
@@ -814,13 +884,87 @@ export class InfluxService {
   }
 
   /**
+   * Write an OTA firmware release transparency entry to pki_compliance bucket.
+   *
+   * Measurement: ota_release_log
+   */
+  async writeOtaReleaseEntry(data: {
+    index: number;
+    leafHash: string;
+    rootHash: string;
+    inclusionProof: string;
+    version: string;
+    sha256: string;
+    objectKey: string;
+    keyFingerprint: string;
+    releasedAt: Date;
+  }): Promise<void> {
+    try {
+      const point = new Point('ota_release_log')
+        .tag('version', data.version)
+        .tag('source', 'mqtt-publisher-lite')
+        .intField('index', data.index)
+        .stringField('leaf_hash', data.leafHash)
+        .stringField('root_hash', data.rootHash)
+        .stringField('inclusion_proof', data.inclusionProof)
+        .stringField('sha256', data.sha256)
+        .stringField('object_key', data.objectKey)
+        .stringField('key_fingerprint', data.keyFingerprint)
+        .timestamp(data.releasedAt);
+
+      await this.submitPoint(point, BucketTarget.COMPLIANCE, true);
+
+      logger.debug('OTA release log entry written to InfluxDB', { index: data.index, version: data.version });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error('Failed to write OTA release log entry', { index: data.index, error: errorMessage });
+      throw error;
+    }
+  }
+
+  /**
+   * Query all OTA release log leaf hashes (ordered by index) for tree rebuild.
+   */
+  async queryOtaReleaseLeaves(): Promise<Array<{ index: number; leafHash: string }>> {
+    try {
+      const fluxQuery = `
+        from(bucket: "${this.resolveBucket(BucketTarget.COMPLIANCE)}")
+          |> range(start: 0)
+          |> filter(fn: (r) => r._measurement == "ota_release_log")
+          |> filter(fn: (r) => r._field == "leaf_hash" or r._field == "index")
+          |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+          |> sort(columns: ["index"])
+      `;
+
+      const results: Array<{ index: number; leafHash: string }> = [];
+      return new Promise((resolve, reject) => {
+        this.queryApi.queryRows(fluxQuery, {
+          next(row, tableMeta) {
+            const obj = tableMeta.toObject(row);
+            results.push({
+              index: typeof obj.index === 'number' ? obj.index : parseInt(String(obj.index), 10),
+              leafHash: String(obj.leaf_hash || '')
+            });
+          },
+          error(error) { reject(error); },
+          complete() { resolve(results); }
+        });
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error('Failed to query OTA release log leaves', { error: errorMessage });
+      return [];
+    }
+  }
+
+  /**
    * Query all transparency log leaf hashes (ordered by index) for tree rebuild.
    * Used during TransparencyLog initialization.
    */
   async queryTransparencyLeaves(): Promise<Array<{ index: number; leafHash: string }>> {
     try {
       const fluxQuery = `
-        from(bucket: "${this.config.bucket}")
+        from(bucket: "${this.resolveBucket(BucketTarget.COMPLIANCE)}")
           |> range(start: 0)
           |> filter(fn: (r) => r._measurement == "ct_log")
           |> filter(fn: (r) => r._field == "leaf_hash" or r._field == "index")
@@ -856,7 +1000,7 @@ export class InfluxService {
   async queryLatestAuditEntry(): Promise<{ sequence: number; hash: string } | null> {
     try {
       const fluxQuery = `
-        from(bucket: "${this.config.bucket}")
+        from(bucket: "${this.resolveBucket(BucketTarget.COMPLIANCE)}")
           |> range(start: 0)
           |> filter(fn: (r) => r._measurement == "pki_audit")
           |> filter(fn: (r) => r._field == "sequence" or r._field == "hash")
@@ -899,7 +1043,7 @@ export class InfluxService {
     try {
       const start = startTime || '0';
       const fluxQuery = `
-        from(bucket: "${this.config.bucket}")
+        from(bucket: "${this.resolveBucket(BucketTarget.COMPLIANCE)}")
           |> range(start: ${start})
           |> filter(fn: (r) => r._measurement == "pki_audit")
           |> filter(fn: (r) => r._field == "sequence" or r._field == "hash" or r._field == "previous_hash")
@@ -1050,7 +1194,6 @@ export class InfluxService {
 
     if (!healthOk) return false;
 
-    const bucket = this.config.bucket;
     const org = this.config.org;
     const apiProbeEnv = parseInt(process.env.INFLUXDB_API_PROBE_TIMEOUT_MS?.trim() || '', 10);
     const fluxFallbackEnv = parseInt(process.env.INFLUXDB_FLUX_PROBE_TIMEOUT_MS?.trim() || '', 10);
@@ -1063,135 +1206,161 @@ export class InfluxService {
             ? 8000
             : 20000;
 
-    logger.info('📈 InfluxDB /health OK; verifying API token (GET /api/v2/buckets)', {
+    logger.info('📈 InfluxDB /health OK; verifying API token and both buckets', {
       apiTimeoutMs,
       org,
-      bucket,
+      metricsBucket: this.config.bucket,
+      complianceBucket: this.config.complianceBucket,
       maxAttempts
     });
 
-    const bucketsUrl = new URL(`${rawBase}/api/v2/buckets`);
-    bucketsUrl.searchParams.set('org', org);
-    if (bucketsUrl.hostname === 'localhost') bucketsUrl.hostname = '127.0.0.1';
+    const verifyBucket = async (bucketName: string, label: string): Promise<boolean> => {
+      const bucketsUrl = new URL(`${rawBase}/api/v2/buckets`);
+      bucketsUrl.searchParams.set('org', org);
+      if (bucketsUrl.hostname === 'localhost') bucketsUrl.hostname = '127.0.0.1';
 
-    const isHttpsBuckets = bucketsUrl.protocol === 'https:';
-    const modBuckets = isHttpsBuckets ? https : http;
-    const token = this.config.token?.trim() ?? '';
+      const isHttpsBuckets = bucketsUrl.protocol === 'https:';
+      const modBuckets = isHttpsBuckets ? https : http;
+      const token = this.config.token?.trim() ?? '';
 
-    const oneBucketsGet = (): Promise<{ statusCode: number; json: any }> =>
-      new Promise((resolve, reject) => {
-        const req = modBuckets.request(
-          {
-            method: 'GET',
-            hostname: bucketsUrl.hostname,
-            port: bucketsUrl.port ? Number(bucketsUrl.port) : isHttpsBuckets ? 443 : 80,
-            path: `${bucketsUrl.pathname}${bucketsUrl.search}`,
-            timeout: apiTimeoutMs,
-            headers: {
-              Authorization: `Token ${token}`,
-              Accept: 'application/json'
-            }
-          },
-          (incoming) => {
-            let raw = '';
-            incoming.on('data', (c) => (raw += c));
-            incoming.on('end', () => {
-              let json: any = {};
-              try {
-                json = raw ? JSON.parse(raw) : {};
-              } catch {
-                json = {};
+      const oneBucketsGet = (): Promise<{ statusCode: number; json: any }> =>
+        new Promise((resolve, reject) => {
+          const req = modBuckets.request(
+            {
+              method: 'GET',
+              hostname: bucketsUrl.hostname,
+              port: bucketsUrl.port ? Number(bucketsUrl.port) : isHttpsBuckets ? 443 : 80,
+              path: `${bucketsUrl.pathname}${bucketsUrl.search}`,
+              timeout: apiTimeoutMs,
+              headers: {
+                Authorization: `Token ${token}`,
+                Accept: 'application/json'
               }
-              resolve({ statusCode: incoming.statusCode ?? 0, json });
-            });
-          }
-        );
-        req.on('timeout', () => req.destroy(new Error('timeout')));
-        req.on('error', reject);
-        req.end();
-      });
-
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      try {
-        const res = await oneBucketsGet();
-
-        if (res.statusCode === 401 || res.statusCode === 403) {
-          logger.warn('InfluxDB buckets API rejected token', { status: res.statusCode, org });
-          return false;
-        }
-
-        if (res.statusCode < 200 || res.statusCode >= 300) {
-          const retryable = res.statusCode >= 500 || res.statusCode === 429;
-          if (retryable && attempt < maxAttempts) {
-            logger.warn('InfluxDB buckets API transient error; retrying', {
-              status: res.statusCode,
-              attempt,
-              maxAttempts
-            });
-            await sleep(retryDelayMs);
-            continue;
-          }
-          logger.warn('InfluxDB buckets API HTTP error', {
-            status: res.statusCode,
-            org,
-            message: res.json?.message || res.json?.code
-          });
-          return false;
-        }
-
-        const buckets = Array.isArray(res.json?.buckets) ? res.json.buckets : [];
-        const hasBucket = buckets.some((b: { name?: string }) => b?.name === bucket);
-        if (!hasBucket) {
-          logger.warn('InfluxDB: configured bucket not found for org (check INFLUXDB_BUCKET)', {
-            org,
-            bucket,
-            bucketNames: buckets.map((b: { name?: string }) => b?.name).filter(Boolean)
-          });
-          return false;
-        }
-
-        if (attempt > 1) {
-          logger.info('📈 InfluxDB buckets API OK after retry', { attempt, maxAttempts });
-        }
-        return true;
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        logger.warn('InfluxDB buckets API attempt failed', {
-          attempt,
-          maxAttempts,
-          error: msg
+            },
+            (incoming) => {
+              let raw = '';
+              incoming.on('data', (c) => (raw += c));
+              incoming.on('end', () => {
+                let json: any = {};
+                try {
+                  json = raw ? JSON.parse(raw) : {};
+                } catch {
+                  json = {};
+                }
+                resolve({ statusCode: incoming.statusCode ?? 0, json });
+              });
+            }
+          );
+          req.on('timeout', () => req.destroy(new Error('timeout')));
+          req.on('error', reject);
+          req.end();
         });
-        if (attempt === maxAttempts) {
-          logger.warn('InfluxDB buckets API unreachable after retries', {
-            url: this.config.url,
-            org,
-            bucket,
+
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          const res = await oneBucketsGet();
+
+          if (res.statusCode === 401 || res.statusCode === 403) {
+            logger.warn(`InfluxDB buckets API rejected token (${label})`, { status: res.statusCode, org });
+            return false;
+          }
+
+          if (res.statusCode < 200 || res.statusCode >= 300) {
+            const retryable = res.statusCode >= 500 || res.statusCode === 429;
+            if (retryable && attempt < maxAttempts) {
+              logger.warn(`InfluxDB buckets API transient error (${label}); retrying`, {
+                status: res.statusCode,
+                attempt,
+                maxAttempts
+              });
+              await sleep(retryDelayMs);
+              continue;
+            }
+            logger.warn(`InfluxDB buckets API HTTP error (${label})`, {
+              status: res.statusCode,
+              org,
+              message: res.json?.message || res.json?.code
+            });
+            return false;
+          }
+
+          const buckets = Array.isArray(res.json?.buckets) ? res.json.buckets : [];
+          const hasBucket = buckets.some((b: { name?: string }) => b?.name === bucketName);
+          if (!hasBucket) {
+            logger.warn(`InfluxDB: bucket "${bucketName}" not found for org (check INFLUXDB_${label.toUpperCase()}_BUCKET)`, {
+              org,
+              bucket: bucketName,
+              bucketNames: buckets.map((b: { name?: string }) => b?.name).filter(Boolean)
+            });
+            return false;
+          }
+
+          if (attempt > 1) {
+            logger.info(`📈 InfluxDB ${label} bucket OK after retry`, { attempt, maxAttempts });
+          }
+          return true;
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          logger.warn(`InfluxDB buckets API attempt failed (${label})`, {
+            attempt,
+            maxAttempts,
             error: msg
           });
-          return false;
+          if (attempt === maxAttempts) {
+            logger.warn(`InfluxDB buckets API unreachable after retries (${label})`, {
+              url: this.config.url,
+              org,
+              bucket: bucketName,
+              error: msg
+            });
+            return false;
+          }
+          await sleep(retryDelayMs);
         }
-        await sleep(retryDelayMs);
       }
-    }
+      return false;
+    };
 
-    return false;
+    const metricsOk = await verifyBucket(this.config.bucket, 'metrics');
+    const complianceOk = await verifyBucket(this.config.complianceBucket, 'compliance');
+    return metricsOk && complianceOk;
   }
 
   /**
-   * Flush pending writes and close the connection
+   * Flush pending writes and close both WriteApi connections.
    */
   async close(): Promise<void> {
     try {
-      if (this.diskQueue) {
-        await this.diskQueue.shutdown(async (lines) => {
-          if (lines.length === 0) return;
-          this.writeApi.writeRecords(lines);
-          await this.writeApi.flush();
-        });
-        this.diskQueue = null;
+      const queueShutdowns: Promise<void>[] = [];
+      if (this.metricsDiskQueue) {
+        queueShutdowns.push(
+          this.metricsDiskQueue.shutdown(async (lines) => {
+            if (lines.length === 0) return;
+            this.logInfluxBatchFlush(lines, 'metrics_disk_queue_shutdown');
+            this.metricsWriteApi.writeRecords(lines);
+            await this.metricsWriteApi.flush();
+          })
+        );
       }
-      await this.writeApi.close();
-      logger.info('InfluxDB connection closed');
+      if (this.complianceDiskQueue) {
+        queueShutdowns.push(
+          this.complianceDiskQueue.shutdown(async (lines) => {
+            if (lines.length === 0) return;
+            this.logInfluxBatchFlush(lines, 'compliance_disk_queue_shutdown');
+            this.complianceWriteApi.writeRecords(lines);
+            await this.complianceWriteApi.flush();
+          })
+        );
+      }
+      await Promise.all(queueShutdowns);
+      this.metricsDiskQueue = null;
+      this.complianceDiskQueue = null;
+
+      await Promise.all([
+        this.metricsWriteApi.close(),
+        this.complianceWriteApi.close()
+      ]);
+      logger.info('InfluxDB connections closed');
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logger.error('Error closing InfluxDB connection', { error: errorMessage });

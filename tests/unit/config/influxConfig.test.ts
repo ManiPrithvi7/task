@@ -30,6 +30,18 @@ describe('influx config validation', () => {
     expect(() => validateConfig(config)).toThrow(/ENABLE_METRICS_COLLECTION=false is not allowed/);
   });
 
+  it('enables influx write logging in development', () => {
+    process.env = { ...process.env, ...baseEnv(), NODE_ENV: 'development' };
+    const config = loadConfig();
+    expect(config.influxdb.logWrites).toBe(true);
+  });
+
+  it('disables influx write logging in production', () => {
+    process.env = { ...process.env, ...baseEnv(), NODE_ENV: 'production' };
+    const config = loadConfig();
+    expect(config.influxdb.logWrites).toBe(false);
+  });
+
   it('loads client batch and audit field length from env', () => {
     process.env = {
       ...process.env,
@@ -40,6 +52,26 @@ describe('influx config validation', () => {
     const config = loadConfig();
     expect(config.influxdb.clientBatchSize).toBe(250);
     expect(config.influxdb.auditMaxFieldLength).toBe(2048);
+    expect(() => validateConfig(config)).not.toThrow();
+  });
+
+  it('loads default complianceBucket from env', () => {
+    process.env = { ...process.env, ...baseEnv() };
+    const config = loadConfig();
+    expect(config.influxdb.complianceBucket).toBe('pki_compliance');
+  });
+
+  it('defaults complianceBucket to pki_compliance when env is empty', () => {
+    process.env = { ...process.env, ...baseEnv(), INFLUXDB_COMPLIANCE_BUCKET: '' };
+    const config = loadConfig();
+    expect(config.influxdb.complianceBucket).toBe('pki_compliance');
+    expect(() => validateConfig(config)).not.toThrow();
+  });
+
+  it('loads custom complianceBucket from env', () => {
+    process.env = { ...process.env, ...baseEnv(), INFLUXDB_COMPLIANCE_BUCKET: 'custom_compliance' };
+    const config = loadConfig();
+    expect(config.influxdb.complianceBucket).toBe('custom_compliance');
     expect(() => validateConfig(config)).not.toThrow();
   });
 });
