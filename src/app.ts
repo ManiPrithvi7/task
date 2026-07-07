@@ -57,7 +57,7 @@ import {
   OtaRedisState
 } from './services/otaService';
 import { initOtaSigningKeyAudit } from './services/otaSigningKeyService';
-import { createOtaReleaseLog, getOtaReleaseLog } from './services/otaReleaseLog';
+import { createOtaReleaseLog } from './services/otaReleaseLog';
 import { createRecoverySessionService } from './services/recoverySessionService';
 import { getTokenStore } from './storage/tokenStore';
 import * as dns from 'dns';
@@ -1635,7 +1635,7 @@ export class StatsMqttLite {
       initOtaSigningKeyAudit(this.config.ota.signingPublicKeyPem, 'env');
     } else if (this.config.ota.signingPublicKeyPath) {
       try {
-        const pem = require('fs').readFileSync(this.config.ota.signingPublicKeyPath, 'utf8');
+        const pem = fs.readFileSync(this.config.ota.signingPublicKeyPath, 'utf8');
         initOtaSigningKeyAudit(pem, 'file');
       } catch {
         /* key file audit best-effort */
