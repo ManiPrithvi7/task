@@ -19,6 +19,8 @@ import {
 import { webhookInfluxBatch, flushWebhookInflux } from './influxAudit';
 import { WebhookLatencyTracker } from '../services/webhookMetrics';
 import { logger } from '../utils/logger';
+// TEMP STIMULATE — remove after testing
+import { shouldSkipForStimulate } from '../utils/stimulateAllowlist';
 
 const ack = async (res: Response, message: string, extra?: Record<string, unknown>) => {
   await flushWebhookInflux();
@@ -206,6 +208,11 @@ export async function handleGmbWebhook(req: Request, res: Response, deps: Webhoo
     let lastClientId: string | undefined;
 
     for (const device of devices) {
+      // TEMP STIMULATE — remove after testing
+      if (await shouldSkipForStimulate(device.clientId, 'gmb')) {
+        logger.info('[STIM_SKIP] GMB webhook skipping stim device', { deviceId: device.clientId });
+        continue;
+      }
       const result = await publishGmbScreen(
         deps.mqttClient,
         deps.topicRoot,

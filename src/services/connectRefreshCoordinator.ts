@@ -7,6 +7,8 @@ import { logger } from '../utils/logger';
 import { clearAllPublishHashesForDevice } from './mqttChangeDetection';
 import { getUserIntegrations, cacheUserIntegrations } from './userIntegrationCache';
 import { getActiveDeviceCache } from './deviceService';
+// TEMP STIMULATE — remove after testing
+import { shouldSkipForStimulate } from '../utils/stimulateAllowlist';
 
 const CONNECT_REFRESH_DEBOUNCE_SEC = 30;
 const CONNECT_REFRESH_KEY_PREFIX = 'device:connect_refresh:';
@@ -69,11 +71,19 @@ export class ConnectRefreshCoordinator {
     const tasks: Promise<unknown>[] = [];
 
     if (integrations.instagram && instagramPoller) {
-      tasks.push(this.refreshInstagram(deviceId));
+      if (await shouldSkipForStimulate(deviceId, 'instagram')) {
+        logger.info('[STIM_SKIP] Connect refresh skipping Instagram for stim device', { deviceId });
+      } else {
+        tasks.push(this.refreshInstagram(deviceId));
+      }
     }
 
     if (integrations.gmb) {
-      tasks.push(gmbConnectPull.publishForDevice(deviceId, root));
+      if (await shouldSkipForStimulate(deviceId, 'gmb')) {
+        logger.info('[STIM_SKIP] Connect refresh skipping GMB for stim device', { deviceId });
+      } else {
+        tasks.push(gmbConnectPull.publishForDevice(deviceId, root));
+      }
     }
 
     if (promotionDebounced) {

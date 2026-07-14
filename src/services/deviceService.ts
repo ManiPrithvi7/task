@@ -103,8 +103,7 @@ export class ActiveDeviceCache {
   }
 
   /**
-   * Get ALL active devices from Redis using SCAN (non-blocking).
-   * This is the hot-path method called every publish cycle.
+   * Get ALL active devices (local file store — hot path for publish cycles).
    */
   async getAllActive(): Promise<ActiveDevice[]> {
     try {
@@ -118,7 +117,8 @@ export class ActiveDeviceCache {
   }
 
   /**
-   * Flush all active device keys on server startup (stale from previous session).
+   * Clear local active-device file (admin/tests only).
+   * Not called on startup — Redis set restore + local persist cover restarts.
    */
   async flushAll(): Promise<number> {
     try {

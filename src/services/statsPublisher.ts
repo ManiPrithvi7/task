@@ -2,6 +2,8 @@ import { logger } from '../utils/logger';
 import { MqttClientManager } from '../servers/mqttClient';
 import { DeviceService, getActiveDeviceCache, ActiveDevice } from './deviceService';
 import { CAService } from './caService';
+// TEMP STIMULATE — remove after testing
+import { shouldSkipForStimulate } from '../utils/stimulateAllowlist';
 import {
   buildScreenEnvelope,
   gmbReviewMetrics,
@@ -167,6 +169,11 @@ export class StatsPublisher {
       });
 
       for (const device of activeDevices) {
+        // TEMP STIMULATE — remove after testing
+        if (await shouldSkipForStimulate(device.deviceId, 'instagram')) {
+          logger.debug('[STIM_SKIP] StatsPublisher skipping stim device', { deviceId: device.deviceId });
+          continue;
+        }
         try {
           // test-gmb: dev/QA mock only. Skip when user has GMB connected (real data via connect pull + webhooks).
           const publishTestGmb =

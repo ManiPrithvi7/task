@@ -6,6 +6,8 @@ import { syncGmbLocationForDevice } from '../lib/socials/syncDeviceGmb';
 import { getActiveDeviceCache } from './deviceService';
 import { getUserIntegrations } from './userIntegrationCache';
 import { logger } from '../utils/logger';
+// TEMP STIMULATE — remove after testing
+import { shouldSkipForStimulate } from '../utils/stimulateAllowlist';
 
 export class GmbConnectPull {
   constructor(
@@ -15,6 +17,11 @@ export class GmbConnectPull {
   ) {}
 
   async publishForDevice(deviceId: string, topicRoot: string): Promise<void> {
+    // TEMP STIMULATE — remove after testing
+    if (await shouldSkipForStimulate(deviceId, 'gmb')) {
+      logger.info('[STIM_SKIP] GmbConnectPull skipping stim device', { deviceId });
+      return;
+    }
     let ctx = await resolveGmbContextForDevice(deviceId);
     if (!ctx) {
       const active = await getActiveDeviceCache().getActive(deviceId);

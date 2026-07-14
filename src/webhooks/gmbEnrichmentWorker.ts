@@ -16,6 +16,8 @@ import { resolveDevicesForUser } from './resolve/resolveDevices';
 import { publishGmbScreen } from './delivery/publishGmbScreen';
 import mongoose from 'mongoose';
 import { logger } from '../utils/logger';
+// TEMP STIMULATE — remove after testing
+import { shouldSkipForStimulate } from '../utils/stimulateAllowlist';
 
 export type GmbEnrichmentContext = {
   userId: string;
@@ -110,6 +112,11 @@ async function runGmbEnrichment(
   );
 
   for (const device of devices) {
+    // TEMP STIMULATE — remove after testing
+    if (await shouldSkipForStimulate(device.clientId, 'gmb')) {
+      logger.info('[STIM_SKIP] GMB enrichment skipping stim device', { deviceId: device.clientId });
+      continue;
+    }
     await publishGmbScreen(
       ctx.mqttClient,
       ctx.topicRoot,

@@ -19,6 +19,8 @@ import type { InstagramServerlessConfig } from '../config';
 import type { MqttClientManager } from '../servers/mqttClient';
 import { getRedisService } from './redisService';
 import type { RedisService } from './redisService';
+// TEMP STIMULATE — remove after testing
+import { isStimulateDevice, shouldSkipForStimulate } from '../utils/stimulateAllowlist';
 import { getInfluxService } from './influxService';
 import { getActiveDeviceCache } from './deviceService';
 import {
@@ -1374,6 +1376,13 @@ export class InstagramDirectFetchInvoker implements InstagramFetchInvoker {
     const queue = [...deviceIds];
 
     const runOne = async (deviceId: string): Promise<void> => {
+      if (await shouldSkipForStimulate(deviceId, 'instagram')) {
+        logger.info('[STIM_SKIP] Instagram direct fetch skipped for stim device', {
+          deviceId,
+          trigger: opts.trigger
+        });
+        return;
+      }
       const meta = await resolveDeviceMeta(deviceId);
 
       if (!meta) {
@@ -1555,6 +1564,10 @@ export class InstagramPoller {
     }
 
     try {
+      if (await shouldSkipForStimulate(deviceId, 'instagram')) {
+        logger.info('[STIM_SKIP] Instagram immediate fetch skipped for stim device', { deviceId, trigger });
+        return false;
+      }
       if (await this.circuit.isOpen()) return false;
 
       const redis = this.redisService.getClient();
@@ -1761,6 +1774,15 @@ export class InstagramPoller {
         [] as string[]
       );
       if (active.length === 0) return;
+      // TEMP STIMULATE — remove after testing: skip stim devices (allowlist + lock)
+      active = active.filter((id) => !isStimulateDevice(id));
+      if (active.length > 0 && this.redisService.isRedisConnected()) {
+        const filtered: string[] = [];
+        for (const id of active) {
+          if (!(await shouldSkipForStimulate(id, 'instagram'))) filtered.push(id);
+        }
+        active = filtered;
+      }
       const cap = this.config.priorityCapPerCycle;
       if (cap > 0 && active.length > cap) {
         active = active.slice(0, cap);
@@ -1818,7 +1840,16 @@ export class InstagramPoller {
       // Background pool should be derived from the server-persisted active device cache
       // to avoid split-brain between Redis registries and local state.
       const allActive = await getActiveDeviceCache().getAllActive();
-      const allDeviceIds = allActive.map((d) => d.deviceId).filter(Boolean);
+      let allDeviceIds = allActive.map((d) => d.deviceId).filter(Boolean);
+      // TEMP STIMULATE — remove after testing: skip stim devices (allowlist + lock)
+      allDeviceIds = allDeviceIds.filter((id) => !isStimulateDevice(id));
+      if (allDeviceIds.length > 0 && this.redisService.isRedisConnected()) {
+        const filtered: string[] = [];
+        for (const id of allDeviceIds) {
+          if (!(await shouldSkipForStimulate(id, 'instagram'))) filtered.push(id);
+        }
+        allDeviceIds = filtered;
+      }
 
       // Subtract devices currently in the active priority window (Redis zset).
       // IMPORTANT: do NOT use evalAtomicPriorityReadAndPruneEvalSha here; it is destructive (prunes the zset).

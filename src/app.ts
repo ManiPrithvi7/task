@@ -22,6 +22,11 @@ import { UserService } from './services/userService';
 import { MongoService, createMongoService } from './services/mongoService';
 import { RedisService, createRedisService } from './services/redisService';
 import { DeviceService, getActiveDeviceCache, ActiveDeviceCache, type ActiveDevice } from './services/deviceService';
+import {
+  restoreActiveDevicesFromRedis,
+  republishCachedScreensForActiveDevices
+} from './services/startupCacheRepublish';
+import { StimulateService } from './services/stimulateService';
 import { InfluxService, createInfluxService, resetInfluxService } from './services/influxService';
 import { AuditService, createAuditService } from './services/auditService';
 import { TransparencyLog, createTransparencyLog } from './services/transparencyLog';
@@ -108,6 +113,8 @@ export class StatsMqttLite {
 
   private instagramServerlessBridge?: InstagramServerlessBridge;
   private instagramPoller?: InstagramPoller;
+  /** TEMP STIMULATE — remove after testing */
+  private stimulateService?: StimulateService;
   private influxService?: InfluxService;
   private auditService?: AuditService;
   private transparencyLog?: TransparencyLog;
@@ -240,6 +247,10 @@ export class StatsMqttLite {
       this.mqttIngressState.startupTime = this.startupTime;
       logger.info('🟢 MQTT ingress ready — accepting device connections');
 
+      // Recover devices still marked active in Redis; push last-known screens
+      // so MQTT-connected displays get values without waiting for a live fetch.
+      await this.restoreActiveAndRepublishFromCache();
+
       void this.initializePhase2().catch((err: unknown) => {
         logger.error('Phase 2 initialization failed', {
           error: err instanceof Error ? err.message : String(err)
@@ -286,6 +297,7 @@ export class StatsMqttLite {
     await this.initializeHttpServer();
     await this.initializeStatsPublisher();
     this.initializeConnectRefreshCoordinator();
+    await this.initializeStimulateService();
     this.initializeKeepAlive();
 
     this.isServicesReady = true;
@@ -294,6 +306,21 @@ export class StatsMqttLite {
 
     await this.processDeferredWork();
     await this.flushMqttMessageBuffer();
+  }
+
+  /** TEMP STIMULATE — remove after testing. In-process IG/GMB ramps when STIMULATE_DEVICE is set. */
+  private async initializeStimulateService(): Promise<void> {
+    if (!this.mqttClient) {
+      logger.warn('[STIM] MQTT client missing — skip stimulate service');
+      return;
+    }
+    this.stimulateService = new StimulateService();
+    await this.stimulateService.start(
+      this.mqttClient,
+      this.redisService ?? null,
+      this.config.mqtt.topicRoot,
+      this.config.webhooks.mqttPublishEnabled
+    );
   }
 
   private buildMqttIngressHandlers(): MqttIngressHandlers {
@@ -379,12 +406,38 @@ export class StatsMqttLite {
 
     // User Service removed - handled by Next.js web app (shared database)
 
-    // Active Device Cache (Redis-backed)
+    // Active device cache: keep local file across restart; Redis set is merged in
+    // restoreActiveAndRepublishFromCache() after MQTT is up (no startup wipe).
     this.activeDeviceCache = getActiveDeviceCache();
-    await this.activeDeviceCache.flushAll(); // Clear stale keys from previous session
-    logger.info('✅ Active device cache initialized (Redis)');
-    
+    logger.info('✅ Active device cache initialized (local + Redis restore on MQTT ready)');
+
     logger.info('✅ Services initialized');
+  }
+
+  /**
+   * After restart: merge Redis `proof.mqtt:active:devices` into local cache, then
+   * republish Instagram (`device:followers:*`) and GMB (Redis location / Mongo) screens.
+   */
+  private async restoreActiveAndRepublishFromCache(): Promise<void> {
+    try {
+      const client = this.getRedisClientOrNull();
+      await restoreActiveDevicesFromRedis(client, (deviceId) => this.cacheActiveDevice(deviceId));
+
+      if (!this.mqttClient) {
+        logger.warn('[STARTUP_CACHE] MQTT client missing — skip cache republish');
+        return;
+      }
+
+      await republishCachedScreensForActiveDevices(
+        this.mqttClient,
+        this.config.mqtt.topicRoot,
+        this.config.webhooks.mqttPublishEnabled
+      );
+    } catch (err: unknown) {
+      logger.warn('[STARTUP_CACHE] Restore/republish failed (continuing startup)', {
+        error: err instanceof Error ? err.message : String(err)
+      });
+    }
   }
 
   private async initializeMongoDB(): Promise<void> {
@@ -1780,6 +1833,11 @@ export class StatsMqttLite {
       // Stop Instagram poller
       if (this.instagramPoller) {
         this.instagramPoller.stop();
+      }
+
+      // TEMP STIMULATE — remove after testing
+      if (this.stimulateService) {
+        await this.stimulateService.stop();
       }
 
       // Stop stats publisher
