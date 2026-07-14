@@ -1616,7 +1616,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "scripts_mongo_ping",
-      "community": 18,
+      "community": 125,
       "norm_label": "mongo-ping.ts"
     },
     {
@@ -1626,7 +1626,7 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "scripts_mongo_ping_sanitizeuri",
-      "community": 18,
+      "community": 125,
       "norm_label": "sanitizeuri()"
     },
     {
@@ -1636,7 +1636,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "scripts_mongo_ping_validateurishape",
-      "community": 18,
+      "community": 125,
       "norm_label": "validateurishape()"
     },
     {
@@ -1646,7 +1646,7 @@
       "source_location": "L31",
       "_origin": "ast",
       "id": "scripts_mongo_ping_mongodbsrvhostname",
-      "community": 18,
+      "community": 125,
       "norm_label": "mongodbsrvhostname()"
     },
     {
@@ -1656,7 +1656,7 @@
       "source_location": "L41",
       "_origin": "ast",
       "id": "scripts_mongo_ping_main",
-      "community": 18,
+      "community": 125,
       "norm_label": "main()"
     },
     {
@@ -3078,7 +3078,7 @@
       "source_location": "L576",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_initializepkigovernance",
-      "community": 12,
+      "community": 2,
       "norm_label": ".initializepkigovernance()"
     },
     {
@@ -3278,7 +3278,7 @@
       "source_location": "L1682",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_initializeotaservices",
-      "community": 49,
+      "community": 12,
       "norm_label": ".initializeotaservices()"
     },
     {
@@ -3318,7 +3318,7 @@
       "source_location": "L1823",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_stop",
-      "community": 2,
+      "community": 12,
       "norm_label": ".stop()"
     },
     {
@@ -3698,7 +3698,7 @@
       "source_location": "L395",
       "_origin": "ast",
       "id": "config_index_influxdbconfig",
-      "community": 1,
+      "community": 99,
       "norm_label": "influxdbconfig"
     },
     {
@@ -3728,7 +3728,7 @@
       "source_location": "L440",
       "_origin": "ast",
       "id": "config_index_otaconfig",
-      "community": 59,
+      "community": 19,
       "norm_label": "otaconfig"
     },
     {
@@ -3808,7 +3808,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "config_mongoconnection",
-      "community": 18,
+      "community": 125,
       "norm_label": "mongoconnection.ts"
     },
     {
@@ -3818,7 +3818,7 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "config_mongoconnection_mongodrivertimeouts",
-      "community": 18,
+      "community": 125,
       "norm_label": "mongodrivertimeouts()"
     },
     {
@@ -4078,7 +4078,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "socials_gmb_pubsub",
-      "community": 47,
+      "community": 144,
       "norm_label": "gmb-pubsub.ts"
     },
     {
@@ -4088,7 +4088,7 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "socials_gmb_pubsub_extractbearertoken",
-      "community": 47,
+      "community": 144,
       "norm_label": "extractbearertoken()"
     },
     {
@@ -4098,7 +4098,7 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "socials_gmb_pubsub_getgmbpubsubaudience",
-      "community": 47,
+      "community": 144,
       "norm_label": "getgmbpubsubaudience()"
     },
     {
@@ -4108,7 +4108,7 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "socials_gmb_pubsub_verifypubsubpushrequest",
-      "community": 47,
+      "community": 144,
       "norm_label": "verifypubsubpushrequest()"
     },
     {
@@ -4198,7 +4198,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "socials_instagramtokenrefresh",
-      "community": 76,
+      "community": 135,
       "norm_label": "instagramtokenrefresh.ts"
     },
     {
@@ -4208,7 +4208,7 @@
       "source_location": "L10",
       "_origin": "ast",
       "id": "socials_instagramtokenrefresh_instagramtokencontext",
-      "community": 76,
+      "community": 135,
       "norm_label": "instagramtokencontext"
     },
     {
@@ -4218,7 +4218,7 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "socials_instagramtokenrefresh_loadinstagramtokencontextforuser",
-      "community": 76,
+      "community": 50,
       "norm_label": "loadinstagramtokencontextforuser()"
     },
     {
@@ -4228,7 +4228,7 @@
       "source_location": "L49",
       "_origin": "ast",
       "id": "socials_instagramtokenrefresh_ensurefreshinstagramaccesstoken",
-      "community": 76,
+      "community": 50,
       "norm_label": "ensurefreshinstagramaccesstoken()"
     },
     {
@@ -4238,7 +4238,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "socials_integrations",
-      "community": 54,
+      "community": 16,
       "norm_label": "integrations.ts"
     },
     {
@@ -4248,7 +4248,7 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "socials_integrations_gmbreviewnotification",
-      "community": 54,
+      "community": 16,
       "norm_label": "gmbreviewnotification"
     },
     {
@@ -4258,7 +4258,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "socials_integrations_gmbreviewpayload",
-      "community": 54,
+      "community": 16,
       "norm_label": "gmbreviewpayload"
     },
     {
@@ -4268,7 +4268,7 @@
       "source_location": "L24",
       "_origin": "ast",
       "id": "socials_integrations_resolvegmbreviewpayloadoptions",
-      "community": 54,
+      "community": 16,
       "norm_label": "resolvegmbreviewpayloadoptions"
     },
     {
@@ -4278,7 +4278,7 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "socials_integrations_getgmbaccountlookupvalues",
-      "community": 54,
+      "community": 16,
       "norm_label": "getgmbaccountlookupvalues()"
     },
     {
@@ -4288,7 +4288,7 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "socials_integrations_mapreviewpayloadtostorage",
-      "community": 54,
+      "community": 16,
       "norm_label": "mapreviewpayloadtostorage()"
     },
     {
@@ -4298,7 +4298,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "socials_resolvedevicegmb",
-      "community": 16,
+      "community": 135,
       "norm_label": "resolvedevicegmb.ts"
     },
     {
@@ -4318,7 +4318,7 @@
       "source_location": "L20",
       "_origin": "ast",
       "id": "socials_resolvedevicegmb_resolvegmbcontextfordevice",
-      "community": 98,
+      "community": 76,
       "norm_label": "resolvegmbcontextfordevice()"
     },
     {
@@ -4378,7 +4378,7 @@
       "source_location": "L73",
       "_origin": "ast",
       "id": "socials_syncdevicegmb_locationcachekeyfromresourcename",
-      "community": 98,
+      "community": 135,
       "norm_label": "locationcachekeyfromresourcename()"
     },
     {
@@ -4408,7 +4408,7 @@
       "source_location": "L164",
       "_origin": "ast",
       "id": "socials_syncdevicegmb_syncgmblocationfordevice",
-      "community": 98,
+      "community": 135,
       "norm_label": "syncgmblocationfordevice()"
     },
     {
@@ -4418,7 +4418,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "socials_types",
-      "community": 47,
+      "community": 144,
       "norm_label": "types.ts"
     },
     {
@@ -4428,7 +4428,7 @@
       "source_location": "L3",
       "_origin": "ast",
       "id": "socials_types_pubsubpushverificationresult",
-      "community": 47,
+      "community": 144,
       "norm_label": "pubsubpushverificationresult"
     },
     {
@@ -4438,7 +4438,7 @@
       "source_location": "L9",
       "_origin": "ast",
       "id": "socials_types_gmbpubsubverifyconfig",
-      "community": 47,
+      "community": 144,
       "norm_label": "gmbpubsubverifyconfig"
     },
     {
@@ -4448,7 +4448,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "middleware_correlationid",
-      "community": 2,
+      "community": 130,
       "norm_label": "correlationid.ts"
     },
     {
@@ -4458,7 +4458,7 @@
       "source_location": "L4",
       "_origin": "ast",
       "id": "middleware_correlationid_correlationidmiddleware",
-      "community": 2,
+      "community": 130,
       "norm_label": "correlationidmiddleware()"
     },
     {
@@ -4468,7 +4468,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "middleware_csrratelimiter",
-      "community": 26,
+      "community": 147,
       "norm_label": "csrratelimiter.ts"
     },
     {
@@ -4478,7 +4478,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "middleware_csrratelimiter_ratelimitconfig",
-      "community": 26,
+      "community": 147,
       "norm_label": "ratelimitconfig"
     },
     {
@@ -4488,7 +4488,7 @@
       "source_location": "L36",
       "_origin": "ast",
       "id": "middleware_csrratelimiter_default_config",
-      "community": 26,
+      "community": 147,
       "norm_label": "default_config"
     },
     {
@@ -4498,7 +4498,7 @@
       "source_location": "L44",
       "_origin": "ast",
       "id": "middleware_csrratelimiter_localcounters",
-      "community": 26,
+      "community": 147,
       "norm_label": "localcounters"
     },
     {
@@ -4508,7 +4508,7 @@
       "source_location": "L46",
       "_origin": "ast",
       "id": "middleware_csrratelimiter_incrementlocalcounter",
-      "community": 26,
+      "community": 147,
       "norm_label": "incrementlocalcounter()"
     },
     {
@@ -4518,7 +4518,7 @@
       "source_location": "L64",
       "_origin": "ast",
       "id": "middleware_csrratelimiter_incrementcounter",
-      "community": 26,
+      "community": 147,
       "norm_label": "incrementcounter()"
     },
     {
@@ -4548,7 +4548,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "middleware_metrics",
-      "community": 2,
+      "community": 130,
       "norm_label": "metrics.ts"
     },
     {
@@ -4558,7 +4558,7 @@
       "source_location": "L4",
       "_origin": "ast",
       "id": "middleware_metrics_register",
-      "community": 2,
+      "community": 130,
       "norm_label": "register"
     },
     {
@@ -4568,7 +4568,7 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "middleware_metrics_httprequeststotal",
-      "community": 2,
+      "community": 130,
       "norm_label": "httprequeststotal"
     },
     {
@@ -4578,7 +4578,7 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "middleware_metrics_httprequestduration",
-      "community": 2,
+      "community": 130,
       "norm_label": "httprequestduration"
     },
     {
@@ -4588,7 +4588,7 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "middleware_metrics_metricsmiddleware",
-      "community": 2,
+      "community": 130,
       "norm_label": "metricsmiddleware()"
     },
     {
@@ -4598,7 +4598,7 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "middleware_metrics_metricshandler",
-      "community": 2,
+      "community": 130,
       "norm_label": "metricshandler()"
     },
     {
@@ -4848,7 +4848,7 @@
       "source_location": "L107",
       "_origin": "ast",
       "id": "models_campaign_campaign",
-      "community": 30,
+      "community": 24,
       "norm_label": "campaign"
     },
     {
@@ -4858,7 +4858,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "models_device",
-      "community": 52,
+      "community": 59,
       "norm_label": "device.ts"
     },
     {
@@ -4868,7 +4868,7 @@
       "source_location": "L8",
       "_origin": "ast",
       "id": "models_device_devicestatus",
-      "community": 52,
+      "community": 59,
       "norm_label": "devicestatus"
     },
     {
@@ -4878,7 +4878,7 @@
       "source_location": "L19",
       "_origin": "ast",
       "id": "models_device_deviceotastate",
-      "community": 44,
+      "community": 49,
       "norm_label": "deviceotastate"
     },
     {
@@ -4888,7 +4888,7 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "models_device_idevice",
-      "community": 18,
+      "community": 35,
       "norm_label": "idevice"
     },
     {
@@ -4898,7 +4898,7 @@
       "source_location": "L69",
       "_origin": "ast",
       "id": "models_device_deviceschema",
-      "community": 52,
+      "community": 59,
       "norm_label": "deviceschema"
     },
     {
@@ -4908,7 +4908,7 @@
       "source_location": "L172",
       "_origin": "ast",
       "id": "models_device_device",
-      "community": 52,
+      "community": 59,
       "norm_label": "device"
     },
     {
@@ -4918,7 +4918,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "models_deviceacl",
-      "community": 99,
+      "community": 24,
       "norm_label": "deviceacl.ts"
     },
     {
@@ -4928,7 +4928,7 @@
       "source_location": "L10",
       "_origin": "ast",
       "id": "models_deviceacl_devicetier",
-      "community": 99,
+      "community": 24,
       "norm_label": "devicetier"
     },
     {
@@ -4938,7 +4938,7 @@
       "source_location": "L16",
       "_origin": "ast",
       "id": "models_deviceacl_aclrule",
-      "community": 99,
+      "community": 24,
       "norm_label": "aclrule"
     },
     {
@@ -4948,7 +4948,7 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "models_deviceacl_ideviceacl",
-      "community": 99,
+      "community": 24,
       "norm_label": "ideviceacl"
     },
     {
@@ -4958,7 +4958,7 @@
       "source_location": "L33",
       "_origin": "ast",
       "id": "models_deviceacl_aclruleschema",
-      "community": 99,
+      "community": 24,
       "norm_label": "aclruleschema"
     },
     {
@@ -4968,7 +4968,7 @@
       "source_location": "L49",
       "_origin": "ast",
       "id": "models_deviceacl_deviceaclschema",
-      "community": 99,
+      "community": 24,
       "norm_label": "deviceaclschema"
     },
     {
@@ -4978,7 +4978,7 @@
       "source_location": "L86",
       "_origin": "ast",
       "id": "models_deviceacl_deviceacl",
-      "community": 99,
+      "community": 24,
       "norm_label": "deviceacl"
     },
     {
@@ -5048,7 +5048,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "models_firmwarerelease",
-      "community": 21,
+      "community": 59,
       "norm_label": "firmwarerelease.ts"
     },
     {
@@ -5058,7 +5058,7 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "models_firmwarerelease_firmwarereleasestatus",
-      "community": 21,
+      "community": 59,
       "norm_label": "firmwarereleasestatus"
     },
     {
@@ -5068,7 +5068,7 @@
       "source_location": "L13",
       "_origin": "ast",
       "id": "models_firmwarerelease_firmwarerolloutstrategy",
-      "community": 21,
+      "community": 59,
       "norm_label": "firmwarerolloutstrategy"
     },
     {
@@ -5078,7 +5078,7 @@
       "source_location": "L19",
       "_origin": "ast",
       "id": "models_firmwarerelease_ifirmwarerollout",
-      "community": 21,
+      "community": 59,
       "norm_label": "ifirmwarerollout"
     },
     {
@@ -5098,7 +5098,7 @@
       "source_location": "L45",
       "_origin": "ast",
       "id": "models_firmwarerelease_firmwarerolloutschema",
-      "community": 21,
+      "community": 59,
       "norm_label": "firmwarerolloutschema"
     },
     {
@@ -5108,7 +5108,7 @@
       "source_location": "L61",
       "_origin": "ast",
       "id": "models_firmwarerelease_firmwarereleaseschema",
-      "community": 21,
+      "community": 59,
       "norm_label": "firmwarereleaseschema"
     },
     {
@@ -5118,7 +5118,7 @@
       "source_location": "L89",
       "_origin": "ast",
       "id": "models_firmwarerelease_firmwarerelease",
-      "community": 21,
+      "community": 59,
       "norm_label": "firmwarerelease"
     },
     {
@@ -5128,7 +5128,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "models_googlebusinesslocation",
-      "community": 16,
+      "community": 135,
       "norm_label": "googlebusinesslocation.ts"
     },
     {
@@ -5138,7 +5138,7 @@
       "source_location": "L3",
       "_origin": "ast",
       "id": "models_googlebusinesslocation_igooglebusinesslocation",
-      "community": 16,
+      "community": 135,
       "norm_label": "igooglebusinesslocation"
     },
     {
@@ -5148,7 +5148,7 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "models_googlebusinesslocation_googlebusinesslocationschema",
-      "community": 16,
+      "community": 135,
       "norm_label": "googlebusinesslocationschema"
     },
     {
@@ -5158,7 +5158,7 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "models_googlebusinesslocation_googlebusinesslocation",
-      "community": 16,
+      "community": 135,
       "norm_label": "googlebusinesslocation"
     },
     {
@@ -5168,7 +5168,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "models_googlebusinessprofile",
-      "community": 16,
+      "community": 135,
       "norm_label": "googlebusinessprofile.ts"
     },
     {
@@ -5178,7 +5178,7 @@
       "source_location": "L3",
       "_origin": "ast",
       "id": "models_googlebusinessprofile_igooglebusinessprofile",
-      "community": 16,
+      "community": 135,
       "norm_label": "igooglebusinessprofile"
     },
     {
@@ -5188,7 +5188,7 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "models_googlebusinessprofile_googlebusinessprofileschema",
-      "community": 16,
+      "community": 135,
       "norm_label": "googlebusinessprofileschema"
     },
     {
@@ -5198,7 +5198,7 @@
       "source_location": "L20",
       "_origin": "ast",
       "id": "models_googlebusinessprofile_googlebusinessprofile",
-      "community": 16,
+      "community": 135,
       "norm_label": "googlebusinessprofile"
     },
     {
@@ -5248,7 +5248,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "models_redemption",
-      "community": 16,
+      "community": 24,
       "norm_label": "redemption.ts"
     },
     {
@@ -5258,7 +5258,7 @@
       "source_location": "L4",
       "_origin": "ast",
       "id": "models_redemption_iredemption",
-      "community": 16,
+      "community": 24,
       "norm_label": "iredemption"
     },
     {
@@ -5268,7 +5268,7 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "models_redemption_redemptionschema",
-      "community": 16,
+      "community": 24,
       "norm_label": "redemptionschema"
     },
     {
@@ -5278,7 +5278,7 @@
       "source_location": "L30",
       "_origin": "ast",
       "id": "models_redemption_redemption",
-      "community": 16,
+      "community": 24,
       "norm_label": "redemption"
     },
     {
@@ -5288,7 +5288,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "models_shopifyprofile",
-      "community": 16,
+      "community": 24,
       "norm_label": "shopifyprofile.ts"
     },
     {
@@ -5298,7 +5298,7 @@
       "source_location": "L3",
       "_origin": "ast",
       "id": "models_shopifyprofile_ishopifyprofile",
-      "community": 16,
+      "community": 24,
       "norm_label": "ishopifyprofile"
     },
     {
@@ -5308,7 +5308,7 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "models_shopifyprofile_shopifyprofileschema",
-      "community": 16,
+      "community": 24,
       "norm_label": "shopifyprofileschema"
     },
     {
@@ -5318,7 +5318,7 @@
       "source_location": "L20",
       "_origin": "ast",
       "id": "models_shopifyprofile_shopifyprofile",
-      "community": 16,
+      "community": 24,
       "norm_label": "shopifyprofile"
     },
     {
@@ -5328,7 +5328,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "models_social",
-      "community": 16,
+      "community": 24,
       "norm_label": "social.ts"
     },
     {
@@ -5348,7 +5348,7 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "models_social_isocial",
-      "community": 16,
+      "community": 24,
       "norm_label": "isocial"
     },
     {
@@ -5358,7 +5358,7 @@
       "source_location": "L37",
       "_origin": "ast",
       "id": "models_social_socialschema",
-      "community": 16,
+      "community": 24,
       "norm_label": "socialschema"
     },
     {
@@ -5368,7 +5368,7 @@
       "source_location": "L106",
       "_origin": "ast",
       "id": "models_social_social",
-      "community": 16,
+      "community": 135,
       "norm_label": "social"
     },
     {
@@ -5378,7 +5378,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "models_squareprofile",
-      "community": 16,
+      "community": 143,
       "norm_label": "squareprofile.ts"
     },
     {
@@ -5388,7 +5388,7 @@
       "source_location": "L3",
       "_origin": "ast",
       "id": "models_squareprofile_isquareprofile",
-      "community": 16,
+      "community": 143,
       "norm_label": "isquareprofile"
     },
     {
@@ -5398,7 +5398,7 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "models_squareprofile_squareprofileschema",
-      "community": 16,
+      "community": 143,
       "norm_label": "squareprofileschema"
     },
     {
@@ -5408,7 +5408,7 @@
       "source_location": "L20",
       "_origin": "ast",
       "id": "models_squareprofile_squareprofile",
-      "community": 16,
+      "community": 143,
       "norm_label": "squareprofile"
     },
     {
@@ -5458,7 +5458,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "models_index",
-      "community": 16,
+      "community": 24,
       "norm_label": "index.ts"
     },
     {
@@ -5608,7 +5608,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "routes_otaadminroutes",
-      "community": 21,
+      "community": 19,
       "norm_label": "otaadminroutes.ts"
     },
     {
@@ -5618,7 +5618,7 @@
       "source_location": "L31",
       "_origin": "ast",
       "id": "routes_otaadminroutes_otaadminroutesdeps",
-      "community": 59,
+      "community": 19,
       "norm_label": "otaadminroutesdeps"
     },
     {
@@ -5628,7 +5628,7 @@
       "source_location": "L40",
       "_origin": "ast",
       "id": "routes_otaadminroutes_requireadminauth",
-      "community": 21,
+      "community": 19,
       "norm_label": "requireadminauth()"
     },
     {
@@ -5668,7 +5668,7 @@
       "source_location": "L29",
       "_origin": "ast",
       "id": "routes_otaroutes_createotaroutes",
-      "community": 59,
+      "community": 52,
       "norm_label": "createotaroutes()"
     },
     {
@@ -5838,7 +5838,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "servers_httpserver",
-      "community": 2,
+      "community": 130,
       "norm_label": "httpserver.ts"
     },
     {
@@ -5848,7 +5848,7 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "servers_httpserver_httpconfig",
-      "community": 2,
+      "community": 130,
       "norm_label": "httpconfig"
     },
     {
@@ -5938,7 +5938,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "servers_mqttclient",
-      "community": 98,
+      "community": 58,
       "norm_label": "mqttclient.ts"
     },
     {
@@ -5948,7 +5948,7 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "servers_mqttclient_mqttconfig",
-      "community": 98,
+      "community": 58,
       "norm_label": "mqttconfig"
     },
     {
@@ -5958,7 +5958,7 @@
       "source_location": "L41",
       "_origin": "ast",
       "id": "servers_mqttclient_mqttmessage",
-      "community": 98,
+      "community": 58,
       "norm_label": "mqttmessage"
     },
     {
@@ -5968,7 +5968,7 @@
       "source_location": "L48",
       "_origin": "ast",
       "id": "servers_mqttclient_publishmetadata",
-      "community": 98,
+      "community": 58,
       "norm_label": "publishmetadata"
     },
     {
@@ -5978,7 +5978,7 @@
       "source_location": "L58",
       "_origin": "ast",
       "id": "servers_mqttclient_pendingack",
-      "community": 98,
+      "community": 58,
       "norm_label": "pendingack"
     },
     {
@@ -5988,7 +5988,7 @@
       "source_location": "L67",
       "_origin": "ast",
       "id": "servers_mqttclient_messagehandler",
-      "community": 98,
+      "community": 58,
       "norm_label": "messagehandler"
     },
     {
@@ -6328,7 +6328,7 @@
       "source_location": "L333",
       "_origin": "ast",
       "id": "services_auditservice_createauditservice",
-      "community": 12,
+      "community": 2,
       "norm_label": "createauditservice()"
     },
     {
@@ -6348,7 +6348,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "services_authservice",
-      "community": 2,
+      "community": 36,
       "norm_label": "authservice.ts"
     },
     {
@@ -6358,7 +6358,7 @@
       "source_location": "L10",
       "_origin": "ast",
       "id": "services_authservice_authtokenpayload",
-      "community": 2,
+      "community": 36,
       "norm_label": "authtokenpayload"
     },
     {
@@ -6368,7 +6368,7 @@
       "source_location": "L21",
       "_origin": "ast",
       "id": "services_authservice_authtokenverificationresult",
-      "community": 2,
+      "community": 36,
       "norm_label": "authtokenverificationresult"
     },
     {
@@ -6758,7 +6758,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "services_campaignschedule",
-      "community": 24,
+      "community": 133,
       "norm_label": "campaignschedule.ts"
     },
     {
@@ -6768,7 +6768,7 @@
       "source_location": "L4",
       "_origin": "ast",
       "id": "services_campaignschedule_resolvetimezone",
-      "community": 24,
+      "community": 133,
       "norm_label": "resolvetimezone()"
     },
     {
@@ -6778,7 +6778,7 @@
       "source_location": "L13",
       "_origin": "ast",
       "id": "services_campaignschedule_iswithindatewindow",
-      "community": 24,
+      "community": 133,
       "norm_label": "iswithindatewindow()"
     },
     {
@@ -6788,7 +6788,7 @@
       "source_location": "L19",
       "_origin": "ast",
       "id": "services_campaignschedule_localtimehhmm",
-      "community": 24,
+      "community": 133,
       "norm_label": "localtimehhmm()"
     },
     {
@@ -6798,7 +6798,7 @@
       "source_location": "L35",
       "_origin": "ast",
       "id": "services_campaignschedule_localweekday",
-      "community": 24,
+      "community": 133,
       "norm_label": "localweekday()"
     },
     {
@@ -6808,7 +6808,7 @@
       "source_location": "L45",
       "_origin": "ast",
       "id": "services_campaignschedule_istimewindowactive",
-      "community": 24,
+      "community": 133,
       "norm_label": "istimewindowactive()"
     },
     {
@@ -6818,7 +6818,7 @@
       "source_location": "L61",
       "_origin": "ast",
       "id": "services_campaignschedule_isdayofweekactive",
-      "community": 24,
+      "community": 133,
       "norm_label": "isdayofweekactive()"
     },
     {
@@ -6828,7 +6828,7 @@
       "source_location": "L72",
       "_origin": "ast",
       "id": "services_campaignschedule_iscampaignactive",
-      "community": 24,
+      "community": 133,
       "norm_label": "iscampaignactive()"
     },
     {
@@ -6878,7 +6878,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "services_connectrefreshcoordinator",
-      "community": 143,
+      "community": 76,
       "norm_label": "connectrefreshcoordinator.ts"
     },
     {
@@ -6888,7 +6888,7 @@
       "source_location": "L16",
       "_origin": "ast",
       "id": "services_connectrefreshcoordinator_connectrefreshcoordinatordeps",
-      "community": 143,
+      "community": 76,
       "norm_label": "connectrefreshcoordinatordeps"
     },
     {
@@ -6898,7 +6898,7 @@
       "source_location": "L25",
       "_origin": "ast",
       "id": "services_connectrefreshcoordinator_connectrefreshcoordinator",
-      "community": 143,
+      "community": 76,
       "norm_label": "connectrefreshcoordinator"
     },
     {
@@ -6908,7 +6908,7 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "services_connectrefreshcoordinator_connectrefreshcoordinator_constructor",
-      "community": 143,
+      "community": 76,
       "norm_label": ".constructor()"
     },
     {
@@ -6918,7 +6918,7 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "services_connectrefreshcoordinator_connectrefreshcoordinator_refresh",
-      "community": 143,
+      "community": 76,
       "norm_label": ".refresh()"
     },
     {
@@ -6928,7 +6928,7 @@
       "source_location": "L117",
       "_origin": "ast",
       "id": "services_connectrefreshcoordinator_connectrefreshcoordinator_refreshinstagram",
-      "community": 143,
+      "community": 76,
       "norm_label": ".refreshinstagram()"
     },
     {
@@ -6938,7 +6938,7 @@
       "source_location": "L134",
       "_origin": "ast",
       "id": "services_connectrefreshcoordinator_connectrefreshcoordinator_isdebounced",
-      "community": 143,
+      "community": 76,
       "norm_label": ".isdebounced()"
     },
     {
@@ -7008,7 +7008,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "services_deviceservice",
-      "community": 2,
+      "community": 76,
       "norm_label": "deviceservice.ts"
     },
     {
@@ -7018,7 +7018,7 @@
       "source_location": "L21",
       "_origin": "ast",
       "id": "services_deviceservice_activedevice",
-      "community": 2,
+      "community": 76,
       "norm_label": "activedevice"
     },
     {
@@ -7128,7 +7128,7 @@
       "source_location": "L160",
       "_origin": "ast",
       "id": "services_deviceservice_devicedata",
-      "community": 2,
+      "community": 76,
       "norm_label": "devicedata"
     },
     {
@@ -7168,7 +7168,7 @@
       "source_location": "L193",
       "_origin": "ast",
       "id": "services_deviceservice_deviceservice_registerdevice",
-      "community": 18,
+      "community": 35,
       "norm_label": ".registerdevice()"
     },
     {
@@ -7288,7 +7288,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "services_firmwarestorageservice_ifirmwarestorage",
-      "community": 59,
+      "community": 19,
       "norm_label": "ifirmwarestorage"
     },
     {
@@ -7448,7 +7448,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "services_gmbconnectpull",
-      "community": 98,
+      "community": 76,
       "norm_label": "gmbconnectpull.ts"
     },
     {
@@ -7458,7 +7458,7 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "services_gmbconnectpull_gmbconnectpull",
-      "community": 98,
+      "community": 76,
       "norm_label": "gmbconnectpull"
     },
     {
@@ -7478,7 +7478,7 @@
       "source_location": "L19",
       "_origin": "ast",
       "id": "services_gmbconnectpull_gmbconnectpull_publishfordevice",
-      "community": 98,
+      "community": 76,
       "norm_label": ".publishfordevice()"
     },
     {
@@ -7588,7 +7588,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "services_influxdiskqueue",
-      "community": 1,
+      "community": 124,
       "norm_label": "influxdiskqueue.ts"
     },
     {
@@ -7598,7 +7598,7 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "services_influxdiskqueue_influxdiskqueueoptions",
-      "community": 1,
+      "community": 124,
       "norm_label": "influxdiskqueueoptions"
     },
     {
@@ -7608,7 +7608,7 @@
       "source_location": "L21",
       "_origin": "ast",
       "id": "services_influxdiskqueue_influxdiskqueue",
-      "community": 1,
+      "community": 124,
       "norm_label": "influxdiskqueue"
     },
     {
@@ -7618,7 +7618,7 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "services_influxdiskqueue_influxdiskqueue_constructor",
-      "community": 1,
+      "community": 124,
       "norm_label": ".constructor()"
     },
     {
@@ -7628,7 +7628,7 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "services_influxdiskqueue_influxdiskqueue_start",
-      "community": 1,
+      "community": 124,
       "norm_label": ".start()"
     },
     {
@@ -7638,7 +7638,7 @@
       "source_location": "L47",
       "_origin": "ast",
       "id": "services_influxdiskqueue_influxdiskqueue_stoptimer",
-      "community": 1,
+      "community": 124,
       "norm_label": ".stoptimer()"
     },
     {
@@ -7648,7 +7648,7 @@
       "source_location": "L53",
       "_origin": "ast",
       "id": "services_influxdiskqueue_influxdiskqueue_enqueue",
-      "community": 1,
+      "community": 124,
       "norm_label": ".enqueue()"
     },
     {
@@ -7658,7 +7658,7 @@
       "source_location": "L83",
       "_origin": "ast",
       "id": "services_influxdiskqueue_influxdiskqueue_waitappends",
-      "community": 1,
+      "community": 124,
       "norm_label": ".waitappends()"
     },
     {
@@ -7668,7 +7668,7 @@
       "source_location": "L87",
       "_origin": "ast",
       "id": "services_influxdiskqueue_influxdiskqueue_flushnow",
-      "community": 1,
+      "community": 124,
       "norm_label": ".flushnow()"
     },
     {
@@ -7678,7 +7678,7 @@
       "source_location": "L91",
       "_origin": "ast",
       "id": "services_influxdiskqueue_influxdiskqueue_shutdown",
-      "community": 1,
+      "community": 124,
       "norm_label": ".shutdown()"
     },
     {
@@ -7688,7 +7688,7 @@
       "source_location": "L107",
       "_origin": "ast",
       "id": "services_influxdiskqueue_influxdiskqueue_tick",
-      "community": 1,
+      "community": 124,
       "norm_label": ".tick()"
     },
     {
@@ -7698,7 +7698,7 @@
       "source_location": "L118",
       "_origin": "ast",
       "id": "services_influxdiskqueue_influxdiskqueue_pickdraintarget",
-      "community": 1,
+      "community": 124,
       "norm_label": ".pickdraintarget()"
     },
     {
@@ -7708,7 +7708,7 @@
       "source_location": "L138",
       "_origin": "ast",
       "id": "services_influxdiskqueue_influxdiskqueue_readalllines",
-      "community": 1,
+      "community": 124,
       "norm_label": ".readalllines()"
     },
     {
@@ -7718,7 +7718,7 @@
       "source_location": "L162",
       "_origin": "ast",
       "id": "services_influxdiskqueue_influxdiskqueue_drainfile",
-      "community": 1,
+      "community": 124,
       "norm_label": ".drainfile()"
     },
     {
@@ -7728,7 +7728,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "services_influxservice",
-      "community": 1,
+      "community": 99,
       "norm_label": "influxservice.ts"
     },
     {
@@ -7738,7 +7738,7 @@
       "source_location": "L21",
       "_origin": "ast",
       "id": "services_influxservice_devicemetrics",
-      "community": 1,
+      "community": 99,
       "norm_label": "devicemetrics"
     },
     {
@@ -7748,7 +7748,7 @@
       "source_location": "L33",
       "_origin": "ast",
       "id": "services_influxservice_socialmetrics",
-      "community": 1,
+      "community": 99,
       "norm_label": "socialmetrics"
     },
     {
@@ -7758,7 +7758,7 @@
       "source_location": "L46",
       "_origin": "ast",
       "id": "services_influxservice_systemmetrics",
-      "community": 1,
+      "community": 99,
       "norm_label": "systemmetrics"
     },
     {
@@ -7768,7 +7768,7 @@
       "source_location": "L56",
       "_origin": "ast",
       "id": "services_influxservice_instagramfetchauditinfluxinput",
-      "community": 1,
+      "community": 99,
       "norm_label": "instagramfetchauditinfluxinput"
     },
     {
@@ -7778,7 +7778,7 @@
       "source_location": "L80",
       "_origin": "ast",
       "id": "services_influxservice_instagrammilestonecrossedinfluxinput",
-      "community": 1,
+      "community": 99,
       "norm_label": "instagrammilestonecrossedinfluxinput"
     },
     {
@@ -7788,7 +7788,7 @@
       "source_location": "L91",
       "_origin": "ast",
       "id": "services_influxservice_instagrammqttdeliveryinfluxinput",
-      "community": 1,
+      "community": 99,
       "norm_label": "instagrammqttdeliveryinfluxinput"
     },
     {
@@ -7798,7 +7798,7 @@
       "source_location": "L103",
       "_origin": "ast",
       "id": "services_influxservice_instagramcircuiteventinfluxinput",
-      "community": 1,
+      "community": 99,
       "norm_label": "instagramcircuiteventinfluxinput"
     },
     {
@@ -7808,7 +7808,7 @@
       "source_location": "L110",
       "_origin": "ast",
       "id": "services_influxservice_webhookplatform",
-      "community": 1,
+      "community": 99,
       "norm_label": "webhookplatform"
     },
     {
@@ -7818,7 +7818,7 @@
       "source_location": "L112",
       "_origin": "ast",
       "id": "services_influxservice_webhookreceivedinfluxinput",
-      "community": 1,
+      "community": 99,
       "norm_label": "webhookreceivedinfluxinput"
     },
     {
@@ -7828,7 +7828,7 @@
       "source_location": "L120",
       "_origin": "ast",
       "id": "services_influxservice_webhookdeviceresolutioninfluxinput",
-      "community": 1,
+      "community": 99,
       "norm_label": "webhookdeviceresolutioninfluxinput"
     },
     {
@@ -7838,7 +7838,7 @@
       "source_location": "L129",
       "_origin": "ast",
       "id": "services_influxservice_webhookmqttdeliveryinfluxinput",
-      "community": 1,
+      "community": 99,
       "norm_label": "webhookmqttdeliveryinfluxinput"
     },
     {
@@ -7848,7 +7848,7 @@
       "source_location": "L141",
       "_origin": "ast",
       "id": "services_influxservice_milestonecrossedinfluxinput",
-      "community": 1,
+      "community": 99,
       "norm_label": "milestonecrossedinfluxinput"
     },
     {
@@ -7858,7 +7858,7 @@
       "source_location": "L154",
       "_origin": "ast",
       "id": "services_influxservice_buckettarget",
-      "community": 1,
+      "community": 99,
       "norm_label": "buckettarget"
     },
     {
@@ -7888,7 +7888,7 @@
       "source_location": "L174",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_constructor",
-      "community": 1,
+      "community": 99,
       "norm_label": ".constructor()"
     },
     {
@@ -8218,7 +8218,7 @@
       "source_location": "L1091",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_healthcheck",
-      "community": 4,
+      "community": 148,
       "norm_label": ".healthcheck()"
     },
     {
@@ -8228,7 +8228,7 @@
       "source_location": "L1332",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_close",
-      "community": 1,
+      "community": 99,
       "norm_label": ".close()"
     },
     {
@@ -8238,7 +8238,7 @@
       "source_location": "L1378",
       "_origin": "ast",
       "id": "services_influxservice_createinfluxservice",
-      "community": 1,
+      "community": 99,
       "norm_label": "createinfluxservice()"
     },
     {
@@ -8258,7 +8258,7 @@
       "source_location": "L1391",
       "_origin": "ast",
       "id": "services_influxservice_resetinfluxservice",
-      "community": 1,
+      "community": 99,
       "norm_label": "resetinfluxservice()"
     },
     {
@@ -8275,7 +8275,7 @@
       "label": "igLocalFollowersCache",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L33",
+      "source_location": "L34",
       "_origin": "ast",
       "id": "services_instagramservice_iglocalfollowerscache",
       "community": 4,
@@ -8285,7 +8285,7 @@
       "label": "igLocalLastPublishMs",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L34",
+      "source_location": "L35",
       "_origin": "ast",
       "id": "services_instagramservice_iglocallastpublishms",
       "community": 4,
@@ -8295,7 +8295,7 @@
       "label": "getCircuitBreaker",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L36",
+      "source_location": "L37",
       "_origin": "ast",
       "id": "services_instagramservice_getcircuitbreaker",
       "community": 87,
@@ -8305,7 +8305,7 @@
       "label": "counters",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L54",
+      "source_location": "L55",
       "_origin": "ast",
       "id": "services_instagramservice_counters",
       "community": 4,
@@ -8315,7 +8315,7 @@
       "label": "IgPollCounterKey",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L74",
+      "source_location": "L75",
       "_origin": "ast",
       "id": "services_instagramservice_igpollcounterkey",
       "community": 4,
@@ -8325,7 +8325,7 @@
       "label": "igPollMetricsInc()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L76",
+      "source_location": "L77",
       "_origin": "ast",
       "id": "services_instagramservice_igpollmetricsinc",
       "community": 20,
@@ -8335,7 +8335,7 @@
       "label": "correlationStartMs",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L81",
+      "source_location": "L82",
       "_origin": "ast",
       "id": "services_instagramservice_correlationstartms",
       "community": 4,
@@ -8345,7 +8345,7 @@
       "label": "registerAttentionCorrelationStart()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L84",
+      "source_location": "L85",
       "_origin": "ast",
       "id": "services_instagramservice_registerattentioncorrelationstart",
       "community": 4,
@@ -8355,7 +8355,7 @@
       "label": "abandonAttentionCorrelation()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L97",
+      "source_location": "L98",
       "_origin": "ast",
       "id": "services_instagramservice_abandonattentioncorrelation",
       "community": 87,
@@ -8365,7 +8365,7 @@
       "label": "latencyRing",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L104",
+      "source_location": "L105",
       "_origin": "ast",
       "id": "services_instagramservice_latencyring",
       "community": 4,
@@ -8375,7 +8375,7 @@
       "label": "recordLatencySample()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L106",
+      "source_location": "L107",
       "_origin": "ast",
       "id": "services_instagramservice_recordlatencysample",
       "community": 87,
@@ -8385,7 +8385,7 @@
       "label": "percentile()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L113",
+      "source_location": "L114",
       "_origin": "ast",
       "id": "services_instagramservice_percentile",
       "community": 73,
@@ -8395,7 +8395,7 @@
       "label": "AttentionE2eLatencySnapshot",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L119",
+      "source_location": "L120",
       "_origin": "ast",
       "id": "services_instagramservice_attentione2elatencysnapshot",
       "community": 4,
@@ -8405,7 +8405,7 @@
       "label": "buildLatencySnapshot()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L128",
+      "source_location": "L129",
       "_origin": "ast",
       "id": "services_instagramservice_buildlatencysnapshot",
       "community": 73,
@@ -8415,7 +8415,7 @@
       "label": "observeAttentionFetchLatencyMs()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L149",
+      "source_location": "L150",
       "_origin": "ast",
       "id": "services_instagramservice_observeattentionfetchlatencyms",
       "community": 87,
@@ -8425,7 +8425,7 @@
       "label": "getInstagramPollingMetricsSnapshot()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L159",
+      "source_location": "L160",
       "_origin": "ast",
       "id": "services_instagramservice_getinstagrampollingmetricssnapshot",
       "community": 73,
@@ -8435,7 +8435,7 @@
       "label": "REDIS_KEYS",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L170",
+      "source_location": "L171",
       "_origin": "ast",
       "id": "services_instagramservice_redis_keys",
       "community": 4,
@@ -8445,7 +8445,7 @@
       "label": "atomicPriorityReadAndPruneLua",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L181",
+      "source_location": "L182",
       "_origin": "ast",
       "id": "services_instagramservice_atomicpriorityreadandprunelua",
       "community": 4,
@@ -8455,7 +8455,7 @@
       "label": "atomicBackoffCheckAndRecordLua",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L187",
+      "source_location": "L188",
       "_origin": "ast",
       "id": "services_instagramservice_atomicbackoffcheckandrecordlua",
       "community": 4,
@@ -8465,7 +8465,7 @@
       "label": "atomicFetchBudgetTryLua",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L207",
+      "source_location": "L208",
       "_origin": "ast",
       "id": "services_instagramservice_atomicfetchbudgettrylua",
       "community": 4,
@@ -8475,7 +8475,7 @@
       "label": "evalAtomicPriorityReadAndPrune()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L223",
+      "source_location": "L224",
       "_origin": "ast",
       "id": "services_instagramservice_evalatomicpriorityreadandprune",
       "community": 4,
@@ -8485,7 +8485,7 @@
       "label": "evalAtomicBackoffCheckAndRecord()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L231",
+      "source_location": "L232",
       "_origin": "ast",
       "id": "services_instagramservice_evalatomicbackoffcheckandrecord",
       "community": 4,
@@ -8495,7 +8495,7 @@
       "label": "evalAtomicFetchBudgetTry()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L246",
+      "source_location": "L247",
       "_origin": "ast",
       "id": "services_instagramservice_evalatomicfetchbudgettry",
       "community": 4,
@@ -8505,7 +8505,7 @@
       "label": "InstagramPollingScriptSha",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L255",
+      "source_location": "L256",
       "_origin": "ast",
       "id": "services_instagramservice_instagrampollingscriptsha",
       "community": 4,
@@ -8515,7 +8515,7 @@
       "label": "isNoScript()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L263",
+      "source_location": "L264",
       "_origin": "ast",
       "id": "services_instagramservice_isnoscript",
       "community": 4,
@@ -8525,7 +8525,7 @@
       "label": "loadInstagramPollingScripts()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L268",
+      "source_location": "L269",
       "_origin": "ast",
       "id": "services_instagramservice_loadinstagrampollingscripts",
       "community": 4,
@@ -8535,7 +8535,7 @@
       "label": "areInstagramPollingScriptsLoaded()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L287",
+      "source_location": "L288",
       "_origin": "ast",
       "id": "services_instagramservice_areinstagrampollingscriptsloaded",
       "community": 73,
@@ -8545,7 +8545,7 @@
       "label": "evalShaWithFallback()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L291",
+      "source_location": "L292",
       "_origin": "ast",
       "id": "services_instagramservice_evalshawithfallback",
       "community": 4,
@@ -8555,7 +8555,7 @@
       "label": "evalAtomicPriorityReadAndPruneEvalSha()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L307",
+      "source_location": "L308",
       "_origin": "ast",
       "id": "services_instagramservice_evalatomicpriorityreadandpruneevalsha",
       "community": 4,
@@ -8565,7 +8565,7 @@
       "label": "evalAtomicBackoffCheckAndRecordEvalSha()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L312",
+      "source_location": "L313",
       "_origin": "ast",
       "id": "services_instagramservice_evalatomicbackoffcheckandrecordevalsha",
       "community": 20,
@@ -8575,7 +8575,7 @@
       "label": "evalAtomicFetchBudgetTryEvalSha()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L329",
+      "source_location": "L330",
       "_origin": "ast",
       "id": "services_instagramservice_evalatomicfetchbudgettryevalsha",
       "community": 4,
@@ -8585,7 +8585,7 @@
       "label": "resetInstagramPollingScriptsCache()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L334",
+      "source_location": "L335",
       "_origin": "ast",
       "id": "services_instagramservice_resetinstagrampollingscriptscache",
       "community": 4,
@@ -8595,7 +8595,7 @@
       "label": "getInstagramPollingScriptSha()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L338",
+      "source_location": "L339",
       "_origin": "ast",
       "id": "services_instagramservice_getinstagrampollingscriptsha",
       "community": 4,
@@ -8605,7 +8605,7 @@
       "label": "InstagramCircuitBreaker",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L346",
+      "source_location": "L347",
       "_origin": "ast",
       "id": "services_instagramservice_instagramcircuitbreaker",
       "community": 78,
@@ -8615,7 +8615,7 @@
       "label": ".constructor()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L354",
+      "source_location": "L355",
       "_origin": "ast",
       "id": "services_instagramservice_instagramcircuitbreaker_constructor",
       "community": 78,
@@ -8625,7 +8625,7 @@
       "label": ".emitCircuitEvent()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L358",
+      "source_location": "L359",
       "_origin": "ast",
       "id": "services_instagramservice_instagramcircuitbreaker_emitcircuitevent",
       "community": 78,
@@ -8635,7 +8635,7 @@
       "label": ".maybeEmitClosed()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L384",
+      "source_location": "L385",
       "_origin": "ast",
       "id": "services_instagramservice_instagramcircuitbreaker_maybeemitclosed",
       "community": 78,
@@ -8645,17 +8645,17 @@
       "label": ".isOpen()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L393",
+      "source_location": "L394",
       "_origin": "ast",
       "id": "services_instagramservice_instagramcircuitbreaker_isopen",
-      "community": 78,
+      "community": 20,
       "norm_label": ".isopen()"
     },
     {
       "label": ".open()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L425",
+      "source_location": "L426",
       "_origin": "ast",
       "id": "services_instagramservice_instagramcircuitbreaker_open",
       "community": 78,
@@ -8665,7 +8665,7 @@
       "label": ".reset()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L440",
+      "source_location": "L441",
       "_origin": "ast",
       "id": "services_instagramservice_instagramcircuitbreaker_reset",
       "community": 78,
@@ -8675,7 +8675,7 @@
       "label": ".getLocalState()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L450",
+      "source_location": "L451",
       "_origin": "ast",
       "id": "services_instagramservice_instagramcircuitbreaker_getlocalstate",
       "community": 78,
@@ -8685,7 +8685,7 @@
       "label": "InstagramFetchTrigger",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L459",
+      "source_location": "L460",
       "_origin": "ast",
       "id": "services_instagramservice_instagramfetchtrigger",
       "community": 4,
@@ -8695,7 +8695,7 @@
       "label": "InstagramAccountInfo",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L461",
+      "source_location": "L462",
       "_origin": "ast",
       "id": "services_instagramservice_instagramaccountinfo",
       "community": 4,
@@ -8705,7 +8705,7 @@
       "label": "InstagramMetrics",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L467",
+      "source_location": "L468",
       "_origin": "ast",
       "id": "services_instagramservice_instagrammetrics",
       "community": 4,
@@ -8715,7 +8715,7 @@
       "label": "InstagramFetchResult",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L480",
+      "source_location": "L481",
       "_origin": "ast",
       "id": "services_instagramservice_instagramfetchresult",
       "community": 4,
@@ -8725,27 +8725,27 @@
       "label": "sleep()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L496",
+      "source_location": "L497",
       "_origin": "ast",
       "id": "services_instagramservice_sleep",
-      "community": 4,
+      "community": 148,
       "norm_label": "sleep()"
     },
     {
       "label": "fetchInstagramMetrics()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L498",
+      "source_location": "L499",
       "_origin": "ast",
       "id": "services_instagramservice_fetchinstagrammetrics",
-      "community": 4,
+      "community": 50,
       "norm_label": "fetchinstagrammetrics()"
     },
     {
       "label": "ScreenDeliveryFetchShape",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L623",
+      "source_location": "L624",
       "_origin": "ast",
       "id": "services_instagramservice_screendeliveryfetchshape",
       "community": 4,
@@ -8755,7 +8755,7 @@
       "label": "MILESTONE_THRESHOLDS",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L634",
+      "source_location": "L635",
       "_origin": "ast",
       "id": "services_instagramservice_milestone_thresholds",
       "community": 4,
@@ -8765,37 +8765,27 @@
       "label": "getCrossedMilestones()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L636",
+      "source_location": "L637",
       "_origin": "ast",
       "id": "services_instagramservice_getcrossedmilestones",
       "community": 87,
       "norm_label": "getcrossedmilestones()"
     },
     {
-      "label": "getNextMilestone()",
-      "file_type": "code",
-      "source_file": "src/services/instagramService.ts",
-      "source_location": "L641",
-      "_origin": "ast",
-      "id": "services_instagramservice_getnextmilestone",
-      "community": 4,
-      "norm_label": "getnextmilestone()"
-    },
-    {
       "label": "formatInstagramScreenMqttPayload()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L645",
+      "source_location": "L642",
       "_origin": "ast",
       "id": "services_instagramservice_formatinstagramscreenmqttpayload",
-      "community": 76,
+      "community": 50,
       "norm_label": "formatinstagramscreenmqttpayload()"
     },
     {
       "label": "publishInstagramScreenIfChanged()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L680",
+      "source_location": "L678",
       "_origin": "ast",
       "id": "services_instagramservice_publishinstagramscreenifchanged",
       "community": 76,
@@ -8805,7 +8795,7 @@
       "label": "NormalizedDeviceFetchResult",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L830",
+      "source_location": "L828",
       "_origin": "ast",
       "id": "services_instagramservice_normalizeddevicefetchresult",
       "community": 4,
@@ -8815,7 +8805,7 @@
       "label": "readCachedFollowers()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L850",
+      "source_location": "L848",
       "_origin": "ast",
       "id": "services_instagramservice_readcachedfollowers",
       "community": 87,
@@ -8825,7 +8815,7 @@
       "label": "maybeOpenCircuitFromOutcome()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L863",
+      "source_location": "L861",
       "_origin": "ast",
       "id": "services_instagramservice_maybeopencircuitfromoutcome",
       "community": 87,
@@ -8835,7 +8825,7 @@
       "label": "applyInstagramServerlessDeviceOutcome()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L887",
+      "source_location": "L885",
       "_origin": "ast",
       "id": "services_instagramservice_applyinstagramserverlessdeviceoutcome",
       "community": 87,
@@ -8845,7 +8835,7 @@
       "label": "InstagramFetchInvoker",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L1019",
+      "source_location": "L1017",
       "_origin": "ast",
       "id": "services_instagramservice_instagramfetchinvoker",
       "community": 56,
@@ -8855,7 +8845,7 @@
       "label": "parseDeviceRow()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L1027",
+      "source_location": "L1025",
       "_origin": "ast",
       "id": "services_instagramservice_parsedevicerow",
       "community": 87,
@@ -8865,7 +8855,7 @@
       "label": "normalizeResponseBody()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L1095",
+      "source_location": "L1093",
       "_origin": "ast",
       "id": "services_instagramservice_normalizeresponsebody",
       "community": 87,
@@ -8875,7 +8865,7 @@
       "label": "maybeApplyGlobalCircuit()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L1130",
+      "source_location": "L1128",
       "_origin": "ast",
       "id": "services_instagramservice_maybeapplyglobalcircuit",
       "community": 87,
@@ -8885,7 +8875,7 @@
       "label": "InstagramServerlessBridge",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L1145",
+      "source_location": "L1143",
       "_origin": "ast",
       "id": "services_instagramservice_instagramserverlessbridge",
       "community": 56,
@@ -8895,7 +8885,7 @@
       "label": ".constructor()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L1146",
+      "source_location": "L1144",
       "_origin": "ast",
       "id": "services_instagramservice_instagramserverlessbridge_constructor",
       "community": 56,
@@ -8905,7 +8895,7 @@
       "label": ".isConfigured()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L1151",
+      "source_location": "L1149",
       "_origin": "ast",
       "id": "services_instagramservice_instagramserverlessbridge_isconfigured",
       "community": 56,
@@ -8915,7 +8905,7 @@
       "label": ".invokeFetch()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L1155",
+      "source_location": "L1153",
       "_origin": "ast",
       "id": "services_instagramservice_instagramserverlessbridge_invokefetch",
       "community": 87,
@@ -8925,7 +8915,7 @@
       "label": "ResolvedMeta",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L1263",
+      "source_location": "L1261",
       "_origin": "ast",
       "id": "services_instagramservice_resolvedmeta",
       "community": 4,
@@ -8935,7 +8925,7 @@
       "label": "toNormalizedRow()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L1269",
+      "source_location": "L1267",
       "_origin": "ast",
       "id": "services_instagramservice_tonormalizedrow",
       "community": 4,
@@ -8945,7 +8935,7 @@
       "label": "loadMetaFromRedis()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L1313",
+      "source_location": "L1311",
       "_origin": "ast",
       "id": "services_instagramservice_loadmetafromredis",
       "community": 4,
@@ -8955,7 +8945,7 @@
       "label": "resolveDeviceMeta()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L1335",
+      "source_location": "L1333",
       "_origin": "ast",
       "id": "services_instagramservice_resolvedevicemeta",
       "community": 4,
@@ -8965,7 +8955,7 @@
       "label": "loadMetaFromLocalCache()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L1349",
+      "source_location": "L1347",
       "_origin": "ast",
       "id": "services_instagramservice_loadmetafromlocalcache",
       "community": 4,
@@ -8975,7 +8965,7 @@
       "label": "InstagramDirectFetchInvoker",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L1358",
+      "source_location": "L1356",
       "_origin": "ast",
       "id": "services_instagramservice_instagramdirectfetchinvoker",
       "community": 56,
@@ -8985,7 +8975,7 @@
       "label": ".constructor()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L1359",
+      "source_location": "L1357",
       "_origin": "ast",
       "id": "services_instagramservice_instagramdirectfetchinvoker_constructor",
       "community": 56,
@@ -8995,7 +8985,7 @@
       "label": ".isConfigured()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L1361",
+      "source_location": "L1359",
       "_origin": "ast",
       "id": "services_instagramservice_instagramdirectfetchinvoker_isconfigured",
       "community": 20,
@@ -9005,7 +8995,7 @@
       "label": ".invokeFetch()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L1365",
+      "source_location": "L1363",
       "_origin": "ast",
       "id": "services_instagramservice_instagramdirectfetchinvoker_invokefetch",
       "community": 20,
@@ -9015,7 +9005,7 @@
       "label": "chunk()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L1439",
+      "source_location": "L1437",
       "_origin": "ast",
       "id": "services_instagramservice_chunk",
       "community": 20,
@@ -9025,7 +9015,7 @@
       "label": "InstagramPollerConfig",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L1446",
+      "source_location": "L1444",
       "_origin": "ast",
       "id": "services_instagramservice_instagrampollerconfig",
       "community": 4,
@@ -9035,7 +9025,7 @@
       "label": "InstagramPoller",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L1463",
+      "source_location": "L1461",
       "_origin": "ast",
       "id": "services_instagramservice_instagrampoller",
       "community": 20,
@@ -9045,7 +9035,7 @@
       "label": ".constructor()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L1470",
+      "source_location": "L1468",
       "_origin": "ast",
       "id": "services_instagramservice_instagrampoller_constructor",
       "community": 50,
@@ -9055,7 +9045,7 @@
       "label": ".start()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L1478",
+      "source_location": "L1476",
       "_origin": "ast",
       "id": "services_instagramservice_instagrampoller_start",
       "community": 20,
@@ -9065,7 +9055,7 @@
       "label": ".stop()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L1512",
+      "source_location": "L1510",
       "_origin": "ast",
       "id": "services_instagramservice_instagrampoller_stop",
       "community": 20,
@@ -9075,7 +9065,7 @@
       "label": ".markPriority()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L1521",
+      "source_location": "L1519",
       "_origin": "ast",
       "id": "services_instagramservice_instagrampoller_markpriority",
       "community": 20,
@@ -9085,7 +9075,7 @@
       "label": ".requestImmediateFetch()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L1557",
+      "source_location": "L1555",
       "_origin": "ast",
       "id": "services_instagramservice_instagrampoller_requestimmediatefetch",
       "community": 20,
@@ -9095,7 +9085,7 @@
       "label": ".getRunning()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L1618",
+      "source_location": "L1616",
       "_origin": "ast",
       "id": "services_instagramservice_instagrampoller_getrunning",
       "community": 20,
@@ -9105,7 +9095,7 @@
       "label": ".getScriptsReady()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L1622",
+      "source_location": "L1620",
       "_origin": "ast",
       "id": "services_instagramservice_instagrampoller_getscriptsready",
       "community": 20,
@@ -9115,7 +9105,7 @@
       "label": ".reserveFetchDedupe()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L1626",
+      "source_location": "L1624",
       "_origin": "ast",
       "id": "services_instagramservice_instagrampoller_reservefetchdedupe",
       "community": 20,
@@ -9125,7 +9115,7 @@
       "label": ".consumeGlobalFetchBudget()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L1647",
+      "source_location": "L1645",
       "_origin": "ast",
       "id": "services_instagramservice_instagrampoller_consumeglobalfetchbudget",
       "community": 20,
@@ -9135,7 +9125,7 @@
       "label": ".filterOutPowerSave()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L1664",
+      "source_location": "L1662",
       "_origin": "ast",
       "id": "services_instagramservice_instagrampoller_filteroutpowersave",
       "community": 20,
@@ -9145,7 +9135,7 @@
       "label": ".takeBackgroundWindow()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L1681",
+      "source_location": "L1679",
       "_origin": "ast",
       "id": "services_instagramservice_instagrampoller_takebackgroundwindow",
       "community": 20,
@@ -9155,7 +9145,7 @@
       "label": ".canRun()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L1716",
+      "source_location": "L1714",
       "_origin": "ast",
       "id": "services_instagramservice_instagrampoller_canrun",
       "community": 20,
@@ -9165,7 +9155,7 @@
       "label": ".isRedisReady()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L1720",
+      "source_location": "L1718",
       "_origin": "ast",
       "id": "services_instagramservice_instagrampoller_isredisready",
       "community": 20,
@@ -9175,7 +9165,7 @@
       "label": ".isTransientRedisError()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L1724",
+      "source_location": "L1722",
       "_origin": "ast",
       "id": "services_instagramservice_instagrampoller_istransientrediserror",
       "community": 20,
@@ -9185,7 +9175,7 @@
       "label": ".logSchedulerError()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L1729",
+      "source_location": "L1727",
       "_origin": "ast",
       "id": "services_instagramservice_instagrampoller_logschedulererror",
       "community": 20,
@@ -9195,7 +9185,7 @@
       "label": ".safeRedisCall()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L1741",
+      "source_location": "L1739",
       "_origin": "ast",
       "id": "services_instagramservice_instagrampoller_saferediscall",
       "community": 20,
@@ -9205,7 +9195,7 @@
       "label": ".priorityScheduler()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L1756",
+      "source_location": "L1754",
       "_origin": "ast",
       "id": "services_instagramservice_instagrampoller_priorityscheduler",
       "community": 20,
@@ -9215,7 +9205,7 @@
       "label": ".backgroundScheduler()",
       "file_type": "code",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L1823",
+      "source_location": "L1821",
       "_origin": "ast",
       "id": "services_instagramservice_instagrampoller_backgroundscheduler",
       "community": 20,
@@ -9408,7 +9398,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "services_mongoservice",
-      "community": 2,
+      "community": 18,
       "norm_label": "mongoservice.ts"
     },
     {
@@ -9418,7 +9408,7 @@
       "source_location": "L11",
       "_origin": "ast",
       "id": "services_mongoservice_mongoconfig",
-      "community": 2,
+      "community": 18,
       "norm_label": "mongoconfig"
     },
     {
@@ -9548,7 +9538,7 @@
       "source_location": "L274",
       "_origin": "ast",
       "id": "services_mongoservice_getmongoservice",
-      "community": 2,
+      "community": 18,
       "norm_label": "getmongoservice()"
     },
     {
@@ -9558,7 +9548,7 @@
       "source_location": "L278",
       "_origin": "ast",
       "id": "services_mongoservice_createmongoservice",
-      "community": 2,
+      "community": 18,
       "norm_label": "createmongoservice()"
     },
     {
@@ -10008,7 +9998,7 @@
       "source_location": "L160",
       "_origin": "ast",
       "id": "services_otareleaselog_createotareleaselog",
-      "community": 49,
+      "community": 12,
       "norm_label": "createotareleaselog()"
     },
     {
@@ -10418,7 +10408,7 @@
       "source_location": "L278",
       "_origin": "ast",
       "id": "services_otaservice_otacommandpublisher",
-      "community": 59,
+      "community": 19,
       "norm_label": "otacommandpublisher"
     },
     {
@@ -10428,7 +10418,7 @@
       "source_location": "L279",
       "_origin": "ast",
       "id": "services_otaservice_otacommandpublisher_constructor",
-      "community": 59,
+      "community": 19,
       "norm_label": ".constructor()"
     },
     {
@@ -10438,7 +10428,7 @@
       "source_location": "L287",
       "_origin": "ast",
       "id": "services_otaservice_otacommandpublisher_assertpublishabledownloadurl",
-      "community": 59,
+      "community": 19,
       "norm_label": ".assertpublishabledownloadurl()"
     },
     {
@@ -10448,7 +10438,7 @@
       "source_location": "L300",
       "_origin": "ast",
       "id": "services_otaservice_otacommandpublisher_publishupdatetodevice",
-      "community": 59,
+      "community": 19,
       "norm_label": ".publishupdatetodevice()"
     },
     {
@@ -10458,7 +10448,7 @@
       "source_location": "L370",
       "_origin": "ast",
       "id": "services_otaservice_otacommandpublisher_publishbroadcastupdate",
-      "community": 59,
+      "community": 19,
       "norm_label": ".publishbroadcastupdate()"
     },
     {
@@ -10468,7 +10458,7 @@
       "source_location": "L405",
       "_origin": "ast",
       "id": "services_otaservice_otacommandpublisher_publishrollbackack",
-      "community": 44,
+      "community": 49,
       "norm_label": ".publishrollbackack()"
     },
     {
@@ -10488,7 +10478,7 @@
       "source_location": "L436",
       "_origin": "ast",
       "id": "services_otaservice_eventkey",
-      "community": 44,
+      "community": 49,
       "norm_label": "eventkey()"
     },
     {
@@ -10518,7 +10508,7 @@
       "source_location": "L446",
       "_origin": "ast",
       "id": "services_otaservice_otaeventhandler_handle",
-      "community": 44,
+      "community": 49,
       "norm_label": ".handle()"
     },
     {
@@ -10538,7 +10528,7 @@
       "source_location": "L556",
       "_origin": "ast",
       "id": "services_otaservice_initotasigningstate",
-      "community": 49,
+      "community": 12,
       "norm_label": "initotasigningstate()"
     },
     {
@@ -10548,7 +10538,7 @@
       "source_location": "L560",
       "_origin": "ast",
       "id": "services_otaservice_isotasigningconfirmed",
-      "community": 21,
+      "community": 19,
       "norm_label": "isotasigningconfirmed()"
     },
     {
@@ -10558,7 +10548,7 @@
       "source_location": "L564",
       "_origin": "ast",
       "id": "services_otaservice_setotasigningconfirmed",
-      "community": 21,
+      "community": 19,
       "norm_label": "setotasigningconfirmed()"
     },
     {
@@ -10628,7 +10618,7 @@
       "source_location": "L606",
       "_origin": "ast",
       "id": "services_otaservice_otaservice_constructor",
-      "community": 59,
+      "community": 19,
       "norm_label": ".constructor()"
     },
     {
@@ -10688,7 +10678,7 @@
       "source_location": "L912",
       "_origin": "ast",
       "id": "services_otaservice_otaservice_markdevicedelivered",
-      "community": 44,
+      "community": 49,
       "norm_label": ".markdevicedelivered()"
     },
     {
@@ -10768,7 +10758,7 @@
       "source_location": "L1030",
       "_origin": "ast",
       "id": "services_otaservice_otaservice_recordrollbackfailure",
-      "community": 44,
+      "community": 49,
       "norm_label": ".recordrollbackfailure()"
     },
     {
@@ -10778,7 +10768,7 @@
       "source_location": "L1072",
       "_origin": "ast",
       "id": "services_otaservice_otaservice_recordotasuccess",
-      "community": 44,
+      "community": 49,
       "norm_label": ".recordotasuccess()"
     },
     {
@@ -10788,7 +10778,7 @@
       "source_location": "L1086",
       "_origin": "ast",
       "id": "services_otaservice_otaservice_updateotastate",
-      "community": 44,
+      "community": 49,
       "norm_label": ".updateotastate()"
     },
     {
@@ -11018,7 +11008,7 @@
       "source_location": "L271",
       "_origin": "ast",
       "id": "services_promotionservice_resetrotationforuser",
-      "community": 30,
+      "community": 76,
       "norm_label": "resetrotationforuser()"
     },
     {
@@ -11028,7 +11018,7 @@
       "source_location": "L284",
       "_origin": "ast",
       "id": "services_promotionservice_fanoutpromotiontouserdevices",
-      "community": 30,
+      "community": 76,
       "norm_label": "fanoutpromotiontouserdevices()"
     },
     {
@@ -11038,7 +11028,7 @@
       "source_location": "L299",
       "_origin": "ast",
       "id": "services_promotionservice_invalidateandfanout",
-      "community": 30,
+      "community": 76,
       "norm_label": "invalidateandfanout()"
     },
     {
@@ -11058,7 +11048,7 @@
       "source_location": "L323",
       "_origin": "ast",
       "id": "services_promotionservice_handleconnectionvalidateevent",
-      "community": 30,
+      "community": 143,
       "norm_label": "handleconnectionvalidateevent()"
     },
     {
@@ -11118,7 +11108,7 @@
       "source_location": "L40",
       "_origin": "ast",
       "id": "services_provisioningservice_provisioningservice_constructor",
-      "community": 2,
+      "community": 8,
       "norm_label": ".constructor()"
     },
     {
@@ -11228,7 +11218,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "services_recoverysessionservice",
-      "community": 26,
+      "community": 2,
       "norm_label": "recoverysessionservice.ts"
     },
     {
@@ -11238,7 +11228,7 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "services_recoverysessionservice_recoverysessionredisstate",
-      "community": 26,
+      "community": 2,
       "norm_label": "recoverysessionredisstate"
     },
     {
@@ -11248,7 +11238,7 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "services_recoverysessionservice_recoverysessionerror",
-      "community": 26,
+      "community": 2,
       "norm_label": "recoverysessionerror"
     },
     {
@@ -11258,7 +11248,7 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "services_recoverysessionservice_devicerecoveryjwtclaims",
-      "community": 26,
+      "community": 2,
       "norm_label": "devicerecoveryjwtclaims"
     },
     {
@@ -11378,7 +11368,7 @@
       "source_location": "L267",
       "_origin": "ast",
       "id": "services_recoverysessionservice_createrecoverysessionservice",
-      "community": 26,
+      "community": 2,
       "norm_label": "createrecoverysessionservice()"
     },
     {
@@ -11568,7 +11558,7 @@
       "source_location": "L421",
       "_origin": "ast",
       "id": "services_redisservice_createredisservice",
-      "community": 26,
+      "community": 12,
       "norm_label": "createredisservice()"
     },
     {
@@ -11578,7 +11568,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "services_screenenvelope",
-      "community": 50,
+      "community": 127,
       "norm_label": "screenenvelope.ts"
     },
     {
@@ -11588,7 +11578,7 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "services_screenenvelope_screenid",
-      "community": 50,
+      "community": 127,
       "norm_label": "screenid"
     },
     {
@@ -11598,7 +11588,7 @@
       "source_location": "L8",
       "_origin": "ast",
       "id": "services_screenenvelope_screenenvelope",
-      "community": 50,
+      "community": 127,
       "norm_label": "screenenvelope"
     },
     {
@@ -11608,7 +11598,7 @@
       "source_location": "L17",
       "_origin": "ast",
       "id": "services_screenenvelope_buildscreenenvelopeopts",
-      "community": 50,
+      "community": 127,
       "norm_label": "buildscreenenvelopeopts"
     },
     {
@@ -11638,7 +11628,7 @@
       "source_location": "L56",
       "_origin": "ast",
       "id": "services_screenenvelope_gmbreviewmetrics",
-      "community": 50,
+      "community": 127,
       "norm_label": "gmbreviewmetrics()"
     },
     {
@@ -11838,7 +11828,7 @@
       "source_location": "L132",
       "_origin": "ast",
       "id": "services_startupcacherepublish_republishgmbfromcache",
-      "community": 54,
+      "community": 76,
       "norm_label": "republishgmbfromcache()"
     },
     {
@@ -11858,7 +11848,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "services_statspublisher",
-      "community": 26,
+      "community": 76,
       "norm_label": "statspublisher.ts"
     },
     {
@@ -11868,7 +11858,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "services_statspublisher_test_gmb_v6_variants",
-      "community": 26,
+      "community": 76,
       "norm_label": "test_gmb_v6_variants"
     },
     {
@@ -11878,7 +11868,7 @@
       "source_location": "L83",
       "_origin": "ast",
       "id": "services_statspublisher_devicescreenstate",
-      "community": 26,
+      "community": 76,
       "norm_label": "devicescreenstate"
     },
     {
@@ -12168,7 +12158,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "services_transparencylog",
-      "community": 10,
+      "community": 2,
       "norm_label": "transparencylog.ts"
     },
     {
@@ -12178,7 +12168,7 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "services_transparencylog_transparencyproof",
-      "community": 10,
+      "community": 2,
       "norm_label": "transparencyproof"
     },
     {
@@ -12188,7 +12178,7 @@
       "source_location": "L33",
       "_origin": "ast",
       "id": "services_transparencylog_transparencylogconfig",
-      "community": 10,
+      "community": 2,
       "norm_label": "transparencylogconfig"
     },
     {
@@ -12308,7 +12298,7 @@
       "source_location": "L311",
       "_origin": "ast",
       "id": "services_transparencylog_createtransparencylog",
-      "community": 12,
+      "community": 2,
       "norm_label": "createtransparencylog()"
     },
     {
@@ -12318,7 +12308,7 @@
       "source_location": "L316",
       "_origin": "ast",
       "id": "services_transparencylog_gettransparencylog",
-      "community": 10,
+      "community": 2,
       "norm_label": "gettransparencylog()"
     },
     {
@@ -12368,7 +12358,7 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "services_userintegrationcache_userintegrationcache",
-      "community": 30,
+      "community": 143,
       "norm_label": "userintegrationcache"
     },
     {
@@ -12428,7 +12418,7 @@
       "source_location": "L155",
       "_origin": "ast",
       "id": "services_userintegrationcache_getuserintegrations",
-      "community": 143,
+      "community": 76,
       "norm_label": "getuserintegrations()"
     },
     {
@@ -12468,7 +12458,7 @@
       "source_location": "L17",
       "_origin": "ast",
       "id": "services_userservice_deviceverificationresult",
-      "community": 18,
+      "community": 35,
       "norm_label": "deviceverificationresult"
     },
     {
@@ -13418,7 +13408,7 @@
       "source_location": "L37",
       "_origin": "ast",
       "id": "utils_mqtttlsoptions_resolvemqtttlsservername",
-      "community": 65,
+      "community": 58,
       "norm_label": "resolvemqtttlsservername()"
     },
     {
@@ -13428,7 +13418,7 @@
       "source_location": "L44",
       "_origin": "ast",
       "id": "utils_mqtttlsoptions_mqtttlsconnectmaterial",
-      "community": 98,
+      "community": 58,
       "norm_label": "mqtttlsconnectmaterial"
     },
     {
@@ -13538,7 +13528,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "utils_payloadhash",
-      "community": 54,
+      "community": 127,
       "norm_label": "payloadhash.ts"
     },
     {
@@ -13548,7 +13538,7 @@
       "source_location": "L4",
       "_origin": "ast",
       "id": "utils_payloadhash_sha256payload",
-      "community": 54,
+      "community": 127,
       "norm_label": "sha256payload()"
     },
     {
@@ -13558,7 +13548,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "utils_semver",
-      "community": 35,
+      "community": 59,
       "norm_label": "semver.ts"
     },
     {
@@ -13568,7 +13558,7 @@
       "source_location": "L5",
       "_origin": "ast",
       "id": "utils_semver_compareversions",
-      "community": 35,
+      "community": 59,
       "norm_label": "compareversions()"
     },
     {
@@ -13588,7 +13578,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "utils_stimulateallowlist",
-      "community": 124,
+      "community": 76,
       "norm_label": "stimulateallowlist.ts"
     },
     {
@@ -13598,7 +13588,7 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "utils_stimulateallowlist_parsestimulateallowlist",
-      "community": 124,
+      "community": 76,
       "norm_label": "parsestimulateallowlist()"
     },
     {
@@ -13608,7 +13598,7 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "utils_stimulateallowlist_isstimulatedevice",
-      "community": 124,
+      "community": 76,
       "norm_label": "isstimulatedevice()"
     },
     {
@@ -13618,7 +13608,7 @@
       "source_location": "L21",
       "_origin": "ast",
       "id": "utils_stimulateallowlist_hasstimlock",
-      "community": 124,
+      "community": 76,
       "norm_label": "hasstimlock()"
     },
     {
@@ -13628,7 +13618,7 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "utils_stimulateallowlist_shouldskipforstimulate",
-      "community": 54,
+      "community": 76,
       "norm_label": "shouldskipforstimulate()"
     },
     {
@@ -13658,7 +13648,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "dedupe_redisdedupe",
-      "community": 26,
+      "community": 54,
       "norm_label": "redisdedupe.ts"
     },
     {
@@ -13668,7 +13658,7 @@
       "source_location": "L10",
       "_origin": "ast",
       "id": "dedupe_redisdedupe_tryclaimwebhookdedupe",
-      "community": 26,
+      "community": 54,
       "norm_label": "tryclaimwebhookdedupe()"
     },
     {
@@ -13678,7 +13668,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "delivery_publishgmbscreen",
-      "community": 54,
+      "community": 127,
       "norm_label": "publishgmbscreen.ts"
     },
     {
@@ -13688,7 +13678,7 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "delivery_publishgmbscreen_gmbfastscreeninput",
-      "community": 54,
+      "community": 127,
       "norm_label": "gmbfastscreeninput"
     },
     {
@@ -13698,7 +13688,7 @@
       "source_location": "L16",
       "_origin": "ast",
       "id": "delivery_publishgmbscreen_gmbscreenauditcontext",
-      "community": 54,
+      "community": 127,
       "norm_label": "gmbscreenauditcontext"
     },
     {
@@ -13708,7 +13698,7 @@
       "source_location": "L21",
       "_origin": "ast",
       "id": "delivery_publishgmbscreen_gmbscreenpublishresult",
-      "community": 54,
+      "community": 127,
       "norm_label": "gmbscreenpublishresult"
     },
     {
@@ -13728,7 +13718,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "gmb_gmbreviewresolve",
-      "community": 54,
+      "community": 16,
       "norm_label": "gmbreviewresolve.ts"
     },
     {
@@ -13738,7 +13728,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "webhooks_gmbenrichmentworker",
-      "community": 54,
+      "community": 16,
       "norm_label": "gmbenrichmentworker.ts"
     },
     {
@@ -13748,7 +13738,7 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "webhooks_gmbenrichmentworker_gmbenrichmentcontext",
-      "community": 54,
+      "community": 16,
       "norm_label": "gmbenrichmentcontext"
     },
     {
@@ -13768,7 +13758,7 @@
       "source_location": "L47",
       "_origin": "ast",
       "id": "webhooks_gmbenrichmentworker_rungmbenrichment",
-      "community": 54,
+      "community": 16,
       "norm_label": "rungmbenrichment()"
     },
     {
@@ -13858,7 +13848,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "webhooks_influxaudit",
-      "community": 77,
+      "community": 54,
       "norm_label": "influxaudit.ts"
     },
     {
@@ -13878,7 +13868,7 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "webhooks_influxaudit_flushwebhookinflux",
-      "community": 77,
+      "community": 54,
       "norm_label": "flushwebhookinflux()"
     },
     {
@@ -13888,7 +13878,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "resolve_gmbsocial",
-      "community": 16,
+      "community": 135,
       "norm_label": "gmbsocial.ts"
     },
     {
@@ -13898,7 +13888,7 @@
       "source_location": "L9",
       "_origin": "ast",
       "id": "resolve_gmbsocial_gmbsocialcontext",
-      "community": 16,
+      "community": 135,
       "norm_label": "gmbsocialcontext"
     },
     {
@@ -13938,7 +13928,7 @@
       "source_location": "L17",
       "_origin": "ast",
       "id": "resolve_resolvedevices_resolvedevicesforuser",
-      "community": 54,
+      "community": 16,
       "norm_label": "resolvedevicesforuser()"
     },
     {
@@ -13968,7 +13958,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "types_gmbreviewnotification",
-      "community": 54,
+      "community": 16,
       "norm_label": "gmbreviewnotification.ts"
     },
     {
@@ -13978,7 +13968,7 @@
       "source_location": "L3",
       "_origin": "ast",
       "id": "types_gmbreviewnotification_gmbreviewnotification",
-      "community": 54,
+      "community": 16,
       "norm_label": "gmbreviewnotification"
     },
     {
@@ -13988,7 +13978,7 @@
       "source_location": "L5",
       "_origin": "ast",
       "id": "types_gmbreviewnotification_supported_gmb_event_types",
-      "community": 54,
+      "community": 16,
       "norm_label": "supported_gmb_event_types"
     },
     {
@@ -14008,7 +13998,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "verify_pubsubgmb",
-      "community": 47,
+      "community": 144,
       "norm_label": "pubsubgmb.ts"
     },
     {
@@ -14068,7 +14058,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "stimulate_allowlist",
-      "community": 124,
+      "community": 76,
       "norm_label": "allowlist.ts"
     },
     {
@@ -14205,7 +14195,7 @@
       "label": "IgDeviceMeta",
       "file_type": "code",
       "source_file": "stimulate/igRunner.ts",
-      "source_location": "L17",
+      "source_location": "L21",
       "_origin": "ast",
       "id": "stimulate_igrunner_igdevicemeta",
       "community": 50,
@@ -14215,7 +14205,7 @@
       "label": "resolveInstagramMeta()",
       "file_type": "code",
       "source_file": "stimulate/igRunner.ts",
-      "source_location": "L22",
+      "source_location": "L26",
       "_origin": "ast",
       "id": "stimulate_igrunner_resolveinstagrammeta",
       "community": 50,
@@ -14225,7 +14215,7 @@
       "label": "fetchLiveFollowers()",
       "file_type": "code",
       "source_file": "stimulate/igRunner.ts",
-      "source_location": "L51",
+      "source_location": "L55",
       "_origin": "ast",
       "id": "stimulate_igrunner_fetchlivefollowers",
       "community": 50,
@@ -14235,7 +14225,7 @@
       "label": "buildStimIgPayload()",
       "file_type": "code",
       "source_file": "stimulate/igRunner.ts",
-      "source_location": "L63",
+      "source_location": "L68",
       "_origin": "ast",
       "id": "stimulate_igrunner_buildstimigpayload",
       "community": 50,
@@ -14245,7 +14235,7 @@
       "label": "ensureStimIgLock()",
       "file_type": "code",
       "source_file": "stimulate/igRunner.ts",
-      "source_location": "L90",
+      "source_location": "L86",
       "_origin": "ast",
       "id": "stimulate_igrunner_ensurestimiglock",
       "community": 50,
@@ -14255,7 +14245,7 @@
       "label": "releaseStimIgLock()",
       "file_type": "code",
       "source_file": "stimulate/igRunner.ts",
-      "source_location": "L100",
+      "source_location": "L96",
       "_origin": "ast",
       "id": "stimulate_igrunner_releasestimiglock",
       "community": 50,
@@ -14265,7 +14255,7 @@
       "label": "igStimLockKey()",
       "file_type": "code",
       "source_file": "stimulate/igRunner.ts",
-      "source_location": "L104",
+      "source_location": "L100",
       "_origin": "ast",
       "id": "stimulate_igrunner_igstimlockkey",
       "community": 50,
@@ -14275,7 +14265,7 @@
       "label": "updateFollowerCache()",
       "file_type": "code",
       "source_file": "stimulate/igRunner.ts",
-      "source_location": "L109",
+      "source_location": "L105",
       "_origin": "ast",
       "id": "stimulate_igrunner_updatefollowercache",
       "community": 50,
@@ -14285,7 +14275,7 @@
       "label": "runIgTick()",
       "file_type": "code",
       "source_file": "stimulate/igRunner.ts",
-      "source_location": "L117",
+      "source_location": "L113",
       "_origin": "ast",
       "id": "stimulate_igrunner_runigtick",
       "community": 50,
@@ -14358,7 +14348,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "integration_connections",
-      "community": 18,
+      "community": 125,
       "norm_label": "connections.ts"
     },
     {
@@ -14368,7 +14358,7 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "integration_connections_colors",
-      "community": 18,
+      "community": 125,
       "norm_label": "colors"
     },
     {
@@ -14378,7 +14368,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "integration_connections_testmongodb",
-      "community": 18,
+      "community": 125,
       "norm_label": "testmongodb()"
     },
     {
@@ -14388,7 +14378,7 @@
       "source_location": "L81",
       "_origin": "ast",
       "id": "integration_connections_testredis",
-      "community": 18,
+      "community": 125,
       "norm_label": "testredis()"
     },
     {
@@ -14398,7 +14388,7 @@
       "source_location": "L157",
       "_origin": "ast",
       "id": "integration_connections_sanitizeuri",
-      "community": 18,
+      "community": 125,
       "norm_label": "sanitizeuri()"
     },
     {
@@ -14408,7 +14398,7 @@
       "source_location": "L169",
       "_origin": "ast",
       "id": "integration_connections_main",
-      "community": 18,
+      "community": 125,
       "norm_label": "main()"
     },
     {
@@ -14588,7 +14578,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "routes_otaroutes_test",
-      "community": 59,
+      "community": 52,
       "norm_label": "otaroutes.test.ts"
     },
     {
@@ -14598,7 +14588,7 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "routes_otaroutes_test_mockhandle",
-      "community": 59,
+      "community": 52,
       "norm_label": "mockhandle"
     },
     {
@@ -14608,7 +14598,7 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "routes_otaroutes_test_buildapp",
-      "community": 59,
+      "community": 52,
       "norm_label": "buildapp()"
     },
     {
@@ -14798,7 +14788,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "services_influxdiskqueue_test",
-      "community": 1,
+      "community": 124,
       "norm_label": "influxdiskqueue.test.ts"
     },
     {
@@ -14808,7 +14798,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "services_influxservicebucketrouting_test",
-      "community": 1,
+      "community": 99,
       "norm_label": "influxservicebucketrouting.test.ts"
     },
     {
@@ -14878,7 +14868,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "services_otaeventhandler_test",
-      "community": 52,
+      "community": 59,
       "norm_label": "otaeventhandler.test.ts"
     },
     {
@@ -14898,7 +14888,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "services_otaservice_test",
-      "community": 35,
+      "community": 59,
       "norm_label": "otaservice.test.ts"
     },
     {
@@ -14908,7 +14898,7 @@
       "source_location": "L50",
       "_origin": "ast",
       "id": "services_otaservice_test_mocklogevent",
-      "community": 35,
+      "community": 59,
       "norm_label": "mocklogevent"
     },
     {
@@ -14918,7 +14908,7 @@
       "source_location": "L74",
       "_origin": "ast",
       "id": "services_otaservice_test_mockstorage",
-      "community": 35,
+      "community": 59,
       "norm_label": "mockstorage"
     },
     {
@@ -14928,7 +14918,7 @@
       "source_location": "L86",
       "_origin": "ast",
       "id": "services_otaservice_test_otaconfig",
-      "community": 35,
+      "community": 59,
       "norm_label": "otaconfig"
     },
     {
@@ -14938,7 +14928,7 @@
       "source_location": "L301",
       "_origin": "ast",
       "id": "services_otaservice_test_makepublisher",
-      "community": 35,
+      "community": 59,
       "norm_label": "makepublisher()"
     },
     {
@@ -14988,7 +14978,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "services_recoverysessionservice_test",
-      "community": 26,
+      "community": 55,
       "norm_label": "recoverysessionservice.test.ts"
     },
     {
@@ -14998,7 +14988,7 @@
       "source_location": "L17",
       "_origin": "ast",
       "id": "services_recoverysessionservice_test_makeservice",
-      "community": 26,
+      "community": 55,
       "norm_label": "makeservice()"
     },
     {
@@ -15008,7 +14998,7 @@
       "source_location": "L21",
       "_origin": "ast",
       "id": "services_recoverysessionservice_test_signtesttoken",
-      "community": 26,
+      "community": 55,
       "norm_label": "signtesttoken()"
     },
     {
@@ -15018,7 +15008,7 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "services_recoverysessionservice_test_mockredisclient",
-      "community": 26,
+      "community": 55,
       "norm_label": "mockredisclient()"
     },
     {
@@ -15028,7 +15018,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "services_screenenvelope_test",
-      "community": 50,
+      "community": 127,
       "norm_label": "screenenvelope.test.ts"
     },
     {
@@ -15048,8 +15038,18 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "stimulate_allowlist_test",
-      "community": 124,
+      "community": 76,
       "norm_label": "allowlist.test.ts"
+    },
+    {
+      "label": "igPayload.test.ts",
+      "file_type": "code",
+      "source_file": "tests/unit/stimulate/igPayload.test.ts",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "stimulate_igpayload_test",
+      "community": 50,
+      "norm_label": "igpayload.test.ts"
     },
     {
       "label": "math.test.ts",
@@ -15108,7 +15108,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "dedupe_redisdedupe_test",
-      "community": 26,
+      "community": 54,
       "norm_label": "redisdedupe.test.ts"
     },
     {
@@ -42817,16 +42817,6 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "src/services/instagramService.ts",
-      "source_location": "L620",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "services_instagramservice",
-      "target": "services_instagramservice_getnextmilestone"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/services/instagramService.ts",
       "source_location": "L30",
       "weight": 1.0,
       "confidence_score": 1.0,
@@ -43251,6 +43241,28 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "src/services/instagramService.ts",
+      "source_location": "L32",
+      "weight": 1.0,
+      "source": "services_instagramservice",
+      "target": "services_screenenvelope",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/services/instagramService.ts",
+      "source_location": "L32",
+      "weight": 1.0,
+      "source": "services_instagramservice",
+      "target": "services_screenenvelope_instagramfollowermetrics",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/services/instagramService.ts",
       "source_location": "L17",
       "weight": 1.0,
       "confidence_score": 1.0,
@@ -43311,6 +43323,17 @@
       "confidence_score": 1.0,
       "source": "services_startupcacherepublish",
       "target": "services_instagramservice"
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/unit/stimulate/igPayload.test.ts",
+      "source_location": "L6",
+      "weight": 1.0,
+      "source": "stimulate_igpayload_test",
+      "target": "services_instagramservice",
+      "confidence_score": 1.0
     },
     {
       "relation": "imports_from",
@@ -43826,12 +43849,12 @@
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
-      "source_file": "src/services/instagramService.ts",
-      "source_location": "L630",
-      "weight": 1.0,
       "confidence_score": 1.0,
+      "source_file": "src/services/instagramService.ts",
+      "source_location": "L649",
+      "weight": 1.0,
       "source": "services_instagramservice_formatinstagramscreenmqttpayload",
-      "target": "services_instagramservice_getnextmilestone"
+      "target": "services_screenenvelope_instagramfollowermetrics"
     },
     {
       "relation": "calls",
@@ -43865,6 +43888,17 @@
       "confidence_score": 1.0,
       "source": "services_startupcacherepublish_republishinstagramfromfollowerscache",
       "target": "services_instagramservice_formatinstagramscreenmqttpayload"
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/unit/stimulate/igPayload.test.ts",
+      "source_location": "L6",
+      "weight": 1.0,
+      "source": "stimulate_igpayload_test",
+      "target": "services_instagramservice_formatinstagramscreenmqttpayload",
+      "confidence_score": 1.0
     },
     {
       "relation": "imports",
@@ -50257,9 +50291,9 @@
       "source_file": "tests/unit/services/screenEnvelope.test.ts",
       "source_location": "L1",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_screenenvelope_test",
-      "target": "services_screenenvelope",
-      "confidence_score": 1.0
+      "target": "services_screenenvelope"
     },
     {
       "relation": "imports_from",
@@ -50279,9 +50313,9 @@
       "source_file": "stimulate/igRunner.ts",
       "source_location": "L4",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "stimulate_igrunner",
-      "target": "services_screenenvelope",
-      "confidence_score": 1.0
+      "target": "services_screenenvelope"
     },
     {
       "relation": "imports",
@@ -50389,9 +50423,9 @@
       "source_file": "stimulate/igRunner.ts",
       "source_location": "L4",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "stimulate_igrunner",
-      "target": "services_screenenvelope_buildscreenenvelope",
-      "confidence_score": 1.0
+      "target": "services_screenenvelope_buildscreenenvelope"
     },
     {
       "relation": "calls",
@@ -50411,9 +50445,9 @@
       "source_file": "tests/unit/services/screenEnvelope.test.ts",
       "source_location": "L1",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_screenenvelope_test",
-      "target": "services_screenenvelope_instagramfollowermetrics",
-      "confidence_score": 1.0
+      "target": "services_screenenvelope_instagramfollowermetrics"
     },
     {
       "relation": "imports",
@@ -50444,9 +50478,9 @@
       "source_file": "stimulate/igRunner.ts",
       "source_location": "L4",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "stimulate_igrunner",
-      "target": "services_screenenvelope_instagramfollowermetrics",
-      "confidence_score": 1.0
+      "target": "services_screenenvelope_instagramfollowermetrics"
     },
     {
       "relation": "calls",
@@ -50499,9 +50533,9 @@
       "source_file": "tests/unit/services/screenEnvelope.test.ts",
       "source_location": "L1",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_screenenvelope_test",
-      "target": "services_screenenvelope_gmbreviewmetrics",
-      "confidence_score": 1.0
+      "target": "services_screenenvelope_gmbreviewmetrics"
     },
     {
       "relation": "imports",
@@ -55901,6 +55935,17 @@
       "target": "stimulate_math_isatorpasttarget"
     },
     {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/unit/stimulate/igPayload.test.ts",
+      "source_location": "L5",
+      "weight": 1.0,
+      "source": "stimulate_igpayload_test",
+      "target": "stimulate_igrunner",
+      "confidence_score": 1.0
+    },
+    {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "stimulate/igRunner.ts",
@@ -56066,6 +56111,17 @@
       "confidence_score": 1.0,
       "source": "stimulate_igrunner_runigtick",
       "target": "stimulate_igrunner_fetchlivefollowers"
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/unit/stimulate/igPayload.test.ts",
+      "source_location": "L5",
+      "weight": 1.0,
+      "source": "stimulate_igpayload_test",
+      "target": "stimulate_igrunner_buildstimigpayload",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -62165,5 +62221,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "a4f2ea8e9ef74398c07a8f7056a25e5655ab879c"
+  "built_at_commit": "9995d9f2caf75be4be2103b68aaa805923c44187"
 }

@@ -440,8 +440,8 @@
     "semantic_hash": ""
   },
   "src/services/instagramService.ts": {
-    "mtime": 1784018004.641541,
-    "ast_hash": "3bf4bbac0851b74b36c8ea1bbdd9c5c1",
+    "mtime": 1784024997.8240337,
+    "ast_hash": "5432c2fc02c6974e2c3fc3bb909f5283",
     "semantic_hash": ""
   },
   "src/services/metrics/dailyMetricsLua.ts": {
@@ -1190,8 +1190,8 @@
     "semantic_hash": ""
   },
   "stimulate/igRunner.ts": {
-    "mtime": 1784023876.062481,
-    "ast_hash": "a55a3047bf03a967802ab9b35b91fcf7",
+    "mtime": 1784025030.1634915,
+    "ast_hash": "4d2331490c79065480d0b5b5755f19a1",
     "semantic_hash": ""
   },
   "stimulate/math.ts": {
@@ -1247,6 +1247,11 @@
   "tests/unit/services/screenEnvelope.test.ts": {
     "mtime": 1784023875.8740628,
     "ast_hash": "04786c4cc99bd62c7c824d5ed9bbf208",
+    "semantic_hash": ""
+  },
+  "tests/unit/stimulate/igPayload.test.ts": {
+    "mtime": 1784025043.7412364,
+    "ast_hash": "1d3f778217ed21a4ff08909d6b7bf22f",
     "semantic_hash": ""
   }
 }

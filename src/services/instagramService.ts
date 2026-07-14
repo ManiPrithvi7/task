@@ -29,6 +29,7 @@ import {
   InstagramProfileFetchError
 } from '../lib/socials/instagramMetrics';
 import { ensureFreshInstagramAccessToken } from '../lib/socials/instagramTokenRefresh';
+import { instagramFollowerMetrics } from './screenEnvelope';
 
 const igLocalFollowersCache = new Map<string, number>();
 const igLocalLastPublishMs = new Map<string, number>();
@@ -638,26 +639,23 @@ function getCrossedMilestones(oldF: number, newF: number): number[] {
   return MILESTONE_THRESHOLDS.filter((m) => oldF < m && m <= newF);
 }
 
-function getNextMilestone(followers: number): number {
-  return MILESTONE_THRESHOLDS.find((m) => m > followers) ?? Math.ceil(followers / 1000) * 1000 + 1000;
-}
-
 export function formatInstagramScreenMqttPayload(
   result: ScreenDeliveryFetchShape,
-  topicRoot: string
+  topicRoot: string,
+  opts?: { muted?: boolean; celebration?: boolean }
 ): { topic: string; payload: string } {
   const { deviceId, data } = result;
   const followers = data?.followers_count ?? 0;
-  const achievement = getNextMilestone(followers);
-  const progress = Math.min(100, Math.round((followers / achievement) * 100));
-  const remainingGoal = Math.max(0, achievement - followers);
+  const { nextGoal: achievement, remainingGoal, progress } = instagramFollowerMetrics(followers);
   const handle = data?.instagram_username?.trim().replace(/^@/, '') || '';
   const qrText = handle ? `https://instagram.com/${handle}` : 'https://www.instagram.com/';
 
+  // IG production schema (device decoder): boolean muted/celebration — not GMB string flags.
   const envelope: Record<string, unknown> = {
     version: '1.2',
     screen: 'instagram',
-    muted: true,
+    muted: opts?.muted ?? true,
+    celebration: opts?.celebration ?? false,
     timestamp: result.fetched_at,
     payload: {
       followers,

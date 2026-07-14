@@ -1,7 +1,10 @@
 import { logger } from '../src/utils/logger';
 import { RedisService } from '../src/services/redisService';
 import type { MqttClientManager } from '../src/servers/mqttClient';
-import { buildScreenEnvelope, instagramFollowerMetrics } from '../src/services/screenEnvelope';
+import {
+  formatInstagramScreenMqttPayload,
+  type ScreenDeliveryFetchShape
+} from '../src/services/instagramService';
 import { fetchInstagramProfileMetrics } from '../src/lib/socials/instagramMetrics';
 import { ensureFreshInstagramAccessToken } from '../src/lib/socials/instagramTokenRefresh';
 import { Device } from '../src/models/Device';
@@ -10,6 +13,7 @@ import mongoose from 'mongoose';
 import { readStimCache, writeStimCache } from './cache';
 import { calcResume, ceilingSequence, isAtOrPastTarget, igCelebration } from './math';
 import { getRedisService } from '../src/services/redisService';
+import { instagramFollowerMetrics } from '../src/services/screenEnvelope';
 
 export const STIM_IG_LOCK_TTL_SEC = 3600;
 const STIM_IG_LOCK_KEY_PREFIX = 'stim:ig:';
@@ -60,31 +64,23 @@ export async function fetchLiveFollowers(accessToken: string): Promise<number | 
   }
 }
 
+/** Same envelope builder as production IG MQTT — boolean muted/celebration + achievement. */
 export function buildStimIgPayload(
   deviceId: string,
   followers: number,
   topicRoot: string,
 ): { topic: string; payload: string } {
-  const celebration = igCelebration(followers);
-  const { nextGoal, remainingGoal, progress } = instagramFollowerMetrics(followers);
-  const envelope = buildScreenEnvelope(
-    'instagram',
-    {
-      followers,
-      nextGoal,
-      remainingGoal,
-      progress,
-      qrText: 'https://www.instagram.com/'
-    },
-    {
-      muted: celebration === 'true' ? 'false' : 'true',
-      celebration
-    }
-  );
-  return {
-    topic: `${topicRoot}/${deviceId}/instagram`,
-    payload: JSON.stringify(envelope)
+  const celebrate = igCelebration(followers) === 'true';
+  const shape: ScreenDeliveryFetchShape = {
+    deviceId,
+    success: true,
+    fetched_at: new Date().toISOString(),
+    data: { followers_count: followers, instagram_username: '' },
   };
+  return formatInstagramScreenMqttPayload(shape, topicRoot, {
+    muted: !celebrate,
+    celebration: celebrate
+  });
 }
 
 export async function ensureStimIgLock(redis: RedisService, deviceId: string): Promise<boolean> {
@@ -167,7 +163,7 @@ export async function runIgTick(
     deviceId,
     followers: publishValue,
     target,
-    nextGoal: instagramFollowerMetrics(publishValue).nextGoal,
+    achievement: instagramFollowerMetrics(publishValue).nextGoal,
     celebration: igCelebration(publishValue),
     done: publishValue >= target
   });
