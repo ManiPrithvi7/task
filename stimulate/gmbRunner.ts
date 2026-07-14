@@ -90,6 +90,12 @@ export async function runGmbTick(
   await updateGmbCache(deviceId, publishValue);
   writeStimCache('gmb', deviceId, { lastPublished: publishValue, status: publishValue >= target ? 'done' : 'running' });
 
-  logger.info('[STIM_GMB] Published', { deviceId, reviews: publishValue, target, celebration, done: publishValue >= target });
+  logger.info('[STIM_GMB] Published', {
+    deviceId,
+    reviews: publishValue,
+    target,
+    celebration,
+    done: publishValue >= target
+  });
   return { done: publishValue >= target, publishedCount: 1 };
 }

@@ -1,7 +1,7 @@
 import { logger } from '../src/utils/logger';
 import { RedisService } from '../src/services/redisService';
 import type { MqttClientManager } from '../src/servers/mqttClient';
-import { formatInstagramScreenMqttPayload, type ScreenDeliveryFetchShape } from '../src/services/instagramService';
+import { buildScreenEnvelope, instagramFollowerMetrics } from '../src/services/screenEnvelope';
 import { fetchInstagramProfileMetrics } from '../src/lib/socials/instagramMetrics';
 import { ensureFreshInstagramAccessToken } from '../src/lib/socials/instagramTokenRefresh';
 import { Device } from '../src/models/Device';
@@ -65,19 +65,26 @@ export function buildStimIgPayload(
   followers: number,
   topicRoot: string,
 ): { topic: string; payload: string } {
-  const shape: ScreenDeliveryFetchShape = {
-    deviceId,
-    success: true,
-    fetched_at: new Date().toISOString(),
-    data: { followers_count: followers, instagram_username: '' },
-  };
-  const { topic, payload } = formatInstagramScreenMqttPayload(shape, topicRoot);
   const celebration = igCelebration(followers);
-  // ponytail: patch celebrate flags onto legacy IG envelope (production helper stays muted-only)
-  const envelope = JSON.parse(payload) as Record<string, unknown>;
-  envelope.celebration = celebration;
-  envelope.muted = celebration === 'true' ? 'false' : 'true';
-  return { topic, payload: JSON.stringify(envelope) };
+  const { nextGoal, remainingGoal, progress } = instagramFollowerMetrics(followers);
+  const envelope = buildScreenEnvelope(
+    'instagram',
+    {
+      followers,
+      nextGoal,
+      remainingGoal,
+      progress,
+      qrText: 'https://www.instagram.com/'
+    },
+    {
+      muted: celebration === 'true' ? 'false' : 'true',
+      celebration
+    }
+  );
+  return {
+    topic: `${topicRoot}/${deviceId}/instagram`,
+    payload: JSON.stringify(envelope)
+  };
 }
 
 export async function ensureStimIgLock(redis: RedisService, deviceId: string): Promise<boolean> {
@@ -160,6 +167,7 @@ export async function runIgTick(
     deviceId,
     followers: publishValue,
     target,
+    nextGoal: instagramFollowerMetrics(publishValue).nextGoal,
     celebration: igCelebration(publishValue),
     done: publishValue >= target
   });

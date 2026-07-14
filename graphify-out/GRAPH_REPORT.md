@@ -1,16 +1,16 @@
 # Graph Report - proofmqtt  (2026-07-14)
 
 ## Corpus Check
-- 246 files · ~126,980 words
+- 247 files · ~127,055 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 2068 nodes · 3909 edges · 137 communities (107 shown, 30 thin omitted)
+- 2069 nodes · 3918 edges · 142 communities (112 shown, 30 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 4 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `ee6b738f`
+- Built from commit: `a4f2ea8e`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -73,12 +73,14 @@
 - [[_COMMUNITY_Community 55|Community 55]]
 - [[_COMMUNITY_Community 56|Community 56]]
 - [[_COMMUNITY_Community 57|Community 57]]
+- [[_COMMUNITY_Community 58|Community 58]]
 - [[_COMMUNITY_Community 59|Community 59]]
 - [[_COMMUNITY_Community 60|Community 60]]
 - [[_COMMUNITY_Community 61|Community 61]]
 - [[_COMMUNITY_Community 62|Community 62]]
 - [[_COMMUNITY_Community 63|Community 63]]
 - [[_COMMUNITY_Community 64|Community 64]]
+- [[_COMMUNITY_Community 65|Community 65]]
 - [[_COMMUNITY_Community 66|Community 66]]
 - [[_COMMUNITY_Community 67|Community 67]]
 - [[_COMMUNITY_Community 68|Community 68]]
@@ -90,6 +92,7 @@
 - [[_COMMUNITY_Community 74|Community 74]]
 - [[_COMMUNITY_Community 75|Community 75]]
 - [[_COMMUNITY_Community 76|Community 76]]
+- [[_COMMUNITY_Community 77|Community 77]]
 - [[_COMMUNITY_Community 78|Community 78]]
 - [[_COMMUNITY_Community 79|Community 79]]
 - [[_COMMUNITY_Community 80|Community 80]]
@@ -111,6 +114,7 @@
 - [[_COMMUNITY_Community 96|Community 96]]
 - [[_COMMUNITY_Community 97|Community 97]]
 - [[_COMMUNITY_Community 98|Community 98]]
+- [[_COMMUNITY_Community 99|Community 99]]
 - [[_COMMUNITY_Community 100|Community 100]]
 - [[_COMMUNITY_Community 101|Community 101]]
 - [[_COMMUNITY_Community 102|Community 102]]
@@ -131,11 +135,12 @@
 - [[_COMMUNITY_Community 118|Community 118]]
 - [[_COMMUNITY_Community 120|Community 120]]
 - [[_COMMUNITY_Community 122|Community 122]]
+- [[_COMMUNITY_Community 123|Community 123]]
+- [[_COMMUNITY_Community 124|Community 124]]
 - [[_COMMUNITY_Community 126|Community 126]]
 - [[_COMMUNITY_Community 129|Community 129]]
 - [[_COMMUNITY_Community 131|Community 131]]
 - [[_COMMUNITY_Community 132|Community 132]]
-- [[_COMMUNITY_Community 133|Community 133]]
 - [[_COMMUNITY_Community 134|Community 134]]
 - [[_COMMUNITY_Community 135|Community 135]]
 - [[_COMMUNITY_Community 136|Community 136]]
@@ -165,29 +170,29 @@
   scripts/ota-e2e/firmware_server.py → src/servers/httpServer.ts
 - `main()` --calls--> `loadConfig()`  [EXTRACTED]
   scripts/ota/upload-firmware-oci.ts → src/config/index.ts
+- `main()` --calls--> `loadConfig()`  [EXTRACTED]
+  scripts/test-mqtt-mtls.ts → src/config/index.ts
 - `main()` --calls--> `verifyPubSubPushRequest()`  [INFERRED]
   scripts/verify-gmb-audience.ts → src/lib/socials/gmb-pubsub.ts
-- `runGmbTick()` --calls--> `resolveGmbContextForDevice()`  [EXTRACTED]
-  stimulate/gmbRunner.ts → src/lib/socials/resolveDeviceGmb.ts
-- `buildConfigRoutesApp()` --calls--> `createConfigRoutes()`  [EXTRACTED]
-  tests/unit/routes/configRoutes.test.ts → src/routes/configRoutes.ts
+- `resolveInstagramMeta()` --calls--> `ensureFreshInstagramAccessToken()`  [EXTRACTED]
+  stimulate/igRunner.ts → src/lib/socials/instagramTokenRefresh.ts
 
 ## Import Cycles
 - None detected.
 
-## Communities (137 total, 30 thin omitted)
+## Communities (142 total, 30 thin omitted)
 
 ### Community 0 - "Community 0"
-Cohesion: 0.05
-Nodes (65): deprecatedWarned, envBool(), envInt(), envString(), resolveMqttClientId(), warnDeprecatedEnv(), AppConfig, AppEnvConfig (+57 more)
+Cohesion: 0.11
+Nodes (27): AppEnvConfig, AppFeaturesConfig, AuthConfig, decodeBase64ToUtf8(), DEFAULT_PROVISIONING_CA_STORAGE_PATH, describePrivateKeyPemKind(), firstPemEnv(), getProvisioningRootCaCertFromEnv() (+19 more)
 
 ### Community 1 - "Community 1"
 Cohesion: 0.05
 Nodes (19): InfluxDBConfig, InfluxDiskQueue, InfluxDiskQueueOptions, BucketTarget, createInfluxService(), DeviceMetrics, InfluxService, InstagramCircuitEventInfluxInput (+11 more)
 
 ### Community 2 - "Community 2"
-Cohesion: 0.11
-Nodes (17): AuthTokenPayload, AuthTokenVerificationResult, ActiveDevice, DeviceData, ProvisioningConfig, ProvisioningTokenPayload, TokenValidationResult, SessionData (+9 more)
+Cohesion: 0.07
+Nodes (28): correlationIdMiddleware(), httpRequestDuration, httpRequestsTotal, metricsHandler(), metricsMiddleware(), register, HttpConfig, AuthTokenPayload (+20 more)
 
 ### Community 3 - "Community 3"
 Cohesion: 0.25
@@ -214,8 +219,8 @@ Cohesion: 0.22
 Nodes (15): Ad, AdSchema, AdStatus, AdType, IAd, buildBrandCanvasPayload(), CachedBrandCanvasDto, canvasActiveKey() (+7 more)
 
 ### Community 10 - "Community 10"
-Cohesion: 0.09
-Nodes (7): AuditService, getInfluxService(), OtaReleaseLog, createTransparencyLog(), TransparencyLog, TransparencyLogConfig, TransparencyProof
+Cohesion: 0.10
+Nodes (6): AuditService, getInfluxService(), OtaReleaseLog, TransparencyLog, TransparencyLogConfig, TransparencyProof
 
 ### Community 11 - "Community 11"
 Cohesion: 0.06
@@ -223,7 +228,7 @@ Nodes (34): 1.1 Webhook Routes (`/api/webhooks/*`), 1.2 Promotion Routes (`/api/
 
 ### Community 12 - "Community 12"
 Cohesion: 0.07
-Nodes (13): BufferedMqttMessage, flushMessageBuffer(), handleCritical(), handleNonCritical(), isLifecycleTopic(), isMessageTooOld(), MqttIngressHandlers, MqttIngressRouterState (+5 more)
+Nodes (16): createOtaAdminRoutes(), createAuditService(), BufferedMqttMessage, flushMessageBuffer(), handleCritical(), handleNonCritical(), isLifecycleTopic(), isMessageTooOld() (+8 more)
 
 ### Community 13 - "Community 13"
 Cohesion: 0.06
@@ -239,27 +244,27 @@ Nodes (38): 0. CONTEXT & PROJECT UNDERSTANDING, 1.1 H-1: mTLS Fingerprint Bindin
 
 ### Community 16 - "Community 16"
 Cohesion: 0.11
-Nodes (21): ACLRule, ACLRuleSchema, DeviceACL, DeviceACLSchema, DeviceTier, IDeviceACL, GoogleBusinessReview, GoogleBusinessReviewSchema (+13 more)
+Nodes (22): GoogleBusinessLocation, GoogleBusinessLocationSchema, IGoogleBusinessLocation, GoogleBusinessProfile, GoogleBusinessProfileSchema, IGoogleBusinessProfile, GoogleBusinessReview, GoogleBusinessReviewSchema (+14 more)
 
 ### Community 17 - "Community 17"
 Cohesion: 0.11
 Nodes (27): buildObjectKey(), buildParUrl(), { common, objectstorage }, createOciClient(), createOciDownloadUrl(), hasOciEnvCredentials(), normalizePem(), OTA_PRESIGNED_TTL_SEC (+19 more)
 
 ### Community 18 - "Community 18"
-Cohesion: 0.09
-Nodes (12): mongoDriverTimeouts(), colors, main(), sanitizeUri(), testMongoDB(), testRedis(), main(), mongodbSrvHostname() (+4 more)
+Cohesion: 0.07
+Nodes (18): mongoDriverTimeouts(), colors, main(), sanitizeUri(), testMongoDB(), testRedis(), IDevice, IUser (+10 more)
 
 ### Community 19 - "Community 19"
-Cohesion: 0.27
-Nodes (9): IFirmwareRelease, getReleaseObjectKey(), buildOtaDownloadUrl(), buildOtaMqttDownloadUrl(), isLocalLanDownloadUrl(), isOciFirmwareDownloadUrl(), otaConfig, proxyOtaConfig (+1 more)
+Cohesion: 0.33
+Nodes (8): getReleaseObjectKey(), buildOtaDownloadUrl(), buildOtaMqttDownloadUrl(), isLocalLanDownloadUrl(), isOciFirmwareDownloadUrl(), otaConfig, proxyOtaConfig, release
 
 ### Community 20 - "Community 20"
-Cohesion: 0.21
+Cohesion: 0.22
 Nodes (4): chunk(), evalAtomicBackoffCheckAndRecordEvalSha(), igPollMetricsInc(), InstagramPoller
 
 ### Community 21 - "Community 21"
-Cohesion: 0.14
-Nodes (14): assertValidSha256Hex(), assertValidVersionFormat(), FinalizeValidationCode, FinalizeValidationError, initOtaSigningState(), OtaActiveRelease, OtaEventPayload, OtaReleaseWebhookInput (+6 more)
+Cohesion: 0.11
+Nodes (21): FirmwareRelease, FirmwareReleaseSchema, FirmwareReleaseStatus, FirmwareRolloutSchema, FirmwareRolloutStrategy, IFirmwareRollout, assertValidSha256Hex(), assertValidVersionFormat() (+13 more)
 
 ### Community 22 - "Community 22"
 Cohesion: 0.09
@@ -270,16 +275,16 @@ Cohesion: 0.05
 Nodes (36): Close-out Checklist, Completed: P3.1 - Fleet Capacity Documentation, Completed: P3.2 - Prometheus Alerts, Completed: P3.3 - Global Rate Limiting, Completed: P3.4 - Compliance Documentation, Completed: P3.7 - Security Audit Checklist, Current (2026-07-02), Detailed Roadmap (+28 more)
 
 ### Community 24 - "Community 24"
-Cohesion: 0.22
-Nodes (14): Campaign, CampaignSchema, CampaignStatus, DiscountType, ICampaign, ScheduleType, TargetType, isCampaignActive() (+6 more)
+Cohesion: 0.20
+Nodes (15): CampaignSchema, CampaignStatus, DiscountType, ICampaign, ScheduleType, TargetType, Provider, isCampaignActive() (+7 more)
 
 ### Community 25 - "Community 25"
 Cohesion: 0.10
 Nodes (20): Attention polling — implementation status, Code references, Code references, Dual schedulers — priority and background (both implemented), Health and readiness, Intended flow (device scan / NFC), Phase A — Operations and configuration hardening, Phase B — Attention / priority signals (+12 more)
 
 ### Community 26 - "Community 26"
-Cohesion: 0.17
-Nodes (14): clearAllPublishHashesForDevice(), clearPublishHash(), hashPayload(), publishForce(), publishHashRedisKey(), publishIfChanged(), stableJson(), createRecoverySessionService() (+6 more)
+Cohesion: 0.11
+Nodes (22): tryClaimWebhookDedupe(), DEFAULT_CONFIG, incrementCounter(), incrementLocalCounter(), localCounters, RateLimitConfig, clearAllPublishHashesForDevice(), clearPublishHash() (+14 more)
 
 ### Community 27 - "Community 27"
 Cohesion: 0.10
@@ -294,12 +299,12 @@ Cohesion: 0.10
 Nodes (19): App Wiring (`src/app.ts`), Audit Events (`src/services/auditService.ts`), Code Gaps, Config (`src/config/index.ts`), Docs, Fixes, InfluxDB Refinement Actions, InfluxService (`src/services/influxService.ts`) (+11 more)
 
 ### Community 30 - "Community 30"
-Cohesion: 0.14
-Nodes (21): getClaimBaseUrl(), buildCampaignPayload(), CachedCampaignDto, campaignSocialIdFilter(), fanoutPromotionToUserDevices(), filterSchedulableCampaigns(), getEligibleCampaignsForUser(), getNextPromotionIndex() (+13 more)
+Cohesion: 0.10
+Nodes (29): getClaimBaseUrl(), resolveConnectionsValidateApiKey(), Campaign, ConnectionsRoutesDeps, createConnectionsRoutes(), PROVIDER_MAP, app(), mockHandler (+21 more)
 
 ### Community 31 - "Community 31"
-Cohesion: 0.13
-Nodes (14): requireMtlsDeviceCert(), DeviceCertificate, DeviceCertificateSchema, DeviceCertificateStatus, createLifecycleRoutes(), LifecycleDeps, reissueLimiter, buildLifecycleRoutesApp() (+6 more)
+Cohesion: 0.16
+Nodes (11): csrRateLimiter(), DeviceCertificate, DeviceCertificateSchema, DeviceCertificateStatus, createProvisioningRoutes(), ProvisioningDependencies, buildProvisioningRoutesApp(), CAConfig (+3 more)
 
 ### Community 32 - "Community 32"
 Cohesion: 0.11
@@ -314,12 +319,12 @@ Cohesion: 0.09
 Nodes (22): Admin OTA (interim → planned), Attack surface (production), Change log, Controls verified (positive), DEV-1: Unauthenticated dev OTA download (accepted temporary), Executive summary, Findings, H-1: mTLS identity from proxy header without fingerprint binding (+14 more)
 
 ### Community 35 - "Community 35"
-Cohesion: 0.13
-Nodes (8): DeviceOtaState, getAuditService(), computeSigningKeyFingerprint(), eventKey(), OtaCommandPublisher, OtaService, initOtaSigningKeyAudit(), isVersionGreater()
+Cohesion: 0.19
+Nodes (7): IFirmwareRelease, OtaService, mockLogEvent, mockStorage, otaConfig, compareVersions(), isVersionGreater()
 
 ### Community 36 - "Community 36"
-Cohesion: 0.22
-Nodes (9): WebhookDeviceTarget, Device, DeviceSchema, DeviceStatus, ResolvedDeviceTarget, createRecoveryRoutes(), RecoveryRoutesDeps, buildRecoveryRoutesApp() (+1 more)
+Cohesion: 0.29
+Nodes (5): createRecoveryRoutes(), RecoveryRoutesDeps, buildRecoveryRoutesApp(), mockFindOne, AuthService
 
 ### Community 37 - "Community 37"
 Cohesion: 0.24
@@ -330,56 +335,60 @@ Cohesion: 0.09
 Nodes (22): 1.1 Remove Committed Private Keys from Repo, 1.2 Update .env.example with Admin Auth, 1. Immediate (P1 Priority), 2.1 Migrate Runtime to Bun, 2.2 Remove Render Configuration, 2.3 Add ESLint + Prettier, 2. Medium Priority (2-3 days), 3.1 Core Infrastructure (+14 more)
 
 ### Community 39 - "Community 39"
-Cohesion: 0.39
-Nodes (6): main(), parseArgs(), sha256Hex(), createFirmwareStorageService(), FirmwareStorageService, createOciAuthProvider()
+Cohesion: 0.27
+Nodes (9): OtaOciConfig, main(), parseArgs(), sha256Hex(), createFirmwareStorageService(), createOciAuthProvider(), hasOciEnvCredentials(), normalizePemFromEnv() (+1 more)
 
 ### Community 41 - "Community 41"
-Cohesion: 0.19
-Nodes (7): OciFirmwareStorageService, isRetryableOciError(), mapOciError(), OciStorageError, OciStorageErrorCode, statusFromMessage(), withOciRetry()
+Cohesion: 0.17
+Nodes (8): FirmwareStorageService, OciFirmwareStorageService, isRetryableOciError(), mapOciError(), OciStorageError, OciStorageErrorCode, statusFromMessage(), withOciRetry()
 
 ### Community 42 - "Community 42"
 Cohesion: 0.14
 Nodes (14): scripts, build, check, coverage, dev, format, lint, lint:fix (+6 more)
 
-### Community 43 - "Community 43"
-Cohesion: 0.15
-Nodes (12): FirmwareRelease, FirmwareReleaseSchema, FirmwareRolloutSchema, FirmwareRolloutStrategy, IFirmwareRollout, createOtaAdminRoutes(), isOtaSigningConfirmed(), setOtaSigningConfirmed() (+4 more)
+### Community 44 - "Community 44"
+Cohesion: 0.14
+Nodes (3): DeviceOtaState, eventKey(), OtaRedisState
 
 ### Community 45 - "Community 45"
-Cohesion: 0.15
-Nodes (3): DeviceService, isTransientMongoError(), withMongoRetry()
+Cohesion: 0.13
+Nodes (4): DeviceService, isTransientMongoError(), TRANSIENT_MONGO_PATTERNS, withMongoRetry()
 
 ### Community 46 - "Community 46"
 Cohesion: 0.13
 Nodes (14): **1\. Executive Summary & Design Goals**, **2\. Comprehensive Concept Verification Matrix**, **3.1 Dual-Path Trigger Engine**, **3.2 State Tracking Mechanics**, **3\. Core Subsystem Operations**, **4.1 Cooldown and Blacklist Management**, **4.2 Post-Update Safety Architecture**, **4.3 Handshake Reliability (QoS 1 Application Loop)** (+6 more)
 
 ### Community 47 - "Community 47"
-Cohesion: 0.08
-Nodes (16): loadWebhookConfig(), buildApp(), mockIngestRelease, mockMqttClient, createWebhookRoutes(), buildApp(), mockMqttClient, mockPublish (+8 more)
+Cohesion: 0.15
+Nodes (17): loadWebhookConfig(), WebhookDeviceTarget, ResolvedDeviceTarget, buildApp(), mockIngestRelease, mockMqttClient, createWebhookRoutes(), buildApp() (+9 more)
 
 ### Community 48 - "Community 48"
 Cohesion: 0.13
 Nodes (14): **1\. Executive Summary & Design Goals**, **2\. Comprehensive Concept Verification Matrix**, **3.1 Dual-Path Trigger Engine**, **3.2 State Tracking Mechanics**, **3\. Core Subsystem Operations**, **4.1 Cooldown and Blacklist Management**, **4.2 Post-Update Safety Architecture**, **4.3 Handshake Reliability (QoS 1 Application Loop)** (+6 more)
 
 ### Community 49 - "Community 49"
-Cohesion: 0.10
-Nodes (22): rejectRateLimited(), IDevice, IUser, User, UserSchema, AuditEntry, AuditEventType, AuditLogData (+14 more)
+Cohesion: 0.18
+Nodes (12): rejectRateLimited(), AuditEntry, AuditEventType, AuditLogData, AuditServiceConfig, getAuditService(), createOtaReleaseLog(), getOtaReleaseLog() (+4 more)
 
 ### Community 50 - "Community 50"
 Cohesion: 0.06
-Nodes (41): fetchInstagramMetrics(), sleep(), RedisService, LoopState, parseGmbTarget(), parseIgTarget(), parseIntervalMs(), parsePlatforms() (+33 more)
+Nodes (42): RedisService, BuildScreenEnvelopeOpts, gmbReviewMetrics(), instagramFollowerMetrics(), ScreenEnvelope, ScreenId, LoopState, parseGmbTarget() (+34 more)
 
 ### Community 51 - "Community 51"
 Cohesion: 0.15
 Nodes (12): Actions required for a **real** OTA release, Cleanup checklist (after device test passes), Direct OCI URL (optional sanity check), Download URL for firmware developer, High-level production path, Original production OTA flow (unchanged), OTA dev download test (temporary), Production download modes (+4 more)
+
+### Community 52 - "Community 52"
+Cohesion: 0.19
+Nodes (10): requireMtlsDeviceCert(), Device, DeviceSchema, DeviceStatus, createLifecycleRoutes(), LifecycleDeps, reissueLimiter, buildLifecycleRoutesApp() (+2 more)
 
 ### Community 53 - "Community 53"
 Cohesion: 0.13
 Nodes (14): extends, ignorePatterns, parser, parserOptions, project, plugins, root, rules (+6 more)
 
 ### Community 54 - "Community 54"
-Cohesion: 0.06
-Nodes (39): tryClaimWebhookDedupe(), GmbFastScreenInput, GmbScreenAuditContext, GmbScreenPublishResult, publishGmbScreen(), GmbSocialContext, resolveGmbSocialContext(), resolveDevicesForUser() (+31 more)
+Cohesion: 0.13
+Nodes (27): GmbFastScreenInput, GmbScreenAuditContext, GmbScreenPublishResult, publishGmbScreen(), resolveGmbSocialContext(), resolveDevicesForUser(), republishGmbFromCache(), getGmbAccountLookupValues() (+19 more)
 
 ### Community 56 - "Community 56"
 Cohesion: 0.29
@@ -389,9 +398,13 @@ Nodes (4): InstagramServerlessConfig, InstagramDirectFetchInvoker, InstagramFetc
 Cohesion: 0.17
 Nodes (11): ACLCacheEntry, ACLRule, ACLStats, ACLValidationResult, CertificateInfo, DeviceACL, DeviceConnectionInfo, DeviceTier (+3 more)
 
+### Community 58 - "Community 58"
+Cohesion: 0.27
+Nodes (13): setMqttTlsClientPem(), main(), applyMqttJsTlsOptions(), buildMqttTlsPrecheckOptions(), buildNodeTlsConnectOptions(), netIsIp(), normalizeTlsPem(), readMqttTlsVersionOptions() (+5 more)
+
 ### Community 59 - "Community 59"
-Cohesion: 0.14
-Nodes (12): OtaConfig, OtaDownloadMode, FirmwareReleaseStatus, OtaAdminRoutesDeps, createOtaRoutes(), OtaRoutesDeps, buildApp(), mockHandle (+4 more)
+Cohesion: 0.18
+Nodes (10): OtaConfig, OtaAdminRoutesDeps, createOtaRoutes(), OtaRoutesDeps, buildApp(), mockHandle, IFirmwareStorage, checkOtaRateLimit() (+2 more)
 
 ### Community 60 - "Community 60"
 Cohesion: 0.33
@@ -404,6 +417,10 @@ Nodes (9): 🏗️ Architecture, 📊 Comparison with Full Version, 📚 Documen
 ### Community 64 - "Community 64"
 Cohesion: 0.24
 Nodes (5): instance.sh script, main(), OCI_PYTHON_SDK_CONNECTION_TIMEOUT, OCI_PYTHON_SDK_READ_TIMEOUT, write_metadata()
+
+### Community 65 - "Community 65"
+Cohesion: 0.21
+Nodes (13): deprecatedWarned, envBool(), envInt(), envString(), resolveMqttClientId(), warnDeprecatedEnv(), loadConfig(), loadOciCredentialsFromEnv() (+5 more)
 
 ### Community 66 - "Community 66"
 Cohesion: 0.22
@@ -441,13 +458,13 @@ Nodes (4): areInstagramPollingScriptsLoaded(), buildLatencySnapshot(), getInstag
 Cohesion: 0.29
 Nodes (3): Handler, ReuseHTTPServer, SimpleHTTPRequestHandler
 
-### Community 75 - "Community 75"
-Cohesion: 0.23
-Nodes (9): csrRateLimiter(), DEFAULT_CONFIG, incrementCounter(), incrementLocalCounter(), localCounters, RateLimitConfig, createProvisioningRoutes(), ProvisioningDependencies (+1 more)
-
 ### Community 76 - "Community 76"
-Cohesion: 0.17
-Nodes (15): getActiveDeviceCache(), GmbConnectPull, ActiveSetRedisClient, devicesNeedingHydration(), HydrateActiveDeviceFn, republishCachedScreensForActiveDevices(), republishGmbFromCache(), republishInstagramFromFollowersCache() (+7 more)
+Cohesion: 0.22
+Nodes (12): getActiveDeviceCache(), formatInstagramScreenMqttPayload(), publishInstagramScreenIfChanged(), ActiveSetRedisClient, devicesNeedingHydration(), HydrateActiveDeviceFn, republishCachedScreensForActiveDevices(), republishInstagramFromFollowersCache() (+4 more)
+
+### Community 77 - "Community 77"
+Cohesion: 0.20
+Nodes (7): nsToMs(), WebhookLatencyStages, WebhookLatencyTracker, WebhookProvider, flushWebhookInflux(), FinishExtra, finishWebhookAck()
 
 ### Community 79 - "Community 79"
 Cohesion: 0.40
@@ -458,8 +475,8 @@ Cohesion: 0.29
 Nodes (7): 📡 API Endpoints, Create Session, Create User, Get All Devices, Health Check, Publish MQTT Message, Register Device
 
 ### Community 82 - "Community 82"
-Cohesion: 0.27
-Nodes (7): correlationIdMiddleware(), httpRequestDuration, httpRequestsTotal, metricsHandler(), metricsMiddleware(), register, HttpConfig
+Cohesion: 0.31
+Nodes (5): buildOtaProxyDownloadUrl(), OtaDownloadMode, otaOciParBaseUrl(), resolveOtaDownloadMode(), resolveOtaPublicBaseUrl()
 
 ### Community 83 - "Community 83"
 Cohesion: 0.29
@@ -518,8 +535,12 @@ Cohesion: 0.40
 Nodes (5): Manual Testing, Run Tests, Test MQTT Connection, Test WebSocket, 🧪 Testing
 
 ### Community 98 - "Community 98"
-Cohesion: 0.14
-Nodes (12): captureRawBody, gmbLimiter, otaReleaseLimiter, OtaReleaseWebhookDeps, WebhookRoutesDeps, MessageHandler, MqttConfig, MqttMessage (+4 more)
+Cohesion: 0.11
+Nodes (17): WebhookConfig, captureRawBody, gmbLimiter, otaReleaseLimiter, OtaReleaseWebhookDeps, WebhookRoutesDeps, MessageHandler, MqttConfig (+9 more)
+
+### Community 99 - "Community 99"
+Cohesion: 0.29
+Nodes (6): ACLRule, ACLRuleSchema, DeviceACL, DeviceACLSchema, DeviceTier, IDeviceACL
 
 ### Community 100 - "Community 100"
 Cohesion: 0.83
@@ -545,6 +566,14 @@ Nodes (3): baseUrl(), getJson(), main()
 Cohesion: 0.67
 Nodes (3): Add New Functionality, 📝 Development, Project Structure
 
+### Community 123 - "Community 123"
+Cohesion: 0.67
+Nodes (4): AppConfig, ConfigRoutesDeps, createConfigRoutes(), buildConfigRoutesApp()
+
+### Community 124 - "Community 124"
+Cohesion: 0.60
+Nodes (3): hasStimLock(), isStimulateDevice(), parseStimulateAllowlist()
+
 ### Community 126 - "Community 126"
 Cohesion: 0.40
 Nodes (4): sha256, signature, size_bytes, version
@@ -561,17 +590,13 @@ Nodes (5): ✅ Already Implemented, Key Files to Examine, Next Steps, ❌ Not Im
 Cohesion: 0.33
 Nodes (5): Bun Runtime Security Notes, Known Risks, Mitigations, Monitoring, Version Policy
 
-### Community 133 - "Community 133"
-Cohesion: 0.24
-Nodes (8): resolveConnectionsValidateApiKey(), ConnectionsRoutesDeps, createConnectionsRoutes(), PROVIDER_MAP, app(), mockHandler, VALID_EVENTS, ConnectionValidateEvent
-
 ### Community 134 - "Community 134"
 Cohesion: 0.40
 Nodes (4): Based on current codebase post-Phase 2 - NOT a pentest snapshot, Last Updated: 2026-07-02 (Phase 2 completion), Previous Pentest Date: 2026-06-23, Security Audit Checklist
 
 ### Community 135 - "Community 135"
-Cohesion: 0.14
-Nodes (22): WebhookConfig, createGoogleBusinessOAuth2Client(), getValidOAuth2Client(), isInvalidGrant(), refreshAccessTokenIfNeeded(), GoogleBusinessLocation, GoogleBusinessLocationSchema, IGoogleBusinessLocation (+14 more)
+Cohesion: 0.27
+Nodes (11): createGoogleBusinessOAuth2Client(), getValidOAuth2Client(), isInvalidGrant(), refreshAccessTokenIfNeeded(), DeviceGmbContext, createAccessTokenOAuthClient(), getGmbApiAuth(), GmbApiAuth (+3 more)
 
 ### Community 136 - "Community 136"
 Cohesion: 0.50
@@ -593,17 +618,17 @@ Nodes (12): ConnectRefreshCoordinator, ConnectRefreshCoordinatorDeps, applySocia
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `logger` connect `Community 2` to `Community 0`, `Community 1`, `Community 4`, `Community 133`, `Community 6`, `Community 135`, `Community 9`, `Community 10`, `Community 12`, `Community 143`, `Community 21`, `Community 26`, `Community 30`, `Community 31`, `Community 36`, `Community 37`, `Community 39`, `Community 43`, `Community 49`, `Community 50`, `Community 54`, `Community 59`, `Community 75`, `Community 76`, `Community 82`, `Community 98`?**
-  _High betweenness centrality (0.046) - this node is a cross-community bridge._
-- **Why does `StatsMqttLite` connect `Community 12` to `Community 0`, `Community 1`, `Community 2`, `Community 8`, `Community 10`, `Community 143`, `Community 18`, `Community 20`, `Community 35`, `Community 39`, `Community 44`, `Community 45`, `Community 47`, `Community 49`, `Community 50`, `Community 52`, `Community 54`, `Community 56`, `Community 59`, `Community 62`, `Community 63`, `Community 73`, `Community 90`?**
+- **Why does `logger` connect `Community 2` to `Community 0`, `Community 1`, `Community 4`, `Community 6`, `Community 135`, `Community 9`, `Community 10`, `Community 12`, `Community 143`, `Community 16`, `Community 18`, `Community 21`, `Community 26`, `Community 30`, `Community 31`, `Community 36`, `Community 37`, `Community 41`, `Community 45`, `Community 47`, `Community 49`, `Community 50`, `Community 52`, `Community 54`, `Community 59`, `Community 65`, `Community 76`, `Community 77`, `Community 98`?**
+  _High betweenness centrality (0.045) - this node is a cross-community bridge._
+- **Why does `StatsMqttLite` connect `Community 12` to `Community 0`, `Community 1`, `Community 2`, `Community 8`, `Community 10`, `Community 143`, `Community 18`, `Community 20`, `Community 35`, `Community 36`, `Community 39`, `Community 40`, `Community 43`, `Community 44`, `Community 45`, `Community 49`, `Community 50`, `Community 56`, `Community 59`, `Community 62`, `Community 63`, `Community 73`, `Community 75`, `Community 90`, `Community 123`?**
   _High betweenness centrality (0.038) - this node is a cross-community bridge._
-- **Why does `MqttClientManager` connect `Community 47` to `Community 98`, `Community 67`, `Community 4`, `Community 2`, `Community 135`, `Community 76`, `Community 45`, `Community 12`, `Community 143`, `Community 49`, `Community 82`, `Community 50`, `Community 21`, `Community 54`, `Community 56`, `Community 26`, `Community 59`, `Community 62`?**
+- **Why does `MqttClientManager` connect `Community 43` to `Community 98`, `Community 2`, `Community 4`, `Community 67`, `Community 75`, `Community 76`, `Community 45`, `Community 12`, `Community 47`, `Community 143`, `Community 50`, `Community 21`, `Community 54`, `Community 56`, `Community 26`, `Community 59`, `Community 62`?**
   _High betweenness centrality (0.026) - this node is a cross-community bridge._
 - **What connects `root`, `parser`, `plugins` to the rest of the system?**
   _773 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Community 0` be split into smaller, more focused modules?**
-  _Cohesion score 0.05092592592592592 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.10967741935483871 - nodes in this community are weakly interconnected._
 - **Should `Community 1` be split into smaller, more focused modules?**
   _Cohesion score 0.051577152600170505 - nodes in this community are weakly interconnected._
 - **Should `Community 2` be split into smaller, more focused modules?**
-  _Cohesion score 0.1053763440860215 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.07183673469387755 - nodes in this community are weakly interconnected._

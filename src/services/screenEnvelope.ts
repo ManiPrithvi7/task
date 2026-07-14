@@ -42,7 +42,9 @@ export function instagramFollowerMetrics(followers: number): {
   progress: number;
 } {
   const f = Math.max(0, Math.floor(followers));
-  const nextGoal = f === 0 ? 25 : Math.ceil(f / 25) * 25;
+  // Same shape as gmbReviewMetrics: nextGoal is always the next slab above `f`
+  // (so at 25 → nextGoal 50, not stuck on 25).
+  const nextGoal = Math.floor(f / 25) * 25 + 25;
   const prevMilestone = Math.floor(f / 25) * 25;
   const span = Math.max(1, nextGoal - prevMilestone);
   const progress = Math.max(0, Math.min(100, Math.round(((f - prevMilestone) / span) * 100)));
