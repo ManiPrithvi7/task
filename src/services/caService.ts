@@ -67,7 +67,7 @@ export interface RootCA {
 export class CAService {
   private config: CAConfig;
   private rootCA: RootCA | null = null;
-  /** Loaded from config.storagePath (default `src/certs`; override `CA_STORAGE_PATH` in containers without a `src/` tree). */
+  /** Loaded from config.storagePath (default `data/certs` or `DATA_DIR/certs`; override `CA_STORAGE_PATH` / `PROVISIONING_CA_DIR`). */
   private readonly ROOT_CA_CERT_FILE = 'root-ca.crt';
   private readonly ROOT_CA_KEY_FILE = 'root-ca.key';
 

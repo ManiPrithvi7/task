@@ -87,8 +87,11 @@ function getProvisioningRootCaKeyFromEnv(): string | undefined {
   return undefined;
 }
 
-/** Default Root CA directory (env decode + auto-generated CA). Override with `CA_STORAGE_PATH` or `PROVISIONING_CA_DIR` (e.g. in Docker use `/data/provisioning-ca`). */
-export const DEFAULT_PROVISIONING_CA_STORAGE_PATH = path.resolve(process.cwd(), 'src', 'certs');
+/** Default Root CA directory (env decode + auto-generated CA). Prefer `data/certs` (writable in Docker). Override with `CA_STORAGE_PATH` or `PROVISIONING_CA_DIR`. */
+export const DEFAULT_PROVISIONING_CA_STORAGE_PATH = path.resolve(
+  process.env.DATA_DIR?.trim() || path.resolve(process.cwd(), 'data'),
+  'certs'
+);
 
 /** MQTT TLS: env-only (BASE64 or *_PEM). Never read or write data/.mqtt-tls/ for broker/client PEMs. */
 function resolveMqttTlsPemFromEnv(): {
