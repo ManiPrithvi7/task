@@ -8,7 +8,7 @@ import { Device } from '../src/models/Device';
 import { Social, Provider } from '../src/models/Social';
 import mongoose from 'mongoose';
 import { readStimCache, writeStimCache } from './cache';
-import { calcResume, ceilingSequence, isAtOrPastTarget } from './math';
+import { calcResume, ceilingSequence, isAtOrPastTarget, igCelebration } from './math';
 import { getRedisService } from '../src/services/redisService';
 
 export const STIM_IG_LOCK_TTL_SEC = 3600;
@@ -71,7 +71,13 @@ export function buildStimIgPayload(
     fetched_at: new Date().toISOString(),
     data: { followers_count: followers, instagram_username: '' },
   };
-  return formatInstagramScreenMqttPayload(shape, topicRoot);
+  const { topic, payload } = formatInstagramScreenMqttPayload(shape, topicRoot);
+  const celebration = igCelebration(followers);
+  // ponytail: patch celebrate flags onto legacy IG envelope (production helper stays muted-only)
+  const envelope = JSON.parse(payload) as Record<string, unknown>;
+  envelope.celebration = celebration;
+  envelope.muted = celebration === 'true' ? 'false' : 'true';
+  return { topic, payload: JSON.stringify(envelope) };
 }
 
 export async function ensureStimIgLock(redis: RedisService, deviceId: string): Promise<boolean> {
@@ -150,6 +156,12 @@ export async function runIgTick(
   await updateFollowerCache(deviceId, publishValue);
   writeStimCache('instagram', deviceId, { lastPublished: publishValue, status: publishValue >= target ? 'done' : 'running' });
 
-  logger.info('[STIM_IG] Published', { deviceId, followers: publishValue, target, done: publishValue >= target });
+  logger.info('[STIM_IG] Published', {
+    deviceId,
+    followers: publishValue,
+    target,
+    celebration: igCelebration(publishValue),
+    done: publishValue >= target
+  });
   return { done: publishValue >= target, publishedCount: 1 };
 }

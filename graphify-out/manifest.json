@@ -1190,13 +1190,13 @@
     "semantic_hash": ""
   },
   "stimulate/igRunner.ts": {
-    "mtime": 1784009931.5817041,
-    "ast_hash": "295e11096c1088beda48901287a6444a",
+    "mtime": 1784022947.4657862,
+    "ast_hash": "b800f4092f18547a193674d1419b3c28",
     "semantic_hash": ""
   },
   "stimulate/math.ts": {
-    "mtime": 1784009057.477102,
-    "ast_hash": "730ee299713a39785cd755c2202a14ef",
+    "mtime": 1784022918.3717058,
+    "ast_hash": "fcfa87b092b1e5d7345afd0a9dc4ec4c",
     "semantic_hash": ""
   },
   "tests/unit/services/influxServiceBucketRouting.test.ts": {
@@ -1215,8 +1215,8 @@
     "semantic_hash": ""
   },
   "tests/unit/stimulate/math.test.ts": {
-    "mtime": 1784009144.3185031,
-    "ast_hash": "e3f7ad5cc198a7707388bc7ad200a8da",
+    "mtime": 1784022933.9480119,
+    "ast_hash": "252d46971882655bcf140837673436c1",
     "semantic_hash": ""
   },
   "docs/influxdb refinement actions.md": {

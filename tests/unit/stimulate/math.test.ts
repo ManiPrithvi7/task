@@ -1,7 +1,13 @@
 /**
  * TEMP STIMULATE — remove after testing
  */
-import { calcResume, ceilingSequence, isAtOrPastTarget, gmbCelebration } from '../../../stimulate/math';
+import {
+  calcResume,
+  ceilingSequence,
+  isAtOrPastTarget,
+  gmbCelebration,
+  igCelebration
+} from '../../../stimulate/math';
 
 describe('calcResume (T001–T004)', () => {
   it('T001: live=10, lastPub=5, step=1 → resume=10 (live wins)', () => {
@@ -49,24 +55,30 @@ describe('isAtOrPastTarget', () => {
   });
 });
 
-describe('gmbCelebration (T008)', () => {
-  it('celebration at 50', () => {
-    expect(gmbCelebration(50)).toBe('true');
+describe('gmbCelebration (every 5)', () => {
+  it('celebration at 5, 10, 15', () => {
+    expect(gmbCelebration(5)).toBe('true');
+    expect(gmbCelebration(10)).toBe('true');
+    expect(gmbCelebration(15)).toBe('true');
   });
 
-  it('celebration at 100', () => {
-    expect(gmbCelebration(100)).toBe('true');
-  });
-
-  it('no celebration at 49', () => {
-    expect(gmbCelebration(49)).toBe('false');
-  });
-
-  it('no celebration at 51', () => {
-    expect(gmbCelebration(51)).toBe('false');
-  });
-
-  it('no celebration at 0', () => {
+  it('no celebration off-slab or at 0', () => {
     expect(gmbCelebration(0)).toBe('false');
+    expect(gmbCelebration(4)).toBe('false');
+    expect(gmbCelebration(11)).toBe('false');
+  });
+});
+
+describe('igCelebration (every 25)', () => {
+  it('celebration at 25, 50, 75', () => {
+    expect(igCelebration(25)).toBe('true');
+    expect(igCelebration(50)).toBe('true');
+    expect(igCelebration(75)).toBe('true');
+  });
+
+  it('no celebration off-slab or at 0', () => {
+    expect(igCelebration(0)).toBe('false');
+    expect(igCelebration(24)).toBe('false');
+    expect(igCelebration(26)).toBe('false');
   });
 });

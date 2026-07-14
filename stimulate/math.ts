@@ -16,6 +16,12 @@ export function isAtOrPastTarget(liveCount: number, target: number): boolean {
   return liveCount >= target;
 }
 
+/** Celebrate on every 5-review slab boundary (aligned with gmbReviewMetrics). */
 export function gmbCelebration(current: number): 'true' | 'false' {
-  return current === 50 || current === 100 ? 'true' : 'false';
+  return current > 0 && current % 5 === 0 ? 'true' : 'false';
+}
+
+/** Celebrate on every 25-follower slab boundary (aligned with instagramFollowerMetrics). */
+export function igCelebration(current: number): 'true' | 'false' {
+  return current > 0 && current % 25 === 0 ? 'true' : 'false';
 }
