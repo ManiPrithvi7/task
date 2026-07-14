@@ -1,11 +1,12 @@
-FROM oven/bun:1.1-alpine AS builder
+# Bun 1.3+ required: bun.lock (lockfileVersion 1) is rejected by Bun 1.1.x
+FROM oven/bun:1.3.12-alpine AS builder
 WORKDIR /app
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 COPY . .
 RUN bun run build
 
-FROM oven/bun:1.1-alpine
+FROM oven/bun:1.3.12-alpine
 RUN apk add --no-cache dumb-init
 RUN addgroup -g 1001 -S bunjs && adduser -S bunjs -u 1001
 WORKDIR /app
