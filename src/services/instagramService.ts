@@ -961,6 +961,17 @@ export async function applyInstagramServerlessDeviceOutcome(
           flush: false,
           mediaCount: row.media_count
         });
+
+        if (oldFollowers === null) {
+          await influx.writeProfileBaseline({
+            deviceId,
+            platform: 'instagram',
+            userId,
+            followers: row.followers_count,
+            connectedAt: auditTs,
+            timestamp: auditTs
+          }, { flush: false });
+        }
       }
 
       if (row.success && newFollowers !== null && oldFollowers !== null && igAccount) {

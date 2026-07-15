@@ -51,99 +51,58 @@ describe('InfluxService bucket routing', () => {
   };
 
   let service: InfluxService;
-  let spySubmitPoint: jest.SpyInstance;
 
   beforeEach(() => {
     jest.clearAllMocks();
     service = new InfluxService(mockConfig);
-    spySubmitPoint = jest.spyOn(service as any, 'submitPoint');
-  });
-
-  it('routes writeInstagramFetchAudit to metrics bucket', async () => {
-    await service.writeInstagramFetchAudit({
-      deviceId: 'dev-1',
-      userId: 'user-1',
-      success: true,
-      triggerType: 'poll',
-      oldFollowers: 100,
-      newFollowers: 101,
-      durationMs: 500,
-    });
-    expect(spySubmitPoint).toHaveBeenCalledWith(
-      expect.anything(),
-      BucketTarget.METRICS,
-      expect.any(Boolean)
-    );
-  });
-
-  it('routes writeAuditEvent to compliance bucket', async () => {
-    await service.writeAuditEvent({
-      event: 'OTA_SUCCESS',
-      deviceId: 'dev-1',
-      hash: 'abc123',
-      sequence: 1,
-    });
-    expect(spySubmitPoint).toHaveBeenCalledWith(
-      expect.anything(),
-      BucketTarget.COMPLIANCE,
-      expect.any(Boolean)
-    );
-  });
-
-  it('routes writeTransparencyEntry to compliance bucket', async () => {
-    await service.writeTransparencyEntry({
-      index: 0,
-      leafHash: 'leaf',
-      rootHash: 'root',
-      inclusionProof: '[]',
-      certFingerprint: 'fp',
-      serialNumber: 'SN1',
-      cn: 'device.test',
-      deviceId: 'dev-1',
-      issuedAt: new Date(),
-    });
-    expect(spySubmitPoint).toHaveBeenCalledWith(
-      expect.anything(),
-      BucketTarget.COMPLIANCE,
-      expect.any(Boolean)
-    );
-  });
-
-  it('routes writeSocialMetrics to metrics bucket', async () => {
-    await service.writeSocialMetrics('instagram', 'user-1', { followers: 100 });
-    expect(spySubmitPoint).toHaveBeenCalledWith(
-      expect.anything(),
-      BucketTarget.METRICS,
-      expect.any(Boolean)
-    );
-  });
-
-  it('routes writeInstagramFollowersGauge to metrics bucket', async () => {
-    await service.writeInstagramFollowersGauge('dev-1', 'ig-1', 100);
-    expect(spySubmitPoint).toHaveBeenCalledWith(
-      expect.anything(),
-      BucketTarget.METRICS,
-      expect.any(Boolean)
-    );
-  });
-
-  it('routes writeRateLimitEvent to metrics bucket', async () => {
-    await service.writeRateLimitEvent({
-      limitType: 'rate',
-      endpoint: '/api/test',
-      ip: '127.0.0.1',
-      count: 5,
-      limit: 100,
-    });
-    expect(spySubmitPoint).toHaveBeenCalledWith(
-      expect.anything(),
-      BucketTarget.METRICS,
-      expect.any(Boolean)
-    );
   });
 
   it('resolveBucket returns correct bucket names', () => {
     expect((service as any).resolveBucket(BucketTarget.METRICS)).toBe('metrics');
     expect((service as any).resolveBucket(BucketTarget.COMPLIANCE)).toBe('pki_compliance');
+  });
+
+  it('instantiates metrics-category repos with metrics WriteApi', () => {
+    const submitSpy = jest.spyOn(service.deviceMetrics as any, 'submit');
+    service.writeDeviceMetrics('dev-1', { temperature: 22.5 });
+    expect(submitSpy).toHaveBeenCalledWith(
+      expect.anything(),
+      BucketTarget.METRICS,
+      expect.any(Boolean)
+    );
+  });
+
+  it('instantiates compliance-category repos with compliance WriteApi', () => {
+    const submitSpy = jest.spyOn(service.pkiAudit as any, 'submit');
+    service.writeAuditEvent({ event: 'OTA_SUCCESS', deviceId: 'dev-1', hash: 'abc', sequence: 1 });
+    expect(submitSpy).toHaveBeenCalledWith(
+      expect.anything(),
+      BucketTarget.COMPLIANCE,
+      expect.any(Boolean)
+    );
+  });
+
+  it('instagramAudit routes to METRICS', () => {
+    const submitSpy = jest.spyOn(service.instagramAudit as any, 'submit');
+    service.writeInstagramFetchAudit({ deviceId: 'd1', userId: 'u1', success: true, triggerType: 'poll', oldFollowers: 100, newFollowers: 101, durationMs: 500 });
+    expect(submitSpy).toHaveBeenCalledWith(expect.anything(), BucketTarget.METRICS, expect.any(Boolean));
+  });
+
+  it('ctLog routes to COMPLIANCE', () => {
+    const submitSpy = jest.spyOn(service.ctLog as any, 'submit');
+    service.writeTransparencyEntry({ index: 0, leafHash: 'l', rootHash: 'r', inclusionProof: '[]', certFingerprint: 'fp', serialNumber: 'S1', cn: 'c', deviceId: 'd1', issuedAt: new Date() });
+    expect(submitSpy).toHaveBeenCalledWith(expect.anything(), BucketTarget.COMPLIANCE, expect.any(Boolean));
+  });
+
+  it('writeSocialMetrics routes to METRICS via deviceMetrics repo', () => {
+    const submitSpy = jest.spyOn(service.deviceMetrics as any, 'submit');
+    service.writeSocialMetrics('instagram', 'u1', { followers: 100 });
+    expect(submitSpy).toHaveBeenCalledWith(expect.anything(), BucketTarget.METRICS, expect.any(Boolean));
+  });
+
+  it('writeInstagramFollowersGauge routes to METRICS', () => {
+    const submitSpy = jest.spyOn(service.instagramAudit as any, 'submit');
+    service.writeInstagramFollowersGauge('d1', 'ig-1', 100);
+    expect(submitSpy).toHaveBeenCalledWith(expect.anything(), BucketTarget.METRICS, expect.any(Boolean));
   });
 });

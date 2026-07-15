@@ -30,6 +30,8 @@ export interface ISocial extends Document {
   nfcCount: number;
   scanCount: number;
   tokenCreatedAt?: Date;
+  baselineCaptured?: boolean;
+  baselineCapturedAt?: Date;
   updatedAt?: Date;
   createdAt?: Date;
 }
@@ -92,6 +94,14 @@ const SocialSchema = new Schema<ISocial>({
   tokenCreatedAt: {
     type: Date,
     default: Date.now
+  },
+  baselineCaptured: {
+    type: Boolean,
+    default: false
+  },
+  baselineCapturedAt: {
+    type: Date,
+    default: null
   }
 }, {
   timestamps: true, // Automatically adds createdAt and updatedAt
@@ -102,6 +112,7 @@ const SocialSchema = new Schema<ISocial>({
 // Indexes (matching Prisma schema). Collection name: `Social`.
 SocialSchema.index({ userId: 1 });
 SocialSchema.index({ provider: 1 });
+SocialSchema.index({ userId: 1, socialAccountId: 1, provider: 1 });
 
 export const Social = mongoose.model<ISocial>('Social', SocialSchema);
 

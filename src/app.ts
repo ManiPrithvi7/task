@@ -52,6 +52,9 @@ import { createRecoveryRoutes } from './routes/recoveryRoutes';
 import { createOtaRoutes } from './routes/otaRoutes';
 import { createOtaAdminRoutes } from './routes/otaAdminRoutes';
 import { createWebhookRoutes, type OtaReleaseWebhookDeps } from './routes/webhookRoutes';
+import { createDashboardRoutes } from './routes/dashboardRoutes';
+import { createIntegrationRoutes } from './routes/integrationRoutes';
+import { createInfluxQueryRoutes } from './routes/influxQueryRoutes';
 import { createFirmwareStorageService } from './services/firmwareStorageService';
 import { resolveOtaPublicBaseUrl } from './config/otaDefaults';
 import {
@@ -1674,6 +1677,33 @@ export class StatsMqttLite {
       }
     }
     
+    if (this.influxService) {
+      if (this.authService || this.config.auth?.secret) {
+        if (!this.authService && this.config.auth?.secret) {
+          this.authService = new AuthService(this.config.auth.secret);
+        }
+        if (this.authService) {
+          const dashboardRoutes = createDashboardRoutes({ authService: this.authService });
+          this.httpServer.getApp().use('/api/v1', dashboardRoutes);
+          logger.info('✅ Dashboard routes registered at /api/v1/dashboard/*');
+
+          const integrationRoutes = createIntegrationRoutes({ authService: this.authService });
+          this.httpServer.getApp().use('/api/v1', integrationRoutes);
+          logger.info('✅ Integration routes registered at /api/v1/integrations/*');
+
+          const influxQueryRoutes = createInfluxQueryRoutes({ authService: this.authService });
+          this.httpServer.getApp().use('/api/v1', influxQueryRoutes);
+          logger.info('✅ Influx query proxy registered at POST /api/v1/influx/query');
+        } else {
+          logger.warn('⚠️ Dashboard/integration/query routes skipped — AuthService not initialized');
+        }
+      } else {
+        logger.warn('⚠️ Dashboard/integration/query routes skipped — AUTH_SECRET not configured');
+      }
+    } else {
+      logger.info('⏭️ Dashboard/integration/query routes skipped — InfluxDB unavailable');
+    }
+
     await this.httpServer.start();
     
     logger.info('✅ HTTP server initialized');

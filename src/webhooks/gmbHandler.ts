@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { Request, Response } from 'express';
 import type { WebhookHandlerDeps } from './types';
 import { verifyPubSubPushRequest } from './verify/pubsubGmb';
@@ -47,6 +48,35 @@ const parseStarRating = (value: number | string | undefined): number => {
 export async function handleGmbWebhook(req: Request, res: Response, deps: WebhookHandlerDeps): Promise<void> {
   const tracker = new WebhookLatencyTracker();
   const isProduction = deps.appEnv === 'production';
+  const webhookReceivedAt = new Date().toISOString();
+  const rawBody = req.rawBody?.toString('utf8') ?? '';
+  const payloadSha256 = crypto.createHash('sha256').update(rawBody).digest('hex');
+
+  const writeGmbAudit = async (
+    influx: import('../services/influxService').InfluxService,
+    overrides: {
+      deviceId?: string; locationId?: string; eventType?: string; webhookId?: string;
+      userId?: string; processedAt?: string; processingMs?: number;
+      verified?: boolean; signatureValid?: boolean; errorMessage?: string;
+    }
+  ) => {
+    await influx.writeGmbWebhookAudit({
+      locationId: overrides.locationId ?? '',
+      eventType: overrides.eventType ?? '',
+      receivedAt: webhookReceivedAt,
+      verified: overrides.verified ?? true,
+      signatureValid: overrides.signatureValid ?? true,
+      payloadSizeBytes: rawBody.length,
+      payloadSha256,
+      deviceId: overrides.deviceId,
+      webhookId: overrides.webhookId,
+      userId: overrides.userId,
+      processedAt: overrides.processedAt,
+      processingMs: overrides.processingMs,
+      errorMessage: overrides.errorMessage,
+      timestamp: new Date()
+    }, { flush: false });
+  };
 
   try {
     const authHeader = req.headers.authorization ?? null;
@@ -77,6 +107,9 @@ export async function handleGmbWebhook(req: Request, res: Response, deps: Webhoo
         error: verification.error,
         audience: deps.webhookConfig.gmbPubsubAudience
       });
+      await webhookInfluxBatch((influx) =>
+        writeGmbAudit(influx, { verified: false, signatureValid: false, errorMessage: verification.error ?? 'verify_failed' })
+      );
       if (isProduction) {
         await flushWebhookInflux();
         res.status(401).json({ error: verification.error ?? 'Unauthorized' });
@@ -90,17 +123,24 @@ export async function handleGmbWebhook(req: Request, res: Response, deps: Webhoo
     });
     tracker.markVerified();
 
-    const rawBody = req.rawBody?.toString('utf8') ?? '';
-    let envelope: { message?: { data?: string } };
+    let envelope: { message?: { data?: string; messageId?: string } };
     try {
-      envelope = JSON.parse(rawBody) as { message?: { data?: string } };
+      envelope = JSON.parse(rawBody) as { message?: { data?: string; messageId?: string } };
     } catch {
       logger.warn('[GMB_WEBHOOK] invalid_envelope_json');
+      await webhookInfluxBatch((influx) =>
+        writeGmbAudit(influx, { errorMessage: 'invalid_envelope_json' })
+      );
       return ack(res, 'Invalid JSON — acknowledged to prevent retry');
     }
 
+    const webhookId = envelope.message?.messageId;
+
     if (!envelope.message?.data) {
       logger.info('[GMB_WEBHOOK] no_message_data');
+      await webhookInfluxBatch((influx) =>
+        writeGmbAudit(influx, { webhookId, errorMessage: 'no_message_data' })
+      );
       return ack(res, 'No message data — acknowledged');
     }
 
@@ -110,6 +150,9 @@ export async function handleGmbWebhook(req: Request, res: Response, deps: Webhoo
       notification = JSON.parse(decoded) as GmbReviewNotification;
     } catch {
       logger.warn('[GMB_WEBHOOK] invalid_notification_payload');
+      await webhookInfluxBatch((influx) =>
+        writeGmbAudit(influx, { webhookId, errorMessage: 'invalid_notification_payload' })
+      );
       return ack(res, 'Invalid notification payload — acknowledged');
     }
 
@@ -135,6 +178,9 @@ export async function handleGmbWebhook(req: Request, res: Response, deps: Webhoo
     const isNew = await tryClaimWebhookDedupe(dedupeKey);
     if (!isNew) {
       logger.info('[GMB_WEBHOOK] duplicate', { dedupeKey, eventType });
+      await webhookInfluxBatch((influx) =>
+        writeGmbAudit(influx, { webhookId, locationId: location, eventType, errorMessage: 'duplicate' })
+      );
       tracker.finish('gmb', { dedupeKey, dedupeHit: true, skippedPublish: true });
       return ack(res, 'Duplicate — acknowledged', { dedupeKey });
     }
@@ -159,12 +205,36 @@ export async function handleGmbWebhook(req: Request, res: Response, deps: Webhoo
 
     if (!ctx) {
       logger.info('[GMB_WEBHOOK] no_linked_location', { account, location, eventType });
+      await webhookInfluxBatch((influx) =>
+        writeGmbAudit(influx, { webhookId, locationId: location, eventType, errorMessage: 'no_linked_location' })
+      );
       tracker.finish('gmb', { dedupeKey, skippedPublish: true });
       return ack(res, 'No linked social/location — acknowledged', { account, location });
     }
 
     const rating = parseStarRating(notification.starRating);
     const verifiedReview = ctx.verifiedReviewCount + (eventType === 'NEW_REVIEW' ? 1 : 0);
+
+    await webhookInfluxBatch((influx) =>
+      writeGmbAudit(influx, {
+        webhookId, locationId: location, eventType,
+        deviceId: devices[0]?.clientId,
+        userId: ctx.userId
+      })
+    );
+
+    await webhookInfluxBatch((influx) =>
+      influx.writeGmbReviewSnapshot({
+        deviceId: devices[0]?.clientId || location,
+        locationId: location,
+        userId: ctx.userId,
+        totalReviews: verifiedReview,
+        averageRating: rating,
+        newReviews24h: eventType === 'NEW_REVIEW' ? 1 : 0,
+        newReviews7d: 0,
+        timestamp: new Date()
+      }, { flush: false })
+    );
     logger.info('[GMB_WEBHOOK] processing', {
       eventType,
       userId: ctx.userId,
@@ -178,6 +248,17 @@ export async function handleGmbWebhook(req: Request, res: Response, deps: Webhoo
     const cachedOldCount = await getGmbReviewCount(location);
     if (cachedOldCount === null) {
       await setGmbReviewCount(location, verifiedReview);
+      await webhookInfluxBatch((influx) =>
+        influx.writeProfileBaseline({
+          deviceId: location,
+          platform: 'gmb',
+          userId: ctx.userId,
+          followers: verifiedReview,
+          rating: typeof rating === 'number' && rating > 0 ? rating : undefined,
+          connectedAt: new Date(),
+          timestamp: new Date()
+        }, { flush: false })
+      );
     } else {
       const auditTs = new Date();
       for (const device of devices) {
@@ -270,6 +351,11 @@ export async function handleGmbWebhook(req: Request, res: Response, deps: Webhoo
     logger.error('[GMB WEBHOOK] Unexpected error (returning 200)', {
       error: error instanceof Error ? error.message : String(error)
     });
+    await webhookInfluxBatch((influx) =>
+      writeGmbAudit(influx, {
+        errorMessage: error instanceof Error ? error.message : 'Unexpected error'
+      })
+    );
     return ack(res, 'Acknowledged with processing error');
   }
 }

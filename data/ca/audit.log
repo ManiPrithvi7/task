@@ -1,0 +1,1 @@
+{"event":"CERT_ISSUED_IN_MEMORY","deviceId":"proof-server","userId":"000000000000000000000000","details":{"serialNumber":"3885707240c97a971bfbdfdfb2552a64","cn":"PROOF-proof-server","fingerprint":"426369876c5e35e13132db0b4cb84af1974c3d74a935248f0130b734ad1ae584","expiresAt":"2036-05-27T18:04:06.716Z"},"timestamp":"2026-05-30T18:04:07.025Z"}

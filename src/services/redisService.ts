@@ -322,7 +322,13 @@ export class RedisService {
 
       const keyPattern = `${this.config.keyPrefix || 'mqtt-lite:'}*`;
       const keysStart = performance.now();
-      const keys = await this.client.keys(keyPattern);
+      const keys: string[] = [];
+      let cursor = 0;
+      do {
+        const result = await this.client.scan(cursor, { MATCH: keyPattern, COUNT: 1000 });
+        cursor = result.cursor;
+        keys.push(...result.keys);
+      } while (cursor !== 0);
       const keysDurationMs = Math.round(performance.now() - keysStart);
 
       const infoStart = performance.now();
@@ -330,11 +336,10 @@ export class RedisService {
       const infoDurationMs = Math.round(performance.now() - infoStart);
 
       if (keysDurationMs > 100 || keys.length > 1000) {
-        logger.warn(`${REDIS_LOG_PREFIX} getStats: KEYS scan slow or large`, {
+        logger.warn(`${REDIS_LOG_PREFIX} getStats: SCAN slow or large result set`, {
           keyPattern,
           keyCount: keys.length,
-          keysDurationMs,
-          hint: 'Consider SCAN instead of KEYS for production stats'
+          keysDurationMs
         });
       }
 
