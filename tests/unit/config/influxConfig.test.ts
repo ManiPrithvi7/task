@@ -1,5 +1,9 @@
 import { loadConfig, validateConfig } from '@/config';
 
+const cleanEnv = (): void => {
+  delete process.env.INFLUXDB_COMPLIANCE_BUCKET;
+};
+
 const baseEnv = (): Record<string, string | undefined> => ({
   MONGODB_URI: 'mongodb://localhost:27017/test',
   INFLUXDB_TOKEN: 'test-token',
@@ -18,6 +22,7 @@ describe('influx config validation', () => {
 
   it('throws when INFLUXDB_TOKEN is missing', () => {
     process.env = { ...process.env, ...baseEnv() };
+    cleanEnv();
     delete process.env.INFLUXDB_TOKEN;
     const config = loadConfig();
     expect(config.influxdb.token).toBe('');
@@ -26,18 +31,21 @@ describe('influx config validation', () => {
 
   it('throws when ENABLE_METRICS_COLLECTION=false', () => {
     process.env = { ...process.env, ...baseEnv(), ENABLE_METRICS_COLLECTION: 'false' };
+    cleanEnv();
     const config = loadConfig();
     expect(() => validateConfig(config)).toThrow(/ENABLE_METRICS_COLLECTION=false is not allowed/);
   });
 
   it('enables influx write logging in development', () => {
     process.env = { ...process.env, ...baseEnv(), NODE_ENV: 'development' };
+    cleanEnv();
     const config = loadConfig();
     expect(config.influxdb.logWrites).toBe(true);
   });
 
   it('disables influx write logging in production', () => {
     process.env = { ...process.env, ...baseEnv(), NODE_ENV: 'production' };
+    cleanEnv();
     const config = loadConfig();
     expect(config.influxdb.logWrites).toBe(false);
   });
@@ -49,6 +57,7 @@ describe('influx config validation', () => {
       INFLUXDB_CLIENT_BATCH_SIZE: '250',
       INFLUX_AUDIT_MAX_FIELD_LENGTH: '2048'
     };
+    cleanEnv();
     const config = loadConfig();
     expect(config.influxdb.clientBatchSize).toBe(250);
     expect(config.influxdb.auditMaxFieldLength).toBe(2048);
@@ -57,6 +66,7 @@ describe('influx config validation', () => {
 
   it('loads default complianceBucket from env', () => {
     process.env = { ...process.env, ...baseEnv() };
+    cleanEnv();
     const config = loadConfig();
     expect(config.influxdb.complianceBucket).toBe('pki_compliance');
   });

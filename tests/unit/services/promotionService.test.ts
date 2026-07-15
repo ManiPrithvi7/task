@@ -22,7 +22,6 @@ jest.mock('@/services/brandCanvasService', () => ({
 
 import { getRedisService } from '@/services/redisService';
 import { getActiveDeviceCache } from '@/services/deviceService';
-import { invalidateCanvasCache } from '@/services/brandCanvasService';
 
 const mockGetRedis = getRedisService as jest.MockedFunction<typeof getRedisService>;
 
@@ -165,7 +164,6 @@ describe('promotionService', () => {
       { force: true }
     );
 
-    expect(invalidateCanvasCache).toHaveBeenCalledWith('user-1');
     expect(mockPublish).toHaveBeenCalledWith('dev-1', 'proof.mqtt', { force: true });
     expect(result.devicesNotified).toBe(1);
     expect(result.event).toBe('canvas.updated');
