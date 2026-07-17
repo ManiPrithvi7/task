@@ -179,5 +179,7 @@
   "177": "generate-broker-cert.sh",
   "178": "promotionConfig.ts",
   "179": "swaggerSchemas.ts",
-  "180": "{\n  verifyShopifyWebhook,\n  verifySquareWebhook,\n  isSquarePaymentEvent,\n  isSquareInvoiceEvent,\n  isSquareAppWebhookEvent,\n  parseSquareWebhookEnvelope,\n  getIdString,\n  buildReviewFromNotification,\n  isGmbTestNotification,\n  resolveGmbAccountResourceName,\n  resolveGmbLocationResourceName,\n  resolveGmbReviewPayload,\n  resolveGmbReviewResourceName\n}"
+  "180": "{\n  verifyShopifyWebhook,\n  verifySquareWebhook,\n  isSquarePaymentEvent,\n  isSquareInvoiceEvent,\n  isSquareAppWebhookEvent,\n  parseSquareWebhookEnvelope,\n  getIdString,\n  buildReviewFromNotification,\n  isGmbTestNotification,\n  resolveGmbAccountResourceName,\n  resolveGmbLocationResourceName,\n  resolveGmbReviewPayload,\n  resolveGmbReviewResourceName\n}",
+  "181": "prom-client",
+  "182": "uuid"
 }

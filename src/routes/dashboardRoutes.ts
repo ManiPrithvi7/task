@@ -43,6 +43,35 @@ const sanitizeForDashboard = (rows: Record<string, unknown>[]): Record<string, u
 export function createDashboardRoutes(deps: DashboardRoutesDeps): Router {
   const router = Router();
 
+  /**
+   * @swagger
+   * /api/v1/dashboard/instagram/{deviceId}/summary:
+   *   get:
+   *     tags: [Dashboard]
+   *     summary: Instagram dashboard summary for a device
+   *     security:
+   *       - BearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: deviceId
+   *         required: true
+   *         schema: { type: string }
+   *       - in: query
+   *         name: range
+   *         schema: { type: string, default: '-90d' }
+   *         description: Flux range start (e.g. -7d, -90d)
+   *     responses:
+   *       200:
+   *         description: Metrics, baseline, milestones, and weekly velocity
+   *       401:
+   *         $ref: '#/components/responses/Unauthorized'
+   *       403:
+   *         $ref: '#/components/responses/Forbidden'
+   *       503:
+   *         $ref: '#/components/responses/ServiceUnavailable'
+   *       500:
+   *         $ref: '#/components/responses/InternalError'
+   */
   router.get('/dashboard/instagram/:deviceId/summary', async (req: Request, res: Response) => {
     const auth = await requireAuth(req, res, deps.authService);
     if (!auth) return;
@@ -80,6 +109,32 @@ export function createDashboardRoutes(deps: DashboardRoutesDeps): Router {
     }
   });
 
+  /**
+   * @swagger
+   * /api/v1/dashboard/gmb/{locationId}/summary:
+   *   get:
+   *     tags: [Dashboard]
+   *     summary: GMB dashboard summary for a location
+   *     security:
+   *       - BearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: locationId
+   *         required: true
+   *         schema: { type: string }
+   *       - in: query
+   *         name: range
+   *         schema: { type: string, default: '-90d' }
+   *     responses:
+   *       200:
+   *         description: Webhook events, review snapshots, baseline, milestones, velocity
+   *       401:
+   *         $ref: '#/components/responses/Unauthorized'
+   *       503:
+   *         $ref: '#/components/responses/ServiceUnavailable'
+   *       500:
+   *         $ref: '#/components/responses/InternalError'
+   */
   router.get('/dashboard/gmb/:locationId/summary', async (req: Request, res: Response) => {
     const auth = await requireAuth(req, res, deps.authService);
     if (!auth) return;
@@ -114,6 +169,32 @@ export function createDashboardRoutes(deps: DashboardRoutesDeps): Router {
     }
   });
 
+  /**
+   * @swagger
+   * /api/v1/dashboard/gmb/{locationId}/reviews:
+   *   get:
+   *     tags: [Dashboard]
+   *     summary: GMB review snapshots for a location
+   *     security:
+   *       - BearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: locationId
+   *         required: true
+   *         schema: { type: string }
+   *       - in: query
+   *         name: range
+   *         schema: { type: string, default: '-90d' }
+   *     responses:
+   *       200:
+   *         description: Review snapshots
+   *       401:
+   *         $ref: '#/components/responses/Unauthorized'
+   *       503:
+   *         $ref: '#/components/responses/ServiceUnavailable'
+   *       500:
+   *         $ref: '#/components/responses/InternalError'
+   */
   router.get('/dashboard/gmb/:locationId/reviews', async (req: Request, res: Response) => {
     const auth = await requireAuth(req, res, deps.authService);
     if (!auth) return;
@@ -135,6 +216,33 @@ export function createDashboardRoutes(deps: DashboardRoutesDeps): Router {
     }
   });
 
+  /**
+   * @swagger
+   * /api/v1/dashboard/gmb/{locationId}/velocity:
+   *   get:
+   *     tags: [Dashboard]
+   *     summary: GMB weekly velocity for a location
+   *     security:
+   *       - BearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: locationId
+   *         required: true
+   *         schema: { type: string }
+   *       - in: query
+   *         name: week
+   *         schema: { type: string }
+   *         description: Optional week_of_year filter
+   *     responses:
+   *       200:
+   *         description: Weekly velocity rows
+   *       401:
+   *         $ref: '#/components/responses/Unauthorized'
+   *       503:
+   *         $ref: '#/components/responses/ServiceUnavailable'
+   *       500:
+   *         $ref: '#/components/responses/InternalError'
+   */
   router.get('/dashboard/gmb/:locationId/velocity', async (req: Request, res: Response) => {
     const auth = await requireAuth(req, res, deps.authService);
     if (!auth) return;
@@ -156,6 +264,32 @@ export function createDashboardRoutes(deps: DashboardRoutesDeps): Router {
     }
   });
 
+  /**
+   * @swagger
+   * /api/v1/dashboard/gmb/{locationId}/webhooks:
+   *   get:
+   *     tags: [Dashboard]
+   *     summary: GMB webhook audit and MQTT delivery trail
+   *     security:
+   *       - BearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: locationId
+   *         required: true
+   *         schema: { type: string }
+   *       - in: query
+   *         name: range
+   *         schema: { type: string, default: '-7d' }
+   *     responses:
+   *       200:
+   *         description: Webhook audits and MQTT deliveries
+   *       401:
+   *         $ref: '#/components/responses/Unauthorized'
+   *       503:
+   *         $ref: '#/components/responses/ServiceUnavailable'
+   *       500:
+   *         $ref: '#/components/responses/InternalError'
+   */
   router.get('/dashboard/gmb/:locationId/webhooks', async (req: Request, res: Response) => {
     const auth = await requireAuth(req, res, deps.authService);
     if (!auth) return;
@@ -181,6 +315,34 @@ export function createDashboardRoutes(deps: DashboardRoutesDeps): Router {
     }
   });
 
+  /**
+   * @swagger
+   * /api/v1/dashboard/device/{deviceId}/audit:
+   *   get:
+   *     tags: [Dashboard]
+   *     summary: Device Instagram/webhook audit trail
+   *     security:
+   *       - BearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: deviceId
+   *         required: true
+   *         schema: { type: string }
+   *       - in: query
+   *         name: range
+   *         schema: { type: string, default: '-7d' }
+   *     responses:
+   *       200:
+   *         description: Fetch audits, MQTT deliveries, and attention e2e
+   *       401:
+   *         $ref: '#/components/responses/Unauthorized'
+   *       403:
+   *         $ref: '#/components/responses/Forbidden'
+   *       503:
+   *         $ref: '#/components/responses/ServiceUnavailable'
+   *       500:
+   *         $ref: '#/components/responses/InternalError'
+   */
   router.get('/dashboard/device/:deviceId/audit', async (req: Request, res: Response) => {
     const auth = await requireAuth(req, res, deps.authService);
     if (!auth) return;
@@ -218,12 +380,41 @@ export function createDashboardRoutes(deps: DashboardRoutesDeps): Router {
     }
   });
 
+  /**
+   * @swagger
+   * /api/v1/dashboard/device/{deviceId}/baseline:
+   *   get:
+   *     tags: [Dashboard]
+   *     summary: Profile baselines (Instagram + GMB) for a device
+   *     security:
+   *       - BearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: deviceId
+   *         required: true
+   *         schema: { type: string }
+   *     responses:
+   *       200:
+   *         description: Latest baselines per platform
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/DeviceBaselineResponse'
+   *       401:
+   *         $ref: '#/components/responses/Unauthorized'
+   *       403:
+   *         $ref: '#/components/responses/Forbidden'
+   *       503:
+   *         $ref: '#/components/responses/ServiceUnavailable'
+   *       500:
+   *         $ref: '#/components/responses/InternalError'
+   */
   router.get('/dashboard/device/:deviceId/baseline', async (req: Request, res: Response) => {
     const auth = await requireAuth(req, res, deps.authService);
     if (!auth) return;
 
     const { deviceId } = req.params;
-    if (!(verifyDeviceOwnership(deviceId, auth.userId))) {
+    if (!(await verifyDeviceOwnership(deviceId, auth.userId))) {
       res.status(403).json({ error: 'Device not owned by user', code: 'DEVICE_NOT_OWNED' });
       return;
     }

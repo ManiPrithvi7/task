@@ -19,6 +19,10 @@ describe('swagger', () => {
     expect(paths['/api/v1/mqtt-config']).toBeDefined();
     expect(paths['/api/v1/connections/validate']).toBeDefined();
     expect(paths['/api/webhooks/google-business-reviews']).toBeDefined();
+    expect(paths['/api/v1/influx/query']).toBeDefined();
+    expect(paths['/api/v1/integrations/connect']).toBeDefined();
+    expect(paths['/api/v1/dashboard/device/{deviceId}/baseline']).toBeDefined();
+    expect(paths['/api/v1/dashboard/instagram/{deviceId}/summary']).toBeDefined();
   });
 
   it('documents at least 15 paths', () => {

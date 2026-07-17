@@ -19,6 +19,12 @@
  *     description: External webhook ingress
  *   - name: Connections
  *     description: Social connection validation fan-out
+ *   - name: Dashboard
+ *     description: Influx-backed analytics summaries for devices and locations
+ *   - name: Influx
+ *     description: Flux query proxy (sanitized; metrics or compliance scope)
+ *   - name: Integrations
+ *     description: Social integration connect and baseline capture
  *   - name: Deprecated
  *     description: Removed or superseded endpoints
  *
@@ -209,7 +215,82 @@
  *           default: true
  *         provider:
  *           type: string
- *           enum: [instagram, google_business]
+ *           enum: [instagram, INSTAGRAM, google_business, GOOGLE_BUSINESS, gmb]
+ *
+ *     InfluxQueryRequest:
+ *       type: object
+ *       required:
+ *         - flux
+ *       properties:
+ *         flux:
+ *           type: string
+ *           description: Flux query string (sanitized allowlist of functions/measurements)
+ *
+ *     InfluxQueryResponse:
+ *       type: object
+ *       properties:
+ *         results:
+ *           type: array
+ *           items:
+ *             type: object
+ *             additionalProperties: true
+ *         metadata:
+ *           type: object
+ *           properties:
+ *             rowCount:
+ *               type: integer
+ *             totalCount:
+ *               type: integer
+ *             executionTimeMs:
+ *               type: integer
+ *             truncated:
+ *               type: boolean
+ *
+ *     IntegrationConnectRequest:
+ *       type: object
+ *       required:
+ *         - socialAccountId
+ *         - provider
+ *       properties:
+ *         socialAccountId:
+ *           type: string
+ *         provider:
+ *           type: string
+ *           enum: [instagram, INSTAGRAM, google_business, GOOGLE_BUSINESS, gmb]
+ *
+ *     IntegrationConnectResponse:
+ *       type: object
+ *       properties:
+ *         success:
+ *           type: boolean
+ *         baseline:
+ *           type: object
+ *           properties:
+ *             followers:
+ *               type: number
+ *             mediaCount:
+ *               type: number
+ *             username:
+ *               type: string
+ *             rating:
+ *               type: number
+ *             connectedAt:
+ *               type: string
+ *               format: date-time
+ *
+ *     ProfileBaselineRow:
+ *       type: object
+ *       nullable: true
+ *       additionalProperties: true
+ *       description: Latest profile_baseline Influx row (or null)
+ *
+ *     DeviceBaselineResponse:
+ *       type: object
+ *       properties:
+ *         instagram:
+ *           $ref: '#/components/schemas/ProfileBaselineRow'
+ *         gmb:
+ *           $ref: '#/components/schemas/ProfileBaselineRow'
  *
  *   responses:
  *     Unauthorized:

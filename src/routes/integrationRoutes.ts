@@ -39,6 +39,45 @@ const PROVIDER_MAP: Record<string, Provider> = {
 export function createIntegrationRoutes(deps: IntegrationRoutesDeps): Router {
   const router = Router();
 
+  /**
+   * @swagger
+   * /api/v1/integrations/connect:
+   *   post:
+   *     tags: [Integrations]
+   *     summary: Capture social profile baseline on connect
+   *     description: >
+   *       Fetches live Instagram or GMB metrics, writes a profile_baseline point
+   *       to Influx, and marks the Social record as baselineCaptured.
+   *     security:
+   *       - BearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             $ref: '#/components/schemas/IntegrationConnectRequest'
+   *     responses:
+   *       201:
+   *         description: Baseline captured
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/IntegrationConnectResponse'
+   *       400:
+   *         description: Missing fields or unsupported provider
+   *       401:
+   *         $ref: '#/components/responses/Unauthorized'
+   *       404:
+   *         $ref: '#/components/responses/NotFound'
+   *       409:
+   *         description: Baseline already captured
+   *       502:
+   *         description: Upstream social API fetch failed
+   *       503:
+   *         $ref: '#/components/responses/ServiceUnavailable'
+   *       500:
+   *         $ref: '#/components/responses/InternalError'
+   */
   router.post('/integrations/connect', async (req: Request, res: Response) => {
     const auth = await requireAuth(req, res, deps.authService);
     if (!auth) return;

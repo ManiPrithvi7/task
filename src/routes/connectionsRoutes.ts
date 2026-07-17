@@ -18,8 +18,11 @@ const VALID_EVENTS: ConnectionValidateEvent[] = [
 ];
 
 const PROVIDER_MAP: Record<string, Provider> = {
+  instagram: Provider.INSTAGRAM,
   INSTAGRAM: Provider.INSTAGRAM,
-  GOOGLE_BUSINESS: Provider.GOOGLE_BUSINESS
+  google_business: Provider.GOOGLE_BUSINESS,
+  GOOGLE_BUSINESS: Provider.GOOGLE_BUSINESS,
+  gmb: Provider.GOOGLE_BUSINESS
 };
 
 export type ConnectionsRoutesDeps = {

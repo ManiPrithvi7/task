@@ -48,6 +48,55 @@ async function requireAdmin(
 export function createInfluxQueryRoutes(deps: InfluxQueryRoutesDeps): Router {
   const router = Router();
 
+  /**
+   * @swagger
+   * /api/v1/influx/query:
+   *   post:
+   *     tags: [Influx]
+   *     summary: Proxy a Flux query to InfluxDB
+   *     description: >
+   *       Executes a sanitized Flux query. Scope `metrics` requires a user JWT;
+   *       scope `compliance` requires an admin JWT. Queries without an explicit
+   *       limit() are capped at 10000 rows.
+   *     security:
+   *       - BearerAuth: []
+   *     parameters:
+   *       - in: header
+   *         name: X-Query-Scope
+   *         required: false
+   *         schema:
+   *           type: string
+   *           enum: [metrics, compliance]
+   *           default: metrics
+   *         description: Bucket scope — compliance requires role=admin
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             $ref: '#/components/schemas/InfluxQueryRequest'
+   *     responses:
+   *       200:
+   *         description: Query results
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/InfluxQueryResponse'
+   *       400:
+   *         description: Invalid scope or rejected Flux query
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/SimpleError'
+   *       401:
+   *         $ref: '#/components/responses/Unauthorized'
+   *       403:
+   *         $ref: '#/components/responses/Forbidden'
+   *       500:
+   *         $ref: '#/components/responses/InternalError'
+   *       503:
+   *         $ref: '#/components/responses/ServiceUnavailable'
+   */
   router.post('/influx/query', async (req: Request, res: Response) => {
     const scope = (req.headers['x-query-scope'] as string || 'metrics').toLowerCase();
     if (scope !== 'metrics' && scope !== 'compliance') {
