@@ -32,11 +32,8 @@ async function requireAuth(
 }
 
 const PROVIDER_MAP: Record<string, Provider> = {
-  instagram: Provider.INSTAGRAM,
   INSTAGRAM: Provider.INSTAGRAM,
-  google_business: Provider.GOOGLE_BUSINESS,
   GOOGLE_BUSINESS: Provider.GOOGLE_BUSINESS,
-  gmb: Provider.GOOGLE_BUSINESS,
 };
 
 export function createIntegrationRoutes(deps: IntegrationRoutesDeps): Router {
