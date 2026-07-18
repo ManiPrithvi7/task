@@ -155,7 +155,6 @@ async function republishGmbFromCache(
     {
       verifiedReview,
       rating: ctx.averageRating,
-      celebration: 'false'
     },
     mqttPublishEnabled
   );

@@ -4,8 +4,9 @@ import type { MqttClientManager } from '../src/servers/mqttClient';
 import { publishGmbScreen } from '../src/webhooks/delivery/publishGmbScreen';
 import { resolveGmbContextForDevice } from '../src/lib/socials/resolveDeviceGmb';
 import { readStimCache, writeStimCache } from './cache';
-import { calcResume, ceilingSequence, isAtOrPastTarget, gmbCelebration } from './math';
+import { calcResume, ceilingSequence, isAtOrPastTarget } from './math';
 import { getRedisService } from '../src/services/redisService';
+import { resolveCelebrationState } from '../src/services/screenEnvelope';
 
 export const STIM_GMB_LOCK_TTL_SEC = 3600;
 const STIM_GMB_LOCK_KEY_PREFIX = 'stim:gmb:';
@@ -58,7 +59,6 @@ export async function runGmbTick(
     await publishGmbScreen(mqttClient, topicRoot, deviceId, {
       verifiedReview: live,
       rating: ctx.averageRating ?? 4,
-      celebration: gmbCelebration(live),
     }, mqttPublishEnabled);
     await updateGmbCache(deviceId, live);
     writeStimCache('gmb', deviceId, { lastPublished: live, status: 'done' });
@@ -79,11 +79,10 @@ export async function runGmbTick(
   }
 
   const publishValue = ceiling;
-  const celebration = gmbCelebration(publishValue);
 
   await publishGmbScreen(
     mqttClient, topicRoot, deviceId,
-    { verifiedReview: publishValue, rating: ctx.averageRating ?? 4, celebration },
+    { verifiedReview: publishValue, rating: ctx.averageRating ?? 4 },
     mqttPublishEnabled,
   );
 
@@ -94,7 +93,7 @@ export async function runGmbTick(
     deviceId,
     reviews: publishValue,
     target,
-    celebration,
+    celebration: resolveCelebrationState('gmb', publishValue).celebration,
     done: publishValue >= target
   });
   return { done: publishValue >= target, publishedCount: 1 };

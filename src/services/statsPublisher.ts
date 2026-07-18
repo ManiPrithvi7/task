@@ -5,9 +5,10 @@ import { CAService } from './caService';
 // TEMP STIMULATE — remove after testing
 import { shouldSkipForStimulate } from '../utils/stimulateAllowlist';
 import {
+  buildGmbScreenPayload,
+  buildInstagramScreenPayload,
   buildScreenEnvelope,
-  gmbReviewMetrics,
-  instagramFollowerMetrics
+  gmbReviewMetrics
 } from './screenEnvelope';
 import { publishForce, publishIfChanged } from './mqttChangeDetection';
 import {
@@ -16,67 +17,35 @@ import {
 } from './brandCanvasService';
 import { getUserIntegrations } from './userIntegrationCache';
 
+const SAMPLE_GMB_REVIEWS = [
+  { id: 1, googleReview: 'Best latte in Portland.', rating: '4' },
+  { id: 2, googleReview: 'Amazing pastries.', rating: '5' },
+  { id: 3, googleReview: 'Staff always friendly.', rating: '4' }
+];
+
+function gmbDemoVariant(label: 'v6_normal' | 'v6_mini' | 'v6_mega', verifiedReview: number) {
+  const built = buildGmbScreenPayload({
+    verifiedReview,
+    rating: 4,
+    qrText: 'https://g.page/r/...',
+    reviews: SAMPLE_GMB_REVIEWS
+  });
+  return {
+    label,
+    muted: built.envelopeOpts.muted!,
+    celebration: built.envelopeOpts.celebration!,
+    payload: built.payload
+  };
+}
+
 /**
- * Canonical PROOF Display v6 GMB payloads for `.../gmb` (firmware listens here for celebration flows).
+ * Canonical PROOF Display v1.2 GMB payloads for `.../gmb` (firmware listens here for celebration flows).
  * Cycles normal → mini → mega. `.../test-gmb` uses a separate muted progression publish — see `publishTestGmb`.
  */
 const TEST_GMB_V6_VARIANTS = [
-  {
-    label: 'v6_normal' as const,
-    muted: 'false' as const,
-    celebration: 'false' as const,
-    payload: {
-      qrText: 'https://g.page/r/...',
-      verifiedReview: 42,
-      rating: 4,
-      nextGoal: 45,
-      remainingGoal: 3,
-      progress: 84,
-      reviews: [
-        { id: 1, googleReview: 'Best latte in Portland.', rating: '4' },
-        { id: 2, googleReview: 'Amazing pastries.', rating: '5' },
-        { id: 3, googleReview: 'Staff always friendly.', rating: '4' }
-      ]
-    }
-  },
-  {
-    label: 'v6_mini' as const,
-    muted: 'false' as const,
-    celebration: 'true' as const,
-    payload: {
-      celebration_type: 'mini',
-      qrText: 'https://g.page/r/...',
-      verifiedReview: 50,
-      rating: 4,
-      nextGoal: 50,
-      remainingGoal: 0,
-      progress: 100,
-      reviews: [
-        { id: 1, googleReview: 'Best latte in Portland.', rating: '4' },
-        { id: 2, googleReview: 'Amazing pastries.', rating: '5' },
-        { id: 3, googleReview: 'Staff always friendly.', rating: '4' }
-      ]
-    }
-  },
-  {
-    label: 'v6_mega' as const,
-    muted: 'false' as const,
-    celebration: 'true' as const,
-    payload: {
-      celebration_type: 'mega',
-      qrText: 'https://g.page/r/...',
-      verifiedReview: 100,
-      rating: 4,
-      nextGoal: 100,
-      remainingGoal: 0,
-      progress: 100,
-      reviews: [
-        { id: 1, googleReview: 'Best latte in Portland.', rating: '5' },
-        { id: 2, googleReview: 'Amazing pastries.', rating: '5' },
-        { id: 3, googleReview: 'Staff always friendly.', rating: '5' }
-      ]
-    }
-  }
+  gmbDemoVariant('v6_normal', 42),
+  gmbDemoVariant('v6_mini', 15),
+  gmbDemoVariant('v6_mega', 25)
 ];
 
 /** Per-device state for Instagram, GMB (for mock rotation). */
@@ -259,18 +228,11 @@ export class StatsPublisher {
     const state = this.ensureDeviceState(deviceId);
     state.instagram.followers += 50 + Math.floor(Math.random() * 100);
     const followers = state.instagram.followers;
-    const { nextGoal, remainingGoal, progress } = instagramFollowerMetrics(followers);
-    const envelope = buildScreenEnvelope(
-      'instagram',
-      {
-        followers,
-        nextGoal,
-        remainingGoal,
-        progress,
-        qrText: 'https://ig.com/handle'
-      },
-      { muted: 'true' }
-    );
+    const built = buildInstagramScreenPayload({
+      followers,
+      qrText: 'https://ig.com/handle'
+    });
+    const envelope = buildScreenEnvelope('instagram', built.payload, built.envelopeOpts);
 
     await this.mqttClient.publish({
       topic: `${root}/${deviceId}/instagram`,
@@ -278,7 +240,12 @@ export class StatsPublisher {
       qos: 1,
       retain: false
     });
-    logger.debug('Published Instagram screen', { deviceId, followers, nextGoal, progress });
+    logger.debug('Published Instagram screen', {
+      deviceId,
+      followers,
+      achievement: built.payload.achievement,
+      progress: built.payload.progress
+    });
   }
 
   /**

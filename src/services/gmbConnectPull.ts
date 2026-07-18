@@ -50,7 +50,6 @@ export class GmbConnectPull {
       {
         verifiedReview: ctx.verifiedReviewCount,
         rating,
-        celebration: 'false'
       },
       this.mqttPublishEnabled,
       { userId: ctx.userId, deviceId }

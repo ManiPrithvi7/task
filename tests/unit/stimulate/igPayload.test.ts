@@ -1,12 +1,12 @@
 /**
  * TEMP STIMULATE — remove after testing
- * Ensures stim IG MQTT matches production envelope types (device decoder).
+ * Ensures stim IG MQTT matches production envelope schema.
  */
 import { buildStimIgPayload } from '../../../stimulate/igRunner';
 import { formatInstagramScreenMqttPayload } from '../../../src/services/instagramService';
 
 describe('buildStimIgPayload matches production IG schema', () => {
-  it('uses boolean muted/celebration and achievement (not string flags / nextGoal)', () => {
+  it('uses string muted/celebration and achievement (not nextGoal)', () => {
     const stim = JSON.parse(buildStimIgPayload('DEVICE-15', 1, 'proof.mqtt').payload);
     const prod = JSON.parse(
       formatInstagramScreenMqttPayload(
@@ -21,20 +21,30 @@ describe('buildStimIgPayload matches production IG schema', () => {
     );
 
     expect(Object.keys(stim).sort()).toEqual(Object.keys(prod).sort());
-    expect(typeof stim.muted).toBe('boolean');
-    expect(typeof stim.celebration).toBe('boolean');
-    expect(stim.celebration).toBe(false);
-    expect(stim.muted).toBe(true);
+    expect(typeof stim.muted).toBe('string');
+    expect(typeof stim.celebration).toBe('string');
+    expect(stim.celebration).toBe('false');
+    expect(stim.muted).toBe('true');
     expect(stim.payload).toEqual(prod.payload);
     expect(stim.payload.achievement).toBe(25);
     expect(stim.payload).not.toHaveProperty('nextGoal');
+    expect(stim.payload).not.toHaveProperty('celebration_type');
   });
 
-  it('celebrates every 25 with boolean unmute', () => {
-    const stim = JSON.parse(buildStimIgPayload('DEVICE-15', 25, 'proof.mqtt').payload);
-    expect(stim.muted).toBe(false);
-    expect(stim.celebration).toBe(true);
+  it('mini celebration every 25 keeps muted true', () => {
+    const stim = JSON.parse(buildStimIgPayload('DEVICE-15', 50, 'proof.mqtt').payload);
+    expect(stim.muted).toBe('true');
+    expect(stim.celebration).toBe('true');
+    expect(stim.payload.celebration_type).toBe('mini');
     expect(stim.payload.achievement).toBe(50);
-    expect(stim.payload.followers).toBe(25);
+    expect(stim.payload.followers).toBe(50);
+    expect(stim.payload.progress).toBe(100);
+  });
+
+  it('mega celebration every 100', () => {
+    const stim = JSON.parse(buildStimIgPayload('DEVICE-15', 100, 'proof.mqtt').payload);
+    expect(stim.celebration).toBe('true');
+    expect(stim.payload.celebration_type).toBe('mega');
+    expect(stim.payload.achievement).toBe(100);
   });
 });

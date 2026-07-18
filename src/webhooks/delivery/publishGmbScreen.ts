@@ -1,5 +1,5 @@
 import type { MqttClientManager } from '../../servers/mqttClient';
-import { buildScreenEnvelope, gmbReviewMetrics } from '../../services/screenEnvelope';
+import { buildGmbScreenPayload, buildScreenEnvelope } from '../../services/screenEnvelope';
 import { sha256Payload } from '../../utils/payloadHash';
 import { logger } from '../../utils/logger';
 import { webhookInfluxBatch } from '../influxAudit';
@@ -10,7 +10,6 @@ export type GmbFastScreenInput = {
   qrText?: string;
   reviewComment?: string;
   reviewId?: string;
-  celebration?: 'true' | 'false';
 };
 
 export type GmbScreenAuditContext = {
@@ -34,9 +33,7 @@ export async function publishGmbScreen(
   mqttPublishEnabled: boolean,
   audit?: GmbScreenAuditContext
 ): Promise<GmbScreenPublishResult> {
-  const { nextGoal, remainingGoal, progress } = gmbReviewMetrics(input.verifiedReview);
   const rating = input.rating ?? 4;
-
   const reviews =
     input.reviewComment && input.reviewId
       ? [
@@ -48,22 +45,14 @@ export async function publishGmbScreen(
         ]
       : [];
 
-  const envelope = buildScreenEnvelope(
-    'gmb',
-    {
-      qrText: input.qrText ?? 'https://g.page/r/review',
-      verifiedReview: input.verifiedReview,
-      rating,
-      nextGoal,
-      remainingGoal,
-      progress,
-      reviews
-    },
-    {
-      muted: 'false',
-      celebration: input.celebration ?? 'false'
-    }
-  );
+  const { payload: screenPayload, envelopeOpts } = buildGmbScreenPayload({
+    verifiedReview: input.verifiedReview,
+    rating,
+    qrText: input.qrText,
+    reviews
+  });
+
+  const envelope = buildScreenEnvelope('gmb', screenPayload, envelopeOpts);
 
   const payload = JSON.stringify(envelope);
   const topic = `${topicRoot}/${clientId}/gmb`;

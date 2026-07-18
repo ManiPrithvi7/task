@@ -167,11 +167,6 @@
   "165": "@types/compression",
   "166": "@types/cors",
   "167": "@types/jsonwebtoken",
-  "168": "@types/node",
-  "169": "@types/supertest",
-  "170": "typescript",
-  "171": "@typescript-eslint/eslint-plugin",
-  "172": "@typescript-eslint/parser",
   "173": "flash-baseline.sh",
   "174": "generate-keys.sh",
   "175": "sign-firmware.sh",
@@ -179,7 +174,5 @@
   "177": "generate-broker-cert.sh",
   "178": "promotionConfig.ts",
   "179": "swaggerSchemas.ts",
-  "180": "{\n  verifyShopifyWebhook,\n  verifySquareWebhook,\n  isSquarePaymentEvent,\n  isSquareInvoiceEvent,\n  isSquareAppWebhookEvent,\n  parseSquareWebhookEnvelope,\n  getIdString,\n  buildReviewFromNotification,\n  isGmbTestNotification,\n  resolveGmbAccountResourceName,\n  resolveGmbLocationResourceName,\n  resolveGmbReviewPayload,\n  resolveGmbReviewResourceName\n}",
-  "181": "prom-client",
-  "182": "uuid"
+  "180": "{\n  verifyShopifyWebhook,\n  verifySquareWebhook,\n  isSquarePaymentEvent,\n  isSquareInvoiceEvent,\n  isSquareAppWebhookEvent,\n  parseSquareWebhookEnvelope,\n  getIdString,\n  buildReviewFromNotification,\n  isGmbTestNotification,\n  resolveGmbAccountResourceName,\n  resolveGmbLocationResourceName,\n  resolveGmbReviewPayload,\n  resolveGmbReviewResourceName\n}"
 }

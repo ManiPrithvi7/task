@@ -29,7 +29,7 @@ import {
   InstagramProfileFetchError
 } from '../lib/socials/instagramMetrics';
 import { ensureFreshInstagramAccessToken } from '../lib/socials/instagramTokenRefresh';
-import { instagramFollowerMetrics } from './screenEnvelope';
+import { buildInstagramScreenPayload, buildScreenEnvelope, getInstagramMegaCrossedMilestones } from './screenEnvelope';
 
 const igLocalFollowersCache = new Map<string, number>();
 const igLocalLastPublishMs = new Map<string, number>();
@@ -632,46 +632,33 @@ export type ScreenDeliveryFetchShape = {
   instagram_account_id?: string;
 };
 
-const MILESTONE_THRESHOLDS = [100, 500, 1000, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000];
-
 function getCrossedMilestones(oldF: number, newF: number): number[] {
-  if (oldF >= newF) return [];
-  return MILESTONE_THRESHOLDS.filter((m) => oldF < m && m <= newF);
+  return getInstagramMegaCrossedMilestones(oldF, newF);
 }
 
 export function formatInstagramScreenMqttPayload(
   result: ScreenDeliveryFetchShape,
-  topicRoot: string,
-  opts?: { muted?: boolean; celebration?: boolean }
+  topicRoot: string
 ): { topic: string; payload: string } {
   const { deviceId, data } = result;
   const followers = data?.followers_count ?? 0;
-  const { nextGoal: achievement, remainingGoal, progress } = instagramFollowerMetrics(followers);
   const handle = data?.instagram_username?.trim().replace(/^@/, '') || '';
   const qrText = handle ? `https://instagram.com/${handle}` : 'https://www.instagram.com/';
 
-  // IG production schema (device decoder): boolean muted/celebration — not GMB string flags.
-  const envelope: Record<string, unknown> = {
-    version: '1.2',
-    screen: 'instagram',
-    muted: opts?.muted ?? true,
-    celebration: opts?.celebration ?? false,
-    timestamp: result.fetched_at,
-    payload: {
-      followers,
-      achievement,
-      remainingGoal,
-      progress,
-      qrText
-    }
-  };
+  const { payload: screenPayload, envelopeOpts } = buildInstagramScreenPayload({ followers, qrText });
+  const envelope = buildScreenEnvelope('instagram', screenPayload, {
+    ...envelopeOpts,
+    timestamp: new Date(result.fetched_at)
+  });
+
+  const out: Record<string, unknown> = { ...envelope };
   if (result.correlation_id) {
-    envelope.correlation_id = result.correlation_id;
+    out.correlation_id = result.correlation_id;
   }
 
   return {
     topic: `${topicRoot}/${deviceId}/instagram`,
-    payload: JSON.stringify(envelope)
+    payload: JSON.stringify(out)
   };
 }
 
