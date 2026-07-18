@@ -21,7 +21,12 @@ jest.mock('../../../src/models/Device', () => ({
 
 jest.mock('../../../src/models/Social', () => ({
   Social: { findOne: jest.fn() },
-  Provider: { INSTAGRAM: 'INSTAGRAM', GOOGLE_BUSINESS: 'GOOGLE_BUSINESS' }
+  Provider: {
+    INSTAGRAM: 'INSTAGRAM',
+    GOOGLE_BUSINESS: 'GOOGLE_BUSINESS',
+    SQUARE: 'SQUARE',
+    SHOPIFY: 'SHOPIFY'
+  }
 }));
 
 jest.mock('../../../src/lib/socials/instagramTokenRefresh', () => ({
