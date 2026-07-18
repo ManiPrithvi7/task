@@ -1088,7 +1088,7 @@
       "source_location": "L29",
       "_origin": "ast",
       "id": "package_dependencies_express",
-      "community": 37,
+      "community": 14,
       "norm_label": "express"
     },
     {
@@ -1098,7 +1098,7 @@
       "source_location": "L29",
       "_origin": "ast",
       "id": "express",
-      "community": 37,
+      "community": 14,
       "norm_label": "express"
     },
     {
@@ -1418,7 +1418,7 @@
       "source_location": "L47",
       "_origin": "ast",
       "id": "package_devdependencies_types_compression",
-      "community": 98,
+      "community": 71,
       "norm_label": "@types/compression"
     },
     {
@@ -1428,7 +1428,7 @@
       "source_location": "L47",
       "_origin": "ast",
       "id": "types_compression",
-      "community": 98,
+      "community": 71,
       "norm_label": "@types/compression"
     },
     {
@@ -1738,7 +1738,7 @@
       "source_location": "L63",
       "_origin": "ast",
       "id": "package_devdependencies_supertest",
-      "community": 71,
+      "community": 182,
       "norm_label": "supertest"
     },
     {
@@ -1748,7 +1748,7 @@
       "source_location": "L63",
       "_origin": "ast",
       "id": "supertest",
-      "community": 71,
+      "community": 182,
       "norm_label": "supertest"
     },
     {
@@ -3480,7 +3480,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_app",
-      "community": 39,
+      "community": 54,
       "norm_label": "app.ts"
     },
     {
@@ -3660,7 +3660,7 @@
       "source_location": "L547",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_initializeinfluxdb",
-      "community": 12,
+      "community": 56,
       "norm_label": ".initializeinfluxdb()"
     },
     {
@@ -3670,7 +3670,7 @@
       "source_location": "L579",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_initializepkigovernance",
-      "community": 12,
+      "community": 54,
       "norm_label": ".initializepkigovernance()"
     },
     {
@@ -3880,7 +3880,7 @@
       "source_location": "L1785",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_initializestatspublisher",
-      "community": 81,
+      "community": 36,
       "norm_label": ".initializestatspublisher()"
     },
     {
@@ -3920,7 +3920,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_config_connectionsconfig",
-      "community": 81,
+      "community": 36,
       "norm_label": "connectionsconfig.ts"
     },
     {
@@ -3930,7 +3930,7 @@
       "source_location": "L2",
       "_origin": "ast",
       "id": "src_config_connectionsconfig_resolveconnectionsvalidateapikey",
-      "community": 81,
+      "community": 36,
       "norm_label": "resolveconnectionsvalidateapikey()"
     },
     {
@@ -3940,7 +3940,7 @@
       "source_location": "L11",
       "_origin": "ast",
       "id": "src_config_connectionsconfig_getclaimbaseurl",
-      "community": 81,
+      "community": 36,
       "norm_label": "getclaimbaseurl()"
     },
     {
@@ -4430,7 +4430,7 @@
       "source_location": "L11",
       "_origin": "ast",
       "id": "src_config_otadefaults_otaociparbaseurl",
-      "community": 30,
+      "community": 116,
       "norm_label": "otaociparbaseurl()"
     },
     {
@@ -4440,7 +4440,7 @@
       "source_location": "L19",
       "_origin": "ast",
       "id": "src_config_otadefaults_otadownloadmode",
-      "community": 20,
+      "community": 116,
       "norm_label": "otadownloadmode"
     },
     {
@@ -4500,7 +4500,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_config_swagger",
-      "community": 37,
+      "community": 170,
       "norm_label": "swagger.ts"
     },
     {
@@ -4510,7 +4510,7 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "src_config_swagger_resolveapiglobs",
-      "community": 37,
+      "community": 170,
       "norm_label": "resolveapiglobs()"
     },
     {
@@ -4520,7 +4520,7 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "src_config_swagger_swaggerdefinition",
-      "community": 37,
+      "community": 170,
       "norm_label": "swaggerdefinition"
     },
     {
@@ -4530,7 +4530,7 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "src_config_swagger_getswaggerspec",
-      "community": 37,
+      "community": 170,
       "norm_label": "getswaggerspec()"
     },
     {
@@ -4540,7 +4540,7 @@
       "source_location": "L43",
       "_origin": "ast",
       "id": "src_config_swagger_resetswaggerspeccache",
-      "community": 37,
+      "community": 170,
       "norm_label": "resetswaggerspeccache()"
     },
     {
@@ -4550,7 +4550,7 @@
       "source_location": "L47",
       "_origin": "ast",
       "id": "src_config_swagger_setupswaggerui",
-      "community": 37,
+      "community": 170,
       "norm_label": "setupswaggerui()"
     },
     {
@@ -4670,7 +4670,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_lib_socials_gmb_pubsub",
-      "community": 91,
+      "community": 17,
       "norm_label": "gmb-pubsub.ts"
     },
     {
@@ -4680,7 +4680,7 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "src_lib_socials_gmb_pubsub_extractbearertoken",
-      "community": 91,
+      "community": 17,
       "norm_label": "extractbearertoken()"
     },
     {
@@ -4690,7 +4690,7 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "src_lib_socials_gmb_pubsub_getgmbpubsubaudience",
-      "community": 91,
+      "community": 17,
       "norm_label": "getgmbpubsubaudience()"
     },
     {
@@ -4700,7 +4700,7 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "src_lib_socials_gmb_pubsub_verifypubsubpushrequest",
-      "community": 91,
+      "community": 17,
       "norm_label": "verifypubsubpushrequest()"
     },
     {
@@ -4790,7 +4790,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_lib_socials_instagramtokenrefresh",
-      "community": 39,
+      "community": 18,
       "norm_label": "instagramtokenrefresh.ts"
     },
     {
@@ -4800,7 +4800,7 @@
       "source_location": "L10",
       "_origin": "ast",
       "id": "src_lib_socials_instagramtokenrefresh_instagramtokencontext",
-      "community": 39,
+      "community": 18,
       "norm_label": "instagramtokencontext"
     },
     {
@@ -4830,7 +4830,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_lib_socials_integrations",
-      "community": 31,
+      "community": 17,
       "norm_label": "integrations.ts"
     },
     {
@@ -4840,7 +4840,7 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "src_lib_socials_integrations_gmbreviewnotification",
-      "community": 31,
+      "community": 17,
       "norm_label": "gmbreviewnotification"
     },
     {
@@ -4850,7 +4850,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "src_lib_socials_integrations_gmbreviewpayload",
-      "community": 31,
+      "community": 17,
       "norm_label": "gmbreviewpayload"
     },
     {
@@ -4860,7 +4860,7 @@
       "source_location": "L24",
       "_origin": "ast",
       "id": "src_lib_socials_integrations_resolvegmbreviewpayloadoptions",
-      "community": 31,
+      "community": 17,
       "norm_label": "resolvegmbreviewpayloadoptions"
     },
     {
@@ -4880,7 +4880,7 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "src_lib_socials_integrations_mapreviewpayloadtostorage",
-      "community": 31,
+      "community": 17,
       "norm_label": "mapreviewpayloadtostorage()"
     },
     {
@@ -4910,7 +4910,7 @@
       "source_location": "L20",
       "_origin": "ast",
       "id": "src_lib_socials_resolvedevicegmb_resolvegmbcontextfordevice",
-      "community": 18,
+      "community": 76,
       "norm_label": "resolvegmbcontextfordevice()"
     },
     {
@@ -5010,7 +5010,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_lib_socials_types",
-      "community": 91,
+      "community": 17,
       "norm_label": "types.ts"
     },
     {
@@ -5020,7 +5020,7 @@
       "source_location": "L3",
       "_origin": "ast",
       "id": "src_lib_socials_types_pubsubpushverificationresult",
-      "community": 91,
+      "community": 17,
       "norm_label": "pubsubpushverificationresult"
     },
     {
@@ -5030,7 +5030,7 @@
       "source_location": "L9",
       "_origin": "ast",
       "id": "src_lib_socials_types_gmbpubsubverifyconfig",
-      "community": 91,
+      "community": 17,
       "norm_label": "gmbpubsubverifyconfig"
     },
     {
@@ -5040,7 +5040,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_middleware_correlationid",
-      "community": 39,
+      "community": 37,
       "norm_label": "correlationid.ts"
     },
     {
@@ -5050,7 +5050,7 @@
       "source_location": "L4",
       "_origin": "ast",
       "id": "src_middleware_correlationid_correlationidmiddleware",
-      "community": 39,
+      "community": 37,
       "norm_label": "correlationidmiddleware()"
     },
     {
@@ -5060,7 +5060,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_middleware_csrratelimiter",
-      "community": 8,
+      "community": 67,
       "norm_label": "csrratelimiter.ts"
     },
     {
@@ -5070,7 +5070,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "src_middleware_csrratelimiter_ratelimitconfig",
-      "community": 8,
+      "community": 67,
       "norm_label": "ratelimitconfig"
     },
     {
@@ -5080,7 +5080,7 @@
       "source_location": "L36",
       "_origin": "ast",
       "id": "src_middleware_csrratelimiter_default_config",
-      "community": 8,
+      "community": 67,
       "norm_label": "default_config"
     },
     {
@@ -5090,7 +5090,7 @@
       "source_location": "L44",
       "_origin": "ast",
       "id": "src_middleware_csrratelimiter_localcounters",
-      "community": 8,
+      "community": 67,
       "norm_label": "localcounters"
     },
     {
@@ -5100,7 +5100,7 @@
       "source_location": "L46",
       "_origin": "ast",
       "id": "src_middleware_csrratelimiter_incrementlocalcounter",
-      "community": 8,
+      "community": 67,
       "norm_label": "incrementlocalcounter()"
     },
     {
@@ -5110,7 +5110,7 @@
       "source_location": "L64",
       "_origin": "ast",
       "id": "src_middleware_csrratelimiter_incrementcounter",
-      "community": 8,
+      "community": 67,
       "norm_label": "incrementcounter()"
     },
     {
@@ -5120,7 +5120,7 @@
       "source_location": "L94",
       "_origin": "ast",
       "id": "src_middleware_csrratelimiter_rejectratelimited",
-      "community": 54,
+      "community": 67,
       "norm_label": "rejectratelimited()"
     },
     {
@@ -5450,7 +5450,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_models_campaign",
-      "community": 57,
+      "community": 24,
       "norm_label": "campaign.ts"
     },
     {
@@ -5460,7 +5460,7 @@
       "source_location": "L4",
       "_origin": "ast",
       "id": "src_models_campaign_campaignstatus",
-      "community": 57,
+      "community": 24,
       "norm_label": "campaignstatus"
     },
     {
@@ -5470,7 +5470,7 @@
       "source_location": "L11",
       "_origin": "ast",
       "id": "src_models_campaign_discounttype",
-      "community": 57,
+      "community": 24,
       "norm_label": "discounttype"
     },
     {
@@ -5480,7 +5480,7 @@
       "source_location": "L16",
       "_origin": "ast",
       "id": "src_models_campaign_targettype",
-      "community": 57,
+      "community": 24,
       "norm_label": "targettype"
     },
     {
@@ -5490,7 +5490,7 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "src_models_campaign_scheduletype",
-      "community": 57,
+      "community": 24,
       "norm_label": "scheduletype"
     },
     {
@@ -5500,7 +5500,7 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "src_models_campaign_icampaign",
-      "community": 57,
+      "community": 24,
       "norm_label": "icampaign"
     },
     {
@@ -5510,7 +5510,7 @@
       "source_location": "L57",
       "_origin": "ast",
       "id": "src_models_campaign_campaignschema",
-      "community": 57,
+      "community": 24,
       "norm_label": "campaignschema"
     },
     {
@@ -5540,7 +5540,7 @@
       "source_location": "L8",
       "_origin": "ast",
       "id": "src_models_device_devicestatus",
-      "community": 47,
+      "community": 40,
       "norm_label": "devicestatus"
     },
     {
@@ -5550,7 +5550,7 @@
       "source_location": "L19",
       "_origin": "ast",
       "id": "src_models_device_deviceotastate",
-      "community": 90,
+      "community": 9,
       "norm_label": "deviceotastate"
     },
     {
@@ -5790,7 +5790,7 @@
       "source_location": "L89",
       "_origin": "ast",
       "id": "src_models_firmwarerelease_firmwarerelease",
-      "community": 82,
+      "community": 81,
       "norm_label": "firmwarerelease"
     },
     {
@@ -5810,7 +5810,7 @@
       "source_location": "L3",
       "_origin": "ast",
       "id": "src_models_googlebusinesslocation_igooglebusinesslocation",
-      "community": 24,
+      "community": 18,
       "norm_label": "igooglebusinesslocation"
     },
     {
@@ -5850,7 +5850,7 @@
       "source_location": "L3",
       "_origin": "ast",
       "id": "src_models_googlebusinessprofile_igooglebusinessprofile",
-      "community": 24,
+      "community": 18,
       "norm_label": "igooglebusinessprofile"
     },
     {
@@ -5880,7 +5880,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_models_googlebusinessreview",
-      "community": 24,
+      "community": 17,
       "norm_label": "googlebusinessreview.ts"
     },
     {
@@ -5890,7 +5890,7 @@
       "source_location": "L3",
       "_origin": "ast",
       "id": "src_models_googlebusinessreview_igooglebusinessreview",
-      "community": 24,
+      "community": 17,
       "norm_label": "igooglebusinessreview"
     },
     {
@@ -5900,7 +5900,7 @@
       "source_location": "L17",
       "_origin": "ast",
       "id": "src_models_googlebusinessreview_googlebusinessreviewschema",
-      "community": 24,
+      "community": 17,
       "norm_label": "googlebusinessreviewschema"
     },
     {
@@ -6000,7 +6000,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_models_social",
-      "community": 18,
+      "community": 24,
       "norm_label": "social.ts"
     },
     {
@@ -6010,7 +6010,7 @@
       "source_location": "L11",
       "_origin": "ast",
       "id": "src_models_social_provider",
-      "community": 57,
+      "community": 24,
       "norm_label": "provider"
     },
     {
@@ -6020,7 +6020,7 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "src_models_social_isocial",
-      "community": 18,
+      "community": 24,
       "norm_label": "isocial"
     },
     {
@@ -6030,7 +6030,7 @@
       "source_location": "L39",
       "_origin": "ast",
       "id": "src_models_social_socialschema",
-      "community": 18,
+      "community": 24,
       "norm_label": "socialschema"
     },
     {
@@ -6050,7 +6050,7 @@
       "source_location": "L5",
       "_origin": "ast",
       "id": "src_models_social_rationale_5",
-      "community": 18,
+      "community": 24,
       "norm_label": "note: this is a read-only model for mqtt-publisher-lite."
     },
     {
@@ -6100,7 +6100,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_models_user",
-      "community": 125,
+      "community": 54,
       "norm_label": "user.ts"
     },
     {
@@ -6110,7 +6110,7 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "src_models_user_iuser",
-      "community": 125,
+      "community": 54,
       "norm_label": "iuser"
     },
     {
@@ -6120,7 +6120,7 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "src_models_user_userschema",
-      "community": 125,
+      "community": 54,
       "norm_label": "userschema"
     },
     {
@@ -6130,7 +6130,7 @@
       "source_location": "L97",
       "_origin": "ast",
       "id": "src_models_user_user",
-      "community": 125,
+      "community": 54,
       "norm_label": "user"
     },
     {
@@ -6140,7 +6140,7 @@
       "source_location": "L5",
       "_origin": "ast",
       "id": "src_models_user_rationale_5",
-      "community": 125,
+      "community": 54,
       "norm_label": "note: this is a read-only model for mqtt-publisher-lite."
     },
     {
@@ -6190,7 +6190,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_routes_connectionsroutes",
-      "community": 81,
+      "community": 36,
       "norm_label": "connectionsroutes.ts"
     },
     {
@@ -6200,7 +6200,7 @@
       "source_location": "L11",
       "_origin": "ast",
       "id": "src_routes_connectionsroutes_valid_events",
-      "community": 81,
+      "community": 36,
       "norm_label": "valid_events"
     },
     {
@@ -6210,7 +6210,7 @@
       "source_location": "L20",
       "_origin": "ast",
       "id": "src_routes_connectionsroutes_provider_map",
-      "community": 81,
+      "community": 36,
       "norm_label": "provider_map"
     },
     {
@@ -6220,7 +6220,7 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "src_routes_connectionsroutes_connectionsroutesdeps",
-      "community": 81,
+      "community": 36,
       "norm_label": "connectionsroutesdeps"
     },
     {
@@ -6230,7 +6230,7 @@
       "source_location": "L33",
       "_origin": "ast",
       "id": "src_routes_connectionsroutes_createconnectionsroutes",
-      "community": 81,
+      "community": 36,
       "norm_label": "createconnectionsroutes()"
     },
     {
@@ -6350,7 +6350,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_routes_integrationroutes",
-      "community": 18,
+      "community": 3,
       "norm_label": "integrationroutes.ts"
     },
     {
@@ -6370,7 +6370,7 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "src_routes_integrationroutes_requireauth",
-      "community": 18,
+      "community": 3,
       "norm_label": "requireauth()"
     },
     {
@@ -6380,7 +6380,7 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "src_routes_integrationroutes_provider_map",
-      "community": 18,
+      "community": 3,
       "norm_label": "provider_map"
     },
     {
@@ -6390,7 +6390,7 @@
       "source_location": "L39",
       "_origin": "ast",
       "id": "src_routes_integrationroutes_createintegrationroutes",
-      "community": 18,
+      "community": 3,
       "norm_label": "createintegrationroutes()"
     },
     {
@@ -6500,7 +6500,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_routes_otaroutes",
-      "community": 82,
+      "community": 81,
       "norm_label": "otaroutes.ts"
     },
     {
@@ -6510,7 +6510,7 @@
       "source_location": "L20",
       "_origin": "ast",
       "id": "src_routes_otaroutes_otaroutesdeps",
-      "community": 20,
+      "community": 81,
       "norm_label": "otaroutesdeps"
     },
     {
@@ -6520,7 +6520,7 @@
       "source_location": "L29",
       "_origin": "ast",
       "id": "src_routes_otaroutes_createotaroutes",
-      "community": 82,
+      "community": 81,
       "norm_label": "createotaroutes()"
     },
     {
@@ -6580,7 +6580,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_routes_recoveryroutes",
-      "community": 40,
+      "community": 59,
       "norm_label": "recoveryroutes.ts"
     },
     {
@@ -6590,7 +6590,7 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "src_routes_recoveryroutes_recoveryroutesdeps",
-      "community": 40,
+      "community": 59,
       "norm_label": "recoveryroutesdeps"
     },
     {
@@ -6600,7 +6600,7 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "src_routes_recoveryroutes_bearertoken",
-      "community": 40,
+      "community": 59,
       "norm_label": "bearertoken()"
     },
     {
@@ -6610,7 +6610,7 @@
       "source_location": "L19",
       "_origin": "ast",
       "id": "src_routes_recoveryroutes_createrecoveryroutes",
-      "community": 40,
+      "community": 59,
       "norm_label": "createrecoveryroutes()"
     },
     {
@@ -6700,7 +6700,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_servers_httpserver",
-      "community": 39,
+      "community": 37,
       "norm_label": "httpserver.ts"
     },
     {
@@ -6710,7 +6710,7 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "src_servers_httpserver_httpconfig",
-      "community": 39,
+      "community": 37,
       "norm_label": "httpconfig"
     },
     {
@@ -6800,7 +6800,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_servers_mqttclient",
-      "community": 47,
+      "community": 58,
       "norm_label": "mqttclient.ts"
     },
     {
@@ -6810,7 +6810,7 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "src_servers_mqttclient_mqttconfig",
-      "community": 47,
+      "community": 58,
       "norm_label": "mqttconfig"
     },
     {
@@ -6820,7 +6820,7 @@
       "source_location": "L41",
       "_origin": "ast",
       "id": "src_servers_mqttclient_mqttmessage",
-      "community": 47,
+      "community": 58,
       "norm_label": "mqttmessage"
     },
     {
@@ -6830,7 +6830,7 @@
       "source_location": "L48",
       "_origin": "ast",
       "id": "src_servers_mqttclient_publishmetadata",
-      "community": 47,
+      "community": 58,
       "norm_label": "publishmetadata"
     },
     {
@@ -6840,7 +6840,7 @@
       "source_location": "L58",
       "_origin": "ast",
       "id": "src_servers_mqttclient_pendingack",
-      "community": 47,
+      "community": 58,
       "norm_label": "pendingack"
     },
     {
@@ -6850,7 +6850,7 @@
       "source_location": "L67",
       "_origin": "ast",
       "id": "src_servers_mqttclient_messagehandler",
-      "community": 47,
+      "community": 58,
       "norm_label": "messagehandler"
     },
     {
@@ -7100,7 +7100,7 @@
       "source_location": "L108",
       "_origin": "ast",
       "id": "src_services_auditservice_auditservice",
-      "community": 3,
+      "community": 8,
       "norm_label": "auditservice"
     },
     {
@@ -7110,7 +7110,7 @@
       "source_location": "L114",
       "_origin": "ast",
       "id": "src_services_auditservice_auditservice_constructor",
-      "community": 3,
+      "community": 8,
       "norm_label": ".constructor()"
     },
     {
@@ -7120,7 +7120,7 @@
       "source_location": "L127",
       "_origin": "ast",
       "id": "src_services_auditservice_auditservice_initialize",
-      "community": 3,
+      "community": 8,
       "norm_label": ".initialize()"
     },
     {
@@ -7130,7 +7130,7 @@
       "source_location": "L157",
       "_origin": "ast",
       "id": "src_services_auditservice_auditservice_logevent",
-      "community": 3,
+      "community": 8,
       "norm_label": ".logevent()"
     },
     {
@@ -7140,7 +7140,7 @@
       "source_location": "L250",
       "_origin": "ast",
       "id": "src_services_auditservice_auditservice_verifychain",
-      "community": 3,
+      "community": 8,
       "norm_label": ".verifychain()"
     },
     {
@@ -7150,7 +7150,7 @@
       "source_location": "L298",
       "_origin": "ast",
       "id": "src_services_auditservice_auditservice_getchainstate",
-      "community": 3,
+      "community": 8,
       "norm_label": ".getchainstate()"
     },
     {
@@ -7160,7 +7160,7 @@
       "source_location": "L308",
       "_origin": "ast",
       "id": "src_services_auditservice_auditservice_buildhashcontent",
-      "community": 3,
+      "community": 8,
       "norm_label": ".buildhashcontent()"
     },
     {
@@ -7170,7 +7170,7 @@
       "source_location": "L312",
       "_origin": "ast",
       "id": "src_services_auditservice_auditservice_computehash",
-      "community": 3,
+      "community": 8,
       "norm_label": ".computehash()"
     },
     {
@@ -7180,7 +7180,7 @@
       "source_location": "L316",
       "_origin": "ast",
       "id": "src_services_auditservice_auditservice_writefallback",
-      "community": 3,
+      "community": 8,
       "norm_label": ".writefallback()"
     },
     {
@@ -7190,7 +7190,7 @@
       "source_location": "L333",
       "_origin": "ast",
       "id": "src_services_auditservice_createauditservice",
-      "community": 12,
+      "community": 54,
       "norm_label": "createauditservice()"
     },
     {
@@ -7200,7 +7200,7 @@
       "source_location": "L338",
       "_origin": "ast",
       "id": "src_services_auditservice_getauditservice",
-      "community": 54,
+      "community": 31,
       "norm_label": "getauditservice()"
     },
     {
@@ -7210,7 +7210,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_services_authservice",
-      "community": 39,
+      "community": 3,
       "norm_label": "authservice.ts"
     },
     {
@@ -7220,7 +7220,7 @@
       "source_location": "L10",
       "_origin": "ast",
       "id": "src_services_authservice_authtokenpayload",
-      "community": 39,
+      "community": 3,
       "norm_label": "authtokenpayload"
     },
     {
@@ -7230,7 +7230,7 @@
       "source_location": "L21",
       "_origin": "ast",
       "id": "src_services_authservice_authtokenverificationresult",
-      "community": 39,
+      "community": 3,
       "norm_label": "authtokenverificationresult"
     },
     {
@@ -7350,7 +7350,7 @@
       "source_location": "L115",
       "_origin": "ast",
       "id": "src_services_brandcanvasservice_invalidatecanvascache",
-      "community": 45,
+      "community": 36,
       "norm_label": "invalidatecanvascache()"
     },
     {
@@ -7370,7 +7370,7 @@
       "source_location": "L25",
       "_origin": "ast",
       "id": "src_services_caservice_unsupportedcsrkeytypeerror",
-      "community": 67,
+      "community": 87,
       "norm_label": "unsupportedcsrkeytypeerror"
     },
     {
@@ -7380,7 +7380,7 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "src_services_caservice_unsupportedcsrkeytypeerror_constructor",
-      "community": 67,
+      "community": 87,
       "norm_label": ".constructor()"
     },
     {
@@ -7390,7 +7390,7 @@
       "source_location": "L37",
       "_origin": "ast",
       "id": "src_services_caservice_devicealreadyhascertificateerror",
-      "community": 67,
+      "community": 87,
       "norm_label": "devicealreadyhascertificateerror"
     },
     {
@@ -7400,7 +7400,7 @@
       "source_location": "L40",
       "_origin": "ast",
       "id": "src_services_caservice_devicealreadyhascertificateerror_constructor",
-      "community": 67,
+      "community": 87,
       "norm_label": ".constructor()"
     },
     {
@@ -7710,7 +7710,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_services_chainvalidator",
-      "community": 39,
+      "community": 54,
       "norm_label": "chainvalidator.ts"
     },
     {
@@ -7720,7 +7720,7 @@
       "source_location": "L21",
       "_origin": "ast",
       "id": "src_services_chainvalidator_chainvalidationresult",
-      "community": 39,
+      "community": 54,
       "norm_label": "chainvalidationresult"
     },
     {
@@ -7730,7 +7730,7 @@
       "source_location": "L37",
       "_origin": "ast",
       "id": "src_services_chainvalidator_validatecertificatechain",
-      "community": 39,
+      "community": 54,
       "norm_label": "validatecertificatechain()"
     },
     {
@@ -7740,7 +7740,7 @@
       "source_location": "L169",
       "_origin": "ast",
       "id": "src_services_chainvalidator_ischainvalid",
-      "community": 39,
+      "community": 54,
       "norm_label": "ischainvalid()"
     },
     {
@@ -7750,7 +7750,7 @@
       "source_location": "L4",
       "_origin": "ast",
       "id": "docref_rfc_5280",
-      "community": 39,
+      "community": 54,
       "norm_label": "rfc-5280"
     },
     {
@@ -7890,7 +7890,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_services_deviceservice",
-      "community": 39,
+      "community": 40,
       "norm_label": "deviceservice.ts"
     },
     {
@@ -7900,7 +7900,7 @@
       "source_location": "L21",
       "_origin": "ast",
       "id": "src_services_deviceservice_activedevice",
-      "community": 39,
+      "community": 49,
       "norm_label": "activedevice"
     },
     {
@@ -8010,7 +8010,7 @@
       "source_location": "L160",
       "_origin": "ast",
       "id": "src_services_deviceservice_devicedata",
-      "community": 39,
+      "community": 40,
       "norm_label": "devicedata"
     },
     {
@@ -8150,7 +8150,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_services_firmwarestorageservice",
-      "community": 30,
+      "community": 75,
       "norm_label": "firmwarestorageservice.ts"
     },
     {
@@ -8170,7 +8170,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "src_services_firmwarestorageservice_ifirmwarestorage",
-      "community": 20,
+      "community": 31,
       "norm_label": "ifirmwarestorage"
     },
     {
@@ -8180,7 +8180,7 @@
       "source_location": "L24",
       "_origin": "ast",
       "id": "src_services_firmwarestorageservice_ifirmwarestorage_buildobjectkey",
-      "community": 20,
+      "community": 31,
       "norm_label": ".buildobjectkey()"
     },
     {
@@ -8190,7 +8190,7 @@
       "source_location": "L25",
       "_origin": "ast",
       "id": "src_services_firmwarestorageservice_ifirmwarestorage_createpresignedputurl",
-      "community": 20,
+      "community": 31,
       "norm_label": ".createpresignedputurl()"
     },
     {
@@ -8200,7 +8200,7 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "src_services_firmwarestorageservice_ifirmwarestorage_createpresignedgeturl",
-      "community": 20,
+      "community": 31,
       "norm_label": ".createpresignedgeturl()"
     },
     {
@@ -8210,7 +8210,7 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "src_services_firmwarestorageservice_ifirmwarestorage_headobject",
-      "community": 54,
+      "community": 31,
       "norm_label": ".headobject()"
     },
     {
@@ -8220,7 +8220,7 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "src_services_firmwarestorageservice_ifirmwarestorage_verifysha256",
-      "community": 54,
+      "community": 31,
       "norm_label": ".verifysha256()"
     },
     {
@@ -8230,7 +8230,7 @@
       "source_location": "L29",
       "_origin": "ast",
       "id": "src_services_firmwarestorageservice_ifirmwarestorage_getobjectstream",
-      "community": 20,
+      "community": 31,
       "norm_label": ".getobjectstream()"
     },
     {
@@ -8240,7 +8240,7 @@
       "source_location": "L30",
       "_origin": "ast",
       "id": "src_services_firmwarestorageservice_ifirmwarestorage_verifybucketaccess",
-      "community": 20,
+      "community": 31,
       "norm_label": ".verifybucketaccess()"
     },
     {
@@ -8250,7 +8250,7 @@
       "source_location": "L33",
       "_origin": "ast",
       "id": "src_services_firmwarestorageservice_metavalue",
-      "community": 30,
+      "community": 75,
       "norm_label": "metavalue()"
     },
     {
@@ -8390,7 +8390,7 @@
       "source_location": "L205",
       "_origin": "ast",
       "id": "src_services_firmwarestorageservice_firmwarestorageservice",
-      "community": 30,
+      "community": 75,
       "norm_label": "firmwarestorageservice"
     },
     {
@@ -8540,7 +8540,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_services_influxdiskqueue",
-      "community": 69,
+      "community": 39,
       "norm_label": "influxdiskqueue.ts"
     },
     {
@@ -8550,7 +8550,7 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "src_services_influxdiskqueue_influxdiskqueueoptions",
-      "community": 69,
+      "community": 39,
       "norm_label": "influxdiskqueueoptions"
     },
     {
@@ -8680,7 +8680,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_services_influxservice",
-      "community": 55,
+      "community": 56,
       "norm_label": "influxservice.ts"
     },
     {
@@ -8700,7 +8700,7 @@
       "source_location": "L38",
       "_origin": "ast",
       "id": "src_services_influxservice_socialmetrics",
-      "community": 55,
+      "community": 56,
       "norm_label": "socialmetrics"
     },
     {
@@ -8760,7 +8760,7 @@
       "source_location": "L112",
       "_origin": "ast",
       "id": "src_services_influxservice_webhookplatform",
-      "community": 55,
+      "community": 56,
       "norm_label": "webhookplatform"
     },
     {
@@ -8770,7 +8770,7 @@
       "source_location": "L114",
       "_origin": "ast",
       "id": "src_services_influxservice_webhookreceivedinfluxinput",
-      "community": 55,
+      "community": 56,
       "norm_label": "webhookreceivedinfluxinput"
     },
     {
@@ -8780,7 +8780,7 @@
       "source_location": "L122",
       "_origin": "ast",
       "id": "src_services_influxservice_webhookdeviceresolutioninfluxinput",
-      "community": 55,
+      "community": 56,
       "norm_label": "webhookdeviceresolutioninfluxinput"
     },
     {
@@ -8790,7 +8790,7 @@
       "source_location": "L131",
       "_origin": "ast",
       "id": "src_services_influxservice_webhookmqttdeliveryinfluxinput",
-      "community": 55,
+      "community": 56,
       "norm_label": "webhookmqttdeliveryinfluxinput"
     },
     {
@@ -8830,7 +8830,7 @@
       "source_location": "L175",
       "_origin": "ast",
       "id": "src_services_influxservice_gmbreviewsnapshotinfluxinput",
-      "community": 55,
+      "community": 56,
       "norm_label": "gmbreviewsnapshotinfluxinput"
     },
     {
@@ -8840,7 +8840,7 @@
       "source_location": "L186",
       "_origin": "ast",
       "id": "src_services_influxservice_gmbwebhookauditinfluxinput",
-      "community": 55,
+      "community": 56,
       "norm_label": "gmbwebhookauditinfluxinput"
     },
     {
@@ -8850,7 +8850,7 @@
       "source_location": "L203",
       "_origin": "ast",
       "id": "src_services_influxservice_gmbvelocityweeklyinfluxinput",
-      "community": 55,
+      "community": 56,
       "norm_label": "gmbvelocityweeklyinfluxinput"
     },
     {
@@ -9080,7 +9080,7 @@
       "source_location": "L433",
       "_origin": "ast",
       "id": "src_services_influxservice_influxservice_flushwrites",
-      "community": 1,
+      "community": 17,
       "norm_label": ".flushwrites()"
     },
     {
@@ -9120,7 +9120,7 @@
       "source_location": "L519",
       "_origin": "ast",
       "id": "src_services_influxservice_influxservice_queryflux",
-      "community": 1,
+      "community": 55,
       "norm_label": ".queryflux()"
     },
     {
@@ -9130,7 +9130,7 @@
       "source_location": "L530",
       "_origin": "ast",
       "id": "src_services_influxservice_influxservice_queryinstagrammetrics",
-      "community": 1,
+      "community": 55,
       "norm_label": ".queryinstagrammetrics()"
     },
     {
@@ -9140,7 +9140,7 @@
       "source_location": "L546",
       "_origin": "ast",
       "id": "src_services_influxservice_influxservice_queryinstagramaudit",
-      "community": 1,
+      "community": 55,
       "norm_label": ".queryinstagramaudit()"
     },
     {
@@ -9150,7 +9150,7 @@
       "source_location": "L562",
       "_origin": "ast",
       "id": "src_services_influxservice_influxservice_querymilestones",
-      "community": 1,
+      "community": 55,
       "norm_label": ".querymilestones()"
     },
     {
@@ -9160,7 +9160,7 @@
       "source_location": "L584",
       "_origin": "ast",
       "id": "src_services_influxservice_influxservice_queryprofilebaseline",
-      "community": 1,
+      "community": 55,
       "norm_label": ".queryprofilebaseline()"
     },
     {
@@ -9170,7 +9170,7 @@
       "source_location": "L601",
       "_origin": "ast",
       "id": "src_services_influxservice_influxservice_queryvelocityweekly",
-      "community": 1,
+      "community": 55,
       "norm_label": ".queryvelocityweekly()"
     },
     {
@@ -9180,7 +9180,7 @@
       "source_location": "L621",
       "_origin": "ast",
       "id": "src_services_influxservice_influxservice_querywebhookevents",
-      "community": 1,
+      "community": 55,
       "norm_label": ".querywebhookevents()"
     },
     {
@@ -9190,7 +9190,7 @@
       "source_location": "L637",
       "_origin": "ast",
       "id": "src_services_influxservice_influxservice_querywebhookmqttdeliveries",
-      "community": 1,
+      "community": 55,
       "norm_label": ".querywebhookmqttdeliveries()"
     },
     {
@@ -9200,7 +9200,7 @@
       "source_location": "L653",
       "_origin": "ast",
       "id": "src_services_influxservice_influxservice_queryinstagrammqttdeliveries",
-      "community": 1,
+      "community": 55,
       "norm_label": ".queryinstagrammqttdeliveries()"
     },
     {
@@ -9210,7 +9210,7 @@
       "source_location": "L669",
       "_origin": "ast",
       "id": "src_services_influxservice_influxservice_querygmbreviewsnapshots",
-      "community": 1,
+      "community": 55,
       "norm_label": ".querygmbreviewsnapshots()"
     },
     {
@@ -9220,7 +9220,7 @@
       "source_location": "L685",
       "_origin": "ast",
       "id": "src_services_influxservice_influxservice_querygmbwebhookaudits",
-      "community": 1,
+      "community": 55,
       "norm_label": ".querygmbwebhookaudits()"
     },
     {
@@ -9230,7 +9230,7 @@
       "source_location": "L701",
       "_origin": "ast",
       "id": "src_services_influxservice_influxservice_querygmbvelocityweekly",
-      "community": 1,
+      "community": 55,
       "norm_label": ".querygmbvelocityweekly()"
     },
     {
@@ -9240,7 +9240,7 @@
       "source_location": "L719",
       "_origin": "ast",
       "id": "src_services_influxservice_influxservice_queryinstagramcircuitevents",
-      "community": 1,
+      "community": 55,
       "norm_label": ".queryinstagramcircuitevents()"
     },
     {
@@ -9250,7 +9250,7 @@
       "source_location": "L733",
       "_origin": "ast",
       "id": "src_services_influxservice_influxservice_queryinstagramattentione2e",
-      "community": 1,
+      "community": 55,
       "norm_label": ".queryinstagramattentione2e()"
     },
     {
@@ -9260,7 +9260,7 @@
       "source_location": "L749",
       "_origin": "ast",
       "id": "src_services_influxservice_influxservice_queryratelimitevents",
-      "community": 1,
+      "community": 55,
       "norm_label": ".queryratelimitevents()"
     },
     {
@@ -9380,7 +9380,7 @@
       "source_location": "L1178",
       "_origin": "ast",
       "id": "src_services_influxservice_createinfluxservice",
-      "community": 12,
+      "community": 56,
       "norm_label": "createinfluxservice()"
     },
     {
@@ -9390,7 +9390,7 @@
       "source_location": "L1183",
       "_origin": "ast",
       "id": "src_services_influxservice_getinfluxservice",
-      "community": 3,
+      "community": 8,
       "norm_label": "getinfluxservice()"
     },
     {
@@ -9400,7 +9400,7 @@
       "source_location": "L1187",
       "_origin": "ast",
       "id": "src_services_influxservice_resetinfluxservice",
-      "community": 101,
+      "community": 56,
       "norm_label": "resetinfluxservice()"
     },
     {
@@ -9750,7 +9750,7 @@
       "source_location": "L347",
       "_origin": "ast",
       "id": "src_services_instagramservice_instagramcircuitbreaker",
-      "community": 3,
+      "community": 168,
       "norm_label": "instagramcircuitbreaker"
     },
     {
@@ -9760,7 +9760,7 @@
       "source_location": "L355",
       "_origin": "ast",
       "id": "src_services_instagramservice_instagramcircuitbreaker_constructor",
-      "community": 3,
+      "community": 168,
       "norm_label": ".constructor()"
     },
     {
@@ -9770,7 +9770,7 @@
       "source_location": "L359",
       "_origin": "ast",
       "id": "src_services_instagramservice_instagramcircuitbreaker_emitcircuitevent",
-      "community": 3,
+      "community": 168,
       "norm_label": ".emitcircuitevent()"
     },
     {
@@ -9780,7 +9780,7 @@
       "source_location": "L385",
       "_origin": "ast",
       "id": "src_services_instagramservice_instagramcircuitbreaker_maybeemitclosed",
-      "community": 3,
+      "community": 168,
       "norm_label": ".maybeemitclosed()"
     },
     {
@@ -9790,7 +9790,7 @@
       "source_location": "L394",
       "_origin": "ast",
       "id": "src_services_instagramservice_instagramcircuitbreaker_isopen",
-      "community": 3,
+      "community": 168,
       "norm_label": ".isopen()"
     },
     {
@@ -9800,7 +9800,7 @@
       "source_location": "L426",
       "_origin": "ast",
       "id": "src_services_instagramservice_instagramcircuitbreaker_open",
-      "community": 3,
+      "community": 168,
       "norm_label": ".open()"
     },
     {
@@ -9810,7 +9810,7 @@
       "source_location": "L441",
       "_origin": "ast",
       "id": "src_services_instagramservice_instagramcircuitbreaker_reset",
-      "community": 3,
+      "community": 168,
       "norm_label": ".reset()"
     },
     {
@@ -9820,7 +9820,7 @@
       "source_location": "L451",
       "_origin": "ast",
       "id": "src_services_instagramservice_instagramcircuitbreaker_getlocalstate",
-      "community": 3,
+      "community": 168,
       "norm_label": ".getlocalstate()"
     },
     {
@@ -9870,7 +9870,7 @@
       "source_location": "L497",
       "_origin": "ast",
       "id": "src_services_instagramservice_sleep",
-      "community": 6,
+      "community": 65,
       "norm_label": "sleep()"
     },
     {
@@ -9880,7 +9880,7 @@
       "source_location": "L499",
       "_origin": "ast",
       "id": "src_services_instagramservice_fetchinstagrammetrics",
-      "community": 6,
+      "community": 65,
       "norm_label": "fetchinstagrammetrics()"
     },
     {
@@ -10080,7 +10080,7 @@
       "source_location": "L1265",
       "_origin": "ast",
       "id": "src_services_instagramservice_tonormalizedrow",
-      "community": 6,
+      "community": 65,
       "norm_label": "tonormalizedrow()"
     },
     {
@@ -10090,7 +10090,7 @@
       "source_location": "L1309",
       "_origin": "ast",
       "id": "src_services_instagramservice_loadmetafromredis",
-      "community": 6,
+      "community": 65,
       "norm_label": "loadmetafromredis()"
     },
     {
@@ -10100,7 +10100,7 @@
       "source_location": "L1331",
       "_origin": "ast",
       "id": "src_services_instagramservice_resolvedevicemeta",
-      "community": 6,
+      "community": 65,
       "norm_label": "resolvedevicemeta()"
     },
     {
@@ -10110,7 +10110,7 @@
       "source_location": "L1345",
       "_origin": "ast",
       "id": "src_services_instagramservice_loadmetafromlocalcache",
-      "community": 6,
+      "community": 65,
       "norm_label": "loadmetafromlocalcache()"
     },
     {
@@ -10120,7 +10120,7 @@
       "source_location": "L1354",
       "_origin": "ast",
       "id": "src_services_instagramservice_instagramdirectfetchinvoker",
-      "community": 35,
+      "community": 65,
       "norm_label": "instagramdirectfetchinvoker"
     },
     {
@@ -10130,7 +10130,7 @@
       "source_location": "L1355",
       "_origin": "ast",
       "id": "src_services_instagramservice_instagramdirectfetchinvoker_constructor",
-      "community": 35,
+      "community": 41,
       "norm_label": ".constructor()"
     },
     {
@@ -10150,7 +10150,7 @@
       "source_location": "L1361",
       "_origin": "ast",
       "id": "src_services_instagramservice_instagramdirectfetchinvoker_invokefetch",
-      "community": 35,
+      "community": 65,
       "norm_label": ".invokefetch()"
     },
     {
@@ -10190,7 +10190,7 @@
       "source_location": "L1466",
       "_origin": "ast",
       "id": "src_services_instagramservice_instagrampoller_constructor",
-      "community": 35,
+      "community": 78,
       "norm_label": ".constructor()"
     },
     {
@@ -10560,7 +10560,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_services_mongoservice",
-      "community": 125,
+      "community": 54,
       "norm_label": "mongoservice.ts"
     },
     {
@@ -10570,7 +10570,7 @@
       "source_location": "L11",
       "_origin": "ast",
       "id": "src_services_mongoservice_mongoconfig",
-      "community": 125,
+      "community": 54,
       "norm_label": "mongoconfig"
     },
     {
@@ -10700,7 +10700,7 @@
       "source_location": "L274",
       "_origin": "ast",
       "id": "src_services_mongoservice_getmongoservice",
-      "community": 125,
+      "community": 54,
       "norm_label": "getmongoservice()"
     },
     {
@@ -10710,7 +10710,7 @@
       "source_location": "L278",
       "_origin": "ast",
       "id": "src_services_mongoservice_createmongoservice",
-      "community": 125,
+      "community": 54,
       "norm_label": "createmongoservice()"
     },
     {
@@ -11080,7 +11080,7 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "src_services_otareleaselog_otareleaselog",
-      "community": 3,
+      "community": 8,
       "norm_label": "otareleaselog"
     },
     {
@@ -11090,7 +11090,7 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "src_services_otareleaselog_otareleaselog_initialize",
-      "community": 3,
+      "community": 8,
       "norm_label": ".initialize()"
     },
     {
@@ -11100,7 +11100,7 @@
       "source_location": "L41",
       "_origin": "ast",
       "id": "src_services_otareleaselog_otareleaselog_addentry",
-      "community": 3,
+      "community": 8,
       "norm_label": ".addentry()"
     },
     {
@@ -11110,7 +11110,7 @@
       "source_location": "L94",
       "_origin": "ast",
       "id": "src_services_otareleaselog_otareleaselog_getentrycount",
-      "community": 3,
+      "community": 8,
       "norm_label": ".getentrycount()"
     },
     {
@@ -11120,7 +11120,7 @@
       "source_location": "L98",
       "_origin": "ast",
       "id": "src_services_otareleaselog_otareleaselog_getcurrentroothash",
-      "community": 3,
+      "community": 8,
       "norm_label": ".getcurrentroothash()"
     },
     {
@@ -11130,7 +11130,7 @@
       "source_location": "L103",
       "_origin": "ast",
       "id": "src_services_otareleaselog_otareleaselog_hash",
-      "community": 3,
+      "community": 8,
       "norm_label": ".hash()"
     },
     {
@@ -11140,7 +11140,7 @@
       "source_location": "L107",
       "_origin": "ast",
       "id": "src_services_otareleaselog_otareleaselog_computeroothash",
-      "community": 3,
+      "community": 8,
       "norm_label": ".computeroothash()"
     },
     {
@@ -11150,7 +11150,7 @@
       "source_location": "L125",
       "_origin": "ast",
       "id": "src_services_otareleaselog_otareleaselog_computeinclusionproof",
-      "community": 3,
+      "community": 8,
       "norm_label": ".computeinclusionproof()"
     },
     {
@@ -11170,7 +11170,7 @@
       "source_location": "L165",
       "_origin": "ast",
       "id": "src_services_otareleaselog_getotareleaselog",
-      "community": 54,
+      "community": 82,
       "norm_label": "getotareleaselog()"
     },
     {
@@ -11240,7 +11240,7 @@
       "source_location": "L38",
       "_origin": "ast",
       "id": "src_services_otaservice_d_otaredisstate",
-      "community": 9,
+      "community": 98,
       "norm_label": "otaredisstate"
     },
     {
@@ -11250,7 +11250,7 @@
       "source_location": "L41",
       "_origin": "ast",
       "id": "src_services_otaservice_d_otaredisstate_constructor",
-      "community": 9,
+      "community": 98,
       "norm_label": ".constructor()"
     },
     {
@@ -11260,7 +11260,7 @@
       "source_location": "L45",
       "_origin": "ast",
       "id": "src_services_otaservice_d_otaredisstate_setactiverelease",
-      "community": 9,
+      "community": 98,
       "norm_label": ".setactiverelease()"
     },
     {
@@ -11270,7 +11270,7 @@
       "source_location": "L46",
       "_origin": "ast",
       "id": "src_services_otaservice_d_otaredisstate_getactiverelease",
-      "community": 9,
+      "community": 98,
       "norm_label": ".getactiverelease()"
     },
     {
@@ -11280,7 +11280,7 @@
       "source_location": "L47",
       "_origin": "ast",
       "id": "src_services_otaservice_d_otaredisstate_seedpendingfleet",
-      "community": 9,
+      "community": 98,
       "norm_label": ".seedpendingfleet()"
     },
     {
@@ -11290,7 +11290,7 @@
       "source_location": "L48",
       "_origin": "ast",
       "id": "src_services_otaservice_d_otaredisstate_ispending",
-      "community": 9,
+      "community": 98,
       "norm_label": ".ispending()"
     },
     {
@@ -11300,7 +11300,7 @@
       "source_location": "L49",
       "_origin": "ast",
       "id": "src_services_otaservice_d_otaredisstate_isdelivered",
-      "community": 9,
+      "community": 98,
       "norm_label": ".isdelivered()"
     },
     {
@@ -11310,7 +11310,7 @@
       "source_location": "L50",
       "_origin": "ast",
       "id": "src_services_otaservice_d_otaredisstate_markdelivered",
-      "community": 9,
+      "community": 98,
       "norm_label": ".markdelivered()"
     },
     {
@@ -11320,7 +11320,7 @@
       "source_location": "L51",
       "_origin": "ast",
       "id": "src_services_otaservice_d_otaredisstate_markpending",
-      "community": 9,
+      "community": 98,
       "norm_label": ".markpending()"
     },
     {
@@ -11340,7 +11340,7 @@
       "source_location": "L63",
       "_origin": "ast",
       "id": "src_services_otaservice_d_otacommandpublisher",
-      "community": 9,
+      "community": 172,
       "norm_label": "otacommandpublisher"
     },
     {
@@ -11350,7 +11350,7 @@
       "source_location": "L68",
       "_origin": "ast",
       "id": "src_services_otaservice_d_otacommandpublisher_constructor",
-      "community": 9,
+      "community": 172,
       "norm_label": ".constructor()"
     },
     {
@@ -11360,7 +11360,7 @@
       "source_location": "L69",
       "_origin": "ast",
       "id": "src_services_otaservice_d_otacommandpublisher_publishupdatetodevice",
-      "community": 9,
+      "community": 172,
       "norm_label": ".publishupdatetodevice()"
     },
     {
@@ -11370,7 +11370,7 @@
       "source_location": "L70",
       "_origin": "ast",
       "id": "src_services_otaservice_d_otacommandpublisher_publishbroadcastupdate",
-      "community": 9,
+      "community": 172,
       "norm_label": ".publishbroadcastupdate()"
     },
     {
@@ -11380,7 +11380,7 @@
       "source_location": "L71",
       "_origin": "ast",
       "id": "src_services_otaservice_d_otacommandpublisher_publishrollbackack",
-      "community": 9,
+      "community": 172,
       "norm_label": ".publishrollbackack()"
     },
     {
@@ -11470,7 +11470,7 @@
       "source_location": "L129",
       "_origin": "ast",
       "id": "src_services_otaservice_d_otaservice",
-      "community": 90,
+      "community": 9,
       "norm_label": "otaservice"
     },
     {
@@ -11480,7 +11480,7 @@
       "source_location": "L135",
       "_origin": "ast",
       "id": "src_services_otaservice_d_otaservice_constructor",
-      "community": 90,
+      "community": 9,
       "norm_label": ".constructor()"
     },
     {
@@ -11490,7 +11490,7 @@
       "source_location": "L136",
       "_origin": "ast",
       "id": "src_services_otaservice_d_otaservice_resolveupdate",
-      "community": 90,
+      "community": 9,
       "norm_label": ".resolveupdate()"
     },
     {
@@ -11500,7 +11500,7 @@
       "source_location": "L137",
       "_origin": "ast",
       "id": "src_services_otaservice_d_otaservice_ingestrelease",
-      "community": 90,
+      "community": 9,
       "norm_label": ".ingestrelease()"
     },
     {
@@ -11510,7 +11510,7 @@
       "source_location": "L138",
       "_origin": "ast",
       "id": "src_services_otaservice_d_otaservice_deliverpendingtodevice",
-      "community": 90,
+      "community": 9,
       "norm_label": ".deliverpendingtodevice()"
     },
     {
@@ -11520,7 +11520,7 @@
       "source_location": "L141",
       "_origin": "ast",
       "id": "src_services_otaservice_d_otaservice_markdevicedelivered",
-      "community": 90,
+      "community": 9,
       "norm_label": ".markdevicedelivered()"
     },
     {
@@ -11530,7 +11530,7 @@
       "source_location": "L147",
       "_origin": "ast",
       "id": "src_services_otaservice_d_otaservice_getstablerelease",
-      "community": 90,
+      "community": 19,
       "norm_label": ".getstablerelease()"
     },
     {
@@ -11540,7 +11540,7 @@
       "source_location": "L148",
       "_origin": "ast",
       "id": "src_services_otaservice_d_otaservice_recordrollbackfailure",
-      "community": 90,
+      "community": 9,
       "norm_label": ".recordrollbackfailure()"
     },
     {
@@ -11550,7 +11550,7 @@
       "source_location": "L152",
       "_origin": "ast",
       "id": "src_services_otaservice_d_otaservice_recordotasuccess",
-      "community": 90,
+      "community": 9,
       "norm_label": ".recordotasuccess()"
     },
     {
@@ -11560,7 +11560,7 @@
       "source_location": "L153",
       "_origin": "ast",
       "id": "src_services_otaservice_d_otaservice_updateotastate",
-      "community": 90,
+      "community": 9,
       "norm_label": ".updateotastate()"
     },
     {
@@ -11570,7 +11570,7 @@
       "source_location": "L154",
       "_origin": "ast",
       "id": "src_services_otaservice_d_otaservice_updatefirmwareversion",
-      "community": 90,
+      "community": 9,
       "norm_label": ".updatefirmwareversion()"
     },
     {
@@ -11650,7 +11650,7 @@
       "source_location": "L91",
       "_origin": "ast",
       "id": "src_services_otaservice_computesigningkeyfingerprint",
-      "community": 54,
+      "community": 31,
       "norm_label": "computesigningkeyfingerprint()"
     },
     {
@@ -11890,7 +11890,7 @@
       "source_location": "L436",
       "_origin": "ast",
       "id": "src_services_otaservice_eventkey",
-      "community": 4,
+      "community": 31,
       "norm_label": "eventkey()"
     },
     {
@@ -11900,7 +11900,7 @@
       "source_location": "L440",
       "_origin": "ast",
       "id": "src_services_otaservice_otaeventhandler",
-      "community": 4,
+      "community": 81,
       "norm_label": "otaeventhandler"
     },
     {
@@ -11910,7 +11910,7 @@
       "source_location": "L441",
       "_origin": "ast",
       "id": "src_services_otaservice_otaeventhandler_constructor",
-      "community": 4,
+      "community": 81,
       "norm_label": ".constructor()"
     },
     {
@@ -11920,7 +11920,7 @@
       "source_location": "L446",
       "_origin": "ast",
       "id": "src_services_otaservice_otaeventhandler_handle",
-      "community": 4,
+      "community": 31,
       "norm_label": ".handle()"
     },
     {
@@ -11930,7 +11930,7 @@
       "source_location": "L529",
       "_origin": "ast",
       "id": "src_services_otaservice_checkotaratelimit",
-      "community": 82,
+      "community": 81,
       "norm_label": "checkotaratelimit()"
     },
     {
@@ -12050,7 +12050,7 @@
       "source_location": "L682",
       "_origin": "ast",
       "id": "src_services_otaservice_otaservice_ingestrelease",
-      "community": 54,
+      "community": 31,
       "norm_label": ".ingestrelease()"
     },
     {
@@ -12070,7 +12070,7 @@
       "source_location": "L879",
       "_origin": "ast",
       "id": "src_services_otaservice_otaservice_listeligibledeviceids",
-      "community": 54,
+      "community": 31,
       "norm_label": ".listeligibledeviceids()"
     },
     {
@@ -12190,7 +12190,7 @@
       "source_location": "L1086",
       "_origin": "ast",
       "id": "src_services_otaservice_otaservice_updateotastate",
-      "community": 90,
+      "community": 9,
       "norm_label": ".updateotastate()"
     },
     {
@@ -12220,7 +12220,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_services_otasigningkeyservice",
-      "community": 54,
+      "community": 31,
       "norm_label": "otasigningkeyservice.ts"
     },
     {
@@ -12230,7 +12230,7 @@
       "source_location": "L4",
       "_origin": "ast",
       "id": "src_services_otasigningkeyservice_initotasigningkeyaudit",
-      "community": 54,
+      "community": 31,
       "norm_label": "initotasigningkeyaudit()"
     },
     {
@@ -12250,7 +12250,7 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "src_services_promotionservice_connectionvalidateevent",
-      "community": 81,
+      "community": 36,
       "norm_label": "connectionvalidateevent"
     },
     {
@@ -12270,7 +12270,7 @@
       "source_location": "L44",
       "_origin": "ast",
       "id": "src_services_promotionservice_cachedcampaigndto",
-      "community": 57,
+      "community": 36,
       "norm_label": "cachedcampaigndto"
     },
     {
@@ -12320,7 +12320,7 @@
       "source_location": "L79",
       "_origin": "ast",
       "id": "src_services_promotionservice_buildcampaignpayload",
-      "community": 81,
+      "community": 36,
       "norm_label": "buildcampaignpayload()"
     },
     {
@@ -12630,7 +12630,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_services_recoverysessionservice",
-      "community": 43,
+      "community": 59,
       "norm_label": "recoverysessionservice.ts"
     },
     {
@@ -12640,7 +12640,7 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "src_services_recoverysessionservice_recoverysessionredisstate",
-      "community": 43,
+      "community": 59,
       "norm_label": "recoverysessionredisstate"
     },
     {
@@ -12650,7 +12650,7 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "src_services_recoverysessionservice_recoverysessionerror",
-      "community": 43,
+      "community": 59,
       "norm_label": "recoverysessionerror"
     },
     {
@@ -12660,7 +12660,7 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "src_services_recoverysessionservice_devicerecoveryjwtclaims",
-      "community": 43,
+      "community": 59,
       "norm_label": "devicerecoveryjwtclaims"
     },
     {
@@ -12780,7 +12780,7 @@
       "source_location": "L267",
       "_origin": "ast",
       "id": "src_services_recoverysessionservice_createrecoverysessionservice",
-      "community": 43,
+      "community": 59,
       "norm_label": "createrecoverysessionservice()"
     },
     {
@@ -12940,7 +12940,7 @@
       "source_location": "L370",
       "_origin": "ast",
       "id": "src_services_redisservice_getredisservice",
-      "community": 36,
+      "community": 2,
       "norm_label": "getredisservice()"
     },
     {
@@ -12950,7 +12950,7 @@
       "source_location": "L377",
       "_origin": "ast",
       "id": "src_services_redisservice_createredisservice",
-      "community": 39,
+      "community": 54,
       "norm_label": "createredisservice()"
     },
     {
@@ -13060,7 +13060,7 @@
       "source_location": "L84",
       "_origin": "ast",
       "id": "src_services_screenenvelope_gmbreviewmetrics",
-      "community": 2,
+      "community": 50,
       "norm_label": "gmbreviewmetrics()"
     },
     {
@@ -13080,7 +13080,7 @@
       "source_location": "L105",
       "_origin": "ast",
       "id": "src_services_screenenvelope_buildgmbscreenpayload",
-      "community": 2,
+      "community": 50,
       "norm_label": "buildgmbscreenpayload()"
     },
     {
@@ -13140,7 +13140,7 @@
       "source_location": "L17",
       "_origin": "ast",
       "id": "src_services_sessionservice_sessionservice",
-      "community": 37,
+      "community": 91,
       "norm_label": "sessionservice"
     },
     {
@@ -13150,7 +13150,7 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "src_services_sessionservice_sessionservice_constructor",
-      "community": 37,
+      "community": 91,
       "norm_label": ".constructor()"
     },
     {
@@ -13160,7 +13160,7 @@
       "source_location": "L29",
       "_origin": "ast",
       "id": "src_services_sessionservice_sessionservice_initialize",
-      "community": 37,
+      "community": 91,
       "norm_label": ".initialize()"
     },
     {
@@ -13170,7 +13170,7 @@
       "source_location": "L43",
       "_origin": "ast",
       "id": "src_services_sessionservice_sessionservice_createsession",
-      "community": 37,
+      "community": 91,
       "norm_label": ".createsession()"
     },
     {
@@ -13180,7 +13180,7 @@
       "source_location": "L59",
       "_origin": "ast",
       "id": "src_services_sessionservice_sessionservice_getsession",
-      "community": 37,
+      "community": 91,
       "norm_label": ".getsession()"
     },
     {
@@ -13200,7 +13200,7 @@
       "source_location": "L82",
       "_origin": "ast",
       "id": "src_services_sessionservice_sessionservice_getsessionbyclientid",
-      "community": 37,
+      "community": 91,
       "norm_label": ".getsessionbyclientid()"
     },
     {
@@ -13210,7 +13210,7 @@
       "source_location": "L94",
       "_origin": "ast",
       "id": "src_services_sessionservice_sessionservice_updatesession",
-      "community": 37,
+      "community": 91,
       "norm_label": ".updatesession()"
     },
     {
@@ -13220,7 +13220,7 @@
       "source_location": "L111",
       "_origin": "ast",
       "id": "src_services_sessionservice_sessionservice_deletesession",
-      "community": 37,
+      "community": 91,
       "norm_label": ".deletesession()"
     },
     {
@@ -13230,7 +13230,7 @@
       "source_location": "L124",
       "_origin": "ast",
       "id": "src_services_sessionservice_sessionservice_cleanupexpiredsessions",
-      "community": 37,
+      "community": 91,
       "norm_label": ".cleanupexpiredsessions()"
     },
     {
@@ -13240,7 +13240,7 @@
       "source_location": "L144",
       "_origin": "ast",
       "id": "src_services_sessionservice_sessionservice_close",
-      "community": 37,
+      "community": 91,
       "norm_label": ".close()"
     },
     {
@@ -13310,7 +13310,7 @@
       "source_location": "L132",
       "_origin": "ast",
       "id": "src_services_startupcacherepublish_republishgmbfromcache",
-      "community": 17,
+      "community": 76,
       "norm_label": "republishgmbfromcache()"
     },
     {
@@ -13350,7 +13350,7 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "src_services_statspublisher_gmbdemovariant",
-      "community": 2,
+      "community": 50,
       "norm_label": "gmbdemovariant()"
     },
     {
@@ -13660,7 +13660,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_services_transparencylog",
-      "community": 3,
+      "community": 54,
       "norm_label": "transparencylog.ts"
     },
     {
@@ -13670,7 +13670,7 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "src_services_transparencylog_transparencyproof",
-      "community": 3,
+      "community": 54,
       "norm_label": "transparencyproof"
     },
     {
@@ -13680,7 +13680,7 @@
       "source_location": "L33",
       "_origin": "ast",
       "id": "src_services_transparencylog_transparencylogconfig",
-      "community": 3,
+      "community": 54,
       "norm_label": "transparencylogconfig"
     },
     {
@@ -13690,7 +13690,7 @@
       "source_location": "L37",
       "_origin": "ast",
       "id": "src_services_transparencylog_transparencylog",
-      "community": 3,
+      "community": 90,
       "norm_label": "transparencylog"
     },
     {
@@ -13700,7 +13700,7 @@
       "source_location": "L43",
       "_origin": "ast",
       "id": "src_services_transparencylog_transparencylog_constructor",
-      "community": 3,
+      "community": 90,
       "norm_label": ".constructor()"
     },
     {
@@ -13710,7 +13710,7 @@
       "source_location": "L52",
       "_origin": "ast",
       "id": "src_services_transparencylog_transparencylog_initialize",
-      "community": 3,
+      "community": 90,
       "norm_label": ".initialize()"
     },
     {
@@ -13720,7 +13720,7 @@
       "source_location": "L82",
       "_origin": "ast",
       "id": "src_services_transparencylog_transparencylog_addentry",
-      "community": 3,
+      "community": 90,
       "norm_label": ".addentry()"
     },
     {
@@ -13730,7 +13730,7 @@
       "source_location": "L144",
       "_origin": "ast",
       "id": "src_services_transparencylog_transparencylog_verifyinclusion",
-      "community": 3,
+      "community": 90,
       "norm_label": ".verifyinclusion()"
     },
     {
@@ -13740,7 +13740,7 @@
       "source_location": "L165",
       "_origin": "ast",
       "id": "src_services_transparencylog_transparencylog_getcurrentroothash",
-      "community": 3,
+      "community": 90,
       "norm_label": ".getcurrentroothash()"
     },
     {
@@ -13750,7 +13750,7 @@
       "source_location": "L173",
       "_origin": "ast",
       "id": "src_services_transparencylog_transparencylog_getentrycount",
-      "community": 3,
+      "community": 90,
       "norm_label": ".getentrycount()"
     },
     {
@@ -13760,7 +13760,7 @@
       "source_location": "L181",
       "_origin": "ast",
       "id": "src_services_transparencylog_transparencylog_verifyconsistency",
-      "community": 3,
+      "community": 90,
       "norm_label": ".verifyconsistency()"
     },
     {
@@ -13770,7 +13770,7 @@
       "source_location": "L233",
       "_origin": "ast",
       "id": "src_services_transparencylog_transparencylog_hash",
-      "community": 3,
+      "community": 90,
       "norm_label": ".hash()"
     },
     {
@@ -13780,7 +13780,7 @@
       "source_location": "L241",
       "_origin": "ast",
       "id": "src_services_transparencylog_transparencylog_computeroothash",
-      "community": 3,
+      "community": 90,
       "norm_label": ".computeroothash()"
     },
     {
@@ -13790,7 +13790,7 @@
       "source_location": "L266",
       "_origin": "ast",
       "id": "src_services_transparencylog_transparencylog_computeinclusionproof",
-      "community": 3,
+      "community": 90,
       "norm_label": ".computeinclusionproof()"
     },
     {
@@ -13800,7 +13800,7 @@
       "source_location": "L311",
       "_origin": "ast",
       "id": "src_services_transparencylog_createtransparencylog",
-      "community": 12,
+      "community": 54,
       "norm_label": "createtransparencylog()"
     },
     {
@@ -13810,7 +13810,7 @@
       "source_location": "L316",
       "_origin": "ast",
       "id": "src_services_transparencylog_gettransparencylog",
-      "community": 3,
+      "community": 54,
       "norm_label": "gettransparencylog()"
     },
     {
@@ -13820,7 +13820,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_services_userintegrationcache",
-      "community": 36,
+      "community": 76,
       "norm_label": "userintegrationcache.ts"
     },
     {
@@ -13830,7 +13830,7 @@
       "source_location": "L10",
       "_origin": "ast",
       "id": "src_services_userintegrationcache_instagramintegrationcache",
-      "community": 36,
+      "community": 76,
       "norm_label": "instagramintegrationcache"
     },
     {
@@ -13840,7 +13840,7 @@
       "source_location": "L17",
       "_origin": "ast",
       "id": "src_services_userintegrationcache_gmbintegrationcache",
-      "community": 36,
+      "community": 76,
       "norm_label": "gmbintegrationcache"
     },
     {
@@ -13850,7 +13850,7 @@
       "source_location": "L25",
       "_origin": "ast",
       "id": "src_services_userintegrationcache_posintegrationcache",
-      "community": 36,
+      "community": 76,
       "norm_label": "posintegrationcache"
     },
     {
@@ -13860,7 +13860,7 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "src_services_userintegrationcache_userintegrationcache",
-      "community": 36,
+      "community": 76,
       "norm_label": "userintegrationcache"
     },
     {
@@ -13870,7 +13870,7 @@
       "source_location": "L42",
       "_origin": "ast",
       "id": "src_services_userintegrationcache_getuserintegrationscachettlsec",
-      "community": 36,
+      "community": 76,
       "norm_label": "getuserintegrationscachettlsec()"
     },
     {
@@ -13880,7 +13880,7 @@
       "source_location": "L47",
       "_origin": "ast",
       "id": "src_services_userintegrationcache_cachekey",
-      "community": 36,
+      "community": 76,
       "norm_label": "cachekey()"
     },
     {
@@ -13890,7 +13890,7 @@
       "source_location": "L51",
       "_origin": "ast",
       "id": "src_services_userintegrationcache_resolvegmblocationid",
-      "community": 36,
+      "community": 18,
       "norm_label": "resolvegmblocationid()"
     },
     {
@@ -13900,7 +13900,7 @@
       "source_location": "L68",
       "_origin": "ast",
       "id": "src_services_userintegrationcache_cacheuserintegrations",
-      "community": 36,
+      "community": 76,
       "norm_label": "cacheuserintegrations()"
     },
     {
@@ -13910,7 +13910,7 @@
       "source_location": "L140",
       "_origin": "ast",
       "id": "src_services_userintegrationcache_invalidateuserintegrations",
-      "community": 36,
+      "community": 76,
       "norm_label": "invalidateuserintegrations()"
     },
     {
@@ -13920,7 +13920,7 @@
       "source_location": "L155",
       "_origin": "ast",
       "id": "src_services_userintegrationcache_getuserintegrations",
-      "community": 36,
+      "community": 76,
       "norm_label": "getuserintegrations()"
     },
     {
@@ -13930,7 +13930,7 @@
       "source_location": "L179",
       "_origin": "ast",
       "id": "src_services_userintegrationcache_applysocialdisconnected",
-      "community": 36,
+      "community": 76,
       "norm_label": "applysocialdisconnected()"
     },
     {
@@ -13940,7 +13940,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_services_userservice",
-      "community": 125,
+      "community": 54,
       "norm_label": "userservice.ts"
     },
     {
@@ -13950,7 +13950,7 @@
       "source_location": "L11",
       "_origin": "ast",
       "id": "src_services_userservice_userverificationresult",
-      "community": 125,
+      "community": 54,
       "norm_label": "userverificationresult"
     },
     {
@@ -13960,7 +13960,7 @@
       "source_location": "L17",
       "_origin": "ast",
       "id": "src_services_userservice_deviceverificationresult",
-      "community": 125,
+      "community": 19,
       "norm_label": "deviceverificationresult"
     },
     {
@@ -14130,7 +14130,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_storage_influx_baseinfluxrepo",
-      "community": 59,
+      "community": 39,
       "norm_label": "baseinfluxrepo.ts"
     },
     {
@@ -14140,7 +14140,7 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "src_storage_influx_baseinfluxrepo_baseinfluxrepo",
-      "community": 59,
+      "community": 39,
       "norm_label": "baseinfluxrepo"
     },
     {
@@ -14160,7 +14160,7 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "src_storage_influx_baseinfluxrepo_baseinfluxrepo_truncate",
-      "community": 59,
+      "community": 39,
       "norm_label": ".truncate()"
     },
     {
@@ -14170,7 +14170,7 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "src_storage_influx_baseinfluxrepo_baseinfluxrepo_submit",
-      "community": 59,
+      "community": 39,
       "norm_label": ".submit()"
     },
     {
@@ -14180,7 +14180,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_storage_influx_repositories_ctlogrepo",
-      "community": 59,
+      "community": 39,
       "norm_label": "ctlogrepo.ts"
     },
     {
@@ -14190,7 +14190,7 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "src_storage_influx_repositories_ctlogrepo_transparencyentryinput",
-      "community": 59,
+      "community": 39,
       "norm_label": "transparencyentryinput"
     },
     {
@@ -14200,7 +14200,7 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "src_storage_influx_repositories_ctlogrepo_otareleaseentryinput",
-      "community": 59,
+      "community": 39,
       "norm_label": "otareleaseentryinput"
     },
     {
@@ -14250,7 +14250,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_storage_influx_repositories_devicemetricsrepo",
-      "community": 59,
+      "community": 39,
       "norm_label": "devicemetricsrepo.ts"
     },
     {
@@ -14320,7 +14320,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_storage_influx_repositories_instagramauditrepo",
-      "community": 59,
+      "community": 39,
       "norm_label": "instagramauditrepo.ts"
     },
     {
@@ -14440,7 +14440,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_storage_influx_repositories_pkiauditrepo",
-      "community": 59,
+      "community": 39,
       "norm_label": "pkiauditrepo.ts"
     },
     {
@@ -14450,7 +14450,7 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "src_storage_influx_repositories_pkiauditrepo_pkiauditinput",
-      "community": 59,
+      "community": 39,
       "norm_label": "pkiauditinput"
     },
     {
@@ -14460,7 +14460,7 @@
       "source_location": "L20",
       "_origin": "ast",
       "id": "src_storage_influx_repositories_pkiauditrepo_pkiauditrepo",
-      "community": 59,
+      "community": 135,
       "norm_label": "pkiauditrepo"
     },
     {
@@ -14470,7 +14470,7 @@
       "source_location": "L21",
       "_origin": "ast",
       "id": "src_storage_influx_repositories_pkiauditrepo_pkiauditrepo_buildpoint",
-      "community": 59,
+      "community": 135,
       "norm_label": ".buildpoint()"
     },
     {
@@ -14480,7 +14480,7 @@
       "source_location": "L42",
       "_origin": "ast",
       "id": "src_storage_influx_repositories_pkiauditrepo_pkiauditrepo_write",
-      "community": 59,
+      "community": 135,
       "norm_label": ".write()"
     },
     {
@@ -14490,7 +14490,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_storage_influx_repositories_webhookauditrepo",
-      "community": 59,
+      "community": 56,
       "norm_label": "webhookauditrepo.ts"
     },
     {
@@ -14500,7 +14500,7 @@
       "source_location": "L13",
       "_origin": "ast",
       "id": "src_storage_influx_repositories_webhookauditrepo_webhookauditrepo",
-      "community": 55,
+      "community": 56,
       "norm_label": "webhookauditrepo"
     },
     {
@@ -14510,7 +14510,7 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "src_storage_influx_repositories_webhookauditrepo_webhookauditrepo_buildpoint",
-      "community": 55,
+      "community": 56,
       "norm_label": ".buildpoint()"
     },
     {
@@ -14520,7 +14520,7 @@
       "source_location": "L24",
       "_origin": "ast",
       "id": "src_storage_influx_repositories_webhookauditrepo_webhookauditrepo_write",
-      "community": 55,
+      "community": 56,
       "norm_label": ".write()"
     },
     {
@@ -14530,7 +14530,7 @@
       "source_location": "L29",
       "_origin": "ast",
       "id": "src_storage_influx_repositories_webhookauditrepo_webhookauditrepo_writedeviceresolution",
-      "community": 55,
+      "community": 56,
       "norm_label": ".writedeviceresolution()"
     },
     {
@@ -14540,7 +14540,7 @@
       "source_location": "L42",
       "_origin": "ast",
       "id": "src_storage_influx_repositories_webhookauditrepo_webhookauditrepo_writemqttdelivery",
-      "community": 55,
+      "community": 56,
       "norm_label": ".writemqttdelivery()"
     },
     {
@@ -14550,7 +14550,7 @@
       "source_location": "L58",
       "_origin": "ast",
       "id": "src_storage_influx_repositories_webhookauditrepo_webhookauditrepo_writegmbreviewsnapshot",
-      "community": 55,
+      "community": 56,
       "norm_label": ".writegmbreviewsnapshot()"
     },
     {
@@ -14560,7 +14560,7 @@
       "source_location": "L71",
       "_origin": "ast",
       "id": "src_storage_influx_repositories_webhookauditrepo_webhookauditrepo_writegmbwebhookaudit",
-      "community": 55,
+      "community": 56,
       "norm_label": ".writegmbwebhookaudit()"
     },
     {
@@ -14570,7 +14570,7 @@
       "source_location": "L91",
       "_origin": "ast",
       "id": "src_storage_influx_repositories_webhookauditrepo_webhookauditrepo_writegmbvelocityweekly",
-      "community": 55,
+      "community": 56,
       "norm_label": ".writegmbvelocityweekly()"
     },
     {
@@ -14580,7 +14580,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_storage_influx_types",
-      "community": 59,
+      "community": 39,
       "norm_label": "types.ts"
     },
     {
@@ -14590,7 +14590,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_storage_influx_types_buckettarget",
-      "community": 59,
+      "community": 39,
       "norm_label": "buckettarget"
     },
     {
@@ -15140,7 +15140,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_utils_certvalidator",
-      "community": 39,
+      "community": 54,
       "norm_label": "certvalidator.ts"
     },
     {
@@ -15150,7 +15150,7 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "src_utils_certvalidator_kuekuvalidationresult",
-      "community": 39,
+      "community": 54,
       "norm_label": "kuekuvalidationresult"
     },
     {
@@ -15160,7 +15160,7 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "src_utils_certvalidator_validatekeyusageandeku",
-      "community": 39,
+      "community": 54,
       "norm_label": "validatekeyusageandeku()"
     },
     {
@@ -15170,7 +15170,7 @@
       "source_location": "L96",
       "_origin": "ast",
       "id": "src_utils_certvalidator_hasvalidkeyusage",
-      "community": 39,
+      "community": 54,
       "norm_label": "hasvalidkeyusage()"
     },
     {
@@ -15180,7 +15180,7 @@
       "source_location": "L103",
       "_origin": "ast",
       "id": "src_utils_certvalidator_getcertificateinfo",
-      "community": 39,
+      "community": 54,
       "norm_label": "getcertificateinfo()"
     },
     {
@@ -15330,7 +15330,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_utils_mongoretry",
-      "community": 39,
+      "community": 40,
       "norm_label": "mongoretry.ts"
     },
     {
@@ -15340,7 +15340,7 @@
       "source_location": "L3",
       "_origin": "ast",
       "id": "src_utils_mongoretry_transient_mongo_patterns",
-      "community": 39,
+      "community": 40,
       "norm_label": "transient_mongo_patterns"
     },
     {
@@ -15350,7 +15350,7 @@
       "source_location": "L10",
       "_origin": "ast",
       "id": "src_utils_mongoretry_istransientmongoerror",
-      "community": 39,
+      "community": 40,
       "norm_label": "istransientmongoerror()"
     },
     {
@@ -15360,7 +15360,7 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "src_utils_mongoretry_withmongoretry",
-      "community": 39,
+      "community": 40,
       "norm_label": "withmongoretry()"
     },
     {
@@ -15440,7 +15440,7 @@
       "source_location": "L44",
       "_origin": "ast",
       "id": "src_utils_mqtttlsoptions_mqtttlsconnectmaterial",
-      "community": 47,
+      "community": 58,
       "norm_label": "mqtttlsconnectmaterial"
     },
     {
@@ -15500,7 +15500,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_utils_otadownloadurl",
-      "community": 20,
+      "community": 82,
       "norm_label": "otadownloadurl.ts"
     },
     {
@@ -15510,7 +15510,7 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "src_utils_otadownloadurl_isocifirmwaredownloadurl",
-      "community": 20,
+      "community": 82,
       "norm_label": "isocifirmwaredownloadurl()"
     },
     {
@@ -15520,7 +15520,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "src_utils_otadownloadurl_islocallandownloadurl",
-      "community": 20,
+      "community": 82,
       "norm_label": "islocallandownloadurl()"
     },
     {
@@ -15530,7 +15530,7 @@
       "source_location": "L35",
       "_origin": "ast",
       "id": "src_utils_otadownloadurl_buildotamqttdownloadurl",
-      "community": 20,
+      "community": 82,
       "norm_label": "buildotamqttdownloadurl()"
     },
     {
@@ -15540,7 +15540,7 @@
       "source_location": "L53",
       "_origin": "ast",
       "id": "src_utils_otadownloadurl_buildotadownloadurl",
-      "community": 20,
+      "community": 82,
       "norm_label": "buildotadownloadurl()"
     },
     {
@@ -15570,7 +15570,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_utils_semver",
-      "community": 19,
+      "community": 169,
       "norm_label": "semver.ts"
     },
     {
@@ -15580,7 +15580,7 @@
       "source_location": "L5",
       "_origin": "ast",
       "id": "src_utils_semver_compareversions",
-      "community": 19,
+      "community": 169,
       "norm_label": "compareversions()"
     },
     {
@@ -15590,7 +15590,7 @@
       "source_location": "L29",
       "_origin": "ast",
       "id": "src_utils_semver_isversiongreater",
-      "community": 19,
+      "community": 169,
       "norm_label": "isversiongreater()"
     },
     {
@@ -15600,7 +15600,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_utils_stimulateallowlist",
-      "community": 76,
+      "community": 171,
       "norm_label": "stimulateallowlist.ts"
     },
     {
@@ -15610,7 +15610,7 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "src_utils_stimulateallowlist_parsestimulateallowlist",
-      "community": 76,
+      "community": 171,
       "norm_label": "parsestimulateallowlist()"
     },
     {
@@ -15620,7 +15620,7 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "src_utils_stimulateallowlist_isstimulatedevice",
-      "community": 76,
+      "community": 171,
       "norm_label": "isstimulatedevice()"
     },
     {
@@ -15630,7 +15630,7 @@
       "source_location": "L21",
       "_origin": "ast",
       "id": "src_utils_stimulateallowlist_hasstimlock",
-      "community": 76,
+      "community": 171,
       "norm_label": "hasstimlock()"
     },
     {
@@ -15640,7 +15640,7 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "src_utils_stimulateallowlist_shouldskipforstimulate",
-      "community": 76,
+      "community": 171,
       "norm_label": "shouldskipforstimulate()"
     },
     {
@@ -15740,7 +15740,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_webhooks_gmb_gmbreviewresolve",
-      "community": 31,
+      "community": 17,
       "norm_label": "gmbreviewresolve.ts"
     },
     {
@@ -15830,7 +15830,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_webhooks_gmbreviewcache",
-      "community": 17,
+      "community": 39,
       "norm_label": "gmbreviewcache.ts"
     },
     {
@@ -15840,7 +15840,7 @@
       "source_location": "L10",
       "_origin": "ast",
       "id": "src_webhooks_gmbreviewcache_getgmbreviewcount",
-      "community": 17,
+      "community": 76,
       "norm_label": "getgmbreviewcount()"
     },
     {
@@ -15850,7 +15850,7 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "src_webhooks_gmbreviewcache_setgmbreviewcount",
-      "community": 17,
+      "community": 18,
       "norm_label": "setgmbreviewcount()"
     },
     {
@@ -15870,7 +15870,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_webhooks_influxaudit",
-      "community": 17,
+      "community": 8,
       "norm_label": "influxaudit.ts"
     },
     {
@@ -15880,7 +15880,7 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "src_webhooks_influxaudit_webhookinfluxbatch",
-      "community": 17,
+      "community": 8,
       "norm_label": "webhookinfluxbatch()"
     },
     {
@@ -15930,7 +15930,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_webhooks_resolve_resolvedevices",
-      "community": 47,
+      "community": 40,
       "norm_label": "resolvedevices.ts"
     },
     {
@@ -15940,7 +15940,7 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "src_webhooks_resolve_resolvedevices_resolveddevicetarget",
-      "community": 47,
+      "community": 40,
       "norm_label": "resolveddevicetarget"
     },
     {
@@ -16020,7 +16020,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_webhooks_verify_pubsubgmb",
-      "community": 91,
+      "community": 17,
       "norm_label": "pubsubgmb.ts"
     },
     {
@@ -16080,7 +16080,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "stimulate_allowlist",
-      "community": 76,
+      "community": 171,
       "norm_label": "allowlist.ts"
     },
     {
@@ -16294,10 +16294,20 @@
       "norm_label": "updatefollowercache()"
     },
     {
+      "label": "resolveLiveFollowersForStim()",
+      "file_type": "code",
+      "source_file": "stimulate/igRunner.ts",
+      "source_location": "L110",
+      "_origin": "ast",
+      "id": "stimulate_igrunner_resolvelivefollowersforstim",
+      "community": 50,
+      "norm_label": "resolvelivefollowersforstim()"
+    },
+    {
       "label": "runIgTick()",
       "file_type": "code",
       "source_file": "stimulate/igRunner.ts",
-      "source_location": "L109",
+      "source_location": "L126",
       "_origin": "ast",
       "id": "stimulate_igrunner_runigtick",
       "community": 50,
@@ -16470,7 +16480,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_unit_config_influxconfig_test",
-      "community": 0,
+      "community": 181,
       "norm_label": "influxconfig.test.ts"
     },
     {
@@ -16480,7 +16490,7 @@
       "source_location": "L3",
       "_origin": "ast",
       "id": "tests_unit_config_influxconfig_test_cleanenv",
-      "community": 0,
+      "community": 181,
       "norm_label": "cleanenv()"
     },
     {
@@ -16490,7 +16500,7 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "tests_unit_config_influxconfig_test_baseenv",
-      "community": 0,
+      "community": 181,
       "norm_label": "baseenv()"
     },
     {
@@ -16510,7 +16520,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_unit_config_swagger_test",
-      "community": 37,
+      "community": 170,
       "norm_label": "swagger.test.ts"
     },
     {
@@ -16550,7 +16560,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_unit_routes_connectionsroutes_test",
-      "community": 81,
+      "community": 36,
       "norm_label": "connectionsroutes.test.ts"
     },
     {
@@ -16560,7 +16570,7 @@
       "source_location": "L9",
       "_origin": "ast",
       "id": "tests_unit_routes_connectionsroutes_test_app",
-      "community": 81,
+      "community": 36,
       "norm_label": "app()"
     },
     {
@@ -16600,7 +16610,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_unit_routes_otaroutes_test",
-      "community": 82,
+      "community": 81,
       "norm_label": "otaroutes.test.ts"
     },
     {
@@ -16610,7 +16620,7 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "tests_unit_routes_otaroutes_test_mockhandle",
-      "community": 82,
+      "community": 81,
       "norm_label": "mockhandle"
     },
     {
@@ -16620,7 +16630,7 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "tests_unit_routes_otaroutes_test_buildapp",
-      "community": 82,
+      "community": 81,
       "norm_label": "buildapp()"
     },
     {
@@ -16690,7 +16700,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_unit_routes_recoveryroutes_test",
-      "community": 40,
+      "community": 59,
       "norm_label": "recoveryroutes.test.ts"
     },
     {
@@ -16700,7 +16710,7 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "tests_unit_routes_recoveryroutes_test_mockfindone",
-      "community": 40,
+      "community": 59,
       "norm_label": "mockfindone"
     },
     {
@@ -16710,7 +16720,7 @@
       "source_location": "L16",
       "_origin": "ast",
       "id": "tests_unit_routes_recoveryroutes_test_buildrecoveryroutesapp",
-      "community": 40,
+      "community": 59,
       "norm_label": "buildrecoveryroutesapp()"
     },
     {
@@ -16780,7 +16790,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_unit_services_campaignschedule_test",
-      "community": 57,
+      "community": 24,
       "norm_label": "campaignschedule.test.ts"
     },
     {
@@ -16790,7 +16800,7 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "tests_unit_services_campaignschedule_test_basecampaign",
-      "community": 57,
+      "community": 24,
       "norm_label": "basecampaign()"
     },
     {
@@ -16890,7 +16900,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_unit_services_otaeventhandler_test",
-      "community": 4,
+      "community": 81,
       "norm_label": "otaeventhandler.test.ts"
     },
     {
@@ -16910,7 +16920,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_unit_services_otaservice_test",
-      "community": 19,
+      "community": 169,
       "norm_label": "otaservice.test.ts"
     },
     {
@@ -16920,7 +16930,7 @@
       "source_location": "L50",
       "_origin": "ast",
       "id": "tests_unit_services_otaservice_test_mocklogevent",
-      "community": 19,
+      "community": 169,
       "norm_label": "mocklogevent"
     },
     {
@@ -16930,7 +16940,7 @@
       "source_location": "L74",
       "_origin": "ast",
       "id": "tests_unit_services_otaservice_test_mockstorage",
-      "community": 19,
+      "community": 169,
       "norm_label": "mockstorage"
     },
     {
@@ -16940,7 +16950,7 @@
       "source_location": "L86",
       "_origin": "ast",
       "id": "tests_unit_services_otaservice_test_otaconfig",
-      "community": 19,
+      "community": 169,
       "norm_label": "otaconfig"
     },
     {
@@ -16950,7 +16960,7 @@
       "source_location": "L301",
       "_origin": "ast",
       "id": "tests_unit_services_otaservice_test_makepublisher",
-      "community": 19,
+      "community": 169,
       "norm_label": "makepublisher()"
     },
     {
@@ -16960,7 +16970,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_unit_services_promotionservice_test",
-      "community": 57,
+      "community": 24,
       "norm_label": "promotionservice.test.ts"
     },
     {
@@ -16970,7 +16980,7 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "tests_unit_services_promotionservice_test_mockgetredis",
-      "community": 57,
+      "community": 24,
       "norm_label": "mockgetredis"
     },
     {
@@ -16980,7 +16990,7 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "tests_unit_services_promotionservice_test_basecampaign",
-      "community": 57,
+      "community": 24,
       "norm_label": "basecampaign()"
     },
     {
@@ -16990,7 +17000,7 @@
       "source_location": "L48",
       "_origin": "ast",
       "id": "tests_unit_services_promotionservice_test_basecacheddto",
-      "community": 57,
+      "community": 24,
       "norm_label": "basecacheddto()"
     },
     {
@@ -17060,8 +17070,58 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_unit_stimulate_allowlist_test",
-      "community": 76,
+      "community": 171,
       "norm_label": "allowlist.test.ts"
+    },
+    {
+      "label": "gmbRunner.test.ts",
+      "file_type": "code",
+      "source_file": "tests/unit/stimulate/gmbRunner.test.ts",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "tests_unit_stimulate_gmbrunner_test",
+      "community": 50,
+      "norm_label": "gmbrunner.test.ts"
+    },
+    {
+      "label": "mockPublishGmbScreen",
+      "file_type": "code",
+      "source_file": "tests/unit/stimulate/gmbRunner.test.ts",
+      "source_location": "L7",
+      "_origin": "ast",
+      "id": "tests_unit_stimulate_gmbrunner_test_mockpublishgmbscreen",
+      "community": 50,
+      "norm_label": "mockpublishgmbscreen"
+    },
+    {
+      "label": "mockedResolveGmb",
+      "file_type": "code",
+      "source_file": "tests/unit/stimulate/gmbRunner.test.ts",
+      "source_location": "L28",
+      "_origin": "ast",
+      "id": "tests_unit_stimulate_gmbrunner_test_mockedresolvegmb",
+      "community": 50,
+      "norm_label": "mockedresolvegmb"
+    },
+    {
+      "label": "mqttClient",
+      "file_type": "code",
+      "source_file": "tests/unit/stimulate/gmbRunner.test.ts",
+      "source_location": "L30",
+      "_origin": "ast",
+      "id": "tests_unit_stimulate_gmbrunner_test_mqttclient",
+      "community": 50,
+      "norm_label": "mqttclient"
+    },
+    {
+      "label": "redis",
+      "file_type": "code",
+      "source_file": "tests/unit/stimulate/gmbRunner.test.ts",
+      "source_location": "L31",
+      "_origin": "ast",
+      "id": "tests_unit_stimulate_gmbrunner_test_redis",
+      "community": 50,
+      "norm_label": "redis"
     },
     {
       "label": "igPayload.test.ts",
@@ -17072,6 +17132,86 @@
       "id": "tests_unit_stimulate_igpayload_test",
       "community": 50,
       "norm_label": "igpayload.test.ts"
+    },
+    {
+      "label": "igRunner.test.ts",
+      "file_type": "code",
+      "source_file": "tests/unit/stimulate/igRunner.test.ts",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "tests_unit_stimulate_igrunner_test",
+      "community": 50,
+      "norm_label": "igrunner.test.ts"
+    },
+    {
+      "label": "mockPublish",
+      "file_type": "code",
+      "source_file": "tests/unit/stimulate/igRunner.test.ts",
+      "source_location": "L10",
+      "_origin": "ast",
+      "id": "tests_unit_stimulate_igrunner_test_mockpublish",
+      "community": 50,
+      "norm_label": "mockpublish"
+    },
+    {
+      "label": "mqttClient",
+      "file_type": "code",
+      "source_file": "tests/unit/stimulate/igRunner.test.ts",
+      "source_location": "L12",
+      "_origin": "ast",
+      "id": "tests_unit_stimulate_igrunner_test_mqttclient",
+      "community": 50,
+      "norm_label": "mqttclient"
+    },
+    {
+      "label": "redis",
+      "file_type": "code",
+      "source_file": "tests/unit/stimulate/igRunner.test.ts",
+      "source_location": "L16",
+      "_origin": "ast",
+      "id": "tests_unit_stimulate_igrunner_test_redis",
+      "community": 50,
+      "norm_label": "redis"
+    },
+    {
+      "label": "mockedDeviceFind",
+      "file_type": "code",
+      "source_file": "tests/unit/stimulate/igRunner.test.ts",
+      "source_location": "L39",
+      "_origin": "ast",
+      "id": "tests_unit_stimulate_igrunner_test_mockeddevicefind",
+      "community": 50,
+      "norm_label": "mockeddevicefind"
+    },
+    {
+      "label": "mockedSocialFind",
+      "file_type": "code",
+      "source_file": "tests/unit/stimulate/igRunner.test.ts",
+      "source_location": "L40",
+      "_origin": "ast",
+      "id": "tests_unit_stimulate_igrunner_test_mockedsocialfind",
+      "community": 50,
+      "norm_label": "mockedsocialfind"
+    },
+    {
+      "label": "mockedFetchMetrics",
+      "file_type": "code",
+      "source_file": "tests/unit/stimulate/igRunner.test.ts",
+      "source_location": "L41",
+      "_origin": "ast",
+      "id": "tests_unit_stimulate_igrunner_test_mockedfetchmetrics",
+      "community": 50,
+      "norm_label": "mockedfetchmetrics"
+    },
+    {
+      "label": "mongoLean()",
+      "file_type": "code",
+      "source_file": "tests/unit/stimulate/igRunner.test.ts",
+      "source_location": "L43",
+      "_origin": "ast",
+      "id": "tests_unit_stimulate_igrunner_test_mongolean",
+      "community": 50,
+      "norm_label": "mongolean()"
     },
     {
       "label": "math.test.ts",
@@ -17090,7 +17230,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_unit_utils_otadownloadurl_test",
-      "community": 20,
+      "community": 82,
       "norm_label": "otadownloadurl.test.ts"
     },
     {
@@ -17100,7 +17240,7 @@
       "source_location": "L8",
       "_origin": "ast",
       "id": "tests_unit_utils_otadownloadurl_test_otaconfig",
-      "community": 20,
+      "community": 82,
       "norm_label": "otaconfig"
     },
     {
@@ -17110,7 +17250,7 @@
       "source_location": "L24",
       "_origin": "ast",
       "id": "tests_unit_utils_otadownloadurl_test_proxyotaconfig",
-      "community": 20,
+      "community": 82,
       "norm_label": "proxyotaconfig"
     },
     {
@@ -17120,7 +17260,7 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "tests_unit_utils_otadownloadurl_test_release",
-      "community": 20,
+      "community": 82,
       "norm_label": "release"
     },
     {
@@ -17130,7 +17270,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_unit_webhooks_dedupe_redisdedupe_test",
-      "community": 39,
+      "community": 17,
       "norm_label": "redisdedupe.test.ts"
     },
     {
@@ -23114,10 +23254,20 @@
       "norm_label": "cloud / local config"
     },
     {
-      "label": "Reset after a completed ramp",
+      "label": "Synthetic mode (no IG/GMB connection)",
       "file_type": "document",
       "source_file": "stimulate/README.md",
       "source_location": "L27",
+      "_origin": "ast",
+      "id": "stimulate_readme_synthetic_mode_no_ig_gmb_connection",
+      "community": 79,
+      "norm_label": "synthetic mode (no ig/gmb connection)"
+    },
+    {
+      "label": "Reset after a completed ramp",
+      "file_type": "document",
+      "source_file": "stimulate/README.md",
+      "source_location": "L39",
       "_origin": "ast",
       "id": "stimulate_readme_reset_after_a_completed_ramp",
       "community": 79,
@@ -23127,7 +23277,7 @@
       "label": "Removal Checklist (after testing)",
       "file_type": "document",
       "source_file": "stimulate/README.md",
-      "source_location": "L31",
+      "source_location": "L43",
       "_origin": "ast",
       "id": "stimulate_readme_removal_checklist_after_testing",
       "community": 79,
@@ -32884,6 +33034,17 @@
       "confidence_score": 1.0
     },
     {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/unit/stimulate/igRunner.test.ts",
+      "source_location": "L8",
+      "weight": 1.0,
+      "source": "tests_unit_stimulate_igrunner_test",
+      "target": "src_lib_socials_instagrammetrics",
+      "confidence_score": 1.0
+    },
+    {
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "src/lib/socials/instagramMetrics.ts",
@@ -32980,6 +33141,17 @@
       "weight": 1.0,
       "source": "stimulate_igrunner_fetchlivefollowers",
       "target": "src_lib_socials_instagrammetrics_fetchinstagramprofilemetrics"
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/unit/stimulate/igRunner.test.ts",
+      "source_location": "L8",
+      "weight": 1.0,
+      "source": "tests_unit_stimulate_igrunner_test",
+      "target": "src_lib_socials_instagrammetrics_fetchinstagramprofilemetrics",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -33610,6 +33782,17 @@
       "confidence_score": 1.0
     },
     {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/unit/stimulate/gmbRunner.test.ts",
+      "source_location": "L26",
+      "weight": 1.0,
+      "source": "tests_unit_stimulate_gmbrunner_test",
+      "target": "src_lib_socials_resolvedevicegmb",
+      "confidence_score": 1.0
+    },
+    {
       "relation": "imports",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -33729,6 +33912,17 @@
       "weight": 1.0,
       "source": "stimulate_gmbrunner_rungmbtick",
       "target": "src_lib_socials_resolvedevicegmb_resolvegmbcontextfordevice"
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/unit/stimulate/gmbRunner.test.ts",
+      "source_location": "L26",
+      "weight": 1.0,
+      "source": "tests_unit_stimulate_gmbrunner_test",
+      "target": "src_lib_socials_resolvedevicegmb_resolvegmbcontextfordevice",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -35894,6 +36088,17 @@
       "confidence_score": 1.0
     },
     {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/unit/stimulate/igRunner.test.ts",
+      "source_location": "L6",
+      "weight": 1.0,
+      "source": "tests_unit_stimulate_igrunner_test",
+      "target": "src_models_device",
+      "confidence_score": 1.0
+    },
+    {
       "relation": "re_exports",
       "context": "re-export",
       "confidence": "EXTRACTED",
@@ -36594,6 +36799,17 @@
       "source_location": "L69",
       "weight": 1.0,
       "source": "tests_unit_services_otaservice_test",
+      "target": "src_models_device_device",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/unit/stimulate/igRunner.test.ts",
+      "source_location": "L6",
+      "weight": 1.0,
+      "source": "tests_unit_stimulate_igrunner_test",
       "target": "src_models_device_device",
       "confidence_score": 1.0
     },
@@ -38336,6 +38552,17 @@
       "confidence_score": 1.0
     },
     {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/unit/stimulate/igRunner.test.ts",
+      "source_location": "L7",
+      "weight": 1.0,
+      "source": "tests_unit_stimulate_igrunner_test",
+      "target": "src_models_social",
+      "confidence_score": 1.0
+    },
+    {
       "relation": "re_exports",
       "context": "re-export",
       "confidence": "EXTRACTED",
@@ -38587,6 +38814,17 @@
       "weight": 1.0,
       "source": "stimulate_igrunner_resolveinstagrammeta",
       "target": "src_models_social_social"
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/unit/stimulate/igRunner.test.ts",
+      "source_location": "L7",
+      "weight": 1.0,
+      "source": "tests_unit_stimulate_igrunner_test",
+      "target": "src_models_social_social",
+      "confidence_score": 1.0
     },
     {
       "relation": "re_exports",
@@ -42515,7 +42753,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "stimulate/igRunner.ts",
-      "source_location": "L132",
+      "source_location": "L143",
       "weight": 1.0,
       "source": "stimulate_igrunner_runigtick",
       "target": "src_servers_mqttclient_mqttclientmanager_publish"
@@ -57169,7 +57407,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "stimulate/gmbRunner.ts",
-      "source_location": "L96",
+      "source_location": "L98",
       "weight": 1.0,
       "source": "stimulate_gmbrunner_rungmbtick",
       "target": "src_services_screenenvelope_resolvecelebrationstate"
@@ -57191,7 +57429,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "stimulate/igRunner.ts",
-      "source_location": "L163",
+      "source_location": "L175",
       "weight": 1.0,
       "source": "stimulate_igrunner_runigtick",
       "target": "src_services_screenenvelope_resolvecelebrationstate"
@@ -57268,7 +57506,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "stimulate/igRunner.ts",
-      "source_location": "L162",
+      "source_location": "L174",
       "weight": 1.0,
       "source": "stimulate_igrunner_runigtick",
       "target": "src_services_screenenvelope_instagramfollowermetrics"
@@ -62794,7 +63032,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "stimulate/gmbRunner.ts",
-      "source_location": "L59",
+      "source_location": "L60",
       "weight": 1.0,
       "source": "stimulate_gmbrunner_rungmbtick",
       "target": "src_webhooks_delivery_publishgmbscreen_publishgmbscreen"
@@ -63631,6 +63869,28 @@
       "confidence_score": 1.0
     },
     {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/unit/stimulate/gmbRunner.test.ts",
+      "source_location": "L5",
+      "weight": 1.0,
+      "source": "tests_unit_stimulate_gmbrunner_test",
+      "target": "stimulate_cache",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/unit/stimulate/igRunner.test.ts",
+      "source_location": "L5",
+      "weight": 1.0,
+      "source": "tests_unit_stimulate_igrunner_test",
+      "target": "stimulate_cache",
+      "confidence_score": 1.0
+    },
+    {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
@@ -63680,7 +63940,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "stimulate/gmbRunner.ts",
-      "source_location": "L68",
+      "source_location": "L69",
       "weight": 1.0,
       "source": "stimulate_gmbrunner_rungmbtick",
       "target": "stimulate_cache_readstimcache"
@@ -63702,7 +63962,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "stimulate/igRunner.ts",
-      "source_location": "L138",
+      "source_location": "L149",
       "weight": 1.0,
       "source": "stimulate_igrunner_runigtick",
       "target": "stimulate_cache_readstimcache"
@@ -63724,7 +63984,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "stimulate/gmbRunner.ts",
-      "source_location": "L64",
+      "source_location": "L65",
       "weight": 1.0,
       "source": "stimulate_gmbrunner_rungmbtick",
       "target": "stimulate_cache_writestimcache"
@@ -63746,10 +64006,32 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "stimulate/igRunner.ts",
-      "source_location": "L134",
+      "source_location": "L145",
       "weight": 1.0,
       "source": "stimulate_igrunner_runigtick",
       "target": "stimulate_cache_writestimcache"
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/unit/stimulate/gmbRunner.test.ts",
+      "source_location": "L5",
+      "weight": 1.0,
+      "source": "tests_unit_stimulate_gmbrunner_test",
+      "target": "stimulate_cache_clearstimcache",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/unit/stimulate/igRunner.test.ts",
+      "source_location": "L5",
+      "weight": 1.0,
+      "source": "tests_unit_stimulate_igrunner_test",
+      "target": "stimulate_cache_clearstimcache",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -63846,11 +64128,22 @@
       "confidence_score": 1.0
     },
     {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/unit/stimulate/gmbRunner.test.ts",
+      "source_location": "L4",
+      "weight": 1.0,
+      "source": "tests_unit_stimulate_gmbrunner_test",
+      "target": "stimulate_gmbrunner",
+      "confidence_score": 1.0
+    },
+    {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "stimulate/gmbRunner.ts",
-      "source_location": "L63",
+      "source_location": "L64",
       "weight": 1.0,
       "source": "stimulate_gmbrunner_rungmbtick",
       "target": "stimulate_gmbrunner_updategmbcache",
@@ -63862,7 +64155,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "stimulate/gmbRunner.ts",
-      "source_location": "L70",
+      "source_location": "L71",
       "weight": 1.0,
       "source": "stimulate_gmbrunner_rungmbtick",
       "target": "stimulate_math_calcresume"
@@ -63873,7 +64166,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "stimulate/gmbRunner.ts",
-      "source_location": "L71",
+      "source_location": "L72",
       "weight": 1.0,
       "source": "stimulate_gmbrunner_rungmbtick",
       "target": "stimulate_math_ceilingsequence"
@@ -63884,10 +64177,21 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "stimulate/gmbRunner.ts",
-      "source_location": "L57",
+      "source_location": "L58",
       "weight": 1.0,
       "source": "stimulate_gmbrunner_rungmbtick",
       "target": "stimulate_math_isatorpasttarget"
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/unit/stimulate/gmbRunner.test.ts",
+      "source_location": "L4",
+      "weight": 1.0,
+      "source": "tests_unit_stimulate_gmbrunner_test",
+      "target": "stimulate_gmbrunner_rungmbtick",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -63963,7 +64267,17 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "stimulate/igRunner.ts",
-      "source_location": "L109",
+      "source_location": "L110",
+      "weight": 1.0,
+      "source": "stimulate_igrunner",
+      "target": "stimulate_igrunner_resolvelivefollowersforstim",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "stimulate/igRunner.ts",
+      "source_location": "L126",
       "weight": 1.0,
       "source": "stimulate_igrunner",
       "target": "stimulate_igrunner_runigtick",
@@ -64035,13 +64349,24 @@
       "confidence_score": 1.0
     },
     {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/unit/stimulate/igRunner.test.ts",
+      "source_location": "L4",
+      "weight": 1.0,
+      "source": "tests_unit_stimulate_igrunner_test",
+      "target": "stimulate_igrunner",
+      "confidence_score": 1.0
+    },
+    {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "stimulate/igRunner.ts",
-      "source_location": "L117",
+      "source_location": "L113",
       "weight": 1.0,
-      "source": "stimulate_igrunner_runigtick",
+      "source": "stimulate_igrunner_resolvelivefollowersforstim",
       "target": "stimulate_igrunner_resolveinstagrammeta",
       "confidence_score": 1.0
     },
@@ -64050,9 +64375,9 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "stimulate/igRunner.ts",
-      "source_location": "L123",
+      "source_location": "L118",
       "weight": 1.0,
-      "source": "stimulate_igrunner_runigtick",
+      "source": "stimulate_igrunner_resolvelivefollowersforstim",
       "target": "stimulate_igrunner_fetchlivefollowers",
       "confidence_score": 1.0
     },
@@ -64061,7 +64386,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "stimulate/igRunner.ts",
-      "source_location": "L131",
+      "source_location": "L142",
       "weight": 1.0,
       "source": "stimulate_igrunner_runigtick",
       "target": "stimulate_igrunner_buildstimigpayload",
@@ -64083,7 +64408,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "stimulate/igRunner.ts",
-      "source_location": "L133",
+      "source_location": "L144",
       "weight": 1.0,
       "source": "stimulate_igrunner_runigtick",
       "target": "stimulate_igrunner_updatefollowercache",
@@ -64093,9 +64418,31 @@
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
+      "source_file": "stimulate/igRunner.ts",
+      "source_location": "L134",
+      "weight": 1.0,
+      "source": "stimulate_igrunner_runigtick",
+      "target": "stimulate_igrunner_resolvelivefollowersforstim",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/unit/stimulate/igRunner.test.ts",
+      "source_location": "L4",
+      "weight": 1.0,
+      "source": "tests_unit_stimulate_igrunner_test",
+      "target": "stimulate_igrunner_resolvelivefollowersforstim",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "stimulate/igRunner.ts",
-      "source_location": "L140",
+      "source_location": "L151",
       "weight": 1.0,
       "source": "stimulate_igrunner_runigtick",
       "target": "stimulate_math_calcresume"
@@ -64106,7 +64453,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "stimulate/igRunner.ts",
-      "source_location": "L141",
+      "source_location": "L152",
       "weight": 1.0,
       "source": "stimulate_igrunner_runigtick",
       "target": "stimulate_math_ceilingsequence"
@@ -64117,10 +64464,21 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "stimulate/igRunner.ts",
-      "source_location": "L129",
+      "source_location": "L140",
       "weight": 1.0,
       "source": "stimulate_igrunner_runigtick",
       "target": "stimulate_math_isatorpasttarget"
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/unit/stimulate/igRunner.test.ts",
+      "source_location": "L4",
+      "weight": 1.0,
+      "source": "tests_unit_stimulate_igrunner_test",
+      "target": "stimulate_igrunner_runigtick",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -64639,6 +64997,116 @@
       "weight": 1.0,
       "source": "tests_unit_services_recoverysessionservice_test",
       "target": "tests_unit_services_recoverysessionservice_test_signtesttoken",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/unit/stimulate/gmbRunner.test.ts",
+      "source_location": "L28",
+      "weight": 1.0,
+      "source": "tests_unit_stimulate_gmbrunner_test",
+      "target": "tests_unit_stimulate_gmbrunner_test_mockedresolvegmb",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/unit/stimulate/gmbRunner.test.ts",
+      "source_location": "L7",
+      "weight": 1.0,
+      "source": "tests_unit_stimulate_gmbrunner_test",
+      "target": "tests_unit_stimulate_gmbrunner_test_mockpublishgmbscreen",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/unit/stimulate/gmbRunner.test.ts",
+      "source_location": "L30",
+      "weight": 1.0,
+      "source": "tests_unit_stimulate_gmbrunner_test",
+      "target": "tests_unit_stimulate_gmbrunner_test_mqttclient",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/unit/stimulate/gmbRunner.test.ts",
+      "source_location": "L31",
+      "weight": 1.0,
+      "source": "tests_unit_stimulate_gmbrunner_test",
+      "target": "tests_unit_stimulate_gmbrunner_test_redis",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/unit/stimulate/igRunner.test.ts",
+      "source_location": "L39",
+      "weight": 1.0,
+      "source": "tests_unit_stimulate_igrunner_test",
+      "target": "tests_unit_stimulate_igrunner_test_mockeddevicefind",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/unit/stimulate/igRunner.test.ts",
+      "source_location": "L41",
+      "weight": 1.0,
+      "source": "tests_unit_stimulate_igrunner_test",
+      "target": "tests_unit_stimulate_igrunner_test_mockedfetchmetrics",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/unit/stimulate/igRunner.test.ts",
+      "source_location": "L40",
+      "weight": 1.0,
+      "source": "tests_unit_stimulate_igrunner_test",
+      "target": "tests_unit_stimulate_igrunner_test_mockedsocialfind",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/unit/stimulate/igRunner.test.ts",
+      "source_location": "L10",
+      "weight": 1.0,
+      "source": "tests_unit_stimulate_igrunner_test",
+      "target": "tests_unit_stimulate_igrunner_test_mockpublish",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/unit/stimulate/igRunner.test.ts",
+      "source_location": "L43",
+      "weight": 1.0,
+      "source": "tests_unit_stimulate_igrunner_test",
+      "target": "tests_unit_stimulate_igrunner_test_mongolean",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/unit/stimulate/igRunner.test.ts",
+      "source_location": "L12",
+      "weight": 1.0,
+      "source": "tests_unit_stimulate_igrunner_test",
+      "target": "tests_unit_stimulate_igrunner_test_mqttclient",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/unit/stimulate/igRunner.test.ts",
+      "source_location": "L16",
+      "weight": 1.0,
+      "source": "tests_unit_stimulate_igrunner_test",
+      "target": "tests_unit_stimulate_igrunner_test_redis",
       "confidence_score": 1.0
     },
     {
@@ -70494,7 +70962,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "stimulate/README.md",
-      "source_location": "L31",
+      "source_location": "L43",
       "weight": 1.0,
       "source": "stimulate_readme_stimulate_temp_testing_phase_in_process",
       "target": "stimulate_readme_removal_checklist_after_testing",
@@ -70504,13 +70972,23 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "stimulate/README.md",
-      "source_location": "L27",
+      "source_location": "L39",
       "weight": 1.0,
       "source": "stimulate_readme_stimulate_temp_testing_phase_in_process",
       "target": "stimulate_readme_reset_after_a_completed_ramp",
       "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "stimulate/README.md",
+      "source_location": "L27",
+      "weight": 1.0,
+      "source": "stimulate_readme_stimulate_temp_testing_phase_in_process",
+      "target": "stimulate_readme_synthetic_mode_no_ig_gmb_connection",
+      "confidence_score": 1.0
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "aa9f57f6d933a8d75991a3c5dd3eb87d268b8741"
+  "built_at_commit": "006e2b49ee178767f3f7895446222f31ad867884"
 }

@@ -106,6 +106,23 @@ async function updateFollowerCache(deviceId: string, followers: number): Promise
   } catch { /* best-effort */ }
 }
 
+/** Live baseline from API when connected; synthetic 0 when no IG social. */
+export async function resolveLiveFollowersForStim(
+  deviceId: string
+): Promise<{ live: number; mode: 'live' | 'synthetic' } | { skip: true }> {
+  const meta = await resolveInstagramMeta(deviceId);
+  if (!meta) {
+    logger.info('[STIM_IG] No Instagram connection — synthetic ramp from 0', { deviceId });
+    return { live: 0, mode: 'synthetic' };
+  }
+  const live = await fetchLiveFollowers(meta.accessToken);
+  if (live === null) {
+    logger.info('[STIM_IG] Could not fetch live followers — skip tick', { deviceId });
+    return { skip: true };
+  }
+  return { live, mode: 'live' };
+}
+
 export async function runIgTick(
   deviceId: string,
   topicRoot: string,
@@ -114,17 +131,11 @@ export async function runIgTick(
   target: number,
   redis: RedisService,
 ): Promise<{ done: boolean; publishedCount: number }> {
-  const meta = await resolveInstagramMeta(deviceId);
-  if (!meta) {
-    logger.info('[STIM_IG] No Instagram meta — skipping device', { deviceId });
-    return { done: true, publishedCount: 0 };
-  }
-
-  const live = await fetchLiveFollowers(meta.accessToken);
-  if (live === null) {
-    logger.info('[STIM_IG] Could not fetch live followers — skip tick', { deviceId });
+  const resolved = await resolveLiveFollowersForStim(deviceId);
+  if ('skip' in resolved) {
     return { done: false, publishedCount: 0 };
   }
+  const { live, mode } = resolved;
 
   if (isAtOrPastTarget(live, target) && live > 0) {
     logger.info('[STIM_IG] Already at/past target — one sync publish then done', { deviceId, live, target });
@@ -159,6 +170,7 @@ export async function runIgTick(
     deviceId,
     followers: publishValue,
     target,
+    mode,
     achievement: instagramFollowerMetrics(publishValue).nextGoal,
     celebration: resolveCelebrationState('instagram', publishValue).celebration,
     done: publishValue >= target

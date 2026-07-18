@@ -1120,8 +1120,8 @@
     "semantic_hash": ""
   },
   "data/active-devices.json": {
-    "mtime": 1784141780.2954617,
-    "ast_hash": "3a16045c599f3337f9a1a1d5099950fb",
+    "mtime": 1784389325.8351607,
+    "ast_hash": "83850ef2db5c42b55bd251a498037d9a",
     "semantic_hash": ""
   },
   "src/lib/socials/syncDeviceGmb.ts": {
@@ -1185,13 +1185,13 @@
     "semantic_hash": ""
   },
   "stimulate/gmbRunner.ts": {
-    "mtime": 1784389033.0548887,
-    "ast_hash": "6fe45c6e2ed27e9ebe7835623ff37248",
+    "mtime": 1784389939.736537,
+    "ast_hash": "9ccfcd03d57b0e03b4845f64373ed3df",
     "semantic_hash": ""
   },
   "stimulate/igRunner.ts": {
-    "mtime": 1784389032.2278638,
-    "ast_hash": "1bef608d852119b83eb2c5c0e25311cf",
+    "mtime": 1784389937.9985409,
+    "ast_hash": "de32be952c7362b506a3ea7fc6c7a90d",
     "semantic_hash": ""
   },
   "stimulate/math.ts": {
@@ -1225,18 +1225,18 @@
     "semantic_hash": ""
   },
   "stimulate/README.md": {
-    "mtime": 1784047424.9562087,
-    "ast_hash": "f9641f40927c5f38d3fd38803d3d457e",
+    "mtime": 1784389987.5775206,
+    "ast_hash": "816e09a64145006d1978086bd6295844",
     "semantic_hash": ""
   },
   "data/stimulate/gmb_DEVICE-15.json": {
-    "mtime": 1784139645.946748,
-    "ast_hash": "9f721c96c9e46478425dc027b56b4eab",
+    "mtime": 1784389335.6741245,
+    "ast_hash": "7da84e2da32cd1b1be2fd41fb467fadd",
     "semantic_hash": ""
   },
   "data/stimulate/instagram_DEVICE-15.json": {
-    "mtime": 1784139645.946748,
-    "ast_hash": "f91863698e14589a416d1a5e949c9062",
+    "mtime": 1784389335.6741245,
+    "ast_hash": "984cb4461f98d91ffed2ebb5201cfced",
     "semantic_hash": ""
   },
   "src/services/stimulateService.ts": {
@@ -1317,6 +1317,26 @@
   "tests/unit/webhooks/publishGmbScreen.test.ts": {
     "mtime": 1784389056.9373171,
     "ast_hash": "f00b100e768ddd88d17200de032c9639",
+    "semantic_hash": ""
+  },
+  "data/stimulate/gmb_DEVICE-STIM-GMB-TEST.json": {
+    "mtime": 1784389998.407968,
+    "ast_hash": "81dad7742534bdf6e3b14024293704ba",
+    "semantic_hash": ""
+  },
+  "data/stimulate/instagram_DEVICE-STIM-IG-TEST.json": {
+    "mtime": 1784390001.184677,
+    "ast_hash": "69d64b22e12a6a68fae529411de05b4f",
+    "semantic_hash": ""
+  },
+  "tests/unit/stimulate/gmbRunner.test.ts": {
+    "mtime": 1784389967.176849,
+    "ast_hash": "97ef5cf5667dd831270e660acdd6e6c5",
+    "semantic_hash": ""
+  },
+  "tests/unit/stimulate/igRunner.test.ts": {
+    "mtime": 1784389983.1167781,
+    "ast_hash": "59a4745dec1838017139d4c519bcd124",
     "semantic_hash": ""
   }
 }

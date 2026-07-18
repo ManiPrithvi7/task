@@ -47,18 +47,19 @@ export async function runGmbTick(
   redis: RedisService,
 ): Promise<{ done: boolean; publishedCount: number }> {
   const ctx = await resolveGmbContextForDevice(deviceId);
-  if (!ctx) {
-    logger.info('[STIM_GMB] No GMB context — skipping device', { deviceId });
-    return { done: true, publishedCount: 0 };
+  const synthetic = !ctx;
+  if (synthetic) {
+    logger.info('[STIM_GMB] No GMB connection — synthetic ramp from 0', { deviceId });
   }
 
-  const live = ctx.verifiedReviewCount;
+  const live = ctx?.verifiedReviewCount ?? 0;
+  const rating = ctx?.averageRating ?? 4;
 
   if (isAtOrPastTarget(live, target) && live > 0) {
     logger.info('[STIM_GMB] Already at/past target — one sync publish then done', { deviceId, live, target });
     await publishGmbScreen(mqttClient, topicRoot, deviceId, {
       verifiedReview: live,
-      rating: ctx.averageRating ?? 4,
+      rating,
     }, mqttPublishEnabled);
     await updateGmbCache(deviceId, live);
     writeStimCache('gmb', deviceId, { lastPublished: live, status: 'done' });
@@ -82,7 +83,7 @@ export async function runGmbTick(
 
   await publishGmbScreen(
     mqttClient, topicRoot, deviceId,
-    { verifiedReview: publishValue, rating: ctx.averageRating ?? 4 },
+    { verifiedReview: publishValue, rating },
     mqttPublishEnabled,
   );
 
@@ -93,6 +94,7 @@ export async function runGmbTick(
     deviceId,
     reviews: publishValue,
     target,
+    mode: synthetic ? 'synthetic' : 'live',
     celebration: resolveCelebrationState('gmb', publishValue).celebration,
     done: publishValue >= target
   });
