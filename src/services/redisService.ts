@@ -159,15 +159,14 @@ export class RedisService {
 
       // Wrap sendCommand to track request counts
       const originalSendCommand = this.client.sendCommand.bind(this.client);
-      const svc = this;
-      this.client.sendCommand = function (args, options) {
-        svc.commandCount++;
+      this.client.sendCommand = ((args, options) => {
+        this.commandCount++;
         if (args.length > 0) {
           const cmd = String(args[0]).toUpperCase();
-          svc.commandCountByType.set(cmd, (svc.commandCountByType.get(cmd) || 0) + 1);
+          this.commandCountByType.set(cmd, (this.commandCountByType.get(cmd) || 0) + 1);
         }
         return originalSendCommand(args, options);
-      } as typeof this.client.sendCommand;
+      }) as typeof this.client.sendCommand;
 
       // Connect to Redis
       await this.client.connect();
