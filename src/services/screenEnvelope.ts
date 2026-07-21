@@ -19,8 +19,8 @@ export type BuildScreenEnvelopeOpts = {
   celebration?: 'true' | 'false';
 };
 
-export const IG_MINI_INTERVAL = 25;
-export const IG_MEGA_INTERVAL = 100;
+export const IG_MINI_INTERVAL = 5;
+export const IG_MEGA_INTERVAL = 25;
 export const GMB_MINI_INTERVAL = 5;
 export const GMB_MEGA_INTERVAL = 25;
 
