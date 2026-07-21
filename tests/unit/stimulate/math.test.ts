@@ -69,11 +69,11 @@ describe('gmbCelebration (mini/5, mega/25)', () => {
   });
 });
 
-describe('igCelebration (mini/25, mega/100)', () => {
+describe('igCelebration (mini/5, mega/25)', () => {
   it('celebration at mini and mega boundaries', () => {
+    expect(igCelebration(5)).toBe('true');
+    expect(igCelebration(10)).toBe('true');
     expect(igCelebration(25)).toBe('true');
-    expect(igCelebration(50)).toBe('true');
-    expect(igCelebration(100)).toBe('true');
   });
 
   it('no celebration off-slab or at 0', () => {

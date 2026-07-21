@@ -56,8 +56,8 @@ describe('runIgTick synthetic ramp', () => {
     expect(mockPublish).not.toHaveBeenCalled();
   });
 
-  it('synthetic ramp hits mini celebration at 25', async () => {
-    for (let i = 0; i < 22; i++) {
+  it('synthetic ramp hits mini celebration at 5', async () => {
+    for (let i = 0; i < 2; i++) {
       await runIgTick(deviceId, 'proof.mqtt', mqttClient, 1, 500, redis);
     }
     mockPublish.mockClear();
@@ -68,7 +68,7 @@ describe('runIgTick synthetic ramp', () => {
     const envelope = JSON.parse(call.payload);
     expect(envelope.celebration).toBe('true');
     expect(envelope.payload.celebration_type).toBe('mini');
-    expect(envelope.payload.followers).toBe(25);
+    expect(envelope.payload.followers).toBe(5);
     expect(envelope.payload.progress).toBe(100);
   });
 });
