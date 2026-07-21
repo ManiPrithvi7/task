@@ -97,6 +97,9 @@ export class HttpServer {
         if (path === '/metrics') {
           return true;
         }
+        if (path.startsWith('/api/v1/ota/download/')) {
+          return true;
+        }
         return false;
       }
     });

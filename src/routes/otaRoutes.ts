@@ -3,6 +3,8 @@
  */
 
 import https from 'https';
+import fs from 'fs';
+import path from 'path';
 import { Router, Request, Response } from 'express';
 import type { RedisClientType } from 'redis';
 import type { OtaConfig } from '../config';
@@ -104,6 +106,38 @@ export function createOtaRoutes(deps: OtaRoutesDeps): Router {
   const DEV_TEST_OTA_VERSION = 'test:1.1';
   const DEV_TEST_FIRMWARE_PUBLIC_URL =
     'https://objectstorage.ap-hyderabad-1.oraclecloud.com/n/ax4egmknthnr/b/proof-firmware-dev-download/o/dev%2Fwifi_ap_project.bin';
+
+  router.get('/ota/download/proof:1.1', (req: Request, res: Response) => {
+    const filePath = path.resolve('data/ESP32s3_OTA_v104.ino.bin');
+    try {
+      const stat = fs.statSync(filePath);
+      res.setHeader('Content-Type', 'application/octet-stream');
+      res.setHeader('Content-Disposition', 'attachment; filename="ESP32s3_OTA_v104.ino.bin"');
+      res.setHeader('X-Firmware-Version', 'proof:1.1');
+      res.setHeader('Content-Length', String(stat.size));
+      const stream = fs.createReadStream(filePath);
+      stream.pipe(res);
+      stream.on('error', (err) => {
+        logger.error('[OTA] local file stream error', { error: err.message, filePath });
+        if (!res.headersSent) {
+          res.status(500).json({
+            success: false,
+            error: 'Local firmware read failed',
+            code: 'LOCAL_FIRMWARE_READ_ERROR',
+            timestamp: new Date().toISOString()
+          });
+        }
+      });
+    } catch (err) {
+      logger.error('[OTA] local firmware file not found', { error: (err as Error).message, filePath });
+      res.status(404).json({
+        success: false,
+        error: 'Local firmware file not found',
+        code: 'LOCAL_FIRMWARE_NOT_FOUND',
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
 
   // PILOT v1 ONLY — remove or protect before GA.
   router.get('/ota/download/:version', (req: Request, res: Response, next) => {
