@@ -213,7 +213,7 @@ export class OtaRedisState {
       logger.warn('[OTA] Redis unavailable — skipping setActiveRelease');
       return;
     }
-    await client.set(this.activeReleaseKey(), JSON.stringify(release));
+    await client.set(this.activeReleaseKey(), JSON.stringify(release), { EX: 2592000 });
   }
 
   async getActiveRelease(): Promise<OtaActiveRelease | null> {
@@ -234,6 +234,7 @@ export class OtaRedisState {
     const key = this.pendingKey(version);
     await client.del(key);
     await client.sAdd(key, deviceIds);
+    await client.expire(key, 2592000);
   }
 
   async isPending(deviceId: string, version: string): Promise<boolean> {
@@ -253,12 +254,14 @@ export class OtaRedisState {
     if (!client) return;
     await client.sRem(this.pendingKey(version), deviceId);
     await client.sAdd(this.deliveredKey(version), deviceId);
+    await client.expire(this.deliveredKey(version), 2592000);
   }
 
   async markPending(deviceId: string, version: string): Promise<void> {
     const client = this.getClient();
     if (!client) return;
     await client.sAdd(this.pendingKey(version), deviceId);
+    await client.expire(this.pendingKey(version), 2592000);
   }
 }
 

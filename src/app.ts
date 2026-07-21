@@ -168,7 +168,10 @@ export class StatsMqttLite {
     const client = this.getRedisClientOrNull();
     if (!client) return;
     try {
-      await client.sAdd('proof.mqtt:active:devices', deviceId);
+      const multi = client.multi();
+      multi.sAdd('proof.mqtt:active:devices', deviceId);
+      multi.expire('proof.mqtt:active:devices', 604800);
+      await multi.exec();
     } catch (err: unknown) {
       logger.debug('Redis: failed to add device to active set', {
         deviceId,
@@ -181,8 +184,10 @@ export class StatsMqttLite {
     const client = this.getRedisClientOrNull();
     if (!client) return;
     try {
-      await client.sRem('proof.mqtt:active:devices', deviceId);
-      await client.del(`proof.mqtt:device:${deviceId}`);
+      const multi = client.multi();
+      multi.sRem('proof.mqtt:active:devices', deviceId);
+      multi.del(`proof.mqtt:device:${deviceId}`);
+      await multi.exec();
     } catch (err: unknown) {
       logger.debug('Redis: failed to remove device keys', {
         deviceId,
@@ -331,6 +336,7 @@ export class StatsMqttLite {
       onActive: (topic, message) => this.handleDeviceRegistration(topic, message),
       onLwt: (topic, message) => this.handleDeviceLWT(topic, message),
       onStatus: (topic, message) => this.handleDeviceStatus(topic, message),
+      onOtaTelemetry: (topic, message) => this.handleDeviceOtaTelemetry(topic, message),
       onScreenEcho: (topic, message) => {
         logger.debug('Screen message received', {
           topic,
@@ -992,6 +998,7 @@ export class StatsMqttLite {
     const root = this.config.mqtt.topicRoot;
     const topics = [
       `${root}/+/status`,
+      `${root}/+/telemetry`,
       `${root}/+/instagram`,
       `${root}/+/gmb`,
       `${root}/+/promotion`
@@ -1357,17 +1364,19 @@ export class StatsMqttLite {
       if (!client) return;
 
       try {
+        const deviceMetaKey = `proof.mqtt:device:${deviceId}`;
         if (igFromSocial) {
           await client.set(
-            `proof.mqtt:device:${deviceId}`,
+            deviceMetaKey,
             JSON.stringify({
               instagramAccountId: igFromSocial.socialAccountId,
               accessToken: igFromSocial.accessToken,
               tokenExpiresAt: igFromSocial.tokenExp || undefined
-            })
+            }),
+            { EX: 604800 }
           );
         } else {
-          await client.del(`proof.mqtt:device:${deviceId}`);
+          await client.del(deviceMetaKey);
         }
       } catch (err: unknown) {
         logger.debug('Redis: failed to sync proof.mqtt:device meta', {
@@ -1460,10 +1469,12 @@ export class StatsMqttLite {
     try {
       if (this.redisService?.isRedisConnected()) {
         const client = this.redisService.getClient();
-        await client.zRem(REDIS_KEYS.priorityZset, deviceId);
-        await client.del(REDIS_KEYS.deviceFetchHistory(deviceId));
-        await client.del(REDIS_KEYS.deviceFollowers(deviceId));
-        await client.del(`instagram:pending:${deviceId}`);
+        const multi = client.multi();
+        multi.zRem(REDIS_KEYS.priorityZset, deviceId);
+        multi.del(REDIS_KEYS.deviceFetchHistory(deviceId));
+        multi.del(REDIS_KEYS.deviceFollowers(deviceId));
+        multi.del(`instagram:pending:${deviceId}`);
+        await multi.exec();
       }
     } catch (err: unknown) {
       logger.warn('Failed to cleanup Instagram polling keys on LWT', {
@@ -1492,6 +1503,43 @@ export class StatsMqttLite {
       await this.otaEventHandler.handle(deviceId, message);
     }
 
+    if (eventType && this.influxService) {
+      void this.influxService.writeOtaTelemetry({
+        deviceId,
+        event: String(eventType),
+        timestamp: message.timestamp,
+        current_version: message.current_version || message.fw_version,
+        target_version: message.target_version,
+        from_version: message.from_version,
+        to_version: message.to_version,
+        attempted_version: message.attempted_version,
+        reverted_to: message.reverted_to,
+        fw_version: message.fw_version,
+        reason: message.reason,
+        error_code: message.error_code,
+        error_message: message.error_message,
+        partition: message.partition,
+        boot_reason: message.boot_reason,
+        uptime_s: message.uptime_s ?? message.uptime,
+        free_heap: message.free_heap,
+        battery: message.battery,
+        signal_strength: message.signal_strength,
+        ota_state: message.ota_state,
+        checks_passed: message.checks_passed,
+        checks_total: message.checks_total,
+        attempt_number: message.attempt_number,
+        attempt_count: message.attempt_count,
+        sha256_match: message.sha256_match,
+        signature_valid: message.signature_valid,
+        time_sync_ok: message.time_sync_ok,
+        download_duration_ms: message.download_duration_ms,
+        validation_duration_ms: message.validation_duration_ms,
+        firmware_size: message.firmware_size,
+        cooldown_remaining_s: message.cooldown_remaining_s,
+        source_topic: 'status'
+      }).catch(() => undefined);
+    }
+
     logger.info('📊 Device Status Update', {
       deviceId,
       status: message.status,
@@ -1500,6 +1548,79 @@ export class StatsMqttLite {
     });
   }
 
+  private async handleDeviceOtaTelemetry(topic: string, message: any): Promise<void> {
+    const deviceId = this.extractDeviceId(topic);
+    if (!deviceId) return;
+
+    const allowed = await this.ensureDeviceProvisioned(deviceId);
+    if (!allowed) {
+      logger.warn('🔒 OTA telemetry ignored: device not provisioned', { deviceId });
+      return;
+    }
+
+    const eventType = message?.ota_status || message?.event || message?.type || 'telemetry';
+
+    if (this.otaEventHandler && String(eventType).startsWith('ota_')) {
+      await this.otaEventHandler.handle(deviceId, message);
+    }
+
+    if (this.influxService) {
+      void this.influxService.writeOtaTelemetry({
+        deviceId,
+        event: String(eventType),
+        timestamp: message.timestamp,
+        current_version: message.current_version || message.fw_version,
+        target_version: message.target_version,
+        from_version: message.from_version,
+        to_version: message.to_version,
+        offered_version: message.offered_version,
+        attempted_version: message.attempted_version,
+        reverted_to: message.reverted_to,
+        fw_version: message.fw_version,
+        ota_progress_pct: message.ota_progress_pct ?? message.progress,
+        ota_bytes: message.ota_bytes,
+        ota_bytes_total: message.ota_bytes_total,
+        elapsed_ms: message.elapsed_ms,
+        estimated_remaining_ms: message.estimated_remaining_ms,
+        download_duration_ms: message.download_duration_ms,
+        validation_duration_ms: message.validation_duration_ms,
+        reason: message.reason,
+        error_code: message.error_code,
+        error_message: message.error_message,
+        http_code: message.http_code,
+        expected_sha256: message.expected_sha256,
+        computed_sha256: message.computed_sha256,
+        uptime_s: message.uptime_s ?? message.uptime,
+        free_heap: message.free_heap,
+        battery: message.battery,
+        signal_strength: message.signal_strength,
+        wifi_rssi: message.wifi_rssi,
+        cert_days_remaining: message.cert_days_remaining,
+        cert_renewal_needed: message.cert_renewal_needed,
+        partition: message.partition,
+        boot_reason: message.boot_reason,
+        ota_state: message.ota_state,
+        checks_passed: message.checks_passed,
+        checks_total: message.checks_total,
+        attempt_number: message.attempt_number,
+        attempt_count: message.attempt_count,
+        firmware_size: message.firmware_size ?? message.firmwareSize ?? message.sizeBytes,
+        cooldown_remaining_s: message.cooldown_remaining_s,
+        sha256_match: message.sha256_match,
+        signature_valid: message.signature_valid,
+        time_sync_ok: message.time_sync_ok,
+        source_topic: 'telemetry'
+      }).catch(() => undefined);
+    }
+
+    logger.info('📊 OTA Telemetry', {
+      deviceId,
+      event: eventType,
+      progress: message.ota_progress_pct ?? message.progress,
+      free_heap: message.free_heap,
+      uptime: message.uptime_s ?? message.uptime
+    });
+  }
 
   private async sendRegistrationResponse(
     deviceId: string, 
@@ -1621,7 +1742,7 @@ export class StatsMqttLite {
       logger.info('✅ Provisioning routes registered at /api/v1');
 
       const recoverySessionService = createRecoverySessionService(
-        this.config.redis.keyPrefix || 'mqtt-lite:',
+        this.config.redis.keyPrefix || 'proof-mqtt:',
         this.config.auth.secret
       );
 
@@ -1671,7 +1792,7 @@ export class StatsMqttLite {
           storage: this.firmwareStorageService,
           eventHandler: this.otaEventHandler,
           getRedisClient: () => this.getRedisClientOrNull(),
-          redisKeyPrefix: this.config.redis.keyPrefix || 'mqtt-lite:'
+          redisKeyPrefix: this.config.redis.keyPrefix || 'proof-mqtt:'
         });
         this.httpServer.getApp().use('/api/v1', otaRoutes);
         logger.info('✅ OTA device routes registered at /api/v1/ota/*');
@@ -1762,7 +1883,7 @@ export class StatsMqttLite {
 
     this.otaRedisState = new OtaRedisState(
       () => this.getRedisClientOrNull(),
-      this.config.redis.keyPrefix || 'mqtt-lite:'
+      this.config.redis.keyPrefix || 'proof-mqtt:'
     );
     this.otaCommandPublisher = new OtaCommandPublisher(
       this.mqttClient,

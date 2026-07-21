@@ -757,7 +757,7 @@ export function loadConfig(): AppConfig {
       enabled: Boolean(redisUrl),
       url: redisUrl,
       db: parseInt(process.env.REDIS_DB || '0', 10),
-      keyPrefix: process.env.REDIS_KEY_PREFIX || 'mqtt-lite:',
+      keyPrefix: process.env.REDIS_KEY_PREFIX || 'proof-mqtt:',
     },
     auth: {
       secret: process.env.AUTH_SECRET || ''

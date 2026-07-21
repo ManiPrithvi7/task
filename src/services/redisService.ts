@@ -21,13 +21,15 @@ export class RedisService {
   private config: RedisConfig;
   private isConnected: boolean = false;
   private lastLoggedConnected: boolean | null = null;
+  private commandCount: number = 0;
+  private commandCountByType: Map<string, number> = new Map();
 
   constructor(config: RedisConfig) {
     this.config = config;
     logger.debug(`${REDIS_LOG_PREFIX} constructor`, {
       configured: !!(config.url && config.url.trim().length > 0),
       db: config.db ?? 0,
-      keyPrefix: config.keyPrefix || 'mqtt-lite:'
+      keyPrefix: config.keyPrefix || 'proof-mqtt:'
     });
   }
 
@@ -155,12 +157,24 @@ export class RedisService {
       // Setup event handlers
       this.setupEventHandlers();
 
+      // Wrap sendCommand to track request counts
+      const originalSendCommand = this.client.sendCommand.bind(this.client);
+      const svc = this;
+      this.client.sendCommand = function (args, options) {
+        svc.commandCount++;
+        if (args.length > 0) {
+          const cmd = String(args[0]).toUpperCase();
+          svc.commandCountByType.set(cmd, (svc.commandCountByType.get(cmd) || 0) + 1);
+        }
+        return originalSendCommand(args, options);
+      } as typeof this.client.sendCommand;
+
       // Connect to Redis
       await this.client.connect();
       this.isConnected = true;
 
       logger.info('✅ Redis connected successfully', {
-        keyPrefix: this.config.keyPrefix || 'mqtt-lite:'
+        keyPrefix: this.config.keyPrefix || 'proof-mqtt:'
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -262,6 +276,17 @@ export class RedisService {
   }
 
   /**
+   * Get Redis command statistics
+   */
+  getCommandStats(): { total: number; byType: Record<string, number> } {
+    const byType: Record<string, number> = {};
+    for (const [cmd, count] of this.commandCountByType) {
+      byType[cmd] = count;
+    }
+    return { total: this.commandCount, byType };
+  }
+
+  /**
    * Setup event handlers
    */
   private setupEventHandlers(): void {
@@ -302,19 +327,21 @@ export class RedisService {
     connected: boolean;
     keyCount: number;
     memory: string;
+    commands: { total: number; byType: Record<string, number> };
   }> {
-    return this.traceAsync('getStats', { keyPrefix: this.config.keyPrefix || 'mqtt-lite:' }, async () => {
+    return this.traceAsync('getStats', { keyPrefix: this.config.keyPrefix || 'proof-mqtt:' }, async () => {
     try {
       if (!this.isRedisConnected() || !this.client) {
         this.logCall('getStats', 'skip', { reason: 'not_connected' });
         return {
           connected: false,
           keyCount: 0,
-          memory: 'N/A'
+          memory: 'N/A',
+          commands: this.getCommandStats()
         };
       }
 
-      const keyPattern = `${this.config.keyPrefix || 'mqtt-lite:'}*`;
+      const keyPattern = `${this.config.keyPrefix || 'proof-mqtt:'}*`;
       const keysStart = performance.now();
       const keys: string[] = [];
       let cursor = 0;
@@ -350,14 +377,16 @@ export class RedisService {
       return {
         connected: true,
         keyCount: keys.length,
-        memory
+        memory,
+        commands: this.getCommandStats()
       };
     } catch (error) {
       logger.error('Failed to get Redis stats', { error });
       return {
         connected: this.isConnected,
         keyCount: 0,
-        memory: 'Error'
+        memory: 'Error',
+        commands: this.getCommandStats()
       };
     }
     });
@@ -368,9 +397,6 @@ export class RedisService {
 let redisService: RedisService | null = null;
 
 export function getRedisService(): RedisService | null {
-  logger.debug(`${REDIS_LOG_PREFIX} getRedisService`, {
-    available: redisService !== null
-  });
   return redisService;
 }
 
@@ -378,7 +404,7 @@ export function createRedisService(config: RedisConfig): RedisService {
   logger.debug(`${REDIS_LOG_PREFIX} createRedisService`, {
     hasUrl: !!(config.url && config.url.trim()),
     db: config.db ?? 0,
-    keyPrefix: config.keyPrefix || 'mqtt-lite:'
+    keyPrefix: config.keyPrefix || 'proof-mqtt:'
   });
   redisService = new RedisService(config);
   return redisService;

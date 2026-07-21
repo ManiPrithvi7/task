@@ -10,6 +10,7 @@ export type MqttIngressHandlers = {
   onActive: (topic: string, message: unknown) => Promise<void>;
   onLwt: (topic: string, message: unknown) => Promise<void>;
   onStatus: (topic: string, message: unknown) => Promise<void>;
+  onOtaTelemetry: (topic: string, message: unknown) => Promise<void>;
   onScreenEcho: (topic: string, message: unknown) => Promise<void>;
   onOther: (topic: string, message: unknown, payloadLength: number) => Promise<void>;
   updateLastSeen: (deviceId: string) => Promise<void>;
@@ -182,7 +183,9 @@ async function handleNonCritical(
     }
   }
 
-  if (topic.endsWith('/status')) {
+  if (topic.endsWith('/telemetry')) {
+    await handlers.onOtaTelemetry(topic, message);
+  } else if (topic.endsWith('/status')) {
     await handlers.onStatus(topic, message);
   } else if (
     topic.endsWith('/instagram') ||

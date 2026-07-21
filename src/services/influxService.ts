@@ -22,6 +22,7 @@ import { InstagramAuditRepo } from '../storage/influx/repositories/InstagramAudi
 import { WebhookAuditRepo } from '../storage/influx/repositories/WebhookAuditRepo';
 import { PkiAuditRepo } from '../storage/influx/repositories/PkiAuditRepo';
 import { CtLogRepo } from '../storage/influx/repositories/CtLogRepo';
+import { OtaTelemetryRepo, type OtaTelemetryInput } from '../storage/influx/repositories/OtaTelemetryRepo';
 
 export interface DeviceMetrics {
   temperature?: number;
@@ -215,6 +216,7 @@ export interface GmbVelocityWeeklyInfluxInput {
   timestamp?: Date;
 }
 
+export type { OtaTelemetryInput };
 export { BucketTarget };
 export type { BucketTarget as BucketTargetType };
 
@@ -232,6 +234,7 @@ export class InfluxService {
   webhookAudit: WebhookAuditRepo;
   pkiAudit: PkiAuditRepo;
   ctLog: CtLogRepo;
+  otaTelemetry: OtaTelemetryRepo;
 
   private resolveBucket(target: BucketTarget): string {
     return target === BucketTarget.COMPLIANCE ? this.config.complianceBucket : this.config.bucket;
@@ -299,6 +302,7 @@ export class InfluxService {
     this.webhookAudit = new WebhookAuditRepo(this.config, this.metricsWriteApi, this.metricsDiskQueue);
     this.pkiAudit = new PkiAuditRepo(this.config, this.complianceWriteApi, this.complianceDiskQueue);
     this.ctLog = new CtLogRepo(this.config, this.complianceWriteApi, this.complianceDiskQueue);
+    this.otaTelemetry = new OtaTelemetryRepo(this.config, this.metricsWriteApi, this.metricsDiskQueue);
   }
 
   private logInfluxBatchFlush(lines: string[], source: string): void {
@@ -418,6 +422,10 @@ export class InfluxService {
     opts?: { flush?: boolean }
   ): Promise<void> {
     await this.webhookAudit.writeGmbVelocityWeekly(input);
+  }
+
+  async writeOtaTelemetry(input: OtaTelemetryInput, opts?: { flush?: boolean }): Promise<void> {
+    await this.otaTelemetry.write(input);
   }
 
   async writeInstagramAttentionE2eLatency(

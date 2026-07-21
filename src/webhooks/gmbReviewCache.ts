@@ -30,7 +30,7 @@ export async function setGmbReviewCount(locationId: string, count: number): Prom
   if (!redis?.isRedisConnected()) return;
 
   try {
-    await redis.getClient().set(`${KEY_PREFIX}${locationId}`, String(Math.max(0, Math.round(count))));
+    await redis.getClient().set(`${KEY_PREFIX}${locationId}`, String(Math.max(0, Math.round(count))), { EX: 2592000 });
   } catch (err: unknown) {
     logger.warn('[GMB_REVIEW_CACHE] write failed', {
       locationId,
