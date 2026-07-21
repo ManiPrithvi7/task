@@ -78,7 +78,7 @@ export async function runIgTick(
     return { done: true, publishedCount: 0 };
   }
 
-  const lastPub = cache?.lastPublished ?? 0;
+  const lastPub = cache?.lastPublished ?? 2;
   // ponytail: live always 0 — credentials never gate or floor the ramp
   const publishValue = ceilingSequence(calcResume(0, lastPub, step), target);
 

@@ -43,7 +43,7 @@ describe('runIgTick synthetic ramp', () => {
     const envelope = JSON.parse(call.payload);
     expect(envelope.version).toBe('1.2');
     expect(envelope.screen).toBe('instagram');
-    expect(envelope.payload.followers).toBe(1);
+    expect(envelope.payload.followers).toBe(3);
   });
 
   it('stops publishing after done (no same-message spam)', async () => {
@@ -57,7 +57,7 @@ describe('runIgTick synthetic ramp', () => {
   });
 
   it('synthetic ramp hits mini celebration at 25', async () => {
-    for (let i = 0; i < 24; i++) {
+    for (let i = 0; i < 22; i++) {
       await runIgTick(deviceId, 'proof.mqtt', mqttClient, 1, 500, redis);
     }
     mockPublish.mockClear();
