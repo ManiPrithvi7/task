@@ -5,64 +5,13 @@ import {
   formatInstagramScreenMqttPayload,
   type ScreenDeliveryFetchShape
 } from '../src/services/instagramService';
-import { fetchInstagramProfileMetrics } from '../src/lib/socials/instagramMetrics';
-import { ensureFreshInstagramAccessToken } from '../src/lib/socials/instagramTokenRefresh';
-import { Device } from '../src/models/Device';
-import { Social, Provider } from '../src/models/Social';
-import mongoose from 'mongoose';
 import { readStimCache, writeStimCache } from './cache';
-import { calcResume, ceilingSequence, isAtOrPastTarget } from './math';
+import { calcResume, ceilingSequence } from './math';
 import { getRedisService } from '../src/services/redisService';
 import { instagramFollowerMetrics, resolveCelebrationState } from '../src/services/screenEnvelope';
 
 export const STIM_IG_LOCK_TTL_SEC = 3600;
 const STIM_IG_LOCK_KEY_PREFIX = 'stim:ig:';
-
-export interface IgDeviceMeta {
-  deviceId: string;
-  followers_count: number;
-}
-
-export async function resolveInstagramMeta(deviceId: string): Promise<{ accessToken: string; instagramAccountId: string; userId: string } | null> {
-  const deviceDoc = await Device.findOne({ clientId: deviceId }).select({ userId: 1 }).lean();
-  if (!deviceDoc?.userId) {
-    logger.debug('[STIM_IG] No user linked to device', { deviceId });
-    return null;
-  }
-  const userId = String(deviceDoc.userId);
-  const uid = new mongoose.Types.ObjectId(userId);
-  const social = await Social.findOne({ userId: uid, provider: Provider.INSTAGRAM })
-    .select({ socialAccountId: 1, accessToken: 1, tokenExp: 1, tokenCreatedAt: 1 })
-    .lean();
-  if (!social?.accessToken) {
-    logger.debug('[STIM_IG] No Instagram social for user', { deviceId, userId });
-    return null;
-  }
-  const accessToken = await ensureFreshInstagramAccessToken({
-    deviceId,
-    accessToken: social.accessToken,
-    userId,
-    tokenExp: social.tokenExp,
-    tokenCreatedAt: social.tokenCreatedAt,
-  });
-  return {
-    accessToken,
-    instagramAccountId: social.socialAccountId,
-    userId,
-  };
-}
-
-export async function fetchLiveFollowers(accessToken: string): Promise<number | null> {
-  try {
-    const result = await fetchInstagramProfileMetrics(accessToken);
-    return result?.metrics?.followers_count ?? null;
-  } catch (err: unknown) {
-    logger.warn('[STIM_IG] fetchLiveFollowers failed', {
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return null;
-  }
-}
 
 /** Same envelope builder as production IG MQTT. */
 export function buildStimIgPayload(
@@ -97,7 +46,6 @@ export function igStimLockKey(deviceId: string): string {
   return `${STIM_IG_LOCK_KEY_PREFIX}${deviceId}`;
 }
 
-/** Also sync the `device:followers:*` Redis key so the main app's publishInstagramScreenIfChanged sees the new value. */
 async function updateFollowerCache(deviceId: string, followers: number): Promise<void> {
   const redisSvc = getRedisService();
   if (!redisSvc?.isRedisConnected()) return;
@@ -106,21 +54,15 @@ async function updateFollowerCache(deviceId: string, followers: number): Promise
   } catch { /* best-effort */ }
 }
 
-/** Live baseline from API when connected; synthetic 0 when no IG social. */
+/**
+ * Stim always ramps from in-memory progress (baseline 0), credentials or not.
+ * @deprecated kept for tests that still call it — always synthetic.
+ */
 export async function resolveLiveFollowersForStim(
   deviceId: string
-): Promise<{ live: number; mode: 'live' | 'synthetic' } | { skip: true }> {
-  const meta = await resolveInstagramMeta(deviceId);
-  if (!meta) {
-    logger.info('[STIM_IG] No Instagram connection — synthetic ramp from 0', { deviceId });
-    return { live: 0, mode: 'synthetic' };
-  }
-  const live = await fetchLiveFollowers(meta.accessToken);
-  if (live === null) {
-    logger.info('[STIM_IG] Could not fetch live followers — skip tick', { deviceId });
-    return { skip: true };
-  }
-  return { live, mode: 'live' };
+): Promise<{ live: number; mode: 'synthetic' }> {
+  logger.debug('[STIM_IG] Synthetic ramp (credentials ignored)', { deviceId });
+  return { live: 0, mode: 'synthetic' };
 }
 
 export async function runIgTick(
@@ -129,51 +71,33 @@ export async function runIgTick(
   mqttClient: MqttClientManager,
   step: number,
   target: number,
-  redis: RedisService,
+  _redis: RedisService,
 ): Promise<{ done: boolean; publishedCount: number }> {
-  const resolved = await resolveLiveFollowersForStim(deviceId);
-  if ('skip' in resolved) {
-    return { done: false, publishedCount: 0 };
-  }
-  const { live, mode } = resolved;
-
-  if (isAtOrPastTarget(live, target) && live > 0) {
-    logger.info('[STIM_IG] Already at/past target — one sync publish then done', { deviceId, live, target });
-    const { topic, payload } = buildStimIgPayload(deviceId, live, topicRoot);
-    await mqttClient.publish({ topic, payload, qos: 1, retain: true });
-    await updateFollowerCache(deviceId, live);
-    writeStimCache('instagram', deviceId, { lastPublished: live, status: 'done' });
-    return { done: true, publishedCount: 1 };
-  }
-
   const cache = readStimCache('instagram', deviceId);
-  const lastPub = cache?.lastPublished ?? 0;
-  const resume = calcResume(live, lastPub, step);
-  const ceiling = ceilingSequence(resume, target);
-
-  // First tick: publish even when ceiling == live (cache was empty, device is new).
-  // Subsequent ticks: only skip if we'd go backwards.
-  if (cache && ceiling <= live) {
-    logger.info('[STIM_IG] Ceiling ≤ live and already published — done', { deviceId, live, ceiling });
-    writeStimCache('instagram', deviceId, { lastPublished: live, status: 'done' });
+  if (cache?.status === 'done') {
     return { done: true, publishedCount: 0 };
   }
 
-  const publishValue = ceiling;
+  const lastPub = cache?.lastPublished ?? 0;
+  // ponytail: live always 0 — credentials never gate or floor the ramp
+  const publishValue = ceilingSequence(calcResume(0, lastPub, step), target);
 
   const { topic, payload } = buildStimIgPayload(deviceId, publishValue, topicRoot);
   await mqttClient.publish({ topic, payload, qos: 1, retain: true });
   await updateFollowerCache(deviceId, publishValue);
-  writeStimCache('instagram', deviceId, { lastPublished: publishValue, status: publishValue >= target ? 'done' : 'running' });
+  writeStimCache('instagram', deviceId, {
+    lastPublished: publishValue,
+    status: publishValue >= target ? 'done' : 'running',
+  });
 
   logger.info('[STIM_IG] Published', {
     deviceId,
     followers: publishValue,
     target,
-    mode,
+    mode: 'synthetic',
     achievement: instagramFollowerMetrics(publishValue).nextGoal,
     celebration: resolveCelebrationState('instagram', publishValue).celebration,
-    done: publishValue >= target
+    done: publishValue >= target,
   });
   return { done: publishValue >= target, publishedCount: 1 };
 }

@@ -1,29 +1,22 @@
-import { publishGmbScreen } from '../../../src/webhooks/delivery/publishGmbScreen';
+import {
+  buildGmbScreenPayload,
+  buildScreenEnvelope
+} from '../../../src/services/screenEnvelope';
 
-const mockPublish = jest.fn().mockResolvedValue(undefined);
-
-const mqttClient = {
-  publish: mockPublish
-} as unknown as Parameters<typeof publishGmbScreen>[0];
+/** Same envelope path as publishGmbScreen — avoids jest.mock leakage from other test files. */
+function buildGmbPublishEnvelope(verifiedReview: number) {
+  const { payload: screenPayload, envelopeOpts } = buildGmbScreenPayload({
+    verifiedReview,
+    rating: 4.5,
+    qrText: 'https://g.page/r/test',
+    reviews: []
+  });
+  return buildScreenEnvelope('gmb', screenPayload, envelopeOpts);
+}
 
 describe('publishGmbScreen payload shapes', () => {
-  beforeEach(() => {
-    mockPublish.mockClear();
-  });
-
-  async function parsePayload(verifiedReview: number) {
-    const result = await publishGmbScreen(
-      mqttClient,
-      'proof.mqtt',
-      'DEVICE-1',
-      { verifiedReview, rating: 4.5, qrText: 'https://g.page/r/test' },
-      true
-    );
-    return JSON.parse(result.payload);
-  }
-
-  it('normal state', async () => {
-    const envelope = await parsePayload(42);
+  it('normal state', () => {
+    const envelope = buildGmbPublishEnvelope(42);
     expect(envelope).toMatchObject({
       version: '1.2',
       screen: 'gmb',
@@ -39,8 +32,8 @@ describe('publishGmbScreen payload shapes', () => {
     expect(envelope.payload).not.toHaveProperty('celebration_type');
   });
 
-  it('mini celebration every 5', async () => {
-    const envelope = await parsePayload(15);
+  it('mini celebration every 5', () => {
+    const envelope = buildGmbPublishEnvelope(15);
     expect(envelope.celebration).toBe('true');
     expect(envelope.payload).toMatchObject({
       celebration_type: 'mini',
@@ -51,8 +44,8 @@ describe('publishGmbScreen payload shapes', () => {
     });
   });
 
-  it('mega celebration every 25', async () => {
-    const envelope = await parsePayload(25);
+  it('mega celebration every 25', () => {
+    const envelope = buildGmbPublishEnvelope(25);
     expect(envelope.celebration).toBe('true');
     expect(envelope.payload).toMatchObject({
       celebration_type: 'mega',

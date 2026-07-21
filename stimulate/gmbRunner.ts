@@ -2,9 +2,8 @@ import { logger } from '../src/utils/logger';
 import { RedisService } from '../src/services/redisService';
 import type { MqttClientManager } from '../src/servers/mqttClient';
 import { publishGmbScreen } from '../src/webhooks/delivery/publishGmbScreen';
-import { resolveGmbContextForDevice } from '../src/lib/socials/resolveDeviceGmb';
 import { readStimCache, writeStimCache } from './cache';
-import { calcResume, ceilingSequence, isAtOrPastTarget } from './math';
+import { calcResume, ceilingSequence } from './math';
 import { getRedisService } from '../src/services/redisService';
 import { resolveCelebrationState } from '../src/services/screenEnvelope';
 
@@ -44,59 +43,39 @@ export async function runGmbTick(
   mqttPublishEnabled: boolean,
   step: number,
   target: number,
-  redis: RedisService,
+  _redis: RedisService,
 ): Promise<{ done: boolean; publishedCount: number }> {
-  const ctx = await resolveGmbContextForDevice(deviceId);
-  const synthetic = !ctx;
-  if (synthetic) {
-    logger.info('[STIM_GMB] No GMB connection — synthetic ramp from 0', { deviceId });
-  }
-
-  const live = ctx?.verifiedReviewCount ?? 0;
-  const rating = ctx?.averageRating ?? 4;
-
-  if (isAtOrPastTarget(live, target) && live > 0) {
-    logger.info('[STIM_GMB] Already at/past target — one sync publish then done', { deviceId, live, target });
-    await publishGmbScreen(mqttClient, topicRoot, deviceId, {
-      verifiedReview: live,
-      rating,
-    }, mqttPublishEnabled);
-    await updateGmbCache(deviceId, live);
-    writeStimCache('gmb', deviceId, { lastPublished: live, status: 'done' });
-    return { done: true, publishedCount: 1 };
-  }
-
   const cache = readStimCache('gmb', deviceId);
-  const lastPub = cache?.lastPublished ?? 0;
-  const resume = calcResume(live, lastPub, step);
-  const ceiling = ceilingSequence(resume, target);
-
-  // First tick: publish even when ceiling == live (cache was empty, device is new).
-  // Subsequent ticks: only skip if we'd go backwards.
-  if (cache && ceiling <= live) {
-    logger.info('[STIM_GMB] Ceiling ≤ live and already published — done', { deviceId, live, ceiling });
-    writeStimCache('gmb', deviceId, { lastPublished: live, status: 'done' });
+  if (cache?.status === 'done') {
     return { done: true, publishedCount: 0 };
   }
 
-  const publishValue = ceiling;
+  const lastPub = cache?.lastPublished ?? 0;
+  // ponytail: live always 0 — credentials never gate or floor the ramp
+  const publishValue = ceilingSequence(calcResume(0, lastPub, step), target);
+  const rating = 4;
 
   await publishGmbScreen(
-    mqttClient, topicRoot, deviceId,
+    mqttClient,
+    topicRoot,
+    deviceId,
     { verifiedReview: publishValue, rating },
     mqttPublishEnabled,
   );
 
   await updateGmbCache(deviceId, publishValue);
-  writeStimCache('gmb', deviceId, { lastPublished: publishValue, status: publishValue >= target ? 'done' : 'running' });
+  writeStimCache('gmb', deviceId, {
+    lastPublished: publishValue,
+    status: publishValue >= target ? 'done' : 'running',
+  });
 
   logger.info('[STIM_GMB] Published', {
     deviceId,
     reviews: publishValue,
     target,
-    mode: synthetic ? 'synthetic' : 'live',
+    mode: 'synthetic',
     celebration: resolveCelebrationState('gmb', publishValue).celebration,
-    done: publishValue >= target
+    done: publishValue >= target,
   });
   return { done: publishValue >= target, publishedCount: 1 };
 }

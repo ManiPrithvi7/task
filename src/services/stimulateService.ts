@@ -1,15 +1,15 @@
 /**
  * TEMP STIMULATE — remove after testing
  * In-process stimulate loops for allowlisted devices (no separate process).
- * Starts when STIMULATE_DEVICE is set; publishes production IG/GMB envelopes.
+ * Progress is in-memory only; /active on an allowlisted device restarts the ramp from 0.
  */
 import type { MqttClientManager } from '../servers/mqttClient';
 import type { RedisService } from './redisService';
 import { logger } from '../utils/logger';
-import { parseStimulateAllowlist } from '../utils/stimulateAllowlist';
+import { parseStimulateAllowlist, isStimulateDevice } from '../utils/stimulateAllowlist';
 import { runIgTick, STIM_IG_LOCK_TTL_SEC, igStimLockKey } from '../../stimulate/igRunner';
 import { runGmbTick, STIM_GMB_LOCK_TTL_SEC, gmbStimLockKey } from '../../stimulate/gmbRunner';
-import { readStimCache, writeStimCache, clearStimCache } from '../../stimulate/cache';
+import { clearStimCache, clearDeviceStimCache, clearAllStimCache } from '../../stimulate/cache';
 
 export type StimulatePlatform = 'instagram' | 'gmb';
 
@@ -19,6 +19,13 @@ type LoopState = {
   timer: ReturnType<typeof setInterval> | null;
   lockRefreshTimer: ReturnType<typeof setInterval> | null;
   done: boolean;
+};
+
+type StartDeps = {
+  mqttClient: MqttClientManager;
+  redis: RedisService | null;
+  topicRoot: string;
+  mqttPublishEnabled: boolean;
 };
 
 function parsePlatforms(): StimulatePlatform[] {
@@ -44,7 +51,6 @@ function parseGmbTarget(): number {
   return Math.max(1, parseInt(process.env.STIMULATE_GMB_TARGET || '100', 10) || 100);
 }
 
-/** Force-set stim lock (in-process owner — no NX race with a second process). */
 async function takeStimLock(
   redis: RedisService | null,
   platform: StimulatePlatform,
@@ -78,6 +84,7 @@ async function refreshStimLock(
 export class StimulateService {
   private loops: LoopState[] = [];
   private running = false;
+  private deps: StartDeps | null = null;
 
   getRunning(): boolean {
     return this.running;
@@ -85,7 +92,7 @@ export class StimulateService {
 
   /**
    * Start per-device/platform publish loops. No-op if STIMULATE_DEVICE empty.
-   * If STIMULATE_CLEAR=1, releases locks + caches and does not start loops.
+   * Progress is in-memory; server restart always ramps from 0.
    */
   async start(
     mqttClient: MqttClientManager,
@@ -97,6 +104,8 @@ export class StimulateService {
       logger.warn('[STIM] Already running — skip start');
       return;
     }
+
+    this.deps = { mqttClient, redis, topicRoot, mqttPublishEnabled };
 
     const devices = parseStimulateAllowlist();
     if (devices.length === 0) {
@@ -110,23 +119,9 @@ export class StimulateService {
       return;
     }
 
-    const step = parseStep();
-    const intervalMs = parseIntervalMs();
-    const igTarget = parseIgTarget();
-    const gmbTarget = parseGmbTarget();
-    const clear = process.env.STIMULATE_CLEAR === '1';
-
-    logger.info('[STIM] ===== Starting in-process stimulate service =====', {
-      devices,
-      platforms,
-      step,
-      intervalMs,
-      igTarget,
-      gmbTarget,
-      clear
-    });
-
-    if (clear) {
+    // Drop any leftover in-memory / optional clear of redis locks
+    clearAllStimCache();
+    if (process.env.STIMULATE_CLEAR === '1') {
       for (const d of devices) {
         for (const p of platforms) {
           const key = p === 'instagram' ? igStimLockKey(d) : gmbStimLockKey(d);
@@ -135,27 +130,81 @@ export class StimulateService {
           } catch {
             /* ok */
           }
-          clearStimCache(p, d);
         }
       }
-      logger.info('[STIM] STIMULATE_CLEAR=1 — locks/caches cleared; loops not started');
-      return;
+      logger.info('[STIM] STIMULATE_CLEAR=1 — redis locks cleared');
     }
 
+    const step = parseStep();
+    const intervalMs = parseIntervalMs();
+    const igTarget = parseIgTarget();
+    const gmbTarget = parseGmbTarget();
+
+    logger.info('[STIM] ===== Starting in-process stimulate service =====', {
+      devices,
+      platforms,
+      step,
+      intervalMs,
+      igTarget,
+      gmbTarget,
+      progress: 'in-memory (reset on /active or restart)',
+    });
+
+    await this.spawnLoops(devices, platforms, step, intervalMs, igTarget, gmbTarget);
+    this.running = this.loops.length > 0;
+    logger.info('[STIM] In-process loops started', { count: this.loops.length });
+  }
+
+  /**
+   * Device /active on an allowlisted id → clear progress and restart ramps from 0.
+   */
+  async resetOnDeviceConnect(deviceId: string): Promise<void> {
+    if (!isStimulateDevice(deviceId) || !this.deps) return;
+
+    logger.info('[STIM] /active — reset ramp from scratch', { deviceId });
+    this.stopLoopsForDevice(deviceId);
+    clearDeviceStimCache(deviceId);
+
+    const platforms = parsePlatforms();
+    const step = parseStep();
+    const intervalMs = parseIntervalMs();
+    const igTarget = parseIgTarget();
+    const gmbTarget = parseGmbTarget();
+
+    await this.spawnLoops([deviceId], platforms, step, intervalMs, igTarget, gmbTarget);
+    this.running = this.loops.length > 0;
+  }
+
+  private stopLoopsForDevice(deviceId: string): void {
+    const keep: LoopState[] = [];
+    for (const l of this.loops) {
+      if (l.deviceId !== deviceId) {
+        keep.push(l);
+        continue;
+      }
+      if (l.timer) clearInterval(l.timer);
+      if (l.lockRefreshTimer) clearInterval(l.lockRefreshTimer);
+    }
+    this.loops = keep;
+  }
+
+  private async spawnLoops(
+    devices: string[],
+    platforms: StimulatePlatform[],
+    step: number,
+    intervalMs: number,
+    igTarget: number,
+    gmbTarget: number
+  ): Promise<void> {
+    const deps = this.deps;
+    if (!deps) return;
+
+    const { mqttClient, redis, topicRoot, mqttPublishEnabled } = deps;
     const lockRefreshMs = Math.max(60_000, Math.floor(intervalMs * 0.8));
 
     for (const deviceId of devices) {
       for (const platform of platforms) {
-        const cache = readStimCache(platform, deviceId);
-        if (cache?.status === 'done') {
-          logger.info('[STIM] Skipping already-done (set STIMULATE_CLEAR=1 to reset)', {
-            deviceId,
-            platform
-          });
-          await takeStimLock(redis, platform, deviceId);
-          continue;
-        }
-
+        clearStimCache(platform, deviceId);
         await takeStimLock(redis, platform, deviceId);
 
         const loop: LoopState = {
@@ -163,7 +212,7 @@ export class StimulateService {
           platform,
           timer: null,
           lockRefreshTimer: null,
-          done: false
+          done: false,
         };
         this.loops.push(loop);
 
@@ -171,18 +220,14 @@ export class StimulateService {
           if (loop.done) return;
           let done = false;
           try {
+            if (!redis) {
+              logger.warn('[STIM] Redis required for ticks — skip', { deviceId, platform });
+              return;
+            }
             if (platform === 'instagram') {
-              if (!redis) {
-                logger.warn('[STIM] Redis required for IG ticks — skip', { deviceId });
-                return;
-              }
               const r = await runIgTick(deviceId, topicRoot, mqttClient, step, igTarget, redis);
               done = r.done;
             } else {
-              if (!redis) {
-                logger.warn('[STIM] Redis required for GMB ticks — skip', { deviceId });
-                return;
-              }
               const r = await runGmbTick(
                 deviceId,
                 topicRoot,
@@ -198,7 +243,7 @@ export class StimulateService {
             logger.error('[STIM] Tick error', {
               deviceId,
               platform,
-              error: err instanceof Error ? err.message : String(err)
+              error: err instanceof Error ? err.message : String(err),
             });
           }
 
@@ -208,9 +253,11 @@ export class StimulateService {
             loop.timer = null;
             if (loop.lockRefreshTimer) clearInterval(loop.lockRefreshTimer);
             loop.lockRefreshTimer = null;
-            // Keep lock so live paths stay skipped until STIMULATE_CLEAR=1
             await takeStimLock(redis, platform, deviceId);
-            logger.info('[STIM] Loop complete (lock retained)', { deviceId, platform });
+            logger.info('[STIM] Loop complete — reconnect device (/active) to restart from 0', {
+              deviceId,
+              platform,
+            });
           }
         };
 
@@ -222,9 +269,6 @@ export class StimulateService {
         }, lockRefreshMs);
       }
     }
-
-    this.running = this.loops.length > 0;
-    logger.info('[STIM] In-process loops started', { count: this.loops.length });
   }
 
   async stop(): Promise<void> {
@@ -233,11 +277,10 @@ export class StimulateService {
     for (const l of this.loops) {
       if (l.timer) clearInterval(l.timer);
       if (l.lockRefreshTimer) clearInterval(l.lockRefreshTimer);
-      const cache = readStimCache(l.platform, l.deviceId);
-      if (cache) writeStimCache(l.platform, l.deviceId, cache);
     }
     this.loops = [];
     this.running = false;
-    logger.info('[STIM] Stopped (locks retained for crash-safe skip)');
+    this.deps = null;
+    logger.info('[STIM] Stopped');
   }
 }

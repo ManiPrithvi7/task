@@ -1,34 +1,38 @@
-import * as fs from 'fs';
-import * as path from 'path';
-
-const CACHE_DIR = 'data/stimulate';
+/**
+ * TEMP STIMULATE — in-memory progress only (no disk).
+ * Server restart or device /active reset → ramp from scratch.
+ */
 
 export interface StimCacheEntry {
   lastPublished: number;
   status: 'running' | 'done';
 }
 
-function cachePath(platform: string, deviceId: string): string {
-  return path.join(CACHE_DIR, `${platform}_${deviceId}.json`);
+// ponytail: process-local Map; ceiling = lost on restart (intentional — no data/stimulate files)
+const store = new Map<string, StimCacheEntry>();
+
+function key(platform: string, deviceId: string): string {
+  return `${platform}:${deviceId}`;
 }
 
 export function readStimCache(platform: string, deviceId: string): StimCacheEntry | null {
-  const fp = cachePath(platform, deviceId);
-  try {
-    const raw = fs.readFileSync(fp, 'utf-8');
-    return JSON.parse(raw) as StimCacheEntry;
-  } catch {
-    return null;
-  }
+  return store.get(key(platform, deviceId)) ?? null;
 }
 
 export function writeStimCache(platform: string, deviceId: string, entry: StimCacheEntry): void {
-  const fp = cachePath(platform, deviceId);
-  if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
-  fs.writeFileSync(fp, JSON.stringify(entry, null, 2), 'utf-8');
+  store.set(key(platform, deviceId), entry);
 }
 
 export function clearStimCache(platform: string, deviceId: string): void {
-  const fp = cachePath(platform, deviceId);
-  try { fs.unlinkSync(fp); } catch { /* ok */ }
+  store.delete(key(platform, deviceId));
+}
+
+export function clearAllStimCache(): void {
+  store.clear();
+}
+
+export function clearDeviceStimCache(deviceId: string): void {
+  for (const k of [...store.keys()]) {
+    if (k.endsWith(`:${deviceId}`)) store.delete(k);
+  }
 }

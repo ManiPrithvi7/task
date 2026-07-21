@@ -1254,6 +1254,16 @@ export class StatsMqttLite {
       });
     }
 
+    // TEMP STIMULATE — /active on allowlisted device restarts ramp from 0
+    if (this.stimulateService) {
+      void this.stimulateService.resetOnDeviceConnect(deviceId).catch((err: unknown) => {
+        logger.warn('[STIM] resetOnDeviceConnect failed', {
+          deviceId,
+          error: err instanceof Error ? err.message : String(err)
+        });
+      });
+    }
+
     logger.info('📋 [LIFECYCLE:REGISTER] Device registration complete', { deviceId });
 
     void this.deliverOtaOnRegistration(deviceId, message.appVersion || message.app_version);
