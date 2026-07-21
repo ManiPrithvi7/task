@@ -1,14 +1,18 @@
 /**
  * TEMP STIMULATE — in-memory progress only (no disk).
- * Server restart or device /active reset → ramp from scratch.
+ * Entries have a TTL; expired entries are treated as missing.
+ * Server restart loses all state (intentional).
  */
+
+export const STIM_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 export interface StimCacheEntry {
   lastPublished: number;
   status: 'running' | 'done';
+  expiresAt: number;
 }
 
-// ponytail: process-local Map; ceiling = lost on restart (intentional — no data/stimulate files)
+// process-local Map; ceiling = lost on restart (intentional)
 const store = new Map<string, StimCacheEntry>();
 
 function key(platform: string, deviceId: string): string {
@@ -16,11 +20,25 @@ function key(platform: string, deviceId: string): string {
 }
 
 export function readStimCache(platform: string, deviceId: string): StimCacheEntry | null {
-  return store.get(key(platform, deviceId)) ?? null;
+  const entry = store.get(key(platform, deviceId));
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) {
+    store.delete(key(platform, deviceId));
+    return null;
+  }
+  return entry;
 }
 
-export function writeStimCache(platform: string, deviceId: string, entry: StimCacheEntry): void {
-  store.set(key(platform, deviceId), entry);
+export function writeStimCache(
+  platform: string,
+  deviceId: string,
+  entry: Omit<StimCacheEntry, 'expiresAt'>,
+): void {
+  store.set(key(platform, deviceId), {
+    lastPublished: entry.lastPublished,
+    status: entry.status,
+    expiresAt: Date.now() + STIM_CACHE_TTL_MS,
+  });
 }
 
 export function clearStimCache(platform: string, deviceId: string): void {

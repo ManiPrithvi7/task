@@ -9,7 +9,8 @@ import { logger } from '../utils/logger';
 import { parseStimulateAllowlist, isStimulateDevice } from '../utils/stimulateAllowlist';
 import { runIgTick, STIM_IG_LOCK_TTL_SEC, igStimLockKey } from '../../stimulate/igRunner';
 import { runGmbTick, STIM_GMB_LOCK_TTL_SEC, gmbStimLockKey } from '../../stimulate/gmbRunner';
-import { clearStimCache, clearDeviceStimCache, clearAllStimCache } from '../../stimulate/cache';
+import { clearStimCache, clearDeviceStimCache, clearAllStimCache, readStimCache } from '../../stimulate/cache';
+import { getActiveDeviceCache } from './deviceService';
 
 export type StimulatePlatform = 'instagram' | 'gmb';
 
@@ -156,14 +157,29 @@ export class StimulateService {
   }
 
   /**
-   * Device /active on an allowlisted id → clear progress and restart ramps from 0.
+   * Device disconnect (LWT) → stop loops and let cache TTL expire naturally.
+   */
+  async stopOnDeviceDisconnect(deviceId: string): Promise<void> {
+    if (!isStimulateDevice(deviceId)) return;
+    logger.info('[STIM] /lwt — device disconnected, stopping loops (cache preserved with TTL)', {
+      deviceId,
+    });
+    this.stopLoopsForDevice(deviceId);
+  }
+
+  /**
+   * Device /active on an allowlisted id:
+   *  - If cached ramp is within TTL → resume from last published value.
+   *  - If cache expired or missing → reset ramp from scratch.
    */
   async resetOnDeviceConnect(deviceId: string): Promise<void> {
     if (!isStimulateDevice(deviceId) || !this.deps) return;
 
-    logger.info('[STIM] /active — reset ramp from scratch', { deviceId });
     this.stopLoopsForDevice(deviceId);
-    clearDeviceStimCache(deviceId);
+
+    const igCache = readStimCache('instagram', deviceId);
+    const gmbCache = readStimCache('gmb', deviceId);
+    const hasValidCache = igCache?.status === 'running' || gmbCache?.status === 'running';
 
     const platforms = parsePlatforms();
     const step = parseStep();
@@ -171,7 +187,16 @@ export class StimulateService {
     const igTarget = parseIgTarget();
     const gmbTarget = parseGmbTarget();
 
-    await this.spawnLoops([deviceId], platforms, step, intervalMs, igTarget, gmbTarget);
+    if (hasValidCache) {
+      logger.info('[STIM] /active — cache valid within TTL, resuming ramp', { deviceId });
+      await this.spawnLoops([deviceId], platforms, step, intervalMs, igTarget, gmbTarget, false);
+    } else {
+      logger.info('[STIM] /active — cache expired or missing, resetting ramp from scratch', {
+        deviceId,
+      });
+      clearDeviceStimCache(deviceId);
+      await this.spawnLoops([deviceId], platforms, step, intervalMs, igTarget, gmbTarget, true);
+    }
     this.running = this.loops.length > 0;
   }
 
@@ -194,7 +219,8 @@ export class StimulateService {
     step: number,
     intervalMs: number,
     igTarget: number,
-    gmbTarget: number
+    gmbTarget: number,
+    clearCache = true
   ): Promise<void> {
     const deps = this.deps;
     if (!deps) return;
@@ -204,7 +230,7 @@ export class StimulateService {
 
     for (const deviceId of devices) {
       for (const platform of platforms) {
-        clearStimCache(platform, deviceId);
+        if (clearCache) clearStimCache(platform, deviceId);
         await takeStimLock(redis, platform, deviceId);
 
         const loop: LoopState = {
@@ -222,6 +248,12 @@ export class StimulateService {
           try {
             if (!redis) {
               logger.warn('[STIM] Redis required for ticks — skip', { deviceId, platform });
+              return;
+            }
+            // Only publish when device is currently active (local active-device cache)
+            const active = await getActiveDeviceCache().getActive(deviceId);
+            if (!active) {
+              logger.debug('[STIM] Device not active — skip tick', { deviceId, platform });
               return;
             }
             if (platform === 'instagram') {

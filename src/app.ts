@@ -1441,6 +1441,16 @@ export class StatsMqttLite {
       });
     }
 
+    // TEMP STIMULATE — stop loops so cache TTL can expire during disconnection
+    if (this.stimulateService) {
+      void this.stimulateService.stopOnDeviceDisconnect(deviceId).catch((err: unknown) => {
+        logger.warn('[STIM] stopOnDeviceDisconnect failed', {
+          deviceId,
+          error: err instanceof Error ? err.message : String(err)
+        });
+      });
+    }
+
     logger.info('💀 [LIFECYCLE:LWT] Device disconnect processed', {
       deviceId,
       removedFromRedis: removed
