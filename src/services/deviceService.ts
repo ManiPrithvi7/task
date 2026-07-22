@@ -202,7 +202,8 @@ export class DeviceService {
         existing.lastSeenAt = new Date();
         existing.updatedAt = new Date();
 
-        const appVersion = data.metadata?.appVersion || data.metadata?.app_version;
+        const appVersion =
+          data.metadata?.appVersion || data.metadata?.app_version || data.metadata?.fw_version;
         if (typeof appVersion === 'string' && appVersion.trim()) {
           existing.firmwareVersion = appVersion.trim();
           existing.firmwareReportedAt = new Date();
@@ -226,7 +227,8 @@ export class DeviceService {
 
       // Create new device (honor data.status so MQTT-registered devices get ACTIVE and receive screen updates)
       const initialStatus = data.status === 'active' ? DeviceStatus.ACTIVE : DeviceStatus.UNALLOCATED;
-      const appVersion = data.metadata?.appVersion || data.metadata?.app_version;
+      const appVersion =
+        data.metadata?.appVersion || data.metadata?.app_version || data.metadata?.fw_version;
       const device = new Device({
         userId: undefined, // Will be set when allocated to user
         macID: data.macID,

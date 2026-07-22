@@ -18,6 +18,7 @@ import { InfluxDiskQueue } from './influxDiskQueue';
 
 import { BucketTarget } from '../storage/influx/types';
 import { DeviceMetricsRepo } from '../storage/influx/repositories/DeviceMetricsRepo';
+import { DeviceOtaEventsRepo, DeviceOtaEventInput } from '../storage/influx/repositories/DeviceOtaEventsRepo';
 import { InstagramAuditRepo } from '../storage/influx/repositories/InstagramAuditRepo';
 import { WebhookAuditRepo } from '../storage/influx/repositories/WebhookAuditRepo';
 import { PkiAuditRepo } from '../storage/influx/repositories/PkiAuditRepo';
@@ -230,6 +231,7 @@ export class InfluxService {
   private complianceDiskQueue: InfluxDiskQueue | null = null;
 
   deviceMetrics: DeviceMetricsRepo;
+  deviceOtaEvents: DeviceOtaEventsRepo;
   instagramAudit: InstagramAuditRepo;
   webhookAudit: WebhookAuditRepo;
   pkiAudit: PkiAuditRepo;
@@ -298,6 +300,7 @@ export class InfluxService {
     }
 
     this.deviceMetrics = new DeviceMetricsRepo(this.config, this.metricsWriteApi, this.metricsDiskQueue);
+    this.deviceOtaEvents = new DeviceOtaEventsRepo(this.config, this.metricsWriteApi, this.metricsDiskQueue);
     this.instagramAudit = new InstagramAuditRepo(this.config, this.metricsWriteApi, this.metricsDiskQueue);
     this.webhookAudit = new WebhookAuditRepo(this.config, this.metricsWriteApi, this.metricsDiskQueue);
     this.pkiAudit = new PkiAuditRepo(this.config, this.complianceWriteApi, this.complianceDiskQueue);
@@ -312,6 +315,10 @@ export class InfluxService {
 
   async writeDeviceMetrics(deviceId: string, metrics: DeviceMetrics): Promise<void> {
     await this.deviceMetrics.write({ deviceId, metrics });
+  }
+
+  async writeDeviceOtaEvent(input: DeviceOtaEventInput): Promise<void> {
+    await this.deviceOtaEvents.write(input);
   }
 
   async writeSocialMetrics(platform: string, userId: string, metrics: SocialMetrics): Promise<void> {

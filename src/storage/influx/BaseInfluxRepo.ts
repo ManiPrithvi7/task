@@ -2,7 +2,7 @@ import { Point, WriteApi } from '@influxdata/influxdb-client';
 import { InfluxDiskQueue } from '../../services/influxDiskQueue';
 import { InfluxDBConfig } from '../../config';
 import { BucketTarget } from './types';
-import { logger } from '../../utils/logger';
+import { sanitizeInfluxLineProtocol } from '../../utils/influxTimestamp';
 
 export abstract class BaseInfluxRepo<TInput> {
   constructor(
@@ -18,8 +18,10 @@ export abstract class BaseInfluxRepo<TInput> {
   protected async submit(point: Point, target: BucketTarget, flushImmediately: boolean): Promise<void> {
     const queue = this.diskQueue;
     if (queue) {
-      const line = point.toLineProtocol();
-      await queue.enqueue(line ?? '');
+      const raw = point.toLineProtocol();
+      const line = raw ? sanitizeInfluxLineProtocol(raw) : null;
+      if (!line) return;
+      await queue.enqueue(line);
       return;
     }
     this.writeApi.writePoint(point);

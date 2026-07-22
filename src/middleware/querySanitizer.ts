@@ -29,6 +29,7 @@ export const KNOWN_MEASUREMENTS: Record<string, RegExp[]> = {
     /^system_metrics$/,
     /^social_metrics$/,
     /^rate_limit_events$/,
+    /^device_ota_events$/,
     /^gmb_review_snapshot$/,
     /^gmb_webhook_audit$/,
     /^gmb_velocity_weekly$/,

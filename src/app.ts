@@ -28,6 +28,7 @@ import {
 } from './services/startupCacheRepublish';
 import { StimulateService } from './services/stimulateService';
 import { InfluxService, createInfluxService, resetInfluxService } from './services/influxService';
+import { parsePilotBootPayload, isPilotOtaStatusEvent, normalizeOtaEventKey } from './utils/pilotOtaPayload';
 import { AuditService, createAuditService } from './services/auditService';
 import { TransparencyLog, createTransparencyLog } from './services/transparencyLog';
 import {
@@ -1200,9 +1201,9 @@ export class StatsMqttLite {
       type: message.type
     });
 
-    // if (message?.power_save === true || message?.power_mode === 'low') {
-    //   await this.setDevicePowerSaveFlag(deviceId);
-    // }
+    const pilotBoot = parsePilotBootPayload(message);
+    const fwVersion =
+      pilotBoot.fwVersion || message.appVersion || message.app_version;
 
     // Register device if not exists. Use topic-derived deviceId as canonical id so
     // DeviceService lookups and StatsPublisher topics match subscriber topics (e.g. proof.mqtt/<deviceId>/instagram).
@@ -1219,7 +1220,9 @@ export class StatsMqttLite {
           mqttClientId: message.clientId, // Optional: actual MQTT client id for debugging
           deviceType: message.deviceType || message.device_type,
           os: message.os,
-          appVersion: message.appVersion || message.app_version,
+          appVersion: fwVersion,
+          bootType: pilotBoot.bootType,
+          ipAddress: pilotBoot.ipAddress,
           registeredAt: new Date().toISOString()
         }
       });
@@ -1228,11 +1231,44 @@ export class StatsMqttLite {
       // Send registration confirmation for new device
       await this.sendRegistrationResponse(deviceId, true, 'Device registered successfully', true);
     } else {
-      logger.info('✅ Existing device reconnected (Redis cache only; Mongo status unchanged)', { deviceId });
+      if (typeof fwVersion === 'string' && fwVersion.trim()) {
+        await Device.updateOne(
+          { clientId: deviceId },
+          {
+            $set: {
+              firmwareVersion: fwVersion.trim(),
+              firmwareReportedAt: new Date(),
+              lastSeenAt: new Date()
+            }
+          }
+        );
+      }
+      logger.info('✅ Existing device reconnected', { deviceId, fwVersion: fwVersion || undefined });
       
       // Send registration confirmation for existing device
       await this.sendRegistrationResponse(deviceId, true, 'Device reconnected successfully', false);
     }
+
+    if (this.otaService && typeof fwVersion === 'string' && fwVersion.trim()) {
+      void this.otaService.maybeRecordImplicitOtaSuccess(deviceId, fwVersion.trim()).catch((err: unknown) => {
+        logger.warn('[OTA] Implicit success check failed', {
+          deviceId,
+          error: err instanceof Error ? err.message : String(err)
+        });
+      });
+    }
+
+    void this.influxService
+      ?.writeDeviceOtaEvent({
+        deviceId,
+        event: 'boot',
+        sourceTopic: 'active',
+        fwVersion: typeof fwVersion === 'string' ? fwVersion : undefined,
+        bootType: pilotBoot.bootType,
+        ipAddress: pilotBoot.ipAddress,
+        timestamp: pilotBoot.timestamp
+      })
+      .catch(() => undefined);
 
     // Cache active device in Redis with userId + user preferences (one-time MongoDB read)
     logger.info('📋 [LIFECYCLE:REGISTER] Caching device in Redis active list', { deviceId });
@@ -1273,7 +1309,7 @@ export class StatsMqttLite {
 
     logger.info('📋 [LIFECYCLE:REGISTER] Device registration complete', { deviceId });
 
-    void this.deliverOtaOnRegistration(deviceId, message.appVersion || message.app_version);
+    void this.deliverOtaOnRegistration(deviceId, fwVersion);
   }
 
   private async deliverOtaOnRegistration(deviceId: string, appVersion?: string): Promise<void> {
@@ -1297,6 +1333,11 @@ export class StatsMqttLite {
 
     try {
       await this.otaService.deliverPendingToDevice(deviceId, currentVersion);
+
+      const offer = await this.otaService.resolveUpdate({ deviceId, currentVersion });
+      if (offer && this.otaCommandPublisher) {
+        await this.otaCommandPublisher.publishUpdateToDevice(deviceId, offer, false);
+      }
     } catch (err: unknown) {
       logger.warn('[OTA] Registration delivery failed', {
         deviceId,
@@ -1497,9 +1538,9 @@ export class StatsMqttLite {
       return;
     }
 
-    const eventType = message?.type || message?.event || message?.status;
+    const eventType = normalizeOtaEventKey(message);
 
-    if (this.otaEventHandler && eventType && String(eventType).startsWith('ota_')) {
+    if (this.otaEventHandler && isPilotOtaStatusEvent(eventType)) {
       await this.otaEventHandler.handle(deviceId, message);
     }
 

@@ -25,7 +25,7 @@
     "semantic_hash": ""
   },
   "scripts/attention-roadmap-smoke.ts": {
-    "mtime": 1784611085.2093992,
+    "mtime": 1784696864.1657019,
     "ast_hash": "2eb2296fc87aa85d860afa9f3f27026f",
     "semantic_hash": ""
   },
@@ -155,8 +155,8 @@
     "semantic_hash": ""
   },
   "src/app.ts": {
-    "mtime": 1784613728.656208,
-    "ast_hash": "52e3bfcb59f7847393b3aa59b03c9b4e",
+    "mtime": 1784705613.5912287,
+    "ast_hash": "b5aedbf4b512404884fb2f0eefb0535d",
     "semantic_hash": ""
   },
   "src/config/connectionsConfig.ts": {
@@ -405,8 +405,8 @@
     "semantic_hash": ""
   },
   "src/services/deviceService.ts": {
-    "mtime": 1784011241.0945754,
-    "ast_hash": "3f4923a672433fbd4f0c74db7c647d6b",
+    "mtime": 1784705656.5776494,
+    "ast_hash": "989854941072ed214a57a8a6df96dfb0",
     "semantic_hash": ""
   },
   "src/services/firmwareStorageService.ts": {
@@ -430,13 +430,13 @@
     "semantic_hash": ""
   },
   "src/services/influxDiskQueue.ts": {
-    "mtime": 1783338060.9022112,
-    "ast_hash": "9605a3481363bb6b8b51047fa1be33ee",
+    "mtime": 1784705529.6839309,
+    "ast_hash": "0eb06efd750f7717cbcdca35d6b43318",
     "semantic_hash": ""
   },
   "src/services/influxService.ts": {
-    "mtime": 1784611133.1503396,
-    "ast_hash": "5a7443d94d4b9c1b4894068c0174a2f9",
+    "mtime": 1784705555.641544,
+    "ast_hash": "5b431e89038a21227a86a5777f4061c3",
     "semantic_hash": ""
   },
   "src/services/instagramService.ts": {
@@ -485,8 +485,8 @@
     "semantic_hash": ""
   },
   "src/services/otaService.ts": {
-    "mtime": 1783413878.3114645,
-    "ast_hash": "db39656512fee11c441cf53d0fbaf745",
+    "mtime": 1784705587.578561,
+    "ast_hash": "22a687e3a22736c4d4fd037d9a48fb13",
     "semantic_hash": ""
   },
   "src/services/promotionService.ts": {
@@ -510,8 +510,8 @@
     "semantic_hash": ""
   },
   "src/services/screenEnvelope.ts": {
-    "mtime": 1784611133.1507146,
-    "ast_hash": "ef6b5c1cfae52a827d501c430ade8082",
+    "mtime": 1784624956.1391015,
+    "ast_hash": "62b72f1f3ef694eef8df818b3297e7a8",
     "semantic_hash": ""
   },
   "src/services/sessionService.ts": {
@@ -755,8 +755,8 @@
     "semantic_hash": ""
   },
   "tests/unit/services/otaEventHandler.test.ts": {
-    "mtime": 1783409870.3634286,
-    "ast_hash": "089bf30e5a161ca4c70bae576f55414a",
+    "mtime": 1784705667.8676915,
+    "ast_hash": "502b2769e4206f434483c9636f0da4ca",
     "semantic_hash": ""
   },
   "tests/unit/services/otaReleaseValidator.test.ts": {
@@ -800,7 +800,7 @@
     "semantic_hash": ""
   },
   "OTA_E2E_TEST.md": {
-    "mtime": 1784611085.2083993,
+    "mtime": 1784696864.1647015,
     "ast_hash": "b9aee5dba9ac48004eb1228ea2d4b0db",
     "semantic_hash": ""
   },
@@ -830,8 +830,8 @@
     "semantic_hash": ""
   },
   "docs/OTA_FIRMWARE_CONTRACT.md": {
-    "mtime": 1782458142.1172786,
-    "ast_hash": "0bd7ebe98f781cc18777631ce0c06779",
+    "mtime": 1784705694.106518,
+    "ast_hash": "76b451cc479254943703d785d4e06d59",
     "semantic_hash": ""
   },
   "docs/Proof Display OTA .md": {
@@ -1120,8 +1120,8 @@
     "semantic_hash": ""
   },
   "data/active-devices.json": {
-    "mtime": 1784613362.9896867,
-    "ast_hash": "4fb8605a9aa217d9da9ad808cb26d28f",
+    "mtime": 1784616678.8461678,
+    "ast_hash": "7225638a2a55aeef5201bc726f4368f4",
     "semantic_hash": ""
   },
   "src/lib/socials/syncDeviceGmb.ts": {
@@ -1140,12 +1140,12 @@
     "semantic_hash": ""
   },
   "tests/unit/services/influxDiskQueue.test.ts": {
-    "mtime": 1783338293.523924,
-    "ast_hash": "0a2adb5a6d861717d765cb4d68e12196",
+    "mtime": 1784705670.8589718,
+    "ast_hash": "c1ac4b3b413c42eef9b0ba09ba9f922a",
     "semantic_hash": ""
   },
   "tests/unit/webhooks/gmbEnrichmentWorker.test.ts": {
-    "mtime": 1783338332.2178087,
+    "mtime": 1784614621.0394225,
     "ast_hash": "4d3f14ed623c433c9013d48d2d415fad",
     "semantic_hash": ""
   },
@@ -1180,8 +1180,8 @@
     "semantic_hash": ""
   },
   "stimulate/cache.ts": {
-    "mtime": 1784613664.8615942,
-    "ast_hash": "8a95a00f7017d6152059cd4387e65db5",
+    "mtime": 1784616464.107699,
+    "ast_hash": "d8e61f914d55a6fd98e583aa6f3b33f1",
     "semantic_hash": ""
   },
   "stimulate/gmbRunner.ts": {
@@ -1190,8 +1190,8 @@
     "semantic_hash": ""
   },
   "stimulate/igRunner.ts": {
-    "mtime": 1784613671.9253957,
-    "ast_hash": "ac73c43c2745491c2a17c839ba4bd985",
+    "mtime": 1784622286.0731912,
+    "ast_hash": "9d4b7ae38a10580c726369d4a63684de",
     "semantic_hash": ""
   },
   "stimulate/math.ts": {
@@ -1215,8 +1215,8 @@
     "semantic_hash": ""
   },
   "tests/unit/stimulate/math.test.ts": {
-    "mtime": 1784611133.1525064,
-    "ast_hash": "38c94eba6f45128f87a5267eaa304f6f",
+    "mtime": 1784625194.600228,
+    "ast_hash": "e59e23f16fc0f7e443bf143d5eaed753",
     "semantic_hash": ""
   },
   "docs/influxdb refinement actions.md": {
@@ -1230,23 +1230,23 @@
     "semantic_hash": ""
   },
   "src/services/stimulateService.ts": {
-    "mtime": 1784613704.6551855,
-    "ast_hash": "7e1de24cbb6cfeccb01e280750757a06",
+    "mtime": 1784617024.824037,
+    "ast_hash": "37b302b761818c689cbcf025f178cc65",
     "semantic_hash": ""
   },
   "tests/unit/services/screenEnvelope.test.ts": {
-    "mtime": 1784611133.1522179,
-    "ast_hash": "5e648d735e9bd28736bf581a96a6d79a",
+    "mtime": 1784625157.9454925,
+    "ast_hash": "d775003f264d57b33748a6525ce7c2c1",
     "semantic_hash": ""
   },
   "tests/unit/stimulate/igPayload.test.ts": {
-    "mtime": 1784611133.1524289,
-    "ast_hash": "d7f41c1290d4967467aeadaaacb1ebd4",
+    "mtime": 1784625184.1757925,
+    "ast_hash": "f265cd07bd8044512d8cf5926d7ab59e",
     "semantic_hash": ""
   },
   "src/middleware/querySanitizer.ts": {
-    "mtime": 1784611133.1498632,
-    "ast_hash": "a25de8007744b347facd2199e1bb1ade",
+    "mtime": 1784705554.798873,
+    "ast_hash": "9a05d672643a3a4c18a7ba82d77692b4",
     "semantic_hash": ""
   },
   "src/routes/dashboardRoutes.ts": {
@@ -1265,8 +1265,8 @@
     "semantic_hash": ""
   },
   "src/storage/influx/BaseInfluxRepo.ts": {
-    "mtime": 1784611133.1508973,
-    "ast_hash": "987f2815214655c8776ae186e53dd195",
+    "mtime": 1784705530.4061992,
+    "ast_hash": "0d29c33c9b8d5787dec611142ae386a5",
     "semantic_hash": ""
   },
   "src/storage/influx/repositories/CtLogRepo.ts": {
@@ -1305,18 +1305,48 @@
     "semantic_hash": ""
   },
   "tests/unit/webhooks/publishGmbScreen.test.ts": {
-    "mtime": 1784611133.1525316,
-    "ast_hash": "f00b100e768ddd88d17200de032c9639",
+    "mtime": 1784614621.1004238,
+    "ast_hash": "6d5bcb6ad74edb6baed785b57a466d51",
     "semantic_hash": ""
   },
   "tests/unit/stimulate/gmbRunner.test.ts": {
-    "mtime": 1784613741.3032072,
+    "mtime": 1784614621.0534909,
     "ast_hash": "5c77732d8dcb368ec64bbb2b9f005fbc",
     "semantic_hash": ""
   },
   "tests/unit/stimulate/igRunner.test.ts": {
-    "mtime": 1784613735.2026007,
-    "ast_hash": "d2fbd679fb3529cc04e2616ee79c2269",
+    "mtime": 1784625169.7388096,
+    "ast_hash": "c945d67c2631325f7a1e820cb2dff558",
+    "semantic_hash": ""
+  },
+  "src/storage/influx/repositories/DeviceOtaEventsRepo.ts": {
+    "mtime": 1784705532.7245514,
+    "ast_hash": "893c62c844a2bfeaf4ee38f0482a2196",
+    "semantic_hash": ""
+  },
+  "src/utils/influxQueueError.ts": {
+    "mtime": 1784705496.003849,
+    "ast_hash": "c6d45919aee8aac0e35d3ad0a25677e1",
+    "semantic_hash": ""
+  },
+  "src/utils/influxTimestamp.ts": {
+    "mtime": 1784705509.526287,
+    "ast_hash": "f9f53435cafe8aa831223088c85224a5",
+    "semantic_hash": ""
+  },
+  "src/utils/pilotOtaPayload.ts": {
+    "mtime": 1784705498.7654853,
+    "ast_hash": "0bb4618ef9e47f102e294dbda4598b95",
+    "semantic_hash": ""
+  },
+  "tests/unit/utils/influxTimestamp.test.ts": {
+    "mtime": 1784705631.2033696,
+    "ast_hash": "842111a84fd4d1f1e66cceed4cd2bb04",
+    "semantic_hash": ""
+  },
+  "tests/unit/utils/pilotOtaPayload.test.ts": {
+    "mtime": 1784705631.3210938,
+    "ast_hash": "58bc31db3106d3fb1c70ed29945a816e",
     "semantic_hash": ""
   }
 }

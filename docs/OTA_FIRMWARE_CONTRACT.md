@@ -114,16 +114,66 @@ Per-device `ota_update`: QoS **2**, retain: false.
 
 Legacy broadcast topic `{MQTT_TOPIC_ROOT}/broadcast/cmd` remains for admin manual broadcast only (QoS 1).
 
-## MQTT — device → server telemetry
+## Pilot MQTT contract (minimal — firmware v1)
+
+**Two device → server messages** for the entire OTA lifecycle. No progress, no validation states, no separate OTA telemetry topic, **no explicit success message** — success is inferred on the next boot when `metadata.fw_version` matches the target release.
+
+| # | When | Topic | Payload `type` |
+|---|------|-------|----------------|
+| 1 | Every boot | `{MQTT_TOPIC_ROOT}/{deviceId}/active` | `device_registration` |
+| 2 | Any OTA failure | `{MQTT_TOPIC_ROOT}/{deviceId}/status` | `ota-fail` |
+
+### 1. Boot — `/active` (QoS 1, retain false)
+
+```json
+{
+  "type": "device_registration",
+  "deviceId": "unique-client-id",
+  "timestamp": "2026-02-11T15:30:00Z",
+  "metadata": {
+    "fw_version": "4.3.1-mvp",
+    "boot_type": "power_on",
+    "ipAddress": "192.168.1.x"
+  }
+}
+```
+
+`boot_type`: `power_on` | `ota_reboot` | `rollback_reboot` | `software_reset`
+
+**Server action:** persist `fw_version`; if `fw_version < latest stable` (and not blocked) → publish `ota_update` on `/cmd`. If the boot reports a version matching the pending target, record implicit OTA success.
+
+### 2. OTA failure — `/status` (QoS 1, retain false)
+
+```json
+{
+  "type": "ota-fail",
+  "deviceId": "unique-client-id",
+  "timestamp": "2026-02-11T15:30:00Z",
+  "metadata": {
+    "fw_version": "4.3.1-mvp",
+    "reason": "health_check_failed"
+  }
+}
+```
+
+`reason`: `download-timeout` | `sha256_mismatch` | `signature_invalid` | `flash-error` | `health_check_failed` | `rollback`
+
+**Server action:** increment per-version failure counter; after **3** failures → blacklist version (`otaBlockedVersions`) and audit `OTA_DEVICE_BLOCKED`. Blocked versions are not offered again.
+
+### Server → device (unchanged)
+
+Topic: `{MQTT_TOPIC_ROOT}/{deviceId}/cmd` — see **MQTT — server → device commands** above.
+
+## MQTT — device → server telemetry (legacy, non-pilot)
 
 Topic: `{MQTT_TOPIC_ROOT}/{deviceId}/status`
 
 | Event (`type` or `event`) | Description |
 |---------------------------|-------------|
-| `ota_progress` | Download in progress |
-| `ota_validating` | Post-reboot validation |
-| `ota_success` | Update validated; include `version` |
-| `ota_rollback` | Rollback; include `attempted_version`, `reason` or `reasons[]` |
+| `ota_progress` | Download in progress (ignored in pilot) |
+| `ota_validating` | Post-reboot validation (ignored in pilot) |
+| `ota_success` | Explicit success (pilot uses boot inference instead) |
+| `ota_rollback` | Legacy failure alias (pilot uses `ota-fail`) |
 
 ## MQTT — server → device rollback ack
 

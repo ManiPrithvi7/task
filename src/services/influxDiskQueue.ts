@@ -3,6 +3,7 @@ import path from 'path';
 import readline from 'readline';
 import { createReadStream } from 'fs';
 import { logger } from '../utils/logger';
+import { isPermanentInfluxWriteError, influxWriteErrorMessage } from '../utils/influxQueueError';
 
 export interface InfluxDiskQueueOptions {
   queuePath: string;
@@ -27,6 +28,51 @@ export class InfluxDiskQueue {
 
   constructor(private readonly opts: InfluxDiskQueueOptions) {
     this.drainingPath = `${opts.queuePath}.draining`;
+  }
+
+  private rejectedPath(): string {
+    return `${this.opts.queuePath}.rejected`;
+  }
+
+  private async rejectLine(line: string, reason: string): Promise<void> {
+    const payload = `${line}\n`;
+    await fs.appendFile(this.rejectedPath(), payload, 'utf8').catch((err: unknown) => {
+      logger.error('[INFLUX_QUEUE] dead-letter append failed', {
+        error: err instanceof Error ? err.message : String(err)
+      });
+    });
+    logger.warn('[INFLUX_QUEUE] rejected permanently invalid line', {
+      reason,
+      preview: line.slice(0, 120)
+    });
+  }
+
+  private async sendChunk(
+    sender: (lines: string[]) => Promise<void>,
+    chunk: string[]
+  ): Promise<void> {
+    if (chunk.length === 0) return;
+    try {
+      await sender(chunk);
+      return;
+    } catch (err: unknown) {
+      if (!isPermanentInfluxWriteError(err) || chunk.length === 1) {
+        throw err;
+      }
+    }
+
+    // ponytail: permanent batch parse error → try line-by-line, dead-letter poison pills
+    for (const line of chunk) {
+      try {
+        await sender([line]);
+      } catch (lineErr: unknown) {
+        if (isPermanentInfluxWriteError(lineErr)) {
+          await this.rejectLine(line, influxWriteErrorMessage(lineErr));
+          continue;
+        }
+        throw lineErr;
+      }
+    }
   }
 
   start(sender: (lines: string[]) => Promise<void>): void {
@@ -180,7 +226,7 @@ export class InfluxDiskQueue {
     try {
       while (offset < lines.length) {
         const chunk = lines.slice(offset, Math.min(offset + this.opts.batchMax, lines.length));
-        await sender(chunk);
+        await this.sendChunk(sender, chunk);
         offset += chunk.length;
       }
       await fs.unlink(absPath);

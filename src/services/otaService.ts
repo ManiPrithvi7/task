@@ -22,6 +22,11 @@ import {
 } from '../models/FirmwareRelease';
 import { isVersionGreater } from '../utils/semver';
 import { logger } from '../utils/logger';
+import {
+  normalizeOtaEventKey,
+  parsePilotOtaFailPayload
+} from '../utils/pilotOtaPayload';
+import { getInfluxService } from './influxService';
 import type { IFirmwareStorage, ObjectHeadResult } from './firmwareStorageService';
 import { OciStorageError } from './ociStorageErrors';
 import { getActiveDeviceCache } from './deviceService';
@@ -434,10 +439,11 @@ export type OtaEventPayload = {
   boot_attempts?: number;
   progress?: number;
   status?: string;
+  metadata?: Record<string, unknown>;
 };
 
 function eventKey(payload: OtaEventPayload): string | undefined {
-  return payload.type || payload.event || payload.status;
+  return normalizeOtaEventKey(payload);
 }
 
 export class OtaEventHandler {
@@ -456,13 +462,9 @@ export class OtaEventHandler {
     const active = await this.otaService.getActiveReleaseMeta().catch(() => null);
 
     switch (key) {
-      case 'ota_progress': {
-        await this.otaService.updateOtaState(deviceId, DeviceOtaState.DOWNLOADING, device?.otaState);
-        break;
-      }
-
+      case 'ota_progress':
       case 'ota_validating': {
-        await this.otaService.updateOtaState(deviceId, DeviceOtaState.VALIDATING, device?.otaState);
+        logger.debug('[OTA] Pilot ignores progress/validation event', { deviceId, key });
         break;
       }
 
@@ -487,21 +489,33 @@ export class OtaEventHandler {
         break;
       }
 
+      case 'ota_fail':
       case 'ota_rollback': {
-        const version = payload.attempted_version || payload.version || '';
-        const reason =
-          payload.reason ||
+        const pilot = parsePilotOtaFailPayload(payload);
+        const version = pilot.version || payload.attempted_version || payload.version || '';
+        const reason = pilot.reason || payload.reason ||
           (Array.isArray(payload.reasons) ? payload.reasons.join('; ') : undefined);
 
-        const { blocked, failures } = await this.otaService.recordRollbackFailure(
+        const { blocked, failures } = await this.otaService.recordOtaFailure(
           deviceId,
           version,
           reason
         );
 
+        void getInfluxService()
+          ?.writeDeviceOtaEvent({
+            deviceId,
+            event: 'ota_fail',
+            sourceTopic: 'status',
+            fwVersion: version,
+            reason,
+            timestamp: pilot.timestamp
+          })
+          .catch(() => undefined);
+
         void getAuditService()
           ?.logEvent({
-            event: AuditEventType.OTA_ROLLBACK,
+            event: key === 'ota_rollback' ? AuditEventType.OTA_ROLLBACK : AuditEventType.OTA_ROLLBACK,
             deviceId,
             details: {
               version,
@@ -515,7 +529,7 @@ export class OtaEventHandler {
           })
           .catch(() => undefined);
 
-        if (version) {
+        if (key === 'ota_rollback' && version) {
           await this.commandPublisher.publishRollbackAck(deviceId, version);
         }
         break;
@@ -1035,6 +1049,14 @@ export class OtaService {
     version: string,
     reason?: string
   ): Promise<{ blocked: boolean; failures: number }> {
+    return this.recordOtaFailure(deviceId, version, reason);
+  }
+
+  async recordOtaFailure(
+    deviceId: string,
+    version: string,
+    reason?: string
+  ): Promise<{ blocked: boolean; failures: number }> {
     const device = await Device.findOne({ clientId: deviceId });
     if (!device) {
       return { blocked: false, failures: 0 };
@@ -1084,6 +1106,31 @@ export class OtaService {
         }
       }
     );
+  }
+
+  /** Pilot: success when next boot reports fw_version matching pending target or active release. */
+  async maybeRecordImplicitOtaSuccess(deviceId: string, fwVersion: string): Promise<void> {
+    if (!fwVersion.trim()) return;
+
+    const device = await Device.findOne({ clientId: deviceId })
+      .select({ otaTargetVersion: 1, firmwareVersion: 1 })
+      .lean();
+    const active = await this.otaRedisState?.getActiveRelease().catch(() => null);
+
+    const target = device?.otaTargetVersion?.trim() || active?.version?.trim();
+    if (!target || target !== fwVersion.trim()) return;
+    if (device?.firmwareVersion === fwVersion) return;
+
+    await this.recordOtaSuccess(deviceId, fwVersion);
+    await this.markDeviceDelivered(deviceId, fwVersion);
+
+    void getAuditService()
+      ?.logEvent({
+        event: AuditEventType.OTA_SUCCESS,
+        deviceId,
+        details: { version: fwVersion, implicit: true, previousFirmwareVersion: device?.firmwareVersion }
+      })
+      .catch(() => undefined);
   }
 
   async updateOtaState(deviceId: string, state: DeviceOtaState, previousState?: string): Promise<void> {
