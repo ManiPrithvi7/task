@@ -138,6 +138,7 @@ export declare class OtaService {
     resolveUpdate(input: ResolveUpdateInput): Promise<OtaUpdateOffer | null>;
     ingestRelease(input: OtaReleaseWebhookInput): Promise<OtaReleaseWebhookResult>;
     deliverPendingToDevice(deviceId: string, currentVersion: string): Promise<void>;
+    getLatestStableOffer(deviceId: string): Promise<OtaUpdateOffer | null>;
     private listEligibleDeviceIds;
     private pushReleaseToOnlineDevices;
     markDeviceDelivered(deviceId: string, version: string): Promise<void>;

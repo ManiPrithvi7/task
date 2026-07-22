@@ -1337,6 +1337,15 @@ export class StatsMqttLite {
       const offer = await this.otaService.resolveUpdate({ deviceId, currentVersion });
       if (offer && this.otaCommandPublisher) {
         await this.otaCommandPublisher.publishUpdateToDevice(deviceId, offer, false);
+      } else if (process.env.TEST_OTA === 'true' && this.otaCommandPublisher) {
+        const testOffer = await this.otaService.getLatestStableOffer(deviceId);
+        if (testOffer) {
+          logger.info('[OTA] TEST_OTA — publishing latest stable release on registration', {
+            deviceId,
+            version: testOffer.version
+          });
+          await this.otaCommandPublisher.publishUpdateToDevice(deviceId, testOffer, false);
+        }
       }
     } catch (err: unknown) {
       logger.warn('[OTA] Registration delivery failed', {

@@ -897,6 +897,18 @@ export class OtaService {
     await this.commandPublisher.publishUpdateToDevice(deviceId, offer, false);
   }
 
+  async getLatestStableOffer(deviceId: string): Promise<OtaUpdateOffer | null> {
+    const device = await Device.findOne({ clientId: deviceId });
+    if (!device || !this.isDeviceEligible(device)) return null;
+
+    const release = await FirmwareRelease.findOne({ status: FirmwareReleaseStatus.STABLE })
+      .sort({ releasedAt: -1, createdAt: -1 });
+
+    if (!release) return null;
+
+    return this.buildOffer(release);
+  }
+
   private async listEligibleDeviceIds(): Promise<string[]> {
     const devices = await Device.find({
       status: { $in: [DeviceStatus.PROVISIONED, DeviceStatus.ACTIVE, DeviceStatus.OFFLINE] }
