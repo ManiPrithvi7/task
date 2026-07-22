@@ -280,6 +280,7 @@ export interface OtaUpdateCommandPayload {
   signature: string;
   size_bytes: number;
   force: boolean;
+  track?: string;
   issued_at: string;
 }
 
@@ -320,6 +321,7 @@ export class OtaCommandPublisher {
       signature: offer.signature,
       size_bytes: offer.sizeBytes,
       force,
+      track: offer.track,
       issued_at: new Date().toISOString()
     };
 
@@ -386,6 +388,7 @@ export class OtaCommandPublisher {
       signature: offer.signature,
       size_bytes: offer.sizeBytes,
       force,
+      track: offer.track,
       issued_at: new Date().toISOString()
     };
 
@@ -596,6 +599,7 @@ export interface OtaUpdateOffer {
   sizeBytes: number;
   expiresAt: string;
   keyFingerprint?: string;
+  track?: string;
 }
 
 export interface ResolveUpdateInput {
@@ -1015,7 +1019,8 @@ export class OtaService {
         signature: release.signature,
         sizeBytes: release.sizeBytes,
         expiresAt: expiresAt.toISOString(),
-        keyFingerprint
+        keyFingerprint,
+        track: 'pilot'
       };
     } catch (err: unknown) {
       logger.error('[OTA] Failed to build offer', {

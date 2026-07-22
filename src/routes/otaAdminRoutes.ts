@@ -463,7 +463,8 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
           sha256: release.sha256,
           signature: release.signature,
           sizeBytes: release.sizeBytes,
-          expiresAt: expiresAt.toISOString()
+          expiresAt: expiresAt.toISOString(),
+          track: 'pilot'
         };
       };
 

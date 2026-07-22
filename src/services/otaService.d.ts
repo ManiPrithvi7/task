@@ -58,6 +58,7 @@ export interface OtaUpdateCommandPayload {
     signature: string;
     size_bytes: number;
     force: boolean;
+    track?: string;
     issued_at: string;
 }
 export declare class OtaCommandPublisher {
@@ -99,6 +100,7 @@ export interface OtaUpdateOffer {
     signature: string;
     sizeBytes: number;
     expiresAt: string;
+    track?: string;
 }
 export interface ResolveUpdateInput {
     deviceId: string;
