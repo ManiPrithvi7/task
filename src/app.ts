@@ -1335,16 +1335,23 @@ export class StatsMqttLite {
       await this.otaService.deliverPendingToDevice(deviceId, currentVersion);
 
       const offer = await this.otaService.resolveUpdate({ deviceId, currentVersion });
+      // TEST_OTA: force MQTT payload version to 1.0.1 (download_url/sha256/signature unchanged).
+      const testOtaVersion =
+        process.env.TEST_OTA === 'true' ? '1.0.1' : undefined;
+
       if (offer && this.otaCommandPublisher) {
-        await this.otaCommandPublisher.publishUpdateToDevice(deviceId, offer, false);
+        const toPublish = testOtaVersion ? { ...offer, version: testOtaVersion } : offer;
+        await this.otaCommandPublisher.publishUpdateToDevice(deviceId, toPublish, false);
       } else if (process.env.TEST_OTA === 'true' && this.otaCommandPublisher) {
         const testOffer = await this.otaService.getLatestStableOffer(deviceId);
         if (testOffer) {
+          const toPublish = { ...testOffer, version: '1.0.1' };
           logger.info('[OTA] TEST_OTA — publishing latest stable release on registration', {
             deviceId,
-            version: testOffer.version
+            version: toPublish.version,
+            releaseVersion: testOffer.version
           });
-          await this.otaCommandPublisher.publishUpdateToDevice(deviceId, testOffer, false);
+          await this.otaCommandPublisher.publishUpdateToDevice(deviceId, toPublish, false);
         }
       }
     } catch (err: unknown) {
