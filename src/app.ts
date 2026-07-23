@@ -57,7 +57,7 @@ import { createDashboardRoutes } from './routes/dashboardRoutes';
 import { createIntegrationRoutes } from './routes/integrationRoutes';
 import { createInfluxQueryRoutes } from './routes/influxQueryRoutes';
 import { createFirmwareStorageService } from './services/firmwareStorageService';
-import { resolveOtaPublicBaseUrl } from './config/otaDefaults';
+import { resolveOtaPublicBaseUrl, buildOtaProxyDownloadUrl } from './config/otaDefaults';
 import {
   initOtaSigningState,
   OtaService,
