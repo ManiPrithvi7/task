@@ -43,13 +43,13 @@ Upload PUT headers (required):
 
 Device accepts version from response headers: `X-Firmware-Version`, `x-amz-meta-firmware-version`, or `opc-meta-firmware-version`.
 
-## CI webhook — automated release + per-device push
+## CI webhook — automated release + staged rollout
 
-GitHub Actions (statsclient) uploads a signed binary to OCI, then calls:
+GitHub Actions uploads a signed binary to OCI, then calls:
 
 `POST /api/webhooks/ota-release`
 
-**Auth:** `Authorization: Bearer {OTA_RELEASE_WEBHOOK_SECRET}`
+**Auth:** `Authorization: Bearer {OTA_RELEASE_WEBHOOK_SECRET}` (high privilege — also authorizes advance)
 
 **Body:**
 
@@ -61,13 +61,21 @@ GitHub Actions (statsclient) uploads a signed binary to OCI, then calls:
   "signature": "<base64 Ed25519>",
   "size_bytes": 1124528,
   "released_at": "2026-06-15T12:00:00.000Z",
-  "broadcast": true
+  "rollout": {
+    "strategy": "percentage",
+    "percentage": 1,
+    "deviceIds": ["DEVICE-13"]
+  }
 }
 ```
 
-Server validates object metadata + signature (same as finalize), upserts a **stable** release, seeds Redis pending fleet state, and publishes `ota_update` on `{MQTT_TOPIC_ROOT}/{deviceId}/cmd` (QoS 2) for each **online** device still pending.
+Server validates object metadata + signature (same as finalize), upserts a **stable** release with stage tracking, seeds Redis pending for **rollout-eligible** devices only (`hashBucket < percentage` ∪ `deviceIds`), and publishes `ota_update` for online eligible devices.
 
-Offline devices catch up when they publish `/active` with `appVersion` — the server re-pushes a fresh PAR if the device is still in the pending set.
+Legacy `broadcast` is **ignored**. Default percentage is **1** if `rollout` omitted.
+
+See [SERVER_OTA_REQUIREMENTS.md](./SERVER_OTA_REQUIREMENTS.md) for advance/halt/status, abort rules, and Slack.
+
+Offline devices catch up on `/active` only if still rollout-eligible.
 
 ### Storage error codes
 
@@ -101,6 +109,7 @@ Topics: `{MQTT_TOPIC_ROOT}/{deviceId}/cmd`
 {
   "cmd": "ota_update",
   "version": "4.3.1",
+  "rollout": { "strategy": "percentage", "percentage": 10 },
   "download_url": "https://{namespace}.objectstorage.{region}.oci.customer-oci.com/p/.../firmware.bin",
   "sha256": "...",
   "signature": "...",
@@ -110,7 +119,7 @@ Topics: `{MQTT_TOPIC_ROOT}/{deviceId}/cmd`
 }
 ```
 
-Per-device `ota_update`: QoS **2**, retain: false.
+Per-device `ota_update`: QoS **2**, retain: false. FW-4 verifies `rollout`; pre-FW-4 must ignore unknown fields.
 
 Legacy broadcast topic `{MQTT_TOPIC_ROOT}/broadcast/cmd` remains for admin manual broadcast only (QoS 1).
 
@@ -228,9 +237,13 @@ Default TTL: `OTA_PRESIGNED_TTL_SEC=900` (15 min). If a PAR expires before downl
 | Key | Purpose |
 |-----|---------|
 | `{prefix}ota:active_release` | Current stable release manifest |
+| `{prefix}ota:previous_active_release` | Redis cache of prior active (Mongo `previousVersion` is source of truth) |
 | `{prefix}ota:pending:{version}` | Devices still needing this version |
 | `{prefix}ota:delivered:{version}` | Devices confirmed (MQTT QoS 2 ack or `ota_success`) |
+| `{prefix}ota:stage:{version}:{pct}:attempted` | Per-stage attempt dedupe set |
+| `{prefix}ota:scheduler:lock` / `last_run` | Rollout scheduler coordination |
 
 ## See also
 
+- **Fleet rollout state machine** (stage advance/abort, Slack, hash vector): [SERVER_OTA_REQUIREMENTS.md](./SERVER_OTA_REQUIREMENTS.md).
 - **Temporary dev HTTP download test** (open bucket + `GET /api/v1/ota/download/test:1.1`, no mTLS): [OTA_DEV_DOWNLOAD_TEST.md](./OTA_DEV_DOWNLOAD_TEST.md). Does not replace this production contract.

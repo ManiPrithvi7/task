@@ -15,6 +15,13 @@ export function otaOciParBaseUrl(namespace = OTA_OCI_NAMESPACE, region = OTA_OCI
 export const OTA_PRESIGNED_TTL_SEC = 900;
 export const OTA_CHECK_RATE_LIMIT_SEC = 300;
 export const OTA_ROLLBACK_FAILURE_THRESHOLD = 3;
+export const OTA_STAGE_ABORT_MIN_SAMPLE = 20;
+export const OTA_STAGE_ABORT_FAILURE_RATE = 0.01;
+export const OTA_STAGE_MIN_HOURS = 24;
+export const OTA_MQTT_PUSH_CONCURRENCY = 100;
+export const OTA_SCHEDULER_INTERVAL_MS = 5 * 60 * 1000;
+export const OTA_SCHEDULER_LOCK_TTL_SEC = 300;
+export const OTA_SCHEDULER_STALE_MS = 15 * 60 * 1000;
 
 export type OtaDownloadMode = 'presigned' | 'proxy';
 

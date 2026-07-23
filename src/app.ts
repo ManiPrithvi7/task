@@ -66,6 +66,8 @@ import {
   OtaEventHandler,
   OtaRedisState
 } from './services/otaService';
+import { backfillFirmwareReleaseStageFields } from './models/FirmwareRelease';
+import { startRolloutScheduler, type RolloutSchedulerHandle } from './jobs/rolloutScheduler';
 import { initOtaSigningKeyAudit } from './services/otaSigningKeyService';
 import { createOtaReleaseLog } from './services/otaReleaseLog';
 import { createRecoverySessionService } from './services/recoverySessionService';
@@ -131,6 +133,7 @@ export class StatsMqttLite {
   private otaCommandPublisher?: OtaCommandPublisher;
   private otaEventHandler?: OtaEventHandler;
   private otaRedisState?: OtaRedisState;
+  private otaRolloutScheduler?: RolloutSchedulerHandle;
 
   // Active device cache (Redis-backed)
   private activeDeviceCache!: ActiveDeviceCache;
@@ -1251,7 +1254,9 @@ export class StatsMqttLite {
     }
 
     if (this.otaService && typeof fwVersion === 'string' && fwVersion.trim()) {
-      void this.otaService.maybeRecordImplicitOtaSuccess(deviceId, fwVersion.trim()).catch((err: unknown) => {
+      void this.otaService
+        .maybeRecordImplicitOtaSuccess(deviceId, fwVersion.trim(), pilotBoot.bootType)
+        .catch((err: unknown) => {
         logger.warn('[OTA] Implicit success check failed', {
           deviceId,
           error: err instanceof Error ? err.message : String(err)
@@ -2028,6 +2033,24 @@ export class StatsMqttLite {
       this.otaRedisState
     );
     this.otaEventHandler = new OtaEventHandler(this.otaService, this.otaCommandPublisher);
+
+    void backfillFirmwareReleaseStageFields()
+      .then((n) => {
+        if (n > 0) logger.info('[OTA] Backfilled FirmwareRelease stage fields', { modified: n });
+      })
+      .catch((err: unknown) => {
+        logger.warn('[OTA] Stage field backfill failed (non-fatal)', {
+          error: err instanceof Error ? err.message : String(err)
+        });
+      });
+
+    if (this.otaRedisState) {
+      this.otaRolloutScheduler = startRolloutScheduler({
+        otaService: this.otaService,
+        otaRedisState: this.otaRedisState,
+        otaConfig: this.config.ota
+      });
+    }
 
     const otaReleaseLog = createOtaReleaseLog();
     void otaReleaseLog.initialize().catch((err: unknown) => {

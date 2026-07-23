@@ -13,11 +13,15 @@ import { configureLogger } from '../utils/logger';
 import { envBool, envInt, envString, resolveMqttClientId } from './envHelpers';
 import {
   OTA_CHECK_RATE_LIMIT_SEC,
+  OTA_MQTT_PUSH_CONCURRENCY,
   OTA_OCI_BUCKET,
   OTA_OCI_NAMESPACE,
   OTA_OCI_REGION,
   OTA_PRESIGNED_TTL_SEC,
   OTA_ROLLBACK_FAILURE_THRESHOLD,
+  OTA_STAGE_ABORT_FAILURE_RATE,
+  OTA_STAGE_ABORT_MIN_SAMPLE,
+  OTA_STAGE_MIN_HOURS,
   otaOciParBaseUrl,
   resolveOtaDownloadMode,
   type OtaDownloadMode
@@ -451,8 +455,12 @@ export interface OtaConfig {
   downloadMode: OtaDownloadMode;
   checkRateLimitSec: number;
   rollbackFailureThreshold: number;
-  /** Bearer secret for POST /api/webhooks/ota-release (GitHub Actions CI). */
+  /** Bearer secret for POST /api/webhooks/ota-release and ota-rollout-advance (high privilege). */
   releaseWebhookSecret?: string;
+  stageAbortMinSample: number;
+  stageAbortFailureRate: number;
+  stageMinHours: number;
+  mqttPushConcurrency: number;
 }
 
 /**
@@ -832,7 +840,16 @@ export function loadConfig(): AppConfig {
         'OTA_ROLLBACK_FAILURE_THRESHOLD',
         OTA_ROLLBACK_FAILURE_THRESHOLD
       ),
-      releaseWebhookSecret: process.env.OTA_RELEASE_WEBHOOK_SECRET?.trim() || undefined
+      releaseWebhookSecret: process.env.OTA_RELEASE_WEBHOOK_SECRET?.trim() || undefined,
+      stageAbortMinSample: envInt('OTA_STAGE_ABORT_MIN_SAMPLE', OTA_STAGE_ABORT_MIN_SAMPLE),
+      stageAbortFailureRate: (() => {
+        const raw = process.env.OTA_STAGE_ABORT_FAILURE_RATE?.trim();
+        if (raw == null || raw === '') return OTA_STAGE_ABORT_FAILURE_RATE;
+        const n = Number(raw);
+        return Number.isFinite(n) ? n : OTA_STAGE_ABORT_FAILURE_RATE;
+      })(),
+      stageMinHours: envInt('OTA_STAGE_MIN_HOURS', OTA_STAGE_MIN_HOURS),
+      mqttPushConcurrency: envInt('OTA_MQTT_PUSH_CONCURRENCY', OTA_MQTT_PUSH_CONCURRENCY)
     };
   }
 

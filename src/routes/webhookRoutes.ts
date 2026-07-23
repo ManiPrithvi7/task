@@ -90,7 +90,29 @@ export function createWebhookRoutes(deps: WebhookRoutesDeps): Router {
               ? parseInt(String(body.size_bytes), 10)
               : undefined;
         const releasedAt = body.released_at ? String(body.released_at) : undefined;
-        const broadcast = body.broadcast !== false;
+        const rolloutBody = body.rollout && typeof body.rollout === 'object' ? body.rollout : undefined;
+        const rollout = rolloutBody
+          ? {
+              strategy: rolloutBody.strategy != null ? String(rolloutBody.strategy) : undefined,
+              percentage:
+                typeof rolloutBody.percentage === 'number'
+                  ? rolloutBody.percentage
+                  : rolloutBody.percentage != null
+                    ? parseInt(String(rolloutBody.percentage), 10)
+                    : undefined,
+              deviceIds: Array.isArray(rolloutBody.deviceIds)
+                ? rolloutBody.deviceIds.map(String)
+                : undefined
+            }
+          : undefined;
+
+        // broadcast is ignored — rollout is sole push authority
+        if (body.broadcast !== undefined) {
+          logger.warn('[OTA] ota-release broadcast field ignored', {
+            broadcast: body.broadcast,
+            percentage: rollout?.percentage
+          });
+        }
 
         const result = await otaService.ingestRelease({
           version,
@@ -99,7 +121,8 @@ export function createWebhookRoutes(deps: WebhookRoutesDeps): Router {
           signature,
           sizeBytes: Number.isFinite(sizeBytes) ? sizeBytes : undefined,
           releasedAt,
-          broadcast
+          broadcast: body.broadcast === true ? true : undefined,
+          rollout
         });
 
         if (!result.ok) {
@@ -114,15 +137,76 @@ export function createWebhookRoutes(deps: WebhookRoutesDeps): Router {
 
         logger.info('[OTA] CI webhook processed', {
           version: result.version,
-          broadcast: result.broadcast,
-          created: result.created
+          created: result.created,
+          currentPercentage: result.currentPercentage
         });
 
         res.json({
           success: true,
           version: result.version,
-          broadcast: result.broadcast,
           created: result.created,
+          current_percentage: result.currentPercentage,
+          timestamp: new Date().toISOString()
+        });
+      }
+    );
+
+    router.post(
+      '/api/webhooks/ota-rollout-advance',
+      otaReleaseLimiter,
+      json(),
+      async (req: Request, res: Response) => {
+        const token = extractBearerToken(req);
+        if (!secret || !token || token !== secret) {
+          res.status(401).json({
+            success: false,
+            error: 'Unauthorized',
+            code: 'WEBHOOK_UNAUTHORIZED',
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
+
+        const body = req.body || {};
+        const version = String(body.version || '').trim();
+        const percentageRaw = body.rollout?.percentage ?? body.percentage;
+        const percentage =
+          typeof percentageRaw === 'number'
+            ? percentageRaw
+            : percentageRaw != null
+              ? parseInt(String(percentageRaw), 10)
+              : undefined;
+
+        if (!version) {
+          res.status(400).json({
+            success: false,
+            error: 'version is required',
+            code: 'MISSING_VERSION',
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
+
+        const result = await otaService.advanceRollout(
+          version,
+          Number.isFinite(percentage) ? percentage : undefined
+        );
+
+        if (!result.ok) {
+          res.status(result.httpStatus).json({
+            success: false,
+            error: result.error,
+            code: result.code,
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
+
+        res.json({
+          success: true,
+          version: result.version,
+          current_percentage: result.currentPercentage,
+          previous_percentage: result.previousPercentage,
           timestamp: new Date().toISOString()
         });
       }
@@ -229,6 +313,7 @@ export function createWebhookRoutes(deps: WebhookRoutesDeps): Router {
   logger.info('Webhook ingress routes registered', {
     gmb: '/api/webhooks/google-business-reviews',
     otaRelease: deps.otaReleaseWebhook ? '/api/webhooks/ota-release' : null,
+    otaRolloutAdvance: deps.otaReleaseWebhook ? '/api/webhooks/ota-rollout-advance' : null,
     mqttPublish: deps.webhookConfig.mqttPublishEnabled,
     deviceTarget: deps.webhookConfig.deviceTarget
   });

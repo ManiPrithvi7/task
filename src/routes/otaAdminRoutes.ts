@@ -327,6 +327,13 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
 
       release.status = FirmwareReleaseStatus.STABLE;
       release.releasedAt = new Date();
+      if (release.currentPercentage == null) {
+        release.currentPercentage = release.rollout?.percentage ?? 100;
+      }
+      if (!release.stageStartedAt) {
+        release.stageStartedAt = release.releasedAt;
+      }
+      release.aborted = false;
       await release.save();
 
       void getAuditService()
@@ -553,6 +560,153 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
       success: true,
       signing_confirmed: true,
       notes: notes || undefined,
+      timestamp: new Date().toISOString()
+    });
+  });
+
+  async function requireAdminOrWebhookSecret(
+    req: Request,
+    res: Response
+  ): Promise<{ via: 'admin' | 'webhook'; userId?: string } | null> {
+    const token = req.headers.authorization?.startsWith('Bearer ')
+      ? req.headers.authorization.substring(7).trim()
+      : null;
+    if (otaConfig.releaseWebhookSecret && token && token === otaConfig.releaseWebhookSecret) {
+      return { via: 'webhook' };
+    }
+    const auth = await requireAdminAuth(req, res, authService);
+    if (!auth) return null;
+    return { via: 'admin', userId: auth.userId };
+  }
+
+  router.get('/releases/:version/rollout-status', async (req: Request, res: Response) => {
+    const auth = await requireAdminOrWebhookSecret(req, res);
+    if (!auth) return;
+
+    const version = String(req.params.version || '').trim();
+    const release = await FirmwareRelease.findOne({ version });
+    if (!release) {
+      res.status(404).json({
+        success: false,
+        error: 'Release not found',
+        code: 'RELEASE_NOT_FOUND',
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      ...otaService.getRolloutStatus(release),
+      timestamp: new Date().toISOString()
+    });
+  });
+
+  router.get('/active-release', async (req: Request, res: Response) => {
+    const auth = await requireAdminOrWebhookSecret(req, res);
+    if (!auth) return;
+
+    const release = await otaService.getActiveReleaseForAdmin();
+    if (!release) {
+      res.status(404).json({
+        success: false,
+        error: 'No active release',
+        code: 'NO_ACTIVE_RELEASE',
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      version: release.version,
+      status: release.status,
+      current_percentage: release.currentPercentage,
+      aborted: release.aborted,
+      previous_version: release.previousVersion || null,
+      stage_started_at: release.stageStartedAt
+        ? new Date(release.stageStartedAt).toISOString()
+        : null,
+      timestamp: new Date().toISOString()
+    });
+  });
+
+  router.post('/releases/:version/halt', async (req: Request, res: Response) => {
+    const auth = await requireAdminAuth(req, res, authService);
+    if (!auth) return;
+
+    const version = String(req.params.version || '').trim();
+    const result = await otaService.haltRollout(version);
+    if (!result.ok) {
+      res.status(result.httpStatus).json({
+        success: false,
+        error: result.error,
+        code: result.code,
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+
+    void getAuditService()
+      ?.logEvent({
+        event: AuditEventType.OTA_PUSH_SENT,
+        userId: auth.userId,
+        details: { version, action: 'halt' }
+      })
+      .catch(() => undefined);
+
+    res.json({
+      success: true,
+      version,
+      aborted: true,
+      timestamp: new Date().toISOString()
+    });
+  });
+
+  router.post('/releases/:version/mark-retryable', async (req: Request, res: Response) => {
+    const auth = await requireAdminAuth(req, res, authService);
+    if (!auth) return;
+
+    const version = String(req.params.version || '').trim();
+    const result = await otaService.markDeprecatedRetryable(version);
+    if (!result.ok) {
+      res.status(result.httpStatus).json({
+        success: false,
+        error: result.error,
+        code: result.code,
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      version,
+      status: FirmwareReleaseStatus.DEPRECATED_RETRYABLE,
+      timestamp: new Date().toISOString()
+    });
+  });
+
+  router.post('/releases/:version/retry', async (req: Request, res: Response) => {
+    const auth = await requireAdminAuth(req, res, authService);
+    if (!auth) return;
+
+    const version = String(req.params.version || '').trim();
+    const result = await otaService.retryDeprecatedRelease(version);
+    if (!result.ok) {
+      res.status(result.httpStatus).json({
+        success: false,
+        error: result.error,
+        code: result.code,
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      version,
+      status: result.status,
       timestamp: new Date().toISOString()
     });
   });

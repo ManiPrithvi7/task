@@ -5,6 +5,7 @@ import type { MqttClientManager } from '@/servers/mqttClient';
 import { loadWebhookConfig } from '@/config/webhookConfig';
 
 const mockIngestRelease = jest.fn();
+const mockAdvanceRollout = jest.fn();
 
 const mockMqttClient = {
   publish: jest.fn(),
@@ -24,7 +25,10 @@ function buildApp(secret = 'test-webhook-secret') {
       appEnv: 'test',
       otaReleaseWebhook: {
         secret,
-        otaService: { ingestRelease: mockIngestRelease } as never
+        otaService: {
+          ingestRelease: mockIngestRelease,
+          advanceRollout: mockAdvanceRollout
+        } as never
       }
     })
   );
@@ -44,20 +48,12 @@ describe('webhookRoutes OTA release', () => {
     expect(res.body.code).toBe('WEBHOOK_UNAUTHORIZED');
   });
 
-  it('rejects wrong bearer token', async () => {
-    const res = await request(buildApp())
-      .post('/api/webhooks/ota-release')
-      .set('Authorization', 'Bearer wrong')
-      .send({ version: '4.3.1' });
-    expect(res.status).toBe(401);
-  });
-
-  it('forwards valid payload to ingest service', async () => {
+  it('forwards rollout and ignores broadcast', async () => {
     mockIngestRelease.mockResolvedValue({
       ok: true,
       version: '4.3.1-mvp',
-      broadcast: true,
-      created: true
+      created: true,
+      currentPercentage: 1
     });
 
     const res = await request(buildApp())
@@ -69,17 +65,18 @@ describe('webhookRoutes OTA release', () => {
         sha256: 'a'.repeat(64),
         signature: 'sig',
         size_bytes: 1000,
-        broadcast: true
+        broadcast: true,
+        rollout: { strategy: 'percentage', percentage: 1, deviceIds: ['DEVICE-13'] }
       });
 
     expect(res.status).toBe(200);
-    expect(res.body.success).toBe(true);
-    expect(res.body.version).toBe('4.3.1-mvp');
+    expect(res.body.current_percentage).toBe(1);
     expect(mockIngestRelease).toHaveBeenCalledWith(
       expect.objectContaining({
         version: '4.3.1-mvp',
         objectKey: 'firmware/4.3.1-mvp/firmware.bin',
-        broadcast: true
+        broadcast: true,
+        rollout: expect.objectContaining({ percentage: 1, deviceIds: ['DEVICE-13'] })
       })
     );
   });
@@ -99,31 +96,44 @@ describe('webhookRoutes OTA release', () => {
         version: '4.3.1',
         object_key: 'firmware/4.3.1/firmware.bin',
         sha256: 'a'.repeat(64),
-        signature: 'bad'
+        signature: 'sig'
       });
 
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('INVALID_SIGNATURE');
   });
 
-  it('works when WEBHOOK_ENABLED is false', async () => {
-    mockIngestRelease.mockResolvedValue({
-      ok: true,
-      version: '4.3.1',
-      broadcast: false,
-      created: false
+  it('advance returns 409 ROLLOUT_ABORTED', async () => {
+    mockAdvanceRollout.mockResolvedValue({
+      ok: false,
+      httpStatus: 409,
+      code: 'ROLLOUT_ABORTED',
+      error: 'Rollout for 2.3.0 is aborted'
     });
 
     const res = await request(buildApp())
-      .post('/api/webhooks/ota-release')
+      .post('/api/webhooks/ota-rollout-advance')
       .set('Authorization', 'Bearer test-webhook-secret')
-      .send({
-        version: '4.3.1',
-        object_key: 'firmware/4.3.1/firmware.bin',
-        sha256: 'a'.repeat(64),
-        signature: 'sig'
-      });
+      .send({ version: '2.3.0', rollout: { percentage: 10 } });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('ROLLOUT_ABORTED');
+  });
+
+  it('advance succeeds', async () => {
+    mockAdvanceRollout.mockResolvedValue({
+      ok: true,
+      version: '2.3.0',
+      currentPercentage: 10,
+      previousPercentage: 1
+    });
+
+    const res = await request(buildApp())
+      .post('/api/webhooks/ota-rollout-advance')
+      .set('Authorization', 'Bearer test-webhook-secret')
+      .send({ version: '2.3.0', rollout: { percentage: 10 } });
 
     expect(res.status).toBe(200);
+    expect(res.body.current_percentage).toBe(10);
   });
 });

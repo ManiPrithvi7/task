@@ -38,6 +38,20 @@ import {
   isLocalLanDownloadUrl,
   isOciFirmwareDownloadUrl
 } from '../utils/otaDownloadUrl';
+import {
+  canAdvanceStage,
+  classifyOtaReason,
+  deviceHashBucket,
+  isValidRolloutStep,
+  mapPool,
+  nextRolloutPercentage,
+  shouldAbortStage,
+  shouldIncrementFailed,
+  shouldIncrementRolledBack,
+  stageFailureRate
+} from '../utils/otaRollout';
+import { sendOtaSlackAlert } from '../notifications/slackOta';
+import type { IFirmwareRollout } from '../models/FirmwareRelease';
 
 // ─── Release validation (finalize / CI webhook) ─────────────────────────────
 
@@ -204,6 +218,10 @@ export class OtaRedisState {
     return `${this.keyPrefix}ota:active_release`;
   }
 
+  private previousActiveReleaseKey(): string {
+    return `${this.keyPrefix}ota:previous_active_release`;
+  }
+
   private pendingKey(version: string): string {
     return `${this.keyPrefix}ota:pending:${version}`;
   }
@@ -212,11 +230,31 @@ export class OtaRedisState {
     return `${this.keyPrefix}ota:delivered:${version}`;
   }
 
+  private stageAttemptedKey(version: string, percentage: number): string {
+    return `${this.keyPrefix}ota:stage:${version}:${percentage}:attempted`;
+  }
+
+  private deferredLogKey(deviceId: string): string {
+    return `${this.keyPrefix}ota:deferred:${deviceId}`;
+  }
+
+  schedulerLockKey(): string {
+    return `${this.keyPrefix}ota:scheduler:lock`;
+  }
+
+  schedulerLastRunKey(): string {
+    return `${this.keyPrefix}ota:scheduler:last_run`;
+  }
+
   async setActiveRelease(release: OtaActiveRelease): Promise<void> {
     const client = this.getClient();
     if (!client) {
       logger.warn('[OTA] Redis unavailable — skipping setActiveRelease');
       return;
+    }
+    const current = await this.getActiveRelease();
+    if (current && current.version !== release.version) {
+      await client.set(this.previousActiveReleaseKey(), JSON.stringify(current), { EX: 2592000 });
     }
     await client.set(this.activeReleaseKey(), JSON.stringify(release), { EX: 2592000 });
   }
@@ -233,13 +271,56 @@ export class OtaRedisState {
     }
   }
 
+  async getPreviousActiveRelease(): Promise<OtaActiveRelease | null> {
+    const client = this.getClient();
+    if (!client) return null;
+    const raw = await client.get(this.previousActiveReleaseKey());
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as OtaActiveRelease;
+    } catch {
+      return null;
+    }
+  }
+
+  async clearActiveRelease(): Promise<void> {
+    const client = this.getClient();
+    if (!client) return;
+    await client.del(this.activeReleaseKey());
+  }
+
+  /** Set active without copying current → previous (used on abort restore). */
+  async forceSetActiveRelease(release: OtaActiveRelease): Promise<void> {
+    const client = this.getClient();
+    if (!client) {
+      logger.warn('[OTA] Redis unavailable — skipping forceSetActiveRelease');
+      return;
+    }
+    await client.set(this.activeReleaseKey(), JSON.stringify(release), { EX: 2592000 });
+  }
+
   async seedPendingFleet(version: string, deviceIds: string[]): Promise<void> {
+    const client = this.getClient();
+    if (!client) return;
+    const key = this.pendingKey(version);
+    await client.del(key);
+    if (deviceIds.length === 0) return;
+    await client.sAdd(key, deviceIds);
+    await client.expire(key, 2592000);
+  }
+
+  async addPendingDevices(version: string, deviceIds: string[]): Promise<void> {
     const client = this.getClient();
     if (!client || deviceIds.length === 0) return;
     const key = this.pendingKey(version);
-    await client.del(key);
     await client.sAdd(key, deviceIds);
     await client.expire(key, 2592000);
+  }
+
+  async clearPendingFleet(version: string): Promise<void> {
+    const client = this.getClient();
+    if (!client) return;
+    await client.del(this.pendingKey(version));
   }
 
   async isPending(deviceId: string, version: string): Promise<boolean> {
@@ -268,6 +349,63 @@ export class OtaRedisState {
     await client.sAdd(this.pendingKey(version), deviceId);
     await client.expire(this.pendingKey(version), 2592000);
   }
+
+  /** Returns true if this is the first attempt recorded for device in this stage. */
+  async markStageAttempted(
+    version: string,
+    percentage: number,
+    deviceId: string
+  ): Promise<boolean> {
+    const client = this.getClient();
+    if (!client) return true;
+    const key = this.stageAttemptedKey(version, percentage);
+    const added = await client.sAdd(key, deviceId);
+    await client.expire(key, 2592000);
+    return added === 1;
+  }
+
+  async clearStageAttempted(version: string, percentage: number): Promise<void> {
+    const client = this.getClient();
+    if (!client) return;
+    await client.del(this.stageAttemptedKey(version, percentage));
+  }
+
+  /** Returns true if we should emit OTA_CATCHUP_DEFERRED (first time in 24h). */
+  async shouldLogCatchupDeferred(deviceId: string): Promise<boolean> {
+    const client = this.getClient();
+    if (!client) return true;
+    const key = this.deferredLogKey(deviceId);
+    const set = await client.set(key, String(Date.now()), { NX: true, EX: 86400 });
+    return set === 'OK';
+  }
+
+  async tryAcquireSchedulerLock(ttlSec: number): Promise<boolean> {
+    const client = this.getClient();
+    if (!client) return true;
+    const set = await client.set(this.schedulerLockKey(), '1', { NX: true, EX: ttlSec });
+    return set === 'OK';
+  }
+
+  async releaseSchedulerLock(): Promise<void> {
+    const client = this.getClient();
+    if (!client) return;
+    await client.del(this.schedulerLockKey());
+  }
+
+  async markSchedulerRun(now = new Date()): Promise<void> {
+    const client = this.getClient();
+    if (!client) return;
+    await client.set(this.schedulerLastRunKey(), now.toISOString());
+  }
+
+  async getSchedulerLastRun(): Promise<Date | null> {
+    const client = this.getClient();
+    if (!client) return null;
+    const raw = await client.get(this.schedulerLastRunKey());
+    if (!raw) return null;
+    const d = new Date(raw);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
 }
 
 // ─── OTA Command Publisher ───────────────────────────────────────────────
@@ -275,6 +413,7 @@ export class OtaRedisState {
 export interface OtaUpdateCommandPayload {
   cmd: 'ota_update';
   version: string;
+  rollout: { strategy: string; percentage: number };
   download_url: string;
   sha256: string;
   signature: string;
@@ -320,6 +459,7 @@ export class OtaCommandPublisher {
     const payload: OtaUpdateCommandPayload = {
       cmd: 'ota_update',
       version: offer.version,
+      rollout: offer.rollout || { strategy: 'percentage', percentage: 100 },
       download_url: offer.downloadUrl,
       sha256: offer.sha256,
       signature: offer.signature,
@@ -387,6 +527,7 @@ export class OtaCommandPublisher {
     const payload: OtaUpdateCommandPayload = {
       cmd: 'ota_update',
       version: offer.version,
+      rollout: offer.rollout || { strategy: 'percentage', percentage: 100 },
       download_url: offer.downloadUrl,
       sha256: offer.sha256,
       signature: offer.signature,
@@ -604,6 +745,7 @@ export interface OtaUpdateOffer {
   expiresAt: string;
   keyFingerprint?: string;
   track?: string;
+  rollout?: { strategy: string; percentage: number };
 }
 
 export interface ResolveUpdateInput {
@@ -620,12 +762,38 @@ export interface OtaReleaseWebhookInput {
   signature: string;
   sizeBytes?: number;
   releasedAt?: string;
+  /** @deprecated Ignored — rollout is the sole push authority. */
   broadcast?: boolean;
+  rollout?: {
+    strategy?: string;
+    percentage?: number;
+    deviceIds?: string[];
+  };
 }
 
 export type OtaReleaseWebhookResult =
-  | { ok: true; version: string; broadcast: boolean; created: boolean }
+  | { ok: true; version: string; created: boolean; currentPercentage: number }
   | { ok: false; httpStatus: number; code: string; error: string };
+
+export type OtaAdvanceResult =
+  | { ok: true; version: string; currentPercentage: number; previousPercentage: number }
+  | { ok: false; httpStatus: number; code: string; error: string };
+
+export type OtaRolloutStatus = {
+  version: string;
+  current_percentage: number;
+  aborted: boolean;
+  can_advance: boolean;
+  next_percentage: number | null;
+  stage_started_at: string | null;
+  stage_stats: {
+    attempted: number;
+    failed: number;
+    rolled_back: number;
+    failure_rate: number;
+    min_sample_reached: boolean;
+  };
+};
 
 export class OtaService {
   constructor(
@@ -662,7 +830,10 @@ export class OtaService {
     }
 
     const blocked = new Set(device.otaBlockedVersions || []);
-    const releases = await FirmwareRelease.find({ status: FirmwareReleaseStatus.STABLE })
+    const releases = await FirmwareRelease.find({
+      status: FirmwareReleaseStatus.STABLE,
+      aborted: { $ne: true }
+    })
       .sort({ releasedAt: -1, createdAt: -1 })
       .limit(20);
 
@@ -704,12 +875,52 @@ export class OtaService {
     return null;
   }
 
+  private parseRolloutInput(
+    input: OtaReleaseWebhookInput
+  ): { rollout: IFirmwareRollout; percentage: number } {
+    if (input.broadcast === true) {
+      const pct = input.rollout?.percentage ?? 1;
+      if (pct < 100) {
+        logger.warn('[OTA] broadcast:true ignored — rollout.percentage governs push', {
+          percentage: pct
+        });
+      }
+    }
+
+    const strategyRaw = (input.rollout?.strategy || 'percentage').toLowerCase();
+    const strategy =
+      strategyRaw === FirmwareRolloutStrategy.ALLOWLIST
+        ? FirmwareRolloutStrategy.ALLOWLIST
+        : strategyRaw === FirmwareRolloutStrategy.ALL
+          ? FirmwareRolloutStrategy.ALL
+          : FirmwareRolloutStrategy.PERCENTAGE;
+
+    let percentage = input.rollout?.percentage;
+    if (percentage == null || !Number.isFinite(percentage)) {
+      percentage = 1;
+    }
+    percentage = Math.max(0, Math.min(100, Math.floor(percentage)));
+
+    const deviceIds = Array.isArray(input.rollout?.deviceIds)
+      ? input.rollout!.deviceIds!.map(String).filter(Boolean)
+      : [];
+
+    return {
+      percentage,
+      rollout: {
+        strategy,
+        percentage,
+        deviceIds
+      }
+    };
+  }
+
   async ingestRelease(input: OtaReleaseWebhookInput): Promise<OtaReleaseWebhookResult> {
     const version = input.version.trim();
     const objectKey = input.objectKey.trim();
     const sha256 = input.sha256.trim().toLowerCase();
     const signature = input.signature.trim();
-    const shouldPush = input.broadcast !== false;
+    const { rollout, percentage } = this.parseRolloutInput(input);
 
     if (!version || !objectKey || !sha256 || !signature) {
       return {
@@ -720,12 +931,25 @@ export class OtaService {
       };
     }
 
-    if (shouldPush && !this.commandPublisher) {
+    if (!this.commandPublisher) {
       return {
         ok: false,
         httpStatus: 503,
         code: 'MQTT_NOT_READY',
         error: 'OTA command publisher is not configured'
+      };
+    }
+
+    const existingHard = await FirmwareRelease.findOne({
+      version,
+      status: FirmwareReleaseStatus.DEPRECATED
+    });
+    if (existingHard) {
+      return {
+        ok: false,
+        httpStatus: 409,
+        code: 'RELEASE_DEPRECATED',
+        error: `Version ${version} is DEPRECATED and cannot be re-promoted via webhook`
       };
     }
 
@@ -767,6 +991,23 @@ export class OtaService {
       const sizeBytes = input.sizeBytes ?? head.sizeBytes;
       const existing = await FirmwareRelease.findOne({ version });
       const created = !existing;
+      const now = new Date();
+
+      const previousActive = this.otaRedisState
+        ? await this.otaRedisState.getActiveRelease()
+        : null;
+      let previousVersion = previousActive?.version;
+      if (!previousVersion) {
+        const latestStable = await FirmwareRelease.findOne({
+          status: FirmwareReleaseStatus.STABLE,
+          aborted: { $ne: true },
+          version: { $ne: version }
+        })
+          .sort({ releasedAt: -1, createdAt: -1 })
+          .select({ version: 1 })
+          .lean();
+        previousVersion = latestStable?.version;
+      }
 
       const release = await FirmwareRelease.findOneAndUpdate(
         { version },
@@ -778,8 +1019,15 @@ export class OtaService {
           s3Key: objectKey,
           sizeBytes,
           status: FirmwareReleaseStatus.STABLE,
-          rollout: { strategy: FirmwareRolloutStrategy.ALL },
-          releasedAt: input.releasedAt ? new Date(input.releasedAt) : new Date(),
+          rollout,
+          currentPercentage: percentage,
+          stageStartedAt: now,
+          stageAttemptedCount: 0,
+          stageFailedCount: 0,
+          stageRolledBackCount: 0,
+          aborted: false,
+          previousVersion: previousVersion || undefined,
+          releasedAt: input.releasedAt ? new Date(input.releasedAt) : now,
           createdBy: 'ota-release-webhook'
         },
         { upsert: true, new: true }
@@ -788,11 +1036,11 @@ export class OtaService {
       void getAuditService()
         ?.logEvent({
           event: AuditEventType.OTA_RELEASE_PROMOTED,
-          details: { version, objectKey, source: 'webhook', created }
+          details: { version, objectKey, source: 'webhook', created, percentage }
         })
         .catch(() => undefined);
 
-      const releasedAtIso = input.releasedAt || new Date().toISOString();
+      const releasedAtIso = input.releasedAt || now.toISOString();
 
       if (this.otaRedisState) {
         await this.otaRedisState.setActiveRelease({
@@ -804,39 +1052,39 @@ export class OtaService {
           releasedAt: releasedAtIso,
           keyFingerprint
         });
+        await this.otaRedisState.clearStageAttempted(version, percentage);
 
-        const eligibleIds = await this.listEligibleDeviceIds();
+        const eligibleIds = await this.listRolloutEligibleDeviceIds(release);
         await this.otaRedisState.seedPendingFleet(release.version, eligibleIds);
       }
 
       void getOtaReleaseLog()?.addEntry(version, sha256, objectKey, keyFingerprint, input.releasedAt ? new Date(input.releasedAt) : undefined).catch(() => undefined);
 
-      let pushedCount = 0;
-      if (shouldPush) {
-        pushedCount = await this.pushReleaseToOnlineDevices(release.version);
+      const pushedCount = await this.pushReleaseToOnlineDevices(release.version);
 
-        void getAuditService()
-          ?.logEvent({
-            event: AuditEventType.OTA_PUSH_SENT,
-            details: {
-              version,
-              target: 'device',
-              mode: 'full',
-              source: 'webhook',
-              pushedCount
-            }
-          })
-          .catch(() => undefined);
-      }
+      void getAuditService()
+        ?.logEvent({
+          event: AuditEventType.OTA_PUSH_SENT,
+          details: {
+            version,
+            target: 'device',
+            mode: 'full',
+            source: 'webhook',
+            pushedCount,
+            percentage
+          }
+        })
+        .catch(() => undefined);
 
       logger.info('[OTA] Release ingested from CI webhook', {
         version,
         objectKey,
         pushedCount,
-        created
+        created,
+        percentage
       });
 
-      return { ok: true, version, broadcast: shouldPush, created };
+      return { ok: true, version, created, currentPercentage: percentage };
     } catch (err: unknown) {
       if (err instanceof FinalizeValidationError) {
         void getAuditService()
@@ -873,6 +1121,292 @@ export class OtaService {
     }
   }
 
+  async advanceRollout(version: string, targetPercentage?: number): Promise<OtaAdvanceResult> {
+    const release = await FirmwareRelease.findOne({ version });
+    if (!release) {
+      return { ok: false, httpStatus: 404, code: 'RELEASE_NOT_FOUND', error: 'Release not found' };
+    }
+    if (release.aborted || release.status === FirmwareReleaseStatus.DEPRECATED) {
+      return {
+        ok: false,
+        httpStatus: 409,
+        code: 'ROLLOUT_ABORTED',
+        error: `Rollout for ${version} is aborted`
+      };
+    }
+    if (release.status !== FirmwareReleaseStatus.STABLE) {
+      return {
+        ok: false,
+        httpStatus: 409,
+        code: 'RELEASE_NOT_STABLE',
+        error: 'Only STABLE releases can be advanced'
+      };
+    }
+
+    const previousPercentage = release.currentPercentage ?? release.rollout?.percentage ?? 1;
+    const next =
+      targetPercentage != null
+        ? targetPercentage
+        : nextRolloutPercentage(previousPercentage);
+
+    if (next == null) {
+      return {
+        ok: false,
+        httpStatus: 400,
+        code: 'ROLLOUT_COMPLETE',
+        error: 'Rollout already at 100%'
+      };
+    }
+    if (!isValidRolloutStep(next)) {
+      return {
+        ok: false,
+        httpStatus: 400,
+        code: 'INVALID_PERCENTAGE',
+        error: 'percentage must be one of 1, 10, 50, 100'
+      };
+    }
+    if (next <= previousPercentage) {
+      return {
+        ok: false,
+        httpStatus: 400,
+        code: 'NON_MONOTONIC',
+        error: `percentage must increase (current ${previousPercentage}, requested ${next})`
+      };
+    }
+    const expected = nextRolloutPercentage(previousPercentage);
+    if (expected != null && next !== expected) {
+      return {
+        ok: false,
+        httpStatus: 400,
+        code: 'INVALID_STEP',
+        error: `Next allowed percentage is ${expected}`
+      };
+    }
+
+    const now = new Date();
+    release.currentPercentage = next;
+    release.rollout = {
+      ...(release.rollout || { strategy: FirmwareRolloutStrategy.PERCENTAGE }),
+      strategy: FirmwareRolloutStrategy.PERCENTAGE,
+      percentage: next,
+      deviceIds: release.rollout?.deviceIds || []
+    };
+    release.stageStartedAt = now;
+    release.stageAttemptedCount = 0;
+    release.stageFailedCount = 0;
+    release.stageRolledBackCount = 0;
+    await release.save();
+
+    await this.otaRedisState?.clearStageAttempted(version, next);
+    const eligibleIds = await this.listRolloutEligibleDeviceIds(release);
+    await this.otaRedisState?.addPendingDevices(version, eligibleIds);
+
+    const pushedCount = await this.pushReleaseToOnlineDevices(version);
+
+    void sendOtaSlackAlert({
+      kind: 'advance',
+      version,
+      percentage: next
+    }).catch(() => undefined);
+
+    logger.info('[OTA] Rollout advanced', {
+      version,
+      previousPercentage,
+      next,
+      pushedCount
+    });
+
+    return { ok: true, version, currentPercentage: next, previousPercentage };
+  }
+
+  async abortRollout(
+    version: string,
+    reason = 'failure_rate'
+  ): Promise<{ ok: true } | { ok: false; httpStatus: number; code: string; error: string }> {
+    const release = await FirmwareRelease.findOne({ version });
+    if (!release) {
+      return { ok: false, httpStatus: 404, code: 'RELEASE_NOT_FOUND', error: 'Release not found' };
+    }
+
+    const attempted = release.stageAttemptedCount || 0;
+    const failed = release.stageFailedCount || 0;
+    const rolledBack = release.stageRolledBackCount || 0;
+    const failureRate = stageFailureRate(attempted, failed, rolledBack);
+
+    release.status = FirmwareReleaseStatus.DEPRECATED;
+    release.aborted = true;
+    await release.save();
+
+    await this.otaRedisState?.clearPendingFleet(version);
+    await this.restorePreviousActiveRelease(release);
+
+    void sendOtaSlackAlert({
+      kind: 'abort',
+      version,
+      failureRate,
+      attempted,
+      failed,
+      rolledBack,
+      percentage: release.currentPercentage,
+      message: reason
+    }).catch(() => undefined);
+
+    logger.warn('[OTA] Rollout aborted', { version, reason, failureRate, attempted, failed, rolledBack });
+    return { ok: true };
+  }
+
+  async haltRollout(version: string): Promise<
+    { ok: true } | { ok: false; httpStatus: number; code: string; error: string }
+  > {
+    return this.abortRollout(version, 'halt');
+  }
+
+  async retryDeprecatedRelease(version: string): Promise<
+    { ok: true; status: string } | { ok: false; httpStatus: number; code: string; error: string }
+  > {
+    const release = await FirmwareRelease.findOne({ version });
+    if (!release) {
+      return { ok: false, httpStatus: 404, code: 'RELEASE_NOT_FOUND', error: 'Release not found' };
+    }
+    if (release.status === FirmwareReleaseStatus.DEPRECATED) {
+      return {
+        ok: false,
+        httpStatus: 409,
+        code: 'NOT_RETRYABLE',
+        error: 'Hard DEPRECATED cannot be retried — mark deprecated_retryable first or ship a new version'
+      };
+    }
+    if (release.status !== FirmwareReleaseStatus.DEPRECATED_RETRYABLE) {
+      return {
+        ok: false,
+        httpStatus: 409,
+        code: 'INVALID_STATUS',
+        error: 'Only DEPRECATED_RETRYABLE releases can be reset to STABLE'
+      };
+    }
+
+    release.status = FirmwareReleaseStatus.STABLE;
+    release.aborted = false;
+    release.stageStartedAt = new Date();
+    release.stageAttemptedCount = 0;
+    release.stageFailedCount = 0;
+    release.stageRolledBackCount = 0;
+    await release.save();
+
+    return { ok: true, status: FirmwareReleaseStatus.STABLE };
+  }
+
+  async markDeprecatedRetryable(version: string): Promise<
+    { ok: true } | { ok: false; httpStatus: number; code: string; error: string }
+  > {
+    const release = await FirmwareRelease.findOne({ version });
+    if (!release) {
+      return { ok: false, httpStatus: 404, code: 'RELEASE_NOT_FOUND', error: 'Release not found' };
+    }
+    if (release.status !== FirmwareReleaseStatus.DEPRECATED && !release.aborted) {
+      return {
+        ok: false,
+        httpStatus: 409,
+        code: 'INVALID_STATUS',
+        error: 'Only aborted/DEPRECATED releases can become DEPRECATED_RETRYABLE'
+      };
+    }
+    release.status = FirmwareReleaseStatus.DEPRECATED_RETRYABLE;
+    await release.save();
+    return { ok: true };
+  }
+
+  private async restorePreviousActiveRelease(aborted: IFirmwareRelease): Promise<void> {
+    if (!this.otaRedisState) return;
+
+    const active = await this.otaRedisState.getActiveRelease();
+    if (active && active.version !== aborted.version) {
+      return;
+    }
+
+    const prevVersion = aborted.previousVersion;
+    if (!prevVersion) {
+      await this.otaRedisState.clearActiveRelease();
+      return;
+    }
+
+    const prev = await FirmwareRelease.findOne({ version: prevVersion });
+    const keyFingerprint = this.otaConfig.signingPublicKeyPem
+      ? computeSigningKeyFingerprint(this.otaConfig.signingPublicKeyPem)
+      : undefined;
+
+    let restored: OtaActiveRelease | null = null;
+    if (prev) {
+      restored = {
+        version: prev.version,
+        sha256: prev.sha256,
+        signature: prev.signature,
+        objectKey: prev.objectKey || prev.s3Key || '',
+        sizeBytes: prev.sizeBytes,
+        releasedAt: (prev.releasedAt || prev.createdAt || new Date()).toISOString(),
+        keyFingerprint
+      };
+    } else {
+      const cached = await this.otaRedisState.getPreviousActiveRelease();
+      if (cached?.version === prevVersion) restored = cached;
+    }
+
+    await this.otaRedisState.clearActiveRelease();
+    if (restored) {
+      await this.otaRedisState.forceSetActiveRelease(restored);
+    }
+  }
+
+  getRolloutStatus(release: IFirmwareRelease): OtaRolloutStatus {
+    const attempted = release.stageAttemptedCount || 0;
+    const failed = release.stageFailedCount || 0;
+    const rolledBack = release.stageRolledBackCount || 0;
+    const currentPercentage = release.currentPercentage ?? release.rollout?.percentage ?? 100;
+    const can_advance = canAdvanceStage({
+      aborted: Boolean(release.aborted),
+      currentPercentage,
+      stageStartedAt: release.stageStartedAt,
+      attempted,
+      failed,
+      rolledBack,
+      minHours: this.otaConfig.stageMinHours,
+      minSample: this.otaConfig.stageAbortMinSample,
+      maxFailureRate: this.otaConfig.stageAbortFailureRate
+    });
+
+    return {
+      version: release.version,
+      current_percentage: currentPercentage,
+      aborted: Boolean(release.aborted),
+      can_advance,
+      next_percentage: nextRolloutPercentage(currentPercentage),
+      stage_started_at: release.stageStartedAt
+        ? new Date(release.stageStartedAt).toISOString()
+        : null,
+      stage_stats: {
+        attempted,
+        failed,
+        rolled_back: rolledBack,
+        failure_rate: stageFailureRate(attempted, failed, rolledBack),
+        min_sample_reached: attempted >= this.otaConfig.stageAbortMinSample
+      }
+    };
+  }
+
+  async getActiveReleaseForAdmin(): Promise<IFirmwareRelease | null> {
+    const inProgress = await FirmwareRelease.findOne({
+      status: FirmwareReleaseStatus.STABLE,
+      aborted: { $ne: true },
+      currentPercentage: { $lt: 100 }
+    }).sort({ releasedAt: -1, createdAt: -1 });
+    if (inProgress) return inProgress;
+
+    return FirmwareRelease.findOne({ status: FirmwareReleaseStatus.STABLE }).sort({
+      releasedAt: -1,
+      createdAt: -1
+    });
+  }
+
   async deliverPendingToDevice(deviceId: string, currentVersion: string): Promise<void> {
     if (!this.commandPublisher || !this.otaRedisState) return;
 
@@ -880,33 +1414,54 @@ export class OtaService {
     if (!active) return;
     if (!isVersionGreater(active.version, currentVersion)) return;
     if (await this.otaRedisState.isDelivered(deviceId, active.version)) return;
-    if (!(await this.otaRedisState.isPending(deviceId, active.version))) return;
 
     const device = await Device.findOne({ clientId: deviceId });
     if (!device || !this.isDeviceEligible(device)) return;
 
+    const blocked = new Set(device.otaBlockedVersions || []);
+    if (blocked.has(active.version)) return;
+
     const release = await FirmwareRelease.findOne({
       version: active.version,
-      status: FirmwareReleaseStatus.STABLE
+      status: FirmwareReleaseStatus.STABLE,
+      aborted: { $ne: true }
     });
     if (!release) {
       logger.warn('[OTA] Active release missing from DB', { version: active.version, deviceId });
       return;
     }
-    if (!this.matchesRollout(release, device, deviceId)) return;
+
+    if (!this.matchesRollout(release, device, deviceId)) {
+      if (await this.otaRedisState.shouldLogCatchupDeferred(deviceId)) {
+        logger.info('OTA_CATCHUP_DEFERRED', {
+          deviceId,
+          version: active.version,
+          currentPercentage: release.currentPercentage,
+          bucket: deviceHashBucket(deviceId)
+        });
+      }
+      return;
+    }
+
+    if (!(await this.otaRedisState.isPending(deviceId, active.version))) {
+      await this.otaRedisState.markPending(deviceId, active.version);
+    }
 
     const offer = await this.buildOffer(release);
     if (!offer) return;
 
     await this.commandPublisher.publishUpdateToDevice(deviceId, offer, false);
+    await this.recordStageAttempt(release, deviceId);
   }
 
   async getLatestStableOffer(deviceId: string): Promise<OtaUpdateOffer | null> {
     const device = await Device.findOne({ clientId: deviceId });
     if (!device || !this.isDeviceEligible(device)) return null;
 
-    const release = await FirmwareRelease.findOne({ status: FirmwareReleaseStatus.STABLE })
-      .sort({ releasedAt: -1, createdAt: -1 });
+    const release = await FirmwareRelease.findOne({
+      status: FirmwareReleaseStatus.STABLE,
+      aborted: { $ne: true }
+    }).sort({ releasedAt: -1, createdAt: -1 });
 
     if (!release) return null;
 
@@ -923,37 +1478,77 @@ export class OtaService {
     return this.buildOffer(release);
   }
 
-  private async listEligibleDeviceIds(): Promise<string[]> {
+  private async listRolloutEligibleDeviceIds(release: IFirmwareRelease): Promise<string[]> {
     const devices = await Device.find({
       status: { $in: [DeviceStatus.PROVISIONED, DeviceStatus.ACTIVE, DeviceStatus.OFFLINE] }
-    })
-      .select({ clientId: 1 })
-      .lean();
-    return devices.map((d) => d.clientId).filter(Boolean);
+    }).select({ clientId: 1, userId: 1, status: 1, otaBlockedVersions: 1 });
+
+    const out: string[] = [];
+    for (const device of devices) {
+      const id = device.clientId;
+      if (!id) continue;
+      if ((device.otaBlockedVersions || []).includes(release.version)) continue;
+      if (this.matchesRollout(release, device, id)) {
+        out.push(id);
+      }
+    }
+    return out;
   }
 
   private async pushReleaseToOnlineDevices(version: string): Promise<number> {
     if (!this.commandPublisher) return 0;
 
-    const online = await getActiveDeviceCache().getAllActive();
-    const onlineIds = new Set(online.map((d) => d.deviceId));
-    let pushed = 0;
+    const release = await FirmwareRelease.findOne({
+      version,
+      status: FirmwareReleaseStatus.STABLE,
+      aborted: { $ne: true }
+    });
+    if (!release) return 0;
 
+    const online = await getActiveDeviceCache().getAllActive();
+    const onlineIds = online.map((d) => d.deviceId);
+
+    const candidates: string[] = [];
     for (const deviceId of onlineIds) {
       if (!this.otaRedisState || !(await this.otaRedisState.isPending(deviceId, version))) {
         continue;
       }
-
-      const device = await Device.findOne({ clientId: deviceId });
-      const currentVersion = device?.firmwareVersion || '0.0.0';
-      const offer = await this.resolveUpdate({ deviceId, currentVersion });
-      if (!offer || offer.version !== version) continue;
-
-      await this.commandPublisher.publishUpdateToDevice(deviceId, offer, false);
-      pushed++;
+      candidates.push(deviceId);
     }
 
+    let pushed = 0;
+    await mapPool(candidates, this.otaConfig.mqttPushConcurrency || 100, async (deviceId) => {
+      const device = await Device.findOne({ clientId: deviceId });
+      const currentVersion = device?.firmwareVersion || '0.0.0';
+      if (!device || !this.isDeviceEligible(device)) return;
+      if ((device.otaBlockedVersions || []).includes(version)) return;
+      if (!this.matchesRollout(release, device, deviceId)) return;
+      if (!isVersionGreater(version, currentVersion) && currentVersion !== version) {
+        // still offer if behind
+      }
+      if (!isVersionGreater(version, currentVersion)) return;
+
+      const offer = await this.buildOffer(release);
+      if (!offer) return;
+
+      await this.commandPublisher!.publishUpdateToDevice(deviceId, offer, false);
+      await this.recordStageAttempt(release, deviceId);
+      pushed++;
+    });
+
     return pushed;
+  }
+
+  private async recordStageAttempt(release: IFirmwareRelease, deviceId: string): Promise<void> {
+    const pct = release.currentPercentage ?? release.rollout?.percentage ?? 100;
+    const first = await this.otaRedisState?.markStageAttempted(release.version, pct, deviceId);
+    if (first === false) return;
+
+    await FirmwareRelease.updateOne(
+      { version: release.version },
+      { $inc: { stageAttemptedCount: 1 } }
+    );
+    release.stageAttemptedCount = (release.stageAttemptedCount || 0) + 1;
   }
 
   async markDeviceDelivered(deviceId: string, version: string): Promise<void> {
@@ -994,24 +1589,28 @@ export class OtaService {
     return true;
   }
 
-  private matchesRollout(release: IFirmwareRelease, device: IDevice, deviceId: string): boolean {
+  matchesRollout(release: IFirmwareRelease, device: IDevice, deviceId: string): boolean {
     const rollout = release.rollout || { strategy: FirmwareRolloutStrategy.ALL };
     const blocked = rollout.blockedDeviceIds || [];
     if (blocked.includes(deviceId)) {
       return false;
     }
 
+    const pct =
+      release.currentPercentage ??
+      rollout.percentage ??
+      (rollout.strategy === FirmwareRolloutStrategy.ALL ? 100 : 0);
+    const allowlist = rollout.deviceIds || [];
+
     switch (rollout.strategy) {
       case FirmwareRolloutStrategy.ALLOWLIST: {
-        const allow = rollout.deviceIds || [];
-        if (allow.length === 0) return false;
-        return allow.includes(deviceId);
+        if (allowlist.length === 0) return false;
+        return allowlist.includes(deviceId);
       }
       case FirmwareRolloutStrategy.PERCENTAGE: {
-        const pct = rollout.percentage ?? 100;
         if (pct >= 100) return true;
-        const bucket = this.deviceHashBucket(deviceId);
-        return bucket < pct;
+        if (allowlist.includes(deviceId)) return true;
+        return deviceHashBucket(deviceId) < pct;
       }
       case FirmwareRolloutStrategy.ALL:
       default:
@@ -1025,11 +1624,6 @@ export class OtaService {
     }
   }
 
-  private deviceHashBucket(deviceId: string): number {
-    const hash = crypto.createHash('sha256').update(deviceId).digest();
-    return hash[0] % 100;
-  }
-
   private async buildOffer(release: IFirmwareRelease): Promise<OtaUpdateOffer | null> {
     try {
       const expiresAt = new Date(Date.now() + this.otaConfig.presignedUrlTtlSec * 1000);
@@ -1037,6 +1631,9 @@ export class OtaService {
       const keyFingerprint = this.otaConfig.signingPublicKeyPem
         ? computeSigningKeyFingerprint(this.otaConfig.signingPublicKeyPem)
         : undefined;
+      const percentage =
+        release.currentPercentage ?? release.rollout?.percentage ?? 100;
+      const strategy = release.rollout?.strategy || FirmwareRolloutStrategy.PERCENTAGE;
 
       return {
         version: release.version,
@@ -1046,7 +1643,8 @@ export class OtaService {
         sizeBytes: release.sizeBytes,
         expiresAt: expiresAt.toISOString(),
         keyFingerprint,
-        track: 'pilot'
+        track: 'pilot',
+        rollout: { strategy, percentage }
       };
     } catch (err: unknown) {
       logger.error('[OTA] Failed to build offer', {
@@ -1088,6 +1686,11 @@ export class OtaService {
     version: string,
     reason?: string
   ): Promise<{ blocked: boolean; failures: number }> {
+    const kind = classifyOtaReason(reason);
+    if (kind === 'track_mismatch') {
+      return { blocked: false, failures: 0 };
+    }
+
     const device = await Device.findOne({ clientId: deviceId });
     if (!device) {
       return { blocked: false, failures: 0 };
@@ -1100,9 +1703,13 @@ export class OtaService {
     device.otaRollbackFailures = failuresMap;
     device.otaState = DeviceOtaState.ROLLBACK_REPORTED;
 
-    let blocked = false;
     const threshold = this.otaConfig.rollbackFailureThreshold;
-    if (next >= threshold) {
+    const permanent = kind === 'permanent';
+    const transientStrikeOut = kind === 'transient' && next >= threshold;
+    const unknownStrikeOut = kind === 'unknown' && next >= threshold;
+    let blocked = false;
+
+    if (permanent || transientStrikeOut || unknownStrikeOut) {
       const blockedVersions = new Set(device.otaBlockedVersions || []);
       blockedVersions.add(version);
       device.otaBlockedVersions = Array.from(blockedVersions);
@@ -1112,7 +1719,7 @@ export class OtaService {
         ?.logEvent({
           event: AuditEventType.OTA_DEVICE_BLOCKED,
           deviceId,
-          details: { version, failures: next, threshold }
+          details: { version, failures: next, threshold, reason, kind }
         })
         .catch(() => undefined);
     }
@@ -1122,6 +1729,34 @@ export class OtaService {
     }
 
     await device.save();
+
+    const incFailed = shouldIncrementFailed(kind, reason);
+    const incRolled = shouldIncrementRolledBack(kind, reason);
+    if (incFailed || incRolled) {
+      const update: Record<string, number> = {};
+      if (incFailed) update.stageFailedCount = 1;
+      if (incRolled) update.stageRolledBackCount = 1;
+      await FirmwareRelease.updateOne({ version, aborted: { $ne: true } }, { $inc: update });
+
+      const release = await FirmwareRelease.findOne({ version });
+      if (release && !release.aborted) {
+        const attempted = release.stageAttemptedCount || 0;
+        const failed = release.stageFailedCount || 0;
+        const rolledBack = release.stageRolledBackCount || 0;
+        if (
+          shouldAbortStage(
+            attempted,
+            failed,
+            rolledBack,
+            this.otaConfig.stageAbortMinSample,
+            this.otaConfig.stageAbortFailureRate
+          )
+        ) {
+          await this.abortRollout(version, 'failure_rate');
+        }
+      }
+    }
+
     return { blocked, failures: next };
   }
 
@@ -1140,7 +1775,11 @@ export class OtaService {
   }
 
   /** Pilot: success when next boot reports fw_version matching pending target or active release. */
-  async maybeRecordImplicitOtaSuccess(deviceId: string, fwVersion: string): Promise<void> {
+  async maybeRecordImplicitOtaSuccess(
+    deviceId: string,
+    fwVersion: string,
+    bootType?: string
+  ): Promise<void> {
     if (!fwVersion.trim()) return;
 
     const device = await Device.findOne({ clientId: deviceId })
@@ -1159,7 +1798,12 @@ export class OtaService {
       ?.logEvent({
         event: AuditEventType.OTA_SUCCESS,
         deviceId,
-        details: { version: fwVersion, implicit: true, previousFirmwareVersion: device?.firmwareVersion }
+        details: {
+          version: fwVersion,
+          implicit: true,
+          bootType: bootType || undefined,
+          previousFirmwareVersion: device?.firmwareVersion
+        }
       })
       .catch(() => undefined);
   }
@@ -1195,3 +1839,5 @@ export class OtaService {
 export function isValidObjectId(value: string): boolean {
   return mongoose.Types.ObjectId.isValid(value);
 }
+
+export { deviceHashBucket };
