@@ -913,6 +913,16 @@ export class OtaService {
     return this.buildOffer(release);
   }
 
+  /** TEST_OTA only: latest STABLE offer with no device eligibility / rollout gates. */
+  async getLatestStableOfferUngated(): Promise<OtaUpdateOffer | null> {
+    const release = await FirmwareRelease.findOne({ status: FirmwareReleaseStatus.STABLE }).sort({
+      releasedAt: -1,
+      createdAt: -1
+    });
+    if (!release) return null;
+    return this.buildOffer(release);
+  }
+
   private async listEligibleDeviceIds(): Promise<string[]> {
     const devices = await Device.find({
       status: { $in: [DeviceStatus.PROVISIONED, DeviceStatus.ACTIVE, DeviceStatus.OFFLINE] }

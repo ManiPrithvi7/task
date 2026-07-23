@@ -155,8 +155,8 @@
     "semantic_hash": ""
   },
   "src/app.ts": {
-    "mtime": 1784785440.6296527,
-    "ast_hash": "3efd18a9983c8c9d06e876737d9a5833",
+    "mtime": 1784789315.4594564,
+    "ast_hash": "a7a0f04c2e8f847aff32fd9ef8e6e766",
     "semantic_hash": ""
   },
   "src/config/connectionsConfig.ts": {
@@ -340,8 +340,8 @@
     "semantic_hash": ""
   },
   "src/routes/otaRoutes.ts": {
-    "mtime": 1784786749.516471,
-    "ast_hash": "e9834028bf75c0cfc2f5f863d9c930e8",
+    "mtime": 1784787207.1437812,
+    "ast_hash": "333befadd8943d56501c19bafe57c416",
     "semantic_hash": ""
   },
   "src/routes/provisioningRoutes.ts": {
@@ -485,8 +485,8 @@
     "semantic_hash": ""
   },
   "src/services/otaService.ts": {
-    "mtime": 1784786245.2588346,
-    "ast_hash": "293d4ead5d698367f51614c3d3045a5a",
+    "mtime": 1784789314.9274743,
+    "ast_hash": "fe09bc1da4f04bbbe388d838a06c3707",
     "semantic_hash": ""
   },
   "src/services/promotionService.ts": {
@@ -1120,8 +1120,8 @@
     "semantic_hash": ""
   },
   "data/active-devices.json": {
-    "mtime": 1784783698.8444173,
-    "ast_hash": "28e3c3da4938ea8d372a31a0ebcfe891",
+    "mtime": 1784786873.697695,
+    "ast_hash": "a9dafde6150fbdf4035889eca81517ea",
     "semantic_hash": ""
   },
   "src/lib/socials/syncDeviceGmb.ts": {

@@ -1312,8 +1312,81 @@ export class StatsMqttLite {
     void this.deliverOtaOnRegistration(deviceId, fwVersion);
   }
 
+  private buildTestOtaDownloadUrl(): string {
+    return buildOtaProxyDownloadUrl(
+      this.otaPublicBaseUrl ??
+        resolveOtaPublicBaseUrl({
+          otaPublicBaseUrl: process.env.OTA_PUBLIC_BASE_URL,
+          publicAppUrl: process.env.PUBLIC_APP_URL,
+          httpHost: this.config.http.host,
+          httpPort: this.config.http.port
+        }),
+      'proof:1.0.1'
+    );
+  }
+
+  /** TEST_OTA: forced proof:1.0.1 proxy offer — no version / eligibility / rollout gates. */
+  private async publishTestOtaToDevice(
+    deviceId: string,
+    reason: 'registration' | 'active_cache_fanout'
+  ): Promise<boolean> {
+    if (!this.otaService || !this.otaCommandPublisher) return false;
+
+    const baseOffer = await this.otaService.getLatestStableOfferUngated();
+    if (!baseOffer) {
+      logger.warn('[OTA] TEST_OTA — no STABLE release to build offer from', { deviceId, reason });
+      return false;
+    }
+
+    const toPublish = {
+      ...baseOffer,
+      version: '1.0.1',
+      downloadUrl: this.buildTestOtaDownloadUrl()
+    };
+    logger.info('[OTA] TEST_OTA — ungated publish proof:1.0.1', {
+      deviceId,
+      reason,
+      version: toPublish.version,
+      downloadUrl: toPublish.downloadUrl,
+      releaseVersion: baseOffer.version
+    });
+    await this.otaCommandPublisher.publishUpdateToDevice(deviceId, toPublish, false);
+    return true;
+  }
+
+  private async fanOutTestOtaToActiveDevices(): Promise<void> {
+    const devices = await getActiveDeviceCache().getAllActive();
+    let pushed = 0;
+    for (const d of devices) {
+      try {
+        if (await this.publishTestOtaToDevice(d.deviceId, 'active_cache_fanout')) {
+          pushed += 1;
+        }
+      } catch (err: unknown) {
+        logger.warn('[OTA] TEST_OTA fan-out failed for device', {
+          deviceId: d.deviceId,
+          error: err instanceof Error ? err.message : String(err)
+        });
+      }
+    }
+    logger.info('[OTA] TEST_OTA — fan-out complete', { pushed, total: devices.length });
+  }
+
   private async deliverOtaOnRegistration(deviceId: string, appVersion?: string): Promise<void> {
     if (!this.config.ota?.enabled || !this.otaService) {
+      return;
+    }
+
+    // TEST_OTA: every registering device gets forced offer (no version gate).
+    if (process.env.TEST_OTA === 'true') {
+      try {
+        await this.publishTestOtaToDevice(deviceId, 'registration');
+      } catch (err: unknown) {
+        logger.warn('[OTA] TEST_OTA registration delivery failed', {
+          deviceId,
+          error: err instanceof Error ? err.message : String(err)
+        });
+      }
       return;
     }
 
@@ -1328,6 +1401,10 @@ export class StatsMqttLite {
     }
 
     if (!currentVersion) {
+      logger.warn('[OTA] Skipping registration OTA — no currentVersion', {
+        deviceId,
+        appVersion: appVersion || null
+      });
       return;
     }
 
@@ -1335,45 +1412,8 @@ export class StatsMqttLite {
       await this.otaService.deliverPendingToDevice(deviceId, currentVersion);
 
       const offer = await this.otaService.resolveUpdate({ deviceId, currentVersion });
-      // TEST_OTA: force MQTT version + proxy download_url to proof:1.0.1.
-      const testOta =
-        process.env.TEST_OTA === 'true'
-          ? {
-              version: '1.0.1',
-              downloadUrl: buildOtaProxyDownloadUrl(
-                this.otaPublicBaseUrl ??
-                  resolveOtaPublicBaseUrl({
-                    otaPublicBaseUrl: process.env.OTA_PUBLIC_BASE_URL,
-                    publicAppUrl: process.env.PUBLIC_APP_URL,
-                    httpHost: this.config.http.host,
-                    httpPort: this.config.http.port
-                  }),
-                'proof:1.0.1'
-              )
-            }
-          : undefined;
-
       if (offer && this.otaCommandPublisher) {
-        const toPublish = testOta
-          ? { ...offer, version: testOta.version, downloadUrl: testOta.downloadUrl }
-          : offer;
-        await this.otaCommandPublisher.publishUpdateToDevice(deviceId, toPublish, false);
-      } else if (process.env.TEST_OTA === 'true' && this.otaCommandPublisher) {
-        const testOffer = await this.otaService.getLatestStableOffer(deviceId);
-        if (testOffer && testOta) {
-          const toPublish = {
-            ...testOffer,
-            version: testOta.version,
-            downloadUrl: testOta.downloadUrl
-          };
-          logger.info('[OTA] TEST_OTA — publishing forced proof:1.0.1 on registration', {
-            deviceId,
-            version: toPublish.version,
-            downloadUrl: toPublish.downloadUrl,
-            releaseVersion: testOffer.version
-          });
-          await this.otaCommandPublisher.publishUpdateToDevice(deviceId, toPublish, false);
-        }
+        await this.otaCommandPublisher.publishUpdateToDevice(deviceId, offer, false);
       }
     } catch (err: unknown) {
       logger.warn('[OTA] Registration delivery failed', {
@@ -1992,12 +2032,21 @@ export class StatsMqttLite {
       publicBaseUrl: this.otaPublicBaseUrl,
       bucket: this.config.ota.oci.bucket,
       namespace: this.config.ota.oci.namespace,
-      delivery: 'server-driven'
+      delivery: 'server-driven',
+      testOta: process.env.TEST_OTA === 'true'
     });
     if (this.config.ota.downloadMode === 'proxy') {
       logger.warn(
         '[OTA] OTA_DOWNLOAD_MODE=proxy enables GET /api/v1/ota/download only — requires mTLS-capable HTTP edge (not Railway public URL). MQTT always uses OCI presigned PAR.'
       );
+    }
+
+    if (process.env.TEST_OTA === 'true') {
+      void this.fanOutTestOtaToActiveDevices().catch((err: unknown) => {
+        logger.warn('[OTA] TEST_OTA startup fan-out failed', {
+          error: err instanceof Error ? err.message : String(err)
+        });
+      });
     }
   }
 
