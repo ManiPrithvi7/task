@@ -4,7 +4,6 @@
 
 import https from 'https';
 import fs from 'fs';
-import path from 'path';
 import { Router, Request, Response } from 'express';
 import type { RedisClientType } from 'redis';
 import type { OtaConfig } from '../config';
@@ -18,6 +17,7 @@ import { checkOtaRateLimit } from '../services/otaService';
 import type { OtaEventHandler } from '../services/otaService';
 import type { OtaService } from '../services/otaService';
 import { logger } from '../utils/logger';
+import { resolveLocalTestOtaFirmware } from '../utils/localTestOtaFirmware';
 
 export interface OtaRoutesDeps {
   otaConfig: OtaConfig;
@@ -56,8 +56,6 @@ export function createOtaRoutes(deps: OtaRoutesDeps): Router {
 
   const isTestOta = () => process.env.TEST_OTA === 'true';
   const LOCAL_PROOF_OTA_VERSION = 'proof:1.0.1';
-  // ponytail: single known test bin in data/; rename if you ship a different artifact.
-  const localProofFirmwarePath = () => path.resolve('data/ESP32S3_DWIN_MVP_v101.ino.bin');
 
   function buildLocalProofDownloadUrl(): string {
     const base = (
@@ -95,12 +93,8 @@ export function createOtaRoutes(deps: OtaRoutesDeps): Router {
           });
           return;
         }
-        let sizeBytes = release.sizeBytes;
-        try {
-          sizeBytes = fs.statSync(localProofFirmwarePath()).size;
-        } catch {
-          // keep release sizeBytes
-        }
+        const localFw = resolveLocalTestOtaFirmware();
+        const sizeBytes = localFw?.sizeBytes ?? release.sizeBytes;
         res.json({
           success: true,
           version: '1.0.1',
@@ -161,13 +155,23 @@ export function createOtaRoutes(deps: OtaRoutesDeps): Router {
     'https://objectstorage.ap-hyderabad-1.oraclecloud.com/n/ax4egmknthnr/b/proof-firmware-dev-download/o/dev%2Fwifi_ap_project.bin';
 
   function serveLocalProofFirmware(_req: Request, res: Response): void {
-    const filePath = localProofFirmwarePath();
+    const localFw = resolveLocalTestOtaFirmware();
+    if (!localFw) {
+      logger.error('[OTA] local firmware file not found in data/');
+      res.status(404).json({
+        success: false,
+        error: 'Local firmware file not found',
+        code: 'LOCAL_FIRMWARE_NOT_FOUND',
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+    const { filePath, filename, sizeBytes } = localFw;
     try {
-      const stat = fs.statSync(filePath);
       res.setHeader('Content-Type', 'application/octet-stream');
-      res.setHeader('Content-Disposition', 'attachment; filename="ESP32s3_OTA_v104.ino.bin"');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
       res.setHeader('X-Firmware-Version', LOCAL_PROOF_OTA_VERSION);
-      res.setHeader('Content-Length', String(stat.size));
+      res.setHeader('Content-Length', String(sizeBytes));
       const stream = fs.createReadStream(filePath);
       stream.pipe(res);
       stream.on('error', (err) => {

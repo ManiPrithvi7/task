@@ -1,4 +1,5 @@
 import { logger } from './utils/logger';
+import { resolveLocalTestOtaFirmware } from './utils/localTestOtaFirmware';
 import { loadConfig, validateConfig, AppConfig, setMqttTlsClientPem } from './config';
 import { HttpServer } from './servers/httpServer';
 import { MqttClientManager } from './servers/mqttClient';
@@ -1338,16 +1339,25 @@ export class StatsMqttLite {
       return false;
     }
 
+    const localFw = resolveLocalTestOtaFirmware();
+    if (!localFw) {
+      logger.warn('[OTA] TEST_OTA — no firmware .bin found in data/', { deviceId, reason });
+      return false;
+    }
+
     const toPublish = {
       ...baseOffer,
       version: '1.0.1',
-      downloadUrl: this.buildTestOtaDownloadUrl()
+      downloadUrl: this.buildTestOtaDownloadUrl(),
+      sizeBytes: localFw.sizeBytes
     };
     logger.info('[OTA] TEST_OTA — ungated publish proof:1.0.1', {
       deviceId,
       reason,
       version: toPublish.version,
       downloadUrl: toPublish.downloadUrl,
+      sizeBytes: toPublish.sizeBytes,
+      firmwareFile: localFw.filename,
       releaseVersion: baseOffer.version
     });
     await this.otaCommandPublisher.publishUpdateToDevice(deviceId, toPublish, false);

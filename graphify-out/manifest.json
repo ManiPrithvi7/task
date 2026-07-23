@@ -155,8 +155,8 @@
     "semantic_hash": ""
   },
   "src/app.ts": {
-    "mtime": 1784789315.4594564,
-    "ast_hash": "a7a0f04c2e8f847aff32fd9ef8e6e766",
+    "mtime": 1784791132.9256878,
+    "ast_hash": "61494ccba98d2483fc9c09654b41ca7a",
     "semantic_hash": ""
   },
   "src/config/connectionsConfig.ts": {
@@ -340,8 +340,8 @@
     "semantic_hash": ""
   },
   "src/routes/otaRoutes.ts": {
-    "mtime": 1784787207.1437812,
-    "ast_hash": "333befadd8943d56501c19bafe57c416",
+    "mtime": 1784791127.1386297,
+    "ast_hash": "9397ad7b838c093b587a9bf5219368c2",
     "semantic_hash": ""
   },
   "src/routes/provisioningRoutes.ts": {
@@ -1357,6 +1357,16 @@
   "src/storage/influx/repositories/OtaTelemetryRepo.ts": {
     "mtime": 1784712026.200755,
     "ast_hash": "f8cf75bb7dac410491286d62c24bb04a",
+    "semantic_hash": ""
+  },
+  "src/utils/localTestOtaFirmware.ts": {
+    "mtime": 1784791081.6694753,
+    "ast_hash": "1fc701d593eb27936c7e8966fb6f5619",
+    "semantic_hash": ""
+  },
+  "tests/unit/utils/localTestOtaFirmware.test.ts": {
+    "mtime": 1784791164.8161738,
+    "ast_hash": "7510c8bde912a11e23b5c6ab52b950ab",
     "semantic_hash": ""
   }
 }

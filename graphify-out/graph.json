@@ -1784,7 +1784,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "ota_e2e_firmware_server",
-      "community": 74,
+      "community": 82,
       "norm_label": "firmware_server.py"
     },
     {
@@ -1794,7 +1794,7 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "ota_e2e_firmware_server_reusehttpserver",
-      "community": 74,
+      "community": 82,
       "norm_label": "reusehttpserver"
     },
     {
@@ -1804,7 +1804,7 @@
       "source_location": "L19",
       "_origin": "ast",
       "id": "ota_e2e_firmware_server_handler",
-      "community": 74,
+      "community": 82,
       "norm_label": "handler"
     },
     {
@@ -1814,7 +1814,7 @@
       "source_location": "",
       "_origin": "ast",
       "id": "simplehttprequesthandler",
-      "community": 74,
+      "community": 82,
       "norm_label": "simplehttprequesthandler"
     },
     {
@@ -1824,7 +1824,7 @@
       "source_location": "L20",
       "_origin": "ast",
       "id": "ota_e2e_firmware_server_handler_init",
-      "community": 74,
+      "community": 82,
       "norm_label": ".__init__()"
     },
     {
@@ -1834,7 +1834,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "ota_e2e_firmware_server_handler_end_headers",
-      "community": 74,
+      "community": 82,
       "norm_label": ".end_headers()"
     },
     {
@@ -1844,7 +1844,7 @@
       "source_location": "L30",
       "_origin": "ast",
       "id": "ota_e2e_firmware_server_port_in_use",
-      "community": 74,
+      "community": 82,
       "norm_label": "port_in_use()"
     },
     {
@@ -2460,7 +2460,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "pki_pki",
-      "community": 41,
+      "community": 24,
       "norm_label": "pki.ts"
     },
     {
@@ -2470,7 +2470,7 @@
       "source_location": "L16",
       "_origin": "ast",
       "id": "pki_pki_reporoot",
-      "community": 41,
+      "community": 24,
       "norm_label": "reporoot"
     },
     {
@@ -2480,7 +2480,7 @@
       "source_location": "L17",
       "_origin": "ast",
       "id": "pki_pki_castoragepath",
-      "community": 41,
+      "community": 24,
       "norm_label": "castoragepath"
     },
     {
@@ -2490,7 +2490,7 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "pki_pki_appclientdir",
-      "community": 41,
+      "community": 24,
       "norm_label": "appclientdir"
     },
     {
@@ -2500,7 +2500,7 @@
       "source_location": "L20",
       "_origin": "ast",
       "id": "pki_pki_mkdirp",
-      "community": 41,
+      "community": 24,
       "norm_label": "mkdirp()"
     },
     {
@@ -2510,7 +2510,7 @@
       "source_location": "L24",
       "_origin": "ast",
       "id": "pki_pki_writefile",
-      "community": 41,
+      "community": 24,
       "norm_label": "writefile()"
     },
     {
@@ -2520,7 +2520,7 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "pki_pki_backupifexists",
-      "community": 41,
+      "community": 24,
       "norm_label": "backupifexists()"
     },
     {
@@ -2530,7 +2530,7 @@
       "source_location": "L36",
       "_origin": "ast",
       "id": "pki_pki_tobase64",
-      "community": 41,
+      "community": 24,
       "norm_label": "tobase64()"
     },
     {
@@ -2540,7 +2540,7 @@
       "source_location": "L40",
       "_origin": "ast",
       "id": "pki_pki_caconfig",
-      "community": 41,
+      "community": 24,
       "norm_label": "caconfig()"
     },
     {
@@ -2550,7 +2550,7 @@
       "source_location": "L48",
       "_origin": "ast",
       "id": "pki_pki_generatersakeypair",
-      "community": 41,
+      "community": 24,
       "norm_label": "generatersakeypair()"
     },
     {
@@ -2560,7 +2560,7 @@
       "source_location": "L52",
       "_origin": "ast",
       "id": "pki_pki_makecsr",
-      "community": 41,
+      "community": 24,
       "norm_label": "makecsr()"
     },
     {
@@ -2570,7 +2570,7 @@
       "source_location": "L60",
       "_origin": "ast",
       "id": "pki_pki_signappclientcert",
-      "community": 41,
+      "community": 24,
       "norm_label": "signappclientcert()"
     },
     {
@@ -2580,7 +2580,7 @@
       "source_location": "L85",
       "_origin": "ast",
       "id": "pki_pki_cmdinitca",
-      "community": 41,
+      "community": 24,
       "norm_label": "cmdinitca()"
     },
     {
@@ -2590,7 +2590,7 @@
       "source_location": "L94",
       "_origin": "ast",
       "id": "pki_pki_cmdappclient",
-      "community": 41,
+      "community": 24,
       "norm_label": "cmdappclient()"
     },
     {
@@ -2600,7 +2600,7 @@
       "source_location": "L106",
       "_origin": "ast",
       "id": "pki_pki_cmdrotate",
-      "community": 41,
+      "community": 24,
       "norm_label": "cmdrotate()"
     },
     {
@@ -2610,7 +2610,7 @@
       "source_location": "L125",
       "_origin": "ast",
       "id": "pki_pki_cmdprintappenv",
-      "community": 41,
+      "community": 24,
       "norm_label": "cmdprintappenv()"
     },
     {
@@ -2620,7 +2620,7 @@
       "source_location": "L151",
       "_origin": "ast",
       "id": "pki_pki_usage",
-      "community": 41,
+      "community": 24,
       "norm_label": "usage()"
     },
     {
@@ -2630,7 +2630,7 @@
       "source_location": "L168",
       "_origin": "ast",
       "id": "pki_pki_main",
-      "community": 41,
+      "community": 24,
       "norm_label": "main()"
     },
     {
@@ -2906,7 +2906,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "scripts_test_mqtt_mtls",
-      "community": 35,
+      "community": 45,
       "norm_label": "test-mqtt-mtls.ts"
     },
     {
@@ -2916,7 +2916,7 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "scripts_test_mqtt_mtls_main",
-      "community": 35,
+      "community": 45,
       "norm_label": "main()"
     },
     {
@@ -2963,7 +2963,7 @@
       "label": "StatsMqttLite",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L88",
+      "source_location": "L89",
       "_origin": "ast",
       "id": "src_app_statsmqttlite",
       "community": 12,
@@ -2973,7 +2973,7 @@
       "label": ".constructor()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L153",
+      "source_location": "L154",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_constructor",
       "community": 58,
@@ -2983,7 +2983,7 @@
       "label": ".getRedisClientOrNull()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L158",
+      "source_location": "L159",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_getredisclientornull",
       "community": 12,
@@ -2993,7 +2993,7 @@
       "label": ".redisMarkDeviceActive()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L168",
+      "source_location": "L169",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_redismarkdeviceactive",
       "community": 12,
@@ -3003,7 +3003,7 @@
       "label": ".redisRemoveDevice()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L184",
+      "source_location": "L185",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_redisremovedevice",
       "community": 12,
@@ -3013,7 +3013,7 @@
       "label": ".loadLatestInstagramSocialForUser()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L201",
+      "source_location": "L202",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_loadlatestinstagramsocialforuser",
       "community": 12,
@@ -3023,7 +3023,7 @@
       "label": ".start()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L227",
+      "source_location": "L228",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_start",
       "community": 12,
@@ -3033,7 +3033,7 @@
       "label": ".initializePhase2()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L296",
+      "source_location": "L297",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_initializephase2",
       "community": 12,
@@ -3043,7 +3043,7 @@
       "label": ".initializeStimulateService()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L321",
+      "source_location": "L322",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_initializestimulateservice",
       "community": 12,
@@ -3053,7 +3053,7 @@
       "label": ".buildMqttIngressHandlers()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L335",
+      "source_location": "L336",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_buildmqttingresshandlers",
       "community": 12,
@@ -3063,7 +3063,7 @@
       "label": ".onMqttMessageReceived()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L363",
+      "source_location": "L364",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_onmqttmessagereceived",
       "community": 12,
@@ -3073,7 +3073,7 @@
       "label": ".flushMqttMessageBuffer()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L377",
+      "source_location": "L378",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_flushmqttmessagebuffer",
       "community": 12,
@@ -3083,7 +3083,7 @@
       "label": ".processDeferredWork()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L381",
+      "source_location": "L382",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_processdeferredwork",
       "community": 12,
@@ -3093,7 +3093,7 @@
       "label": ".initializeServices()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L406",
+      "source_location": "L407",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_initializeservices",
       "community": 12,
@@ -3103,7 +3103,7 @@
       "label": ".restoreActiveAndRepublishFromCache()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L431",
+      "source_location": "L432",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_restoreactiveandrepublishfromcache",
       "community": 12,
@@ -3113,7 +3113,7 @@
       "label": ".initializeMongoDB()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L453",
+      "source_location": "L454",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_initializemongodb",
       "community": 12,
@@ -3123,7 +3123,7 @@
       "label": ".initializeRedis()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L489",
+      "source_location": "L490",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_initializeredis",
       "community": 12,
@@ -3133,7 +3133,7 @@
       "label": ".initializeInfluxDB()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L554",
+      "source_location": "L555",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_initializeinfluxdb",
       "community": 12,
@@ -3143,7 +3143,7 @@
       "label": ".initializePkiGovernance()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L586",
+      "source_location": "L587",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_initializepkigovernance",
       "community": 12,
@@ -3153,7 +3153,7 @@
       "label": ".initializeInstagramPoller()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L618",
+      "source_location": "L619",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_initializeinstagrampoller",
       "community": 12,
@@ -3163,7 +3163,7 @@
       "label": ".buildReadinessPayload()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L663",
+      "source_location": "L664",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_buildreadinesspayload",
       "community": 12,
@@ -3173,7 +3173,7 @@
       "label": ".setDevicePowerSaveFlag()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L691",
+      "source_location": "L692",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_setdevicepowersaveflag",
       "community": 12,
@@ -3183,7 +3183,7 @@
       "label": ".initializeProvisioning()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L704",
+      "source_location": "L705",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_initializeprovisioning",
       "community": 12,
@@ -3193,17 +3193,17 @@
       "label": ".verifyBrokerConnectivity()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L780",
+      "source_location": "L781",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_verifybrokerconnectivity",
-      "community": 35,
+      "community": 12,
       "norm_label": ".verifybrokerconnectivity()"
     },
     {
       "label": ".ensureServerClientCertificate()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L881",
+      "source_location": "L882",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_ensureserverclientcertificate",
       "community": 12,
@@ -3213,7 +3213,7 @@
       "label": ".initializeMqttClient()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L934",
+      "source_location": "L935",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_initializemqttclient",
       "community": 12,
@@ -3223,7 +3223,7 @@
       "label": ".subscribeLifecycleTopics()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L984",
+      "source_location": "L985",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_subscribelifecycletopics",
       "community": 12,
@@ -3233,7 +3233,7 @@
       "label": ".subscribeToTopics()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L998",
+      "source_location": "L999",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_subscribetotopics",
       "community": 12,
@@ -3243,7 +3243,7 @@
       "label": ".ensureDeviceProvisioned()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L1022",
+      "source_location": "L1023",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_ensuredeviceprovisioned",
       "community": 12,
@@ -3253,7 +3253,7 @@
       "label": ".handleDeviceRegistration()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L1179",
+      "source_location": "L1180",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_handledeviceregistration",
       "community": 12,
@@ -3263,7 +3263,7 @@
       "label": ".buildTestOtaDownloadUrl()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L1315",
+      "source_location": "L1316",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_buildtestotadownloadurl",
       "community": 12,
@@ -3273,7 +3273,7 @@
       "label": ".publishTestOtaToDevice()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L1329",
+      "source_location": "L1330",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_publishtestotatodevice",
       "community": 12,
@@ -3283,7 +3283,7 @@
       "label": ".fanOutTestOtaToActiveDevices()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L1357",
+      "source_location": "L1367",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_fanouttestotatoactivedevices",
       "community": 12,
@@ -3293,7 +3293,7 @@
       "label": ".deliverOtaOnRegistration()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L1375",
+      "source_location": "L1385",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_deliverotaonregistration",
       "community": 12,
@@ -3303,7 +3303,7 @@
       "label": ".cacheActiveDevice()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L1429",
+      "source_location": "L1439",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_cacheactivedevice",
       "community": 12,
@@ -3313,7 +3313,7 @@
       "label": ".handleDeviceLWT()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L1527",
+      "source_location": "L1537",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_handledevicelwt",
       "community": 12,
@@ -3323,7 +3323,7 @@
       "label": ".handleDeviceStatus()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L1607",
+      "source_location": "L1617",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_handledevicestatus",
       "community": 12,
@@ -3333,7 +3333,7 @@
       "label": ".handleDeviceOtaTelemetry()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L1669",
+      "source_location": "L1679",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_handledeviceotatelemetry",
       "community": 12,
@@ -3343,7 +3343,7 @@
       "label": ".sendRegistrationResponse()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L1743",
+      "source_location": "L1753",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_sendregistrationresponse",
       "community": 12,
@@ -3353,7 +3353,7 @@
       "label": ".sendUnregistrationResponse()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L1779",
+      "source_location": "L1789",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_sendunregistrationresponse",
       "community": 12,
@@ -3363,7 +3363,7 @@
       "label": ".extractDeviceId()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L1813",
+      "source_location": "L1823",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_extractdeviceid",
       "community": 12,
@@ -3373,7 +3373,7 @@
       "label": ".initializeHttpServer()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L1819",
+      "source_location": "L1829",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_initializehttpserver",
       "community": 12,
@@ -3383,7 +3383,7 @@
       "label": ".initializeOtaServices()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L1971",
+      "source_location": "L1981",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_initializeotaservices",
       "community": 12,
@@ -3393,7 +3393,7 @@
       "label": ".initializeStatsPublisher()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L2053",
+      "source_location": "L2063",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_initializestatspublisher",
       "community": 12,
@@ -3403,7 +3403,7 @@
       "label": ".initializeConnectRefreshCoordinator()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L2078",
+      "source_location": "L2088",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_initializeconnectrefreshcoordinator",
       "community": 12,
@@ -3413,7 +3413,7 @@
       "label": ".initializeKeepAlive()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L2095",
+      "source_location": "L2105",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_initializekeepalive",
       "community": 12,
@@ -3423,7 +3423,7 @@
       "label": ".stop()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L2121",
+      "source_location": "L2131",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_stop",
       "community": 16,
@@ -3456,7 +3456,7 @@
       "source_location": "L11",
       "_origin": "ast",
       "id": "config_connectionsconfig_getclaimbaseurl",
-      "community": 83,
+      "community": 18,
       "norm_label": "getclaimbaseurl()"
     },
     {
@@ -3656,7 +3656,7 @@
       "source_location": "L140",
       "_origin": "ast",
       "id": "config_index_setmqtttlsclientpem",
-      "community": 112,
+      "community": 35,
       "norm_label": "setmqtttlsclientpem()"
     },
     {
@@ -3826,7 +3826,7 @@
       "source_location": "L431",
       "_origin": "ast",
       "id": "config_index_otaociconfig",
-      "community": 75,
+      "community": 68,
       "norm_label": "otaociconfig"
     },
     {
@@ -3856,7 +3856,7 @@
       "source_location": "L472",
       "_origin": "ast",
       "id": "config_index_appconfig",
-      "community": 112,
+      "community": 91,
       "norm_label": "appconfig"
     },
     {
@@ -4016,7 +4016,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "config_swagger",
-      "community": 158,
+      "community": 82,
       "norm_label": "swagger.ts"
     },
     {
@@ -4026,7 +4026,7 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "config_swagger_resolveapiglobs",
-      "community": 158,
+      "community": 82,
       "norm_label": "resolveapiglobs()"
     },
     {
@@ -4036,7 +4036,7 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "config_swagger_swaggerdefinition",
-      "community": 158,
+      "community": 82,
       "norm_label": "swaggerdefinition"
     },
     {
@@ -4046,7 +4046,7 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "config_swagger_getswaggerspec",
-      "community": 158,
+      "community": 82,
       "norm_label": "getswaggerspec()"
     },
     {
@@ -4056,7 +4056,7 @@
       "source_location": "L43",
       "_origin": "ast",
       "id": "config_swagger_resetswaggerspeccache",
-      "community": 158,
+      "community": 82,
       "norm_label": "resetswaggerspeccache()"
     },
     {
@@ -4066,7 +4066,7 @@
       "source_location": "L47",
       "_origin": "ast",
       "id": "config_swagger_setupswaggerui",
-      "community": 158,
+      "community": 82,
       "norm_label": "setupswaggerui()"
     },
     {
@@ -4186,7 +4186,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "socials_gmb_pubsub",
-      "community": 47,
+      "community": 55,
       "norm_label": "gmb-pubsub.ts"
     },
     {
@@ -4196,7 +4196,7 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "socials_gmb_pubsub_extractbearertoken",
-      "community": 47,
+      "community": 55,
       "norm_label": "extractbearertoken()"
     },
     {
@@ -4206,7 +4206,7 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "socials_gmb_pubsub_getgmbpubsubaudience",
-      "community": 47,
+      "community": 55,
       "norm_label": "getgmbpubsubaudience()"
     },
     {
@@ -4216,7 +4216,7 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "socials_gmb_pubsub_verifypubsubpushrequest",
-      "community": 47,
+      "community": 55,
       "norm_label": "verifypubsubpushrequest()"
     },
     {
@@ -4306,7 +4306,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "socials_instagramtokenrefresh",
-      "community": 30,
+      "community": 43,
       "norm_label": "instagramtokenrefresh.ts"
     },
     {
@@ -4316,7 +4316,7 @@
       "source_location": "L10",
       "_origin": "ast",
       "id": "socials_instagramtokenrefresh_instagramtokencontext",
-      "community": 30,
+      "community": 43,
       "norm_label": "instagramtokencontext"
     },
     {
@@ -4326,7 +4326,7 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "socials_instagramtokenrefresh_loadinstagramtokencontextforuser",
-      "community": 30,
+      "community": 43,
       "norm_label": "loadinstagramtokencontextforuser()"
     },
     {
@@ -4336,7 +4336,7 @@
       "source_location": "L49",
       "_origin": "ast",
       "id": "socials_instagramtokenrefresh_ensurefreshinstagramaccesstoken",
-      "community": 30,
+      "community": 43,
       "norm_label": "ensurefreshinstagramaccesstoken()"
     },
     {
@@ -4346,7 +4346,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "socials_integrations",
-      "community": 21,
+      "community": 55,
       "norm_label": "integrations.ts"
     },
     {
@@ -4356,7 +4356,7 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "socials_integrations_gmbreviewnotification",
-      "community": 21,
+      "community": 55,
       "norm_label": "gmbreviewnotification"
     },
     {
@@ -4366,7 +4366,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "socials_integrations_gmbreviewpayload",
-      "community": 21,
+      "community": 55,
       "norm_label": "gmbreviewpayload"
     },
     {
@@ -4376,7 +4376,7 @@
       "source_location": "L24",
       "_origin": "ast",
       "id": "socials_integrations_resolvegmbreviewpayloadoptions",
-      "community": 21,
+      "community": 55,
       "norm_label": "resolvegmbreviewpayloadoptions"
     },
     {
@@ -4386,7 +4386,7 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "socials_integrations_getgmbaccountlookupvalues",
-      "community": 30,
+      "community": 55,
       "norm_label": "getgmbaccountlookupvalues()"
     },
     {
@@ -4396,7 +4396,7 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "socials_integrations_mapreviewpayloadtostorage",
-      "community": 21,
+      "community": 55,
       "norm_label": "mapreviewpayloadtostorage()"
     },
     {
@@ -4436,7 +4436,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "socials_syncdevicegmb",
-      "community": 84,
+      "community": 30,
       "norm_label": "syncdevicegmb.ts"
     },
     {
@@ -4446,7 +4446,7 @@
       "source_location": "L13",
       "_origin": "ast",
       "id": "socials_syncdevicegmb_gmbapiauth",
-      "community": 84,
+      "community": 30,
       "norm_label": "gmbapiauth"
     },
     {
@@ -4456,7 +4456,7 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "socials_syncdevicegmb_gmbapierrormeta",
-      "community": 84,
+      "community": 30,
       "norm_label": "gmbapierrormeta()"
     },
     {
@@ -4466,7 +4466,7 @@
       "source_location": "L30",
       "_origin": "ast",
       "id": "socials_syncdevicegmb_createaccesstokenoauthclient",
-      "community": 84,
+      "community": 30,
       "norm_label": "createaccesstokenoauthclient()"
     },
     {
@@ -4476,7 +4476,7 @@
       "source_location": "L36",
       "_origin": "ast",
       "id": "socials_syncdevicegmb_getgmbapiauth",
-      "community": 84,
+      "community": 30,
       "norm_label": "getgmbapiauth()"
     },
     {
@@ -4486,7 +4486,7 @@
       "source_location": "L73",
       "_origin": "ast",
       "id": "socials_syncdevicegmb_locationcachekeyfromresourcename",
-      "community": 84,
+      "community": 30,
       "norm_label": "locationcachekeyfromresourcename()"
     },
     {
@@ -4496,7 +4496,7 @@
       "source_location": "L79",
       "_origin": "ast",
       "id": "socials_syncdevicegmb_tryknownlocation",
-      "community": 84,
+      "community": 30,
       "norm_label": "tryknownlocation()"
     },
     {
@@ -4506,7 +4506,7 @@
       "source_location": "L104",
       "_origin": "ast",
       "id": "socials_syncdevicegmb_pickaccessiblelocation",
-      "community": 84,
+      "community": 30,
       "norm_label": "pickaccessiblelocation()"
     },
     {
@@ -4516,7 +4516,7 @@
       "source_location": "L164",
       "_origin": "ast",
       "id": "socials_syncdevicegmb_syncgmblocationfordevice",
-      "community": 84,
+      "community": 30,
       "norm_label": "syncgmblocationfordevice()"
     },
     {
@@ -4526,7 +4526,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "socials_types",
-      "community": 47,
+      "community": 55,
       "norm_label": "types.ts"
     },
     {
@@ -4536,7 +4536,7 @@
       "source_location": "L3",
       "_origin": "ast",
       "id": "socials_types_pubsubpushverificationresult",
-      "community": 47,
+      "community": 55,
       "norm_label": "pubsubpushverificationresult"
     },
     {
@@ -4546,7 +4546,7 @@
       "source_location": "L9",
       "_origin": "ast",
       "id": "socials_types_gmbpubsubverifyconfig",
-      "community": 47,
+      "community": 55,
       "norm_label": "gmbpubsubverifyconfig"
     },
     {
@@ -4556,7 +4556,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "middleware_correlationid",
-      "community": 52,
+      "community": 82,
       "norm_label": "correlationid.ts"
     },
     {
@@ -4566,7 +4566,7 @@
       "source_location": "L4",
       "_origin": "ast",
       "id": "middleware_correlationid_correlationidmiddleware",
-      "community": 52,
+      "community": 82,
       "norm_label": "correlationidmiddleware()"
     },
     {
@@ -4576,7 +4576,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "middleware_csrratelimiter",
-      "community": 106,
+      "community": 75,
       "norm_label": "csrratelimiter.ts"
     },
     {
@@ -4586,7 +4586,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "middleware_csrratelimiter_ratelimitconfig",
-      "community": 106,
+      "community": 75,
       "norm_label": "ratelimitconfig"
     },
     {
@@ -4596,7 +4596,7 @@
       "source_location": "L36",
       "_origin": "ast",
       "id": "middleware_csrratelimiter_default_config",
-      "community": 106,
+      "community": 75,
       "norm_label": "default_config"
     },
     {
@@ -4606,7 +4606,7 @@
       "source_location": "L44",
       "_origin": "ast",
       "id": "middleware_csrratelimiter_localcounters",
-      "community": 106,
+      "community": 75,
       "norm_label": "localcounters"
     },
     {
@@ -4616,7 +4616,7 @@
       "source_location": "L46",
       "_origin": "ast",
       "id": "middleware_csrratelimiter_incrementlocalcounter",
-      "community": 106,
+      "community": 75,
       "norm_label": "incrementlocalcounter()"
     },
     {
@@ -4626,7 +4626,7 @@
       "source_location": "L64",
       "_origin": "ast",
       "id": "middleware_csrratelimiter_incrementcounter",
-      "community": 106,
+      "community": 75,
       "norm_label": "incrementcounter()"
     },
     {
@@ -4636,7 +4636,7 @@
       "source_location": "L94",
       "_origin": "ast",
       "id": "middleware_csrratelimiter_rejectratelimited",
-      "community": 106,
+      "community": 75,
       "norm_label": "rejectratelimited()"
     },
     {
@@ -4656,7 +4656,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "middleware_metrics",
-      "community": 52,
+      "community": 82,
       "norm_label": "metrics.ts"
     },
     {
@@ -4666,7 +4666,7 @@
       "source_location": "L4",
       "_origin": "ast",
       "id": "middleware_metrics_register",
-      "community": 52,
+      "community": 82,
       "norm_label": "register"
     },
     {
@@ -4676,7 +4676,7 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "middleware_metrics_httprequeststotal",
-      "community": 52,
+      "community": 82,
       "norm_label": "httprequeststotal"
     },
     {
@@ -4686,7 +4686,7 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "middleware_metrics_httprequestduration",
-      "community": 52,
+      "community": 82,
       "norm_label": "httprequestduration"
     },
     {
@@ -4696,7 +4696,7 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "middleware_metrics_metricsmiddleware",
-      "community": 52,
+      "community": 82,
       "norm_label": "metricsmiddleware()"
     },
     {
@@ -4706,7 +4706,7 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "middleware_metrics_metricshandler",
-      "community": 52,
+      "community": 82,
       "norm_label": "metricshandler()"
     },
     {
@@ -4946,7 +4946,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "models_campaign",
-      "community": 92,
+      "community": 1,
       "norm_label": "campaign.ts"
     },
     {
@@ -4956,7 +4956,7 @@
       "source_location": "L4",
       "_origin": "ast",
       "id": "models_campaign_campaignstatus",
-      "community": 92,
+      "community": 1,
       "norm_label": "campaignstatus"
     },
     {
@@ -4966,7 +4966,7 @@
       "source_location": "L11",
       "_origin": "ast",
       "id": "models_campaign_discounttype",
-      "community": 92,
+      "community": 1,
       "norm_label": "discounttype"
     },
     {
@@ -4976,7 +4976,7 @@
       "source_location": "L16",
       "_origin": "ast",
       "id": "models_campaign_targettype",
-      "community": 92,
+      "community": 1,
       "norm_label": "targettype"
     },
     {
@@ -4986,7 +4986,7 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "models_campaign_scheduletype",
-      "community": 92,
+      "community": 1,
       "norm_label": "scheduletype"
     },
     {
@@ -4996,7 +4996,7 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "models_campaign_icampaign",
-      "community": 92,
+      "community": 1,
       "norm_label": "icampaign"
     },
     {
@@ -5006,7 +5006,7 @@
       "source_location": "L57",
       "_origin": "ast",
       "id": "models_campaign_campaignschema",
-      "community": 92,
+      "community": 1,
       "norm_label": "campaignschema"
     },
     {
@@ -5056,7 +5056,7 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "models_device_idevice",
-      "community": 20,
+      "community": 112,
       "norm_label": "idevice"
     },
     {
@@ -5156,7 +5156,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "models_devicecertificate",
-      "community": 10,
+      "community": 67,
       "norm_label": "devicecertificate.ts"
     },
     {
@@ -5166,7 +5166,7 @@
       "source_location": "L9",
       "_origin": "ast",
       "id": "models_devicecertificate_devicecertificatestatus",
-      "community": 10,
+      "community": 67,
       "norm_label": "devicecertificatestatus"
     },
     {
@@ -5196,7 +5196,7 @@
       "source_location": "L36",
       "_origin": "ast",
       "id": "models_devicecertificate_devicecertificateschema",
-      "community": 10,
+      "community": 67,
       "norm_label": "devicecertificateschema"
     },
     {
@@ -5206,7 +5206,7 @@
       "source_location": "L123",
       "_origin": "ast",
       "id": "models_devicecertificate_devicecertificate",
-      "community": 10,
+      "community": 67,
       "norm_label": "devicecertificate"
     },
     {
@@ -5216,7 +5216,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "models_firmwarerelease",
-      "community": 2,
+      "community": 49,
       "norm_label": "firmwarerelease.ts"
     },
     {
@@ -5226,7 +5226,7 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "models_firmwarerelease_firmwarereleasestatus",
-      "community": 2,
+      "community": 49,
       "norm_label": "firmwarereleasestatus"
     },
     {
@@ -5236,7 +5236,7 @@
       "source_location": "L13",
       "_origin": "ast",
       "id": "models_firmwarerelease_firmwarerolloutstrategy",
-      "community": 2,
+      "community": 49,
       "norm_label": "firmwarerolloutstrategy"
     },
     {
@@ -5246,7 +5246,7 @@
       "source_location": "L19",
       "_origin": "ast",
       "id": "models_firmwarerelease_ifirmwarerollout",
-      "community": 2,
+      "community": 49,
       "norm_label": "ifirmwarerollout"
     },
     {
@@ -5266,7 +5266,7 @@
       "source_location": "L45",
       "_origin": "ast",
       "id": "models_firmwarerelease_firmwarerolloutschema",
-      "community": 2,
+      "community": 49,
       "norm_label": "firmwarerolloutschema"
     },
     {
@@ -5276,7 +5276,7 @@
       "source_location": "L61",
       "_origin": "ast",
       "id": "models_firmwarerelease_firmwarereleaseschema",
-      "community": 2,
+      "community": 49,
       "norm_label": "firmwarereleaseschema"
     },
     {
@@ -5286,7 +5286,7 @@
       "source_location": "L89",
       "_origin": "ast",
       "id": "models_firmwarerelease_firmwarerelease",
-      "community": 2,
+      "community": 49,
       "norm_label": "firmwarerelease"
     },
     {
@@ -5376,7 +5376,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "models_googlebusinessreview",
-      "community": 1,
+      "community": 55,
       "norm_label": "googlebusinessreview.ts"
     },
     {
@@ -5386,7 +5386,7 @@
       "source_location": "L3",
       "_origin": "ast",
       "id": "models_googlebusinessreview_igooglebusinessreview",
-      "community": 1,
+      "community": 55,
       "norm_label": "igooglebusinessreview"
     },
     {
@@ -5396,7 +5396,7 @@
       "source_location": "L17",
       "_origin": "ast",
       "id": "models_googlebusinessreview_googlebusinessreviewschema",
-      "community": 1,
+      "community": 55,
       "norm_label": "googlebusinessreviewschema"
     },
     {
@@ -5406,7 +5406,7 @@
       "source_location": "L33",
       "_origin": "ast",
       "id": "models_googlebusinessreview_googlebusinessreview",
-      "community": 1,
+      "community": 55,
       "norm_label": "googlebusinessreview"
     },
     {
@@ -5416,7 +5416,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "models_redemption",
-      "community": 30,
+      "community": 1,
       "norm_label": "redemption.ts"
     },
     {
@@ -5426,7 +5426,7 @@
       "source_location": "L4",
       "_origin": "ast",
       "id": "models_redemption_iredemption",
-      "community": 30,
+      "community": 1,
       "norm_label": "iredemption"
     },
     {
@@ -5436,7 +5436,7 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "models_redemption_redemptionschema",
-      "community": 30,
+      "community": 1,
       "norm_label": "redemptionschema"
     },
     {
@@ -5446,7 +5446,7 @@
       "source_location": "L30",
       "_origin": "ast",
       "id": "models_redemption_redemption",
-      "community": 30,
+      "community": 1,
       "norm_label": "redemption"
     },
     {
@@ -5496,7 +5496,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "models_social",
-      "community": 30,
+      "community": 1,
       "norm_label": "social.ts"
     },
     {
@@ -5506,7 +5506,7 @@
       "source_location": "L11",
       "_origin": "ast",
       "id": "models_social_provider",
-      "community": 30,
+      "community": 1,
       "norm_label": "provider"
     },
     {
@@ -5516,7 +5516,7 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "models_social_isocial",
-      "community": 30,
+      "community": 1,
       "norm_label": "isocial"
     },
     {
@@ -5526,7 +5526,7 @@
       "source_location": "L39",
       "_origin": "ast",
       "id": "models_social_socialschema",
-      "community": 30,
+      "community": 1,
       "norm_label": "socialschema"
     },
     {
@@ -5586,7 +5586,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "models_user",
-      "community": 125,
+      "community": 112,
       "norm_label": "user.ts"
     },
     {
@@ -5596,7 +5596,7 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "models_user_iuser",
-      "community": 125,
+      "community": 112,
       "norm_label": "iuser"
     },
     {
@@ -5606,7 +5606,7 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "models_user_userschema",
-      "community": 125,
+      "community": 112,
       "norm_label": "userschema"
     },
     {
@@ -5616,7 +5616,7 @@
       "source_location": "L97",
       "_origin": "ast",
       "id": "models_user_user",
-      "community": 125,
+      "community": 112,
       "norm_label": "user"
     },
     {
@@ -5636,7 +5636,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "routes_configroutes",
-      "community": 112,
+      "community": 91,
       "norm_label": "configroutes.ts"
     },
     {
@@ -5646,7 +5646,7 @@
       "source_location": "L5",
       "_origin": "ast",
       "id": "routes_configroutes_configroutesdeps",
-      "community": 112,
+      "community": 91,
       "norm_label": "configroutesdeps"
     },
     {
@@ -5656,7 +5656,7 @@
       "source_location": "L10",
       "_origin": "ast",
       "id": "routes_configroutes_createconfigroutes",
-      "community": 112,
+      "community": 91,
       "norm_label": "createconfigroutes()"
     },
     {
@@ -5876,7 +5876,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "routes_lifecycleroutes",
-      "community": 10,
+      "community": 76,
       "norm_label": "lifecycleroutes.ts"
     },
     {
@@ -5896,7 +5896,7 @@
       "source_location": "L16",
       "_origin": "ast",
       "id": "routes_lifecycleroutes_reissuelimiter",
-      "community": 10,
+      "community": 76,
       "norm_label": "reissuelimiter"
     },
     {
@@ -5906,7 +5906,7 @@
       "source_location": "L24",
       "_origin": "ast",
       "id": "routes_lifecycleroutes_httpstatusforrecoveryerror",
-      "community": 10,
+      "community": 76,
       "norm_label": "httpstatusforrecoveryerror()"
     },
     {
@@ -5916,7 +5916,7 @@
       "source_location": "L42",
       "_origin": "ast",
       "id": "routes_lifecycleroutes_postrecoverywebhook",
-      "community": 10,
+      "community": 76,
       "norm_label": "postrecoverywebhook()"
     },
     {
@@ -5936,7 +5936,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "routes_otaadminroutes",
-      "community": 2,
+      "community": 49,
       "norm_label": "otaadminroutes.ts"
     },
     {
@@ -5956,7 +5956,7 @@
       "source_location": "L40",
       "_origin": "ast",
       "id": "routes_otaadminroutes_requireadminauth",
-      "community": 2,
+      "community": 49,
       "norm_label": "requireadminauth()"
     },
     {
@@ -5966,7 +5966,7 @@
       "source_location": "L101",
       "_origin": "ast",
       "id": "routes_otaadminroutes_createotaadminroutes",
-      "community": 2,
+      "community": 49,
       "norm_label": "createotaadminroutes()"
     },
     {
@@ -5976,14 +5976,14 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "routes_otaroutes",
-      "community": 2,
+      "community": 49,
       "norm_label": "otaroutes.ts"
     },
     {
       "label": "OtaRoutesDeps",
       "file_type": "code",
       "source_file": "src/routes/otaRoutes.ts",
-      "source_location": "L22",
+      "source_location": "L23",
       "_origin": "ast",
       "id": "routes_otaroutes_otaroutesdeps",
       "community": 49,
@@ -5993,7 +5993,7 @@
       "label": "createOtaRoutes()",
       "file_type": "code",
       "source_file": "src/routes/otaRoutes.ts",
-      "source_location": "L31",
+      "source_location": "L32",
       "_origin": "ast",
       "id": "routes_otaroutes_createotaroutes",
       "community": 76,
@@ -6046,7 +6046,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "routes_recoveryroutes",
-      "community": 8,
+      "community": 20,
       "norm_label": "recoveryroutes.ts"
     },
     {
@@ -6056,7 +6056,7 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "routes_recoveryroutes_recoveryroutesdeps",
-      "community": 8,
+      "community": 20,
       "norm_label": "recoveryroutesdeps"
     },
     {
@@ -6066,7 +6066,7 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "routes_recoveryroutes_bearertoken",
-      "community": 8,
+      "community": 20,
       "norm_label": "bearertoken()"
     },
     {
@@ -6076,7 +6076,7 @@
       "source_location": "L19",
       "_origin": "ast",
       "id": "routes_recoveryroutes_createrecoveryroutes",
-      "community": 8,
+      "community": 20,
       "norm_label": "createrecoveryroutes()"
     },
     {
@@ -6166,7 +6166,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "servers_httpserver",
-      "community": 52,
+      "community": 82,
       "norm_label": "httpserver.ts"
     },
     {
@@ -6176,7 +6176,7 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "servers_httpserver_httpconfig",
-      "community": 52,
+      "community": 82,
       "norm_label": "httpconfig"
     },
     {
@@ -6186,7 +6186,7 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "servers_httpserver_httpserver",
-      "community": 91,
+      "community": 82,
       "norm_label": "httpserver"
     },
     {
@@ -6196,7 +6196,7 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "servers_httpserver_httpserver_constructor",
-      "community": 91,
+      "community": 82,
       "norm_label": ".constructor()"
     },
     {
@@ -6206,7 +6206,7 @@
       "source_location": "L51",
       "_origin": "ast",
       "id": "servers_httpserver_httpserver_setupmiddleware",
-      "community": 91,
+      "community": 82,
       "norm_label": ".setupmiddleware()"
     },
     {
@@ -6216,7 +6216,7 @@
       "source_location": "L138",
       "_origin": "ast",
       "id": "servers_httpserver_httpserver_setuproutes",
-      "community": 91,
+      "community": 82,
       "norm_label": ".setuproutes()"
     },
     {
@@ -6226,7 +6226,7 @@
       "source_location": "L283",
       "_origin": "ast",
       "id": "servers_httpserver_httpserver_start",
-      "community": 91,
+      "community": 82,
       "norm_label": ".start()"
     },
     {
@@ -6236,7 +6236,7 @@
       "source_location": "L296",
       "_origin": "ast",
       "id": "servers_httpserver_httpserver_stop",
-      "community": 91,
+      "community": 82,
       "norm_label": ".stop()"
     },
     {
@@ -6246,7 +6246,7 @@
       "source_location": "L309",
       "_origin": "ast",
       "id": "servers_httpserver_httpserver_getserver",
-      "community": 91,
+      "community": 82,
       "norm_label": ".getserver()"
     },
     {
@@ -6256,7 +6256,7 @@
       "source_location": "L316",
       "_origin": "ast",
       "id": "servers_httpserver_httpserver_getapp",
-      "community": 91,
+      "community": 82,
       "norm_label": ".getapp()"
     },
     {
@@ -6826,7 +6826,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "services_caservice",
-      "community": 10,
+      "community": 67,
       "norm_label": "caservice.ts"
     },
     {
@@ -6836,7 +6836,7 @@
       "source_location": "L25",
       "_origin": "ast",
       "id": "services_caservice_unsupportedcsrkeytypeerror",
-      "community": 10,
+      "community": 106,
       "norm_label": "unsupportedcsrkeytypeerror"
     },
     {
@@ -6846,7 +6846,7 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "services_caservice_unsupportedcsrkeytypeerror_constructor",
-      "community": 10,
+      "community": 106,
       "norm_label": ".constructor()"
     },
     {
@@ -6856,7 +6856,7 @@
       "source_location": "L37",
       "_origin": "ast",
       "id": "services_caservice_devicealreadyhascertificateerror",
-      "community": 10,
+      "community": 106,
       "norm_label": "devicealreadyhascertificateerror"
     },
     {
@@ -6866,7 +6866,7 @@
       "source_location": "L40",
       "_origin": "ast",
       "id": "services_caservice_devicealreadyhascertificateerror_constructor",
-      "community": 10,
+      "community": 106,
       "norm_label": ".constructor()"
     },
     {
@@ -6876,7 +6876,7 @@
       "source_location": "L48",
       "_origin": "ast",
       "id": "services_caservice_caconfig",
-      "community": 10,
+      "community": 67,
       "norm_label": "caconfig"
     },
     {
@@ -6886,7 +6886,7 @@
       "source_location": "L61",
       "_origin": "ast",
       "id": "services_caservice_rootca",
-      "community": 10,
+      "community": 67,
       "norm_label": "rootca"
     },
     {
@@ -7076,7 +7076,7 @@
       "source_location": "L757",
       "_origin": "ast",
       "id": "services_caservice_caservice_updatecertificatestatus",
-      "community": 10,
+      "community": 24,
       "norm_label": ".updatecertificatestatus()"
     },
     {
@@ -7336,7 +7336,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "services_deviceservice",
-      "community": 20,
+      "community": 171,
       "norm_label": "deviceservice.ts"
     },
     {
@@ -7346,7 +7346,7 @@
       "source_location": "L21",
       "_origin": "ast",
       "id": "services_deviceservice_activedevice",
-      "community": 26,
+      "community": 171,
       "norm_label": "activedevice"
     },
     {
@@ -7396,7 +7396,7 @@
       "source_location": "L77",
       "_origin": "ast",
       "id": "services_deviceservice_activedevicecache_updatelastseen",
-      "community": 59,
+      "community": 26,
       "norm_label": ".updatelastseen()"
     },
     {
@@ -7446,7 +7446,7 @@
       "source_location": "L151",
       "_origin": "ast",
       "id": "services_deviceservice_getactivedevicecache",
-      "community": 73,
+      "community": 171,
       "norm_label": "getactivedevicecache()"
     },
     {
@@ -7456,7 +7456,7 @@
       "source_location": "L160",
       "_origin": "ast",
       "id": "services_deviceservice_devicedata",
-      "community": 20,
+      "community": 171,
       "norm_label": "devicedata"
     },
     {
@@ -7466,7 +7466,7 @@
       "source_location": "L170",
       "_origin": "ast",
       "id": "services_deviceservice_deviceservice",
-      "community": 59,
+      "community": 26,
       "norm_label": "deviceservice"
     },
     {
@@ -7476,7 +7476,7 @@
       "source_location": "L174",
       "_origin": "ast",
       "id": "services_deviceservice_deviceservice_constructor",
-      "community": 59,
+      "community": 26,
       "norm_label": ".constructor()"
     },
     {
@@ -7486,7 +7486,7 @@
       "source_location": "L181",
       "_origin": "ast",
       "id": "services_deviceservice_deviceservice_initialize",
-      "community": 59,
+      "community": 26,
       "norm_label": ".initialize()"
     },
     {
@@ -7496,7 +7496,7 @@
       "source_location": "L193",
       "_origin": "ast",
       "id": "services_deviceservice_deviceservice_registerdevice",
-      "community": 20,
+      "community": 112,
       "norm_label": ".registerdevice()"
     },
     {
@@ -7506,7 +7506,7 @@
       "source_location": "L270",
       "_origin": "ast",
       "id": "services_deviceservice_deviceservice_getdevice",
-      "community": 124,
+      "community": 26,
       "norm_label": ".getdevice()"
     },
     {
@@ -7516,7 +7516,7 @@
       "source_location": "L303",
       "_origin": "ast",
       "id": "services_deviceservice_deviceservice_getalldevices",
-      "community": 59,
+      "community": 26,
       "norm_label": ".getalldevices()"
     },
     {
@@ -7526,7 +7526,7 @@
       "source_location": "L334",
       "_origin": "ast",
       "id": "services_deviceservice_deviceservice_updatedevicestatus",
-      "community": 124,
+      "community": 26,
       "norm_label": ".updatedevicestatus()"
     },
     {
@@ -7536,7 +7536,7 @@
       "source_location": "L362",
       "_origin": "ast",
       "id": "services_deviceservice_deviceservice_updatelastseen",
-      "community": 59,
+      "community": 26,
       "norm_label": ".updatelastseen()"
     },
     {
@@ -7546,7 +7546,7 @@
       "source_location": "L381",
       "_origin": "ast",
       "id": "services_deviceservice_deviceservice_getdevicesbyuserid",
-      "community": 59,
+      "community": 26,
       "norm_label": ".getdevicesbyuserid()"
     },
     {
@@ -7556,7 +7556,7 @@
       "source_location": "L413",
       "_origin": "ast",
       "id": "services_deviceservice_deviceservice_deletedevice",
-      "community": 59,
+      "community": 26,
       "norm_label": ".deletedevice()"
     },
     {
@@ -7566,7 +7566,7 @@
       "source_location": "L432",
       "_origin": "ast",
       "id": "services_deviceservice_deviceservice_startcleanup",
-      "community": 59,
+      "community": 26,
       "norm_label": ".startcleanup()"
     },
     {
@@ -7576,7 +7576,7 @@
       "source_location": "L443",
       "_origin": "ast",
       "id": "services_deviceservice_deviceservice_cleanupinactivedevices",
-      "community": 59,
+      "community": 26,
       "norm_label": ".cleanupinactivedevices()"
     },
     {
@@ -7586,7 +7586,7 @@
       "source_location": "L467",
       "_origin": "ast",
       "id": "services_deviceservice_deviceservice_close",
-      "community": 59,
+      "community": 26,
       "norm_label": ".close()"
     },
     {
@@ -7646,7 +7646,7 @@
       "source_location": "L53",
       "_origin": "ast",
       "id": "services_firmwarestorageservice_ocifirmwarestorageservice_constructor",
-      "community": 49,
+      "community": 68,
       "norm_label": ".constructor()"
     },
     {
@@ -7796,7 +7796,7 @@
       "source_location": "L13",
       "_origin": "ast",
       "id": "services_gmbconnectpull_gmbconnectpull_constructor",
-      "community": 171,
+      "community": 65,
       "norm_label": ".constructor()"
     },
     {
@@ -7866,7 +7866,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "googlebusiness_googlebusinessoauth",
-      "community": 84,
+      "community": 30,
       "norm_label": "googlebusinessoauth.ts"
     },
     {
@@ -7876,7 +7876,7 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "googlebusiness_googlebusinessoauth_isinvalidgrant",
-      "community": 84,
+      "community": 30,
       "norm_label": "isinvalidgrant()"
     },
     {
@@ -7886,7 +7886,7 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "googlebusiness_googlebusinessoauth_creategooglebusinessoauth2client",
-      "community": 84,
+      "community": 30,
       "norm_label": "creategooglebusinessoauth2client()"
     },
     {
@@ -7896,7 +7896,7 @@
       "source_location": "L29",
       "_origin": "ast",
       "id": "googlebusiness_googlebusinessoauth_refreshaccesstokenifneeded",
-      "community": 84,
+      "community": 30,
       "norm_label": "refreshaccesstokenifneeded()"
     },
     {
@@ -7906,7 +7906,7 @@
       "source_location": "L81",
       "_origin": "ast",
       "id": "googlebusiness_googlebusinessoauth_getvalidoauth2client",
-      "community": 84,
+      "community": 30,
       "norm_label": "getvalidoauth2client()"
     },
     {
@@ -8116,7 +8116,7 @@
       "source_location": "L53",
       "_origin": "ast",
       "id": "services_influxservice_systemmetrics",
-      "community": 90,
+      "community": 56,
       "norm_label": "systemmetrics"
     },
     {
@@ -8276,7 +8276,7 @@
       "source_location": "L241",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_resolvebucket",
-      "community": 0,
+      "community": 74,
       "norm_label": ".resolvebucket()"
     },
     {
@@ -8286,7 +8286,7 @@
       "source_location": "L245",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_constructor",
-      "community": 56,
+      "community": 0,
       "norm_label": ".constructor()"
     },
     {
@@ -8316,7 +8316,7 @@
       "source_location": "L320",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_writedeviceotaevent",
-      "community": 56,
+      "community": 0,
       "norm_label": ".writedeviceotaevent()"
     },
     {
@@ -8486,7 +8486,7 @@
       "source_location": "L434",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_writeotatelemetry",
-      "community": 56,
+      "community": 0,
       "norm_label": ".writeotatelemetry()"
     },
     {
@@ -8516,7 +8516,7 @@
       "source_location": "L458",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_querydevicemetrics",
-      "community": 0,
+      "community": 74,
       "norm_label": ".querydevicemetrics()"
     },
     {
@@ -8526,7 +8526,7 @@
       "source_location": "L483",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_querysocialmetrics",
-      "community": 0,
+      "community": 74,
       "norm_label": ".querysocialmetrics()"
     },
     {
@@ -8536,7 +8536,7 @@
       "source_location": "L509",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_getlatestdevicemetrics",
-      "community": 0,
+      "community": 74,
       "norm_label": ".getlatestdevicemetrics()"
     },
     {
@@ -8546,7 +8546,7 @@
       "source_location": "L534",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_queryflux",
-      "community": 0,
+      "community": 41,
       "norm_label": ".queryflux()"
     },
     {
@@ -8556,7 +8556,7 @@
       "source_location": "L545",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_queryinstagrammetrics",
-      "community": 0,
+      "community": 41,
       "norm_label": ".queryinstagrammetrics()"
     },
     {
@@ -8566,7 +8566,7 @@
       "source_location": "L561",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_queryinstagramaudit",
-      "community": 0,
+      "community": 41,
       "norm_label": ".queryinstagramaudit()"
     },
     {
@@ -8576,7 +8576,7 @@
       "source_location": "L577",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_querymilestones",
-      "community": 0,
+      "community": 41,
       "norm_label": ".querymilestones()"
     },
     {
@@ -8586,7 +8586,7 @@
       "source_location": "L599",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_queryprofilebaseline",
-      "community": 0,
+      "community": 41,
       "norm_label": ".queryprofilebaseline()"
     },
     {
@@ -8596,7 +8596,7 @@
       "source_location": "L616",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_queryvelocityweekly",
-      "community": 0,
+      "community": 41,
       "norm_label": ".queryvelocityweekly()"
     },
     {
@@ -8606,7 +8606,7 @@
       "source_location": "L636",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_querywebhookevents",
-      "community": 0,
+      "community": 41,
       "norm_label": ".querywebhookevents()"
     },
     {
@@ -8616,7 +8616,7 @@
       "source_location": "L652",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_querywebhookmqttdeliveries",
-      "community": 0,
+      "community": 41,
       "norm_label": ".querywebhookmqttdeliveries()"
     },
     {
@@ -8626,7 +8626,7 @@
       "source_location": "L668",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_queryinstagrammqttdeliveries",
-      "community": 0,
+      "community": 41,
       "norm_label": ".queryinstagrammqttdeliveries()"
     },
     {
@@ -8636,7 +8636,7 @@
       "source_location": "L684",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_querygmbreviewsnapshots",
-      "community": 0,
+      "community": 41,
       "norm_label": ".querygmbreviewsnapshots()"
     },
     {
@@ -8646,7 +8646,7 @@
       "source_location": "L700",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_querygmbwebhookaudits",
-      "community": 0,
+      "community": 41,
       "norm_label": ".querygmbwebhookaudits()"
     },
     {
@@ -8656,7 +8656,7 @@
       "source_location": "L716",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_querygmbvelocityweekly",
-      "community": 0,
+      "community": 41,
       "norm_label": ".querygmbvelocityweekly()"
     },
     {
@@ -8666,7 +8666,7 @@
       "source_location": "L734",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_queryinstagramcircuitevents",
-      "community": 0,
+      "community": 41,
       "norm_label": ".queryinstagramcircuitevents()"
     },
     {
@@ -8676,7 +8676,7 @@
       "source_location": "L748",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_queryinstagramattentione2e",
-      "community": 0,
+      "community": 41,
       "norm_label": ".queryinstagramattentione2e()"
     },
     {
@@ -8686,7 +8686,7 @@
       "source_location": "L764",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_queryratelimitevents",
-      "community": 0,
+      "community": 41,
       "norm_label": ".queryratelimitevents()"
     },
     {
@@ -8716,7 +8716,7 @@
       "source_location": "L810",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_queryauditevents",
-      "community": 0,
+      "community": 74,
       "norm_label": ".queryauditevents()"
     },
     {
@@ -8746,7 +8746,7 @@
       "source_location": "L865",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_queryotareleaseleaves",
-      "community": 0,
+      "community": 74,
       "norm_label": ".queryotareleaseleaves()"
     },
     {
@@ -8756,7 +8756,7 @@
       "source_location": "L896",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_querytransparencyleaves",
-      "community": 0,
+      "community": 74,
       "norm_label": ".querytransparencyleaves()"
     },
     {
@@ -8766,7 +8766,7 @@
       "source_location": "L927",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_querylatestauditentry",
-      "community": 0,
+      "community": 74,
       "norm_label": ".querylatestauditentry()"
     },
     {
@@ -8776,7 +8776,7 @@
       "source_location": "L961",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_queryauditchain",
-      "community": 0,
+      "community": 74,
       "norm_label": ".queryauditchain()"
     },
     {
@@ -8796,7 +8796,7 @@
       "source_location": "L1152",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_close",
-      "community": 56,
+      "community": 127,
       "norm_label": ".close()"
     },
     {
@@ -8806,7 +8806,7 @@
       "source_location": "L1193",
       "_origin": "ast",
       "id": "services_influxservice_createinfluxservice",
-      "community": 112,
+      "community": 12,
       "norm_label": "createinfluxservice()"
     },
     {
@@ -8826,7 +8826,7 @@
       "source_location": "L1202",
       "_origin": "ast",
       "id": "services_influxservice_resetinfluxservice",
-      "community": 56,
+      "community": 127,
       "norm_label": "resetinfluxservice()"
     },
     {
@@ -9316,7 +9316,7 @@
       "source_location": "L624",
       "_origin": "ast",
       "id": "services_instagramservice_screendeliveryfetchshape",
-      "community": 87,
+      "community": 3,
       "norm_label": "screendeliveryfetchshape"
     },
     {
@@ -9336,7 +9336,7 @@
       "source_location": "L639",
       "_origin": "ast",
       "id": "services_instagramservice_formatinstagramscreenmqttpayload",
-      "community": 87,
+      "community": 52,
       "norm_label": "formatinstagramscreenmqttpayload()"
     },
     {
@@ -9346,7 +9346,7 @@
       "source_location": "L665",
       "_origin": "ast",
       "id": "services_instagramservice_publishinstagramscreenifchanged",
-      "community": 69,
+      "community": 43,
       "norm_label": "publishinstagramscreenifchanged()"
     },
     {
@@ -9596,7 +9596,7 @@
       "source_location": "L1466",
       "_origin": "ast",
       "id": "services_instagramservice_instagrampoller_constructor",
-      "community": 87,
+      "community": 47,
       "norm_label": ".constructor()"
     },
     {
@@ -10326,7 +10326,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "services_ociauthprovider",
-      "community": 75,
+      "community": 68,
       "norm_label": "ociauthprovider.ts"
     },
     {
@@ -10336,7 +10336,7 @@
       "source_location": "L8",
       "_origin": "ast",
       "id": "services_ociauthprovider_normalizepemfromenv",
-      "community": 75,
+      "community": 68,
       "norm_label": "normalizepemfromenv()"
     },
     {
@@ -10346,7 +10346,7 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "services_ociauthprovider_privatekeyfromenv",
-      "community": 75,
+      "community": 68,
       "norm_label": "privatekeyfromenv()"
     },
     {
@@ -10356,7 +10356,7 @@
       "source_location": "L31",
       "_origin": "ast",
       "id": "services_ociauthprovider_hasocienvcredentials",
-      "community": 75,
+      "community": 68,
       "norm_label": "hasocienvcredentials()"
     },
     {
@@ -10396,7 +10396,7 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "services_ocistorageerrors_ocistorageerror",
-      "community": 68,
+      "community": 49,
       "norm_label": "ocistorageerror"
     },
     {
@@ -10406,7 +10406,7 @@
       "source_location": "L16",
       "_origin": "ast",
       "id": "services_ocistorageerrors_ocistorageerror_constructor",
-      "community": 68,
+      "community": 49,
       "norm_label": ".constructor()"
     },
     {
@@ -10556,7 +10556,7 @@
       "source_location": "L160",
       "_origin": "ast",
       "id": "services_otareleaselog_createotareleaselog",
-      "community": 112,
+      "community": 12,
       "norm_label": "createotareleaselog()"
     },
     {
@@ -10976,7 +10976,7 @@
       "source_location": "L288",
       "_origin": "ast",
       "id": "services_otaservice_otacommandpublisher_constructor",
-      "community": 49,
+      "community": 50,
       "norm_label": ".constructor()"
     },
     {
@@ -11256,7 +11256,7 @@
       "source_location": "L959",
       "_origin": "ast",
       "id": "services_otaservice_otaservice_markdevicedelivered",
-      "community": 50,
+      "community": 9,
       "norm_label": ".markdevicedelivered()"
     },
     {
@@ -11356,7 +11356,7 @@
       "source_location": "L1128",
       "_origin": "ast",
       "id": "services_otaservice_otaservice_recordotasuccess",
-      "community": 50,
+      "community": 9,
       "norm_label": ".recordotasuccess()"
     },
     {
@@ -11366,7 +11366,7 @@
       "source_location": "L1143",
       "_origin": "ast",
       "id": "services_otaservice_otaservice_mayberecordimplicitotasuccess",
-      "community": 50,
+      "community": 9,
       "norm_label": ".mayberecordimplicitotasuccess()"
     },
     {
@@ -11506,7 +11506,7 @@
       "source_location": "L79",
       "_origin": "ast",
       "id": "services_promotionservice_buildcampaignpayload",
-      "community": 83,
+      "community": 18,
       "norm_label": "buildcampaignpayload()"
     },
     {
@@ -11816,7 +11816,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "services_recoverysessionservice",
-      "community": 8,
+      "community": 10,
       "norm_label": "recoverysessionservice.ts"
     },
     {
@@ -11826,7 +11826,7 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "services_recoverysessionservice_recoverysessionredisstate",
-      "community": 8,
+      "community": 10,
       "norm_label": "recoverysessionredisstate"
     },
     {
@@ -11836,7 +11836,7 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "services_recoverysessionservice_recoverysessionerror",
-      "community": 8,
+      "community": 10,
       "norm_label": "recoverysessionerror"
     },
     {
@@ -11846,7 +11846,7 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "services_recoverysessionservice_devicerecoveryjwtclaims",
-      "community": 8,
+      "community": 10,
       "norm_label": "devicerecoveryjwtclaims"
     },
     {
@@ -11856,7 +11856,7 @@
       "source_location": "L43",
       "_origin": "ast",
       "id": "services_recoverysessionservice_hashtoken",
-      "community": 8,
+      "community": 10,
       "norm_label": "hashtoken()"
     },
     {
@@ -11866,7 +11866,7 @@
       "source_location": "L47",
       "_origin": "ast",
       "id": "services_recoverysessionservice_recoverysessionservice",
-      "community": 8,
+      "community": 10,
       "norm_label": "recoverysessionservice"
     },
     {
@@ -11876,7 +11876,7 @@
       "source_location": "L48",
       "_origin": "ast",
       "id": "services_recoverysessionservice_recoverysessionservice_constructor",
-      "community": 8,
+      "community": 10,
       "norm_label": ".constructor()"
     },
     {
@@ -11886,7 +11886,7 @@
       "source_location": "L54",
       "_origin": "ast",
       "id": "services_recoverysessionservice_recoverysessionservice_sessionkey",
-      "community": 8,
+      "community": 10,
       "norm_label": ".sessionkey()"
     },
     {
@@ -11896,7 +11896,7 @@
       "source_location": "L58",
       "_origin": "ast",
       "id": "services_recoverysessionservice_recoverysessionservice_getredis",
-      "community": 8,
+      "community": 10,
       "norm_label": ".getredis()"
     },
     {
@@ -11906,7 +11906,7 @@
       "source_location": "L70",
       "_origin": "ast",
       "id": "services_recoverysessionservice_recoverysessionservice_isavailable",
-      "community": 8,
+      "community": 10,
       "norm_label": ".isavailable()"
     },
     {
@@ -11916,7 +11916,7 @@
       "source_location": "L77",
       "_origin": "ast",
       "id": "services_recoverysessionservice_recoverysessionservice_parsedevicerecoverytoken",
-      "community": 8,
+      "community": 10,
       "norm_label": ".parsedevicerecoverytoken()"
     },
     {
@@ -11926,7 +11926,7 @@
       "source_location": "L121",
       "_origin": "ast",
       "id": "services_recoverysessionservice_recoverysessionservice_getactivesessionttl",
-      "community": 8,
+      "community": 10,
       "norm_label": ".getactivesessionttl()"
     },
     {
@@ -11936,7 +11936,7 @@
       "source_location": "L146",
       "_origin": "ast",
       "id": "services_recoverysessionservice_recoverysessionservice_registersession",
-      "community": 8,
+      "community": 10,
       "norm_label": ".registersession()"
     },
     {
@@ -11946,7 +11946,7 @@
       "source_location": "L207",
       "_origin": "ast",
       "id": "services_recoverysessionservice_recoverysessionservice_verifysession",
-      "community": 8,
+      "community": 10,
       "norm_label": ".verifysession()"
     },
     {
@@ -11956,7 +11956,7 @@
       "source_location": "L258",
       "_origin": "ast",
       "id": "services_recoverysessionservice_recoverysessionservice_consumesession",
-      "community": 8,
+      "community": 10,
       "norm_label": ".consumesession()"
     },
     {
@@ -11966,7 +11966,7 @@
       "source_location": "L267",
       "_origin": "ast",
       "id": "services_recoverysessionservice_createrecoverysessionservice",
-      "community": 8,
+      "community": 10,
       "norm_label": "createrecoverysessionservice()"
     },
     {
@@ -11996,7 +11996,7 @@
       "source_location": "L19",
       "_origin": "ast",
       "id": "services_redisservice_redisservice",
-      "community": 87,
+      "community": 47,
       "norm_label": "redisservice"
     },
     {
@@ -12006,7 +12006,7 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "services_redisservice_redisservice_constructor",
-      "community": 87,
+      "community": 47,
       "norm_label": ".constructor()"
     },
     {
@@ -12016,7 +12016,7 @@
       "source_location": "L36",
       "_origin": "ast",
       "id": "services_redisservice_redisservice_logcall",
-      "community": 87,
+      "community": 47,
       "norm_label": ".logcall()"
     },
     {
@@ -12026,7 +12026,7 @@
       "source_location": "L44",
       "_origin": "ast",
       "id": "services_redisservice_redisservice_traceasync",
-      "community": 87,
+      "community": 47,
       "norm_label": ".traceasync()"
     },
     {
@@ -12036,7 +12036,7 @@
       "source_location": "L68",
       "_origin": "ast",
       "id": "services_redisservice_redisservice_safetargetforlogs",
-      "community": 87,
+      "community": 47,
       "norm_label": ".safetargetforlogs()"
     },
     {
@@ -12046,7 +12046,7 @@
       "source_location": "L89",
       "_origin": "ast",
       "id": "services_redisservice_redisservice_isredisconfigured",
-      "community": 87,
+      "community": 47,
       "norm_label": ".isredisconfigured()"
     },
     {
@@ -12056,7 +12056,7 @@
       "source_location": "L98",
       "_origin": "ast",
       "id": "services_redisservice_redisservice_connect",
-      "community": 87,
+      "community": 47,
       "norm_label": ".connect()"
     },
     {
@@ -12066,7 +12066,7 @@
       "source_location": "L196",
       "_origin": "ast",
       "id": "services_redisservice_redisservice_disconnect",
-      "community": 87,
+      "community": 47,
       "norm_label": ".disconnect()"
     },
     {
@@ -12076,7 +12076,7 @@
       "source_location": "L229",
       "_origin": "ast",
       "id": "services_redisservice_redisservice_getclient",
-      "community": 87,
+      "community": 47,
       "norm_label": ".getclient()"
     },
     {
@@ -12086,7 +12086,7 @@
       "source_location": "L240",
       "_origin": "ast",
       "id": "services_redisservice_redisservice_isredisconnected",
-      "community": 87,
+      "community": 47,
       "norm_label": ".isredisconnected()"
     },
     {
@@ -12096,7 +12096,7 @@
       "source_location": "L256",
       "_origin": "ast",
       "id": "services_redisservice_redisservice_healthcheck",
-      "community": 87,
+      "community": 47,
       "norm_label": ".healthcheck()"
     },
     {
@@ -12106,7 +12106,7 @@
       "source_location": "L280",
       "_origin": "ast",
       "id": "services_redisservice_redisservice_getcommandstats",
-      "community": 87,
+      "community": 47,
       "norm_label": ".getcommandstats()"
     },
     {
@@ -12116,7 +12116,7 @@
       "source_location": "L291",
       "_origin": "ast",
       "id": "services_redisservice_redisservice_setupeventhandlers",
-      "community": 87,
+      "community": 47,
       "norm_label": ".setupeventhandlers()"
     },
     {
@@ -12126,7 +12126,7 @@
       "source_location": "L325",
       "_origin": "ast",
       "id": "services_redisservice_redisservice_getstats",
-      "community": 87,
+      "community": 47,
       "norm_label": ".getstats()"
     },
     {
@@ -12136,7 +12136,7 @@
       "source_location": "L398",
       "_origin": "ast",
       "id": "services_redisservice_getredisservice",
-      "community": 18,
+      "community": 43,
       "norm_label": "getredisservice()"
     },
     {
@@ -12146,7 +12146,7 @@
       "source_location": "L402",
       "_origin": "ast",
       "id": "services_redisservice_createredisservice",
-      "community": 43,
+      "community": 12,
       "norm_label": "createredisservice()"
     },
     {
@@ -12156,7 +12156,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "services_screenenvelope",
-      "community": 87,
+      "community": 21,
       "norm_label": "screenenvelope.ts"
     },
     {
@@ -12166,7 +12166,7 @@
       "source_location": "L5",
       "_origin": "ast",
       "id": "services_screenenvelope_screenid",
-      "community": 87,
+      "community": 21,
       "norm_label": "screenid"
     },
     {
@@ -12176,7 +12176,7 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "services_screenenvelope_screenenvelope",
-      "community": 87,
+      "community": 21,
       "norm_label": "screenenvelope"
     },
     {
@@ -12186,7 +12186,7 @@
       "source_location": "L16",
       "_origin": "ast",
       "id": "services_screenenvelope_buildscreenenvelopeopts",
-      "community": 87,
+      "community": 21,
       "norm_label": "buildscreenenvelopeopts"
     },
     {
@@ -12196,7 +12196,7 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "services_screenenvelope_celebrationtype",
-      "community": 87,
+      "community": 21,
       "norm_label": "celebrationtype"
     },
     {
@@ -12206,7 +12206,7 @@
       "source_location": "L29",
       "_origin": "ast",
       "id": "services_screenenvelope_celebrationstate",
-      "community": 87,
+      "community": 21,
       "norm_label": "celebrationstate"
     },
     {
@@ -12216,7 +12216,7 @@
       "source_location": "L33",
       "_origin": "ast",
       "id": "services_screenenvelope_gmbreviewitem",
-      "community": 87,
+      "community": 21,
       "norm_label": "gmbreviewitem"
     },
     {
@@ -12226,7 +12226,7 @@
       "source_location": "L35",
       "_origin": "ast",
       "id": "services_screenenvelope_buildscreenenvelope",
-      "community": 73,
+      "community": 26,
       "norm_label": "buildscreenenvelope()"
     },
     {
@@ -12236,7 +12236,7 @@
       "source_location": "L51",
       "_origin": "ast",
       "id": "services_screenenvelope_resolvecelebrationstate",
-      "community": 87,
+      "community": 59,
       "norm_label": "resolvecelebrationstate()"
     },
     {
@@ -12246,7 +12246,7 @@
       "source_location": "L69",
       "_origin": "ast",
       "id": "services_screenenvelope_instagramfollowermetrics",
-      "community": 87,
+      "community": 21,
       "norm_label": "instagramfollowermetrics()"
     },
     {
@@ -12256,7 +12256,7 @@
       "source_location": "L84",
       "_origin": "ast",
       "id": "services_screenenvelope_gmbreviewmetrics",
-      "community": 87,
+      "community": 21,
       "norm_label": "gmbreviewmetrics()"
     },
     {
@@ -12266,7 +12266,7 @@
       "source_location": "L98",
       "_origin": "ast",
       "id": "services_screenenvelope_gmbscreenpayloadinput",
-      "community": 87,
+      "community": 21,
       "norm_label": "gmbscreenpayloadinput"
     },
     {
@@ -12286,7 +12286,7 @@
       "source_location": "L149",
       "_origin": "ast",
       "id": "services_screenenvelope_instagramscreenpayloadinput",
-      "community": 87,
+      "community": 21,
       "norm_label": "instagramscreenpayloadinput"
     },
     {
@@ -12296,7 +12296,7 @@
       "source_location": "L154",
       "_origin": "ast",
       "id": "services_screenenvelope_buildinstagramscreenpayload",
-      "community": 87,
+      "community": 21,
       "norm_label": "buildinstagramscreenpayload()"
     },
     {
@@ -12526,7 +12526,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "services_statspublisher",
-      "community": 43,
+      "community": 171,
       "norm_label": "statspublisher.ts"
     },
     {
@@ -12536,7 +12536,7 @@
       "source_location": "L20",
       "_origin": "ast",
       "id": "services_statspublisher_sample_gmb_reviews",
-      "community": 43,
+      "community": 171,
       "norm_label": "sample_gmb_reviews"
     },
     {
@@ -12546,7 +12546,7 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "services_statspublisher_gmbdemovariant",
-      "community": 43,
+      "community": 21,
       "norm_label": "gmbdemovariant()"
     },
     {
@@ -12556,7 +12556,7 @@
       "source_location": "L45",
       "_origin": "ast",
       "id": "services_statspublisher_test_gmb_v6_variants",
-      "community": 43,
+      "community": 171,
       "norm_label": "test_gmb_v6_variants"
     },
     {
@@ -12566,7 +12566,7 @@
       "source_location": "L52",
       "_origin": "ast",
       "id": "services_statspublisher_devicescreenstate",
-      "community": 43,
+      "community": 171,
       "norm_label": "devicescreenstate"
     },
     {
@@ -12576,7 +12576,7 @@
       "source_location": "L58",
       "_origin": "ast",
       "id": "services_statspublisher_statspublisher",
-      "community": 73,
+      "community": 26,
       "norm_label": "statspublisher"
     },
     {
@@ -12586,7 +12586,7 @@
       "source_location": "L69",
       "_origin": "ast",
       "id": "services_statspublisher_statspublisher_constructor",
-      "community": 59,
+      "community": 26,
       "norm_label": ".constructor()"
     },
     {
@@ -12596,7 +12596,7 @@
       "source_location": "L83",
       "_origin": "ast",
       "id": "services_statspublisher_statspublisher_start",
-      "community": 73,
+      "community": 26,
       "norm_label": ".start()"
     },
     {
@@ -12606,7 +12606,7 @@
       "source_location": "L103",
       "_origin": "ast",
       "id": "services_statspublisher_statspublisher_stop",
-      "community": 73,
+      "community": 26,
       "norm_label": ".stop()"
     },
     {
@@ -12616,7 +12616,7 @@
       "source_location": "L112",
       "_origin": "ast",
       "id": "services_statspublisher_statspublisher_gettopicroot",
-      "community": 73,
+      "community": 26,
       "norm_label": ".gettopicroot()"
     },
     {
@@ -12626,7 +12626,7 @@
       "source_location": "L116",
       "_origin": "ast",
       "id": "services_statspublisher_statspublisher_publishallscreens",
-      "community": 73,
+      "community": 26,
       "norm_label": ".publishallscreens()"
     },
     {
@@ -12636,7 +12636,7 @@
       "source_location": "L208",
       "_origin": "ast",
       "id": "services_statspublisher_statspublisher_ensuredevicestate",
-      "community": 73,
+      "community": 26,
       "norm_label": ".ensuredevicestate()"
     },
     {
@@ -12646,7 +12646,7 @@
       "source_location": "L227",
       "_origin": "ast",
       "id": "services_statspublisher_statspublisher_publishinstagram",
-      "community": 73,
+      "community": 26,
       "norm_label": ".publishinstagram()"
     },
     {
@@ -12656,7 +12656,7 @@
       "source_location": "L255",
       "_origin": "ast",
       "id": "services_statspublisher_statspublisher_publishtestgmb",
-      "community": 73,
+      "community": 26,
       "norm_label": ".publishtestgmb()"
     },
     {
@@ -12666,7 +12666,7 @@
       "source_location": "L295",
       "_origin": "ast",
       "id": "services_statspublisher_statspublisher_publishpromotionfordevice",
-      "community": 73,
+      "community": 26,
       "norm_label": ".publishpromotionfordevice()"
     },
     {
@@ -12676,7 +12676,7 @@
       "source_location": "L360",
       "_origin": "ast",
       "id": "services_statspublisher_statspublisher_publishdefaultcanvas",
-      "community": 73,
+      "community": 26,
       "norm_label": ".publishdefaultcanvas()"
     },
     {
@@ -12686,7 +12686,7 @@
       "source_location": "L382",
       "_origin": "ast",
       "id": "services_statspublisher_statspublisher_publishpromotionenvelope",
-      "community": 73,
+      "community": 26,
       "norm_label": ".publishpromotionenvelope()"
     },
     {
@@ -12696,7 +12696,7 @@
       "source_location": "L421",
       "_origin": "ast",
       "id": "services_statspublisher_statspublisher_publishgmb",
-      "community": 73,
+      "community": 26,
       "norm_label": ".publishgmb()"
     },
     {
@@ -12706,7 +12706,7 @@
       "source_location": "L451",
       "_origin": "ast",
       "id": "services_statspublisher_statspublisher_cleanupinactivedevicestate",
-      "community": 73,
+      "community": 26,
       "norm_label": ".cleanupinactivedevicestate()"
     },
     {
@@ -13166,7 +13166,7 @@
       "source_location": "L155",
       "_origin": "ast",
       "id": "services_userintegrationcache_getuserintegrations",
-      "community": 18,
+      "community": 171,
       "norm_label": "getuserintegrations()"
     },
     {
@@ -13186,7 +13186,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "services_userservice",
-      "community": 125,
+      "community": 112,
       "norm_label": "userservice.ts"
     },
     {
@@ -13196,7 +13196,7 @@
       "source_location": "L11",
       "_origin": "ast",
       "id": "services_userservice_userverificationresult",
-      "community": 125,
+      "community": 112,
       "norm_label": "userverificationresult"
     },
     {
@@ -13206,7 +13206,7 @@
       "source_location": "L17",
       "_origin": "ast",
       "id": "services_userservice_deviceverificationresult",
-      "community": 20,
+      "community": 112,
       "norm_label": "deviceverificationresult"
     },
     {
@@ -13286,7 +13286,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "services_webhookmetrics",
-      "community": 16,
+      "community": 55,
       "norm_label": "webhookmetrics.ts"
     },
     {
@@ -13306,7 +13306,7 @@
       "source_location": "L5",
       "_origin": "ast",
       "id": "services_webhookmetrics_webhooklatencystages",
-      "community": 16,
+      "community": 55,
       "norm_label": "webhooklatencystages"
     },
     {
@@ -13376,7 +13376,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "influx_baseinfluxrepo",
-      "community": 31,
+      "community": 56,
       "norm_label": "baseinfluxrepo.ts"
     },
     {
@@ -13396,7 +13396,7 @@
       "source_location": "L8",
       "_origin": "ast",
       "id": "influx_baseinfluxrepo_baseinfluxrepo_constructor",
-      "community": 56,
+      "community": 31,
       "norm_label": ".constructor()"
     },
     {
@@ -13456,7 +13456,7 @@
       "source_location": "L30",
       "_origin": "ast",
       "id": "repositories_ctlogrepo_ctlogrepo",
-      "community": 133,
+      "community": 31,
       "norm_label": "ctlogrepo"
     },
     {
@@ -13466,7 +13466,7 @@
       "source_location": "L31",
       "_origin": "ast",
       "id": "repositories_ctlogrepo_ctlogrepo_buildpoint",
-      "community": 133,
+      "community": 31,
       "norm_label": ".buildpoint()"
     },
     {
@@ -13476,7 +13476,7 @@
       "source_location": "L45",
       "_origin": "ast",
       "id": "repositories_ctlogrepo_ctlogrepo_write",
-      "community": 133,
+      "community": 31,
       "norm_label": ".write()"
     },
     {
@@ -13486,7 +13486,7 @@
       "source_location": "L57",
       "_origin": "ast",
       "id": "repositories_ctlogrepo_ctlogrepo_writeotareleaseentry",
-      "community": 133,
+      "community": 31,
       "norm_label": ".writeotareleaseentry()"
     },
     {
@@ -13496,7 +13496,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "repositories_devicemetricsrepo",
-      "community": 31,
+      "community": 56,
       "norm_label": "devicemetricsrepo.ts"
     },
     {
@@ -13566,7 +13566,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "repositories_deviceotaeventsrepo",
-      "community": 31,
+      "community": 56,
       "norm_label": "deviceotaeventsrepo.ts"
     },
     {
@@ -13616,7 +13616,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "repositories_instagramauditrepo",
-      "community": 31,
+      "community": 37,
       "norm_label": "instagramauditrepo.ts"
     },
     {
@@ -13736,7 +13736,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "repositories_otatelemetryrepo",
-      "community": 31,
+      "community": 56,
       "norm_label": "otatelemetryrepo.ts"
     },
     {
@@ -13786,7 +13786,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "repositories_pkiauditrepo",
-      "community": 31,
+      "community": 56,
       "norm_label": "pkiauditrepo.ts"
     },
     {
@@ -13796,7 +13796,7 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "repositories_pkiauditrepo_pkiauditinput",
-      "community": 31,
+      "community": 56,
       "norm_label": "pkiauditinput"
     },
     {
@@ -13836,7 +13836,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "repositories_webhookauditrepo",
-      "community": 31,
+      "community": 56,
       "norm_label": "webhookauditrepo.ts"
     },
     {
@@ -13926,7 +13926,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "influx_types",
-      "community": 31,
+      "community": 56,
       "norm_label": "types.ts"
     },
     {
@@ -13936,7 +13936,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "influx_types_buckettarget",
-      "community": 31,
+      "community": 56,
       "norm_label": "buckettarget"
     },
     {
@@ -14516,7 +14516,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "utils_csr",
-      "community": 10,
+      "community": 76,
       "norm_label": "csr.ts"
     },
     {
@@ -14526,7 +14526,7 @@
       "source_location": "L5",
       "_origin": "ast",
       "id": "utils_csr_decodecsrtopem",
-      "community": 10,
+      "community": 76,
       "norm_label": "decodecsrtopem()"
     },
     {
@@ -14576,7 +14576,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "utils_firmwarereleasekey",
-      "community": 2,
+      "community": 49,
       "norm_label": "firmwarereleasekey.ts"
     },
     {
@@ -14586,7 +14586,7 @@
       "source_location": "L4",
       "_origin": "ast",
       "id": "utils_firmwarereleasekey_getreleaseobjectkey",
-      "community": 2,
+      "community": 49,
       "norm_label": "getreleaseobjectkey()"
     },
     {
@@ -14710,6 +14710,46 @@
       "norm_label": "sanitizeinfluxlineprotocol()"
     },
     {
+      "label": "localTestOtaFirmware.ts",
+      "file_type": "code",
+      "source_file": "src/utils/localTestOtaFirmware.ts",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "utils_localtestotafirmware",
+      "community": 124,
+      "norm_label": "localtestotafirmware.ts"
+    },
+    {
+      "label": "LocalTestOtaFirmware",
+      "file_type": "code",
+      "source_file": "src/utils/localTestOtaFirmware.ts",
+      "source_location": "L9",
+      "_origin": "ast",
+      "id": "utils_localtestotafirmware_localtestotafirmware",
+      "community": 124,
+      "norm_label": "localtestotafirmware"
+    },
+    {
+      "label": "isFirmwareBin()",
+      "file_type": "code",
+      "source_file": "src/utils/localTestOtaFirmware.ts",
+      "source_location": "L15",
+      "_origin": "ast",
+      "id": "utils_localtestotafirmware_isfirmwarebin",
+      "community": 124,
+      "norm_label": "isfirmwarebin()"
+    },
+    {
+      "label": "resolveLocalTestOtaFirmware()",
+      "file_type": "code",
+      "source_file": "src/utils/localTestOtaFirmware.ts",
+      "source_location": "L20",
+      "_origin": "ast",
+      "id": "utils_localtestotafirmware_resolvelocaltestotafirmware",
+      "community": 124,
+      "norm_label": "resolvelocaltestotafirmware()"
+    },
+    {
       "label": "logger.ts",
       "file_type": "code",
       "source_file": "src/utils/logger.ts",
@@ -14746,7 +14786,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "utils_mongoretry",
-      "community": 124,
+      "community": 26,
       "norm_label": "mongoretry.ts"
     },
     {
@@ -14756,7 +14796,7 @@
       "source_location": "L3",
       "_origin": "ast",
       "id": "utils_mongoretry_transient_mongo_patterns",
-      "community": 124,
+      "community": 26,
       "norm_label": "transient_mongo_patterns"
     },
     {
@@ -14766,7 +14806,7 @@
       "source_location": "L10",
       "_origin": "ast",
       "id": "utils_mongoretry_istransientmongoerror",
-      "community": 124,
+      "community": 26,
       "norm_label": "istransientmongoerror()"
     },
     {
@@ -14776,7 +14816,7 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "utils_mongoretry_withmongoretry",
-      "community": 124,
+      "community": 26,
       "norm_label": "withmongoretry()"
     },
     {
@@ -14966,7 +15006,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "utils_payloadhash",
-      "community": 21,
+      "community": 55,
       "norm_label": "payloadhash.ts"
     },
     {
@@ -14976,7 +15016,7 @@
       "source_location": "L4",
       "_origin": "ast",
       "id": "utils_payloadhash_sha256payload",
-      "community": 21,
+      "community": 55,
       "norm_label": "sha256payload()"
     },
     {
@@ -15076,7 +15116,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "utils_semver",
-      "community": 20,
+      "community": 84,
       "norm_label": "semver.ts"
     },
     {
@@ -15086,7 +15126,7 @@
       "source_location": "L5",
       "_origin": "ast",
       "id": "utils_semver_compareversions",
-      "community": 20,
+      "community": 84,
       "norm_label": "compareversions()"
     },
     {
@@ -15116,7 +15156,7 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "utils_stimulateallowlist_parsestimulateallowlist",
-      "community": 171,
+      "community": 87,
       "norm_label": "parsestimulateallowlist()"
     },
     {
@@ -15126,7 +15166,7 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "utils_stimulateallowlist_isstimulatedevice",
-      "community": 171,
+      "community": 87,
       "norm_label": "isstimulatedevice()"
     },
     {
@@ -15196,7 +15236,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "delivery_publishgmbscreen",
-      "community": 21,
+      "community": 55,
       "norm_label": "publishgmbscreen.ts"
     },
     {
@@ -15206,7 +15246,7 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "delivery_publishgmbscreen_gmbfastscreeninput",
-      "community": 21,
+      "community": 55,
       "norm_label": "gmbfastscreeninput"
     },
     {
@@ -15216,7 +15256,7 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "delivery_publishgmbscreen_gmbscreenauditcontext",
-      "community": 21,
+      "community": 55,
       "norm_label": "gmbscreenauditcontext"
     },
     {
@@ -15226,7 +15266,7 @@
       "source_location": "L20",
       "_origin": "ast",
       "id": "delivery_publishgmbscreen_gmbscreenpublishresult",
-      "community": 21,
+      "community": 55,
       "norm_label": "gmbscreenpublishresult"
     },
     {
@@ -15236,7 +15276,7 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "delivery_publishgmbscreen_publishgmbscreen",
-      "community": 21,
+      "community": 55,
       "norm_label": "publishgmbscreen()"
     },
     {
@@ -15246,7 +15286,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "gmb_gmbreviewresolve",
-      "community": 21,
+      "community": 55,
       "norm_label": "gmbreviewresolve.ts"
     },
     {
@@ -15256,7 +15296,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "webhooks_gmbenrichmentworker",
-      "community": 21,
+      "community": 55,
       "norm_label": "gmbenrichmentworker.ts"
     },
     {
@@ -15266,7 +15306,7 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "webhooks_gmbenrichmentworker_gmbenrichmentcontext",
-      "community": 21,
+      "community": 55,
       "norm_label": "gmbenrichmentcontext"
     },
     {
@@ -15276,7 +15316,7 @@
       "source_location": "L33",
       "_origin": "ast",
       "id": "webhooks_gmbenrichmentworker_schedulegmbenrichment",
-      "community": 21,
+      "community": 55,
       "norm_label": "schedulegmbenrichment()"
     },
     {
@@ -15286,7 +15326,7 @@
       "source_location": "L47",
       "_origin": "ast",
       "id": "webhooks_gmbenrichmentworker_rungmbenrichment",
-      "community": 21,
+      "community": 55,
       "norm_label": "rungmbenrichment()"
     },
     {
@@ -15336,7 +15376,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "webhooks_gmbreviewcache",
-      "community": 55,
+      "community": 43,
       "norm_label": "gmbreviewcache.ts"
     },
     {
@@ -15346,7 +15386,7 @@
       "source_location": "L10",
       "_origin": "ast",
       "id": "webhooks_gmbreviewcache_getgmbreviewcount",
-      "community": 55,
+      "community": 43,
       "norm_label": "getgmbreviewcount()"
     },
     {
@@ -15356,7 +15396,7 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "webhooks_gmbreviewcache_setgmbreviewcount",
-      "community": 55,
+      "community": 30,
       "norm_label": "setgmbreviewcount()"
     },
     {
@@ -15406,7 +15446,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "resolve_gmbsocial",
-      "community": 30,
+      "community": 55,
       "norm_label": "gmbsocial.ts"
     },
     {
@@ -15416,7 +15456,7 @@
       "source_location": "L9",
       "_origin": "ast",
       "id": "resolve_gmbsocial_gmbsocialcontext",
-      "community": 30,
+      "community": 55,
       "norm_label": "gmbsocialcontext"
     },
     {
@@ -15426,7 +15466,7 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "resolve_gmbsocial_resolvegmbsocialcontext",
-      "community": 30,
+      "community": 55,
       "norm_label": "resolvegmbsocialcontext()"
     },
     {
@@ -15486,7 +15526,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "types_gmbreviewnotification",
-      "community": 21,
+      "community": 55,
       "norm_label": "gmbreviewnotification.ts"
     },
     {
@@ -15496,7 +15536,7 @@
       "source_location": "L3",
       "_origin": "ast",
       "id": "types_gmbreviewnotification_gmbreviewnotification",
-      "community": 21,
+      "community": 55,
       "norm_label": "gmbreviewnotification"
     },
     {
@@ -15506,7 +15546,7 @@
       "source_location": "L5",
       "_origin": "ast",
       "id": "types_gmbreviewnotification_supported_gmb_event_types",
-      "community": 21,
+      "community": 55,
       "norm_label": "supported_gmb_event_types"
     },
     {
@@ -15526,7 +15566,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "verify_pubsubgmb",
-      "community": 47,
+      "community": 55,
       "norm_label": "pubsubgmb.ts"
     },
     {
@@ -15586,7 +15626,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "stimulate_allowlist",
-      "community": 171,
+      "community": 87,
       "norm_label": "allowlist.ts"
     },
     {
@@ -15596,7 +15636,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "stimulate_cache",
-      "community": 87,
+      "community": 73,
       "norm_label": "cache.ts"
     },
     {
@@ -15606,7 +15646,7 @@
       "source_location": "L9",
       "_origin": "ast",
       "id": "stimulate_cache_stimcacheentry",
-      "community": 87,
+      "community": 73,
       "norm_label": "stimcacheentry"
     },
     {
@@ -15616,7 +15656,7 @@
       "source_location": "L16",
       "_origin": "ast",
       "id": "stimulate_cache_store",
-      "community": 87,
+      "community": 73,
       "norm_label": "store"
     },
     {
@@ -15626,7 +15666,7 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "stimulate_cache_key",
-      "community": 87,
+      "community": 73,
       "norm_label": "key()"
     },
     {
@@ -15636,7 +15676,7 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "stimulate_cache_readstimcache",
-      "community": 87,
+      "community": 73,
       "norm_label": "readstimcache()"
     },
     {
@@ -15646,7 +15686,7 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "stimulate_cache_writestimcache",
-      "community": 87,
+      "community": 73,
       "norm_label": "writestimcache()"
     },
     {
@@ -15656,7 +15696,7 @@
       "source_location": "L44",
       "_origin": "ast",
       "id": "stimulate_cache_clearstimcache",
-      "community": 87,
+      "community": 73,
       "norm_label": "clearstimcache()"
     },
     {
@@ -15686,7 +15726,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "stimulate_gmbrunner",
-      "community": 87,
+      "community": 59,
       "norm_label": "gmbrunner.ts"
     },
     {
@@ -15696,7 +15736,7 @@
       "source_location": "L13",
       "_origin": "ast",
       "id": "stimulate_gmbrunner_releasestimgmblock",
-      "community": 87,
+      "community": 59,
       "norm_label": "releasestimgmblock()"
     },
     {
@@ -15706,7 +15746,7 @@
       "source_location": "L17",
       "_origin": "ast",
       "id": "stimulate_gmbrunner_ensurestimgmblock",
-      "community": 87,
+      "community": 59,
       "norm_label": "ensurestimgmblock()"
     },
     {
@@ -15726,7 +15766,7 @@
       "source_location": "L31",
       "_origin": "ast",
       "id": "stimulate_gmbrunner_updategmbcache",
-      "community": 87,
+      "community": 59,
       "norm_label": "updategmbcache()"
     },
     {
@@ -15736,7 +15776,7 @@
       "source_location": "L39",
       "_origin": "ast",
       "id": "stimulate_gmbrunner_rungmbtick",
-      "community": 87,
+      "community": 59,
       "norm_label": "rungmbtick()"
     },
     {
@@ -15746,7 +15786,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "stimulate_igrunner",
-      "community": 87,
+      "community": 52,
       "norm_label": "igrunner.ts"
     },
     {
@@ -15756,7 +15796,7 @@
       "source_location": "L17",
       "_origin": "ast",
       "id": "stimulate_igrunner_buildstimigpayload",
-      "community": 87,
+      "community": 52,
       "norm_label": "buildstimigpayload()"
     },
     {
@@ -15766,7 +15806,7 @@
       "source_location": "L31",
       "_origin": "ast",
       "id": "stimulate_igrunner_ensurestimiglock",
-      "community": 87,
+      "community": 52,
       "norm_label": "ensurestimiglock()"
     },
     {
@@ -15776,7 +15816,7 @@
       "source_location": "L41",
       "_origin": "ast",
       "id": "stimulate_igrunner_releasestimiglock",
-      "community": 87,
+      "community": 52,
       "norm_label": "releasestimiglock()"
     },
     {
@@ -15796,7 +15836,7 @@
       "source_location": "L49",
       "_origin": "ast",
       "id": "stimulate_igrunner_updatefollowercache",
-      "community": 87,
+      "community": 52,
       "norm_label": "updatefollowercache()"
     },
     {
@@ -15806,7 +15846,7 @@
       "source_location": "L61",
       "_origin": "ast",
       "id": "stimulate_igrunner_resolvelivefollowersforstim",
-      "community": 87,
+      "community": 52,
       "norm_label": "resolvelivefollowersforstim()"
     },
     {
@@ -15816,7 +15856,7 @@
       "source_location": "L68",
       "_origin": "ast",
       "id": "stimulate_igrunner_runigtick",
-      "community": 87,
+      "community": 52,
       "norm_label": "runigtick()"
     },
     {
@@ -15826,7 +15866,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "stimulate_math",
-      "community": 87,
+      "community": 59,
       "norm_label": "math.ts"
     },
     {
@@ -15836,7 +15876,7 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "stimulate_math_calcresume",
-      "community": 87,
+      "community": 59,
       "norm_label": "calcresume()"
     },
     {
@@ -15846,7 +15886,7 @@
       "source_location": "L11",
       "_origin": "ast",
       "id": "stimulate_math_ceilingsequence",
-      "community": 87,
+      "community": 59,
       "norm_label": "ceilingsequence()"
     },
     {
@@ -15856,7 +15896,7 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "stimulate_math_isatorpasttarget",
-      "community": 87,
+      "community": 59,
       "norm_label": "isatorpasttarget()"
     },
     {
@@ -15866,7 +15906,7 @@
       "source_location": "L21",
       "_origin": "ast",
       "id": "stimulate_math_gmbcelebration",
-      "community": 87,
+      "community": 59,
       "norm_label": "gmbcelebration()"
     },
     {
@@ -15876,7 +15916,7 @@
       "source_location": "L25",
       "_origin": "ast",
       "id": "stimulate_math_igcelebration",
-      "community": 87,
+      "community": 59,
       "norm_label": "igcelebration()"
     },
     {
@@ -15986,7 +16026,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "config_influxconfig_test",
-      "community": 45,
+      "community": 58,
       "norm_label": "influxconfig.test.ts"
     },
     {
@@ -15996,7 +16036,7 @@
       "source_location": "L3",
       "_origin": "ast",
       "id": "config_influxconfig_test_cleanenv",
-      "community": 45,
+      "community": 58,
       "norm_label": "cleanenv()"
     },
     {
@@ -16006,7 +16046,7 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "config_influxconfig_test_baseenv",
-      "community": 45,
+      "community": 58,
       "norm_label": "baseenv()"
     },
     {
@@ -16026,7 +16066,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "config_swagger_test",
-      "community": 158,
+      "community": 82,
       "norm_label": "swagger.test.ts"
     },
     {
@@ -16046,7 +16086,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "routes_configroutes_test",
-      "community": 112,
+      "community": 91,
       "norm_label": "configroutes.test.ts"
     },
     {
@@ -16056,7 +16096,7 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "routes_configroutes_test_buildconfigroutesapp",
-      "community": 112,
+      "community": 91,
       "norm_label": "buildconfigroutesapp()"
     },
     {
@@ -16206,7 +16246,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "routes_recoveryroutes_test",
-      "community": 8,
+      "community": 20,
       "norm_label": "recoveryroutes.test.ts"
     },
     {
@@ -16216,7 +16256,7 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "routes_recoveryroutes_test_mockfindone",
-      "community": 8,
+      "community": 20,
       "norm_label": "mockfindone"
     },
     {
@@ -16226,7 +16266,7 @@
       "source_location": "L16",
       "_origin": "ast",
       "id": "routes_recoveryroutes_test_buildrecoveryroutesapp",
-      "community": 8,
+      "community": 20,
       "norm_label": "buildrecoveryroutesapp()"
     },
     {
@@ -16296,7 +16336,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "services_campaignschedule_test",
-      "community": 92,
+      "community": 1,
       "norm_label": "campaignschedule.test.ts"
     },
     {
@@ -16306,7 +16346,7 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "services_campaignschedule_test_basecampaign",
-      "community": 92,
+      "community": 1,
       "norm_label": "basecampaign()"
     },
     {
@@ -16426,7 +16466,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "services_otaservice_test",
-      "community": 20,
+      "community": 84,
       "norm_label": "otaservice.test.ts"
     },
     {
@@ -16436,7 +16476,7 @@
       "source_location": "L50",
       "_origin": "ast",
       "id": "services_otaservice_test_mocklogevent",
-      "community": 20,
+      "community": 84,
       "norm_label": "mocklogevent"
     },
     {
@@ -16446,7 +16486,7 @@
       "source_location": "L74",
       "_origin": "ast",
       "id": "services_otaservice_test_mockstorage",
-      "community": 20,
+      "community": 84,
       "norm_label": "mockstorage"
     },
     {
@@ -16456,7 +16496,7 @@
       "source_location": "L86",
       "_origin": "ast",
       "id": "services_otaservice_test_otaconfig",
-      "community": 20,
+      "community": 84,
       "norm_label": "otaconfig"
     },
     {
@@ -16466,7 +16506,7 @@
       "source_location": "L315",
       "_origin": "ast",
       "id": "services_otaservice_test_makepublisher",
-      "community": 20,
+      "community": 84,
       "norm_label": "makepublisher()"
     },
     {
@@ -16476,7 +16516,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "services_promotionservice_test",
-      "community": 92,
+      "community": 1,
       "norm_label": "promotionservice.test.ts"
     },
     {
@@ -16486,7 +16526,7 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "services_promotionservice_test_mockgetredis",
-      "community": 92,
+      "community": 1,
       "norm_label": "mockgetredis"
     },
     {
@@ -16496,7 +16536,7 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "services_promotionservice_test_basecampaign",
-      "community": 92,
+      "community": 1,
       "norm_label": "basecampaign()"
     },
     {
@@ -16506,7 +16546,7 @@
       "source_location": "L48",
       "_origin": "ast",
       "id": "services_promotionservice_test_basecacheddto",
-      "community": 92,
+      "community": 1,
       "norm_label": "basecacheddto()"
     },
     {
@@ -16516,7 +16556,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "services_recoverysessionservice_test",
-      "community": 8,
+      "community": 10,
       "norm_label": "recoverysessionservice.test.ts"
     },
     {
@@ -16526,7 +16566,7 @@
       "source_location": "L17",
       "_origin": "ast",
       "id": "services_recoverysessionservice_test_makeservice",
-      "community": 8,
+      "community": 10,
       "norm_label": "makeservice()"
     },
     {
@@ -16536,7 +16576,7 @@
       "source_location": "L21",
       "_origin": "ast",
       "id": "services_recoverysessionservice_test_signtesttoken",
-      "community": 8,
+      "community": 10,
       "norm_label": "signtesttoken()"
     },
     {
@@ -16546,7 +16586,7 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "services_recoverysessionservice_test_mockredisclient",
-      "community": 8,
+      "community": 10,
       "norm_label": "mockredisclient()"
     },
     {
@@ -16556,7 +16596,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "services_screenenvelope_test",
-      "community": 87,
+      "community": 21,
       "norm_label": "screenenvelope.test.ts"
     },
     {
@@ -16576,7 +16616,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "stimulate_allowlist_test",
-      "community": 171,
+      "community": 87,
       "norm_label": "allowlist.test.ts"
     },
     {
@@ -16586,7 +16626,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "stimulate_gmbrunner_test",
-      "community": 87,
+      "community": 73,
       "norm_label": "gmbrunner.test.ts"
     },
     {
@@ -16596,7 +16636,7 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "stimulate_gmbrunner_test_mockpublishgmbscreen",
-      "community": 87,
+      "community": 73,
       "norm_label": "mockpublishgmbscreen"
     },
     {
@@ -16606,7 +16646,7 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "stimulate_gmbrunner_test_mqttclient",
-      "community": 87,
+      "community": 73,
       "norm_label": "mqttclient"
     },
     {
@@ -16616,7 +16656,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "stimulate_gmbrunner_test_redis",
-      "community": 87,
+      "community": 73,
       "norm_label": "redis"
     },
     {
@@ -16626,7 +16666,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "stimulate_igpayload_test",
-      "community": 87,
+      "community": 52,
       "norm_label": "igpayload.test.ts"
     },
     {
@@ -16636,7 +16676,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "stimulate_igrunner_test",
-      "community": 87,
+      "community": 52,
       "norm_label": "igrunner.test.ts"
     },
     {
@@ -16646,7 +16686,7 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "stimulate_igrunner_test_mockpublish",
-      "community": 87,
+      "community": 52,
       "norm_label": "mockpublish"
     },
     {
@@ -16656,7 +16696,7 @@
       "source_location": "L9",
       "_origin": "ast",
       "id": "stimulate_igrunner_test_mqttclient",
-      "community": 87,
+      "community": 52,
       "norm_label": "mqttclient"
     },
     {
@@ -16666,7 +16706,7 @@
       "source_location": "L13",
       "_origin": "ast",
       "id": "stimulate_igrunner_test_redis",
-      "community": 87,
+      "community": 52,
       "norm_label": "redis"
     },
     {
@@ -16676,7 +16716,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "stimulate_math_test",
-      "community": 87,
+      "community": 59,
       "norm_label": "math.test.ts"
     },
     {
@@ -16688,6 +16728,16 @@
       "id": "utils_influxtimestamp_test",
       "community": 156,
       "norm_label": "influxtimestamp.test.ts"
+    },
+    {
+      "label": "localTestOtaFirmware.test.ts",
+      "file_type": "code",
+      "source_file": "tests/unit/utils/localTestOtaFirmware.test.ts",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "utils_localtestotafirmware_test",
+      "community": 124,
+      "norm_label": "localtestotafirmware.test.ts"
     },
     {
       "label": "otaDownloadUrl.test.ts",
@@ -16756,7 +16806,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "webhooks_gmbenrichmentworker_test",
-      "community": 21,
+      "community": 55,
       "norm_label": "gmbenrichmentworker.test.ts"
     },
     {
@@ -22958,9 +23008,9 @@
       "source_file": "data/active-devices.json",
       "source_location": "L1",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "data_active_devices_devices",
-      "target": "data_active_devices_devices_device_15",
-      "confidence_score": 1.0
+      "target": "data_active_devices_devices_device_15"
     },
     {
       "relation": "contains",
@@ -23098,9 +23148,9 @@
       "source_file": "data/active-devices.json",
       "source_location": "L1",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "data_active_devices_devices_device_15",
-      "target": "data_active_devices_device_15_accesstoken",
-      "confidence_score": 1.0
+      "target": "data_active_devices_device_15_accesstoken"
     },
     {
       "relation": "contains",
@@ -23108,9 +23158,9 @@
       "source_file": "data/active-devices.json",
       "source_location": "L1",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "data_active_devices_devices_device_15",
-      "target": "data_active_devices_device_15_deviceid",
-      "confidence_score": 1.0
+      "target": "data_active_devices_device_15_deviceid"
     },
     {
       "relation": "contains",
@@ -23118,9 +23168,9 @@
       "source_file": "data/active-devices.json",
       "source_location": "L1",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "data_active_devices_devices_device_15",
-      "target": "data_active_devices_device_15_instagramaccountid",
-      "confidence_score": 1.0
+      "target": "data_active_devices_device_15_instagramaccountid"
     },
     {
       "relation": "contains",
@@ -23128,9 +23178,9 @@
       "source_file": "data/active-devices.json",
       "source_location": "L1",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "data_active_devices_devices_device_15",
-      "target": "data_active_devices_device_15_lastseen",
-      "confidence_score": 1.0
+      "target": "data_active_devices_device_15_lastseen"
     },
     {
       "relation": "contains",
@@ -23138,9 +23188,9 @@
       "source_file": "data/active-devices.json",
       "source_location": "L1",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "data_active_devices_devices_device_15",
-      "target": "data_active_devices_device_15_userid",
-      "confidence_score": 1.0
+      "target": "data_active_devices_device_15_userid"
     },
     {
       "relation": "contains",
@@ -27385,6 +27435,28 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "src/app.ts",
+      "source_location": "L2",
+      "weight": 1.0,
+      "source": "src_app",
+      "target": "utils_localtestotafirmware",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/app.ts",
+      "source_location": "L2",
+      "weight": 1.0,
+      "source": "src_app",
+      "target": "utils_localtestotafirmware_resolvelocaltestotafirmware",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/app.ts",
       "source_location": "L1",
       "weight": 1.0,
       "confidence_score": 1.0,
@@ -27824,9 +27896,9 @@
       "source_file": "src/app.ts",
       "source_location": "L1315",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_app_statsmqttlite",
-      "target": "src_app_statsmqttlite_buildtestotadownloadurl",
-      "confidence_score": 1.0
+      "target": "src_app_statsmqttlite_buildtestotadownloadurl"
     },
     {
       "relation": "method",
@@ -27894,9 +27966,9 @@
       "source_file": "src/app.ts",
       "source_location": "L1357",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_app_statsmqttlite",
-      "target": "src_app_statsmqttlite_fanouttestotatoactivedevices",
-      "confidence_score": 1.0
+      "target": "src_app_statsmqttlite_fanouttestotatoactivedevices"
     },
     {
       "relation": "method",
@@ -28144,9 +28216,9 @@
       "source_file": "src/app.ts",
       "source_location": "L1329",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_app_statsmqttlite",
-      "target": "src_app_statsmqttlite_publishtestotatodevice",
-      "confidence_score": 1.0
+      "target": "src_app_statsmqttlite_publishtestotatodevice"
     },
     {
       "relation": "method",
@@ -29200,9 +29272,9 @@
       "source_file": "src/app.ts",
       "source_location": "L1344",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_app_statsmqttlite_publishtestotatodevice",
-      "target": "src_app_statsmqttlite_buildtestotadownloadurl",
-      "confidence_score": 1.0
+      "target": "src_app_statsmqttlite_buildtestotadownloadurl"
     },
     {
       "relation": "calls",
@@ -29211,9 +29283,9 @@
       "source_file": "src/app.ts",
       "source_location": "L1383",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_app_statsmqttlite_deliverotaonregistration",
-      "target": "src_app_statsmqttlite_publishtestotatodevice",
-      "confidence_score": 1.0
+      "target": "src_app_statsmqttlite_publishtestotatodevice"
     },
     {
       "relation": "calls",
@@ -29222,9 +29294,20 @@
       "source_file": "src/app.ts",
       "source_location": "L1362",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_app_statsmqttlite_fanouttestotatoactivedevices",
-      "target": "src_app_statsmqttlite_publishtestotatodevice",
-      "confidence_score": 1.0
+      "target": "src_app_statsmqttlite_publishtestotatodevice"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/app.ts",
+      "source_location": "L1342",
+      "weight": 1.0,
+      "source": "src_app_statsmqttlite_publishtestotatodevice",
+      "target": "utils_localtestotafirmware_resolvelocaltestotafirmware"
     },
     {
       "relation": "calls",
@@ -29244,9 +29327,9 @@
       "source_file": "src/app.ts",
       "source_location": "L2045",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_app_statsmqttlite_initializeotaservices",
-      "target": "src_app_statsmqttlite_fanouttestotatoactivedevices",
-      "confidence_score": 1.0
+      "target": "src_app_statsmqttlite_fanouttestotatoactivedevices"
     },
     {
       "relation": "calls",
@@ -38232,6 +38315,28 @@
       "confidence_score": 1.0,
       "source": "routes_otaroutes",
       "target": "utils_firmwarereleasekey_getreleaseobjectkey"
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/routes/otaRoutes.ts",
+      "source_location": "L21",
+      "weight": 1.0,
+      "source": "routes_otaroutes",
+      "target": "utils_localtestotafirmware",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/routes/otaRoutes.ts",
+      "source_location": "L21",
+      "weight": 1.0,
+      "source": "routes_otaroutes",
+      "target": "utils_localtestotafirmware_resolvelocaltestotafirmware",
+      "confidence_score": 1.0
     },
     {
       "relation": "imports_from",
@@ -51387,9 +51492,9 @@
       "source_file": "src/services/otaService.ts",
       "source_location": "L917",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_otaservice_otaservice",
-      "target": "services_otaservice_otaservice_getlateststableofferungated",
-      "confidence_score": 1.0
+      "target": "services_otaservice_otaservice_getlateststableofferungated"
     },
     {
       "relation": "method",
@@ -51713,9 +51818,9 @@
       "source_file": "src/services/otaService.ts",
       "source_location": "L923",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_otaservice_otaservice_getlateststableofferungated",
-      "target": "services_otaservice_otaservice_buildoffer",
-      "confidence_score": 1.0
+      "target": "services_otaservice_otaservice_buildoffer"
     },
     {
       "relation": "calls",
@@ -59197,6 +59302,58 @@
       "confidence_score": 1.0,
       "source": "utils_influxtimestamp_test",
       "target": "utils_influxtimestamp_sanitizeinfluxlineprotocol"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/localTestOtaFirmware.ts",
+      "source_location": "L15",
+      "weight": 1.0,
+      "source": "utils_localtestotafirmware",
+      "target": "utils_localtestotafirmware_isfirmwarebin",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/localTestOtaFirmware.ts",
+      "source_location": "L9",
+      "weight": 1.0,
+      "source": "utils_localtestotafirmware",
+      "target": "utils_localtestotafirmware_localtestotafirmware",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/localTestOtaFirmware.ts",
+      "source_location": "L20",
+      "weight": 1.0,
+      "source": "utils_localtestotafirmware",
+      "target": "utils_localtestotafirmware_resolvelocaltestotafirmware",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/unit/utils/localTestOtaFirmware.test.ts",
+      "source_location": "L4",
+      "weight": 1.0,
+      "source": "utils_localtestotafirmware_test",
+      "target": "utils_localtestotafirmware",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/unit/utils/localTestOtaFirmware.test.ts",
+      "source_location": "L4",
+      "weight": 1.0,
+      "source": "utils_localtestotafirmware_test",
+      "target": "utils_localtestotafirmware_resolvelocaltestotafirmware",
+      "confidence_score": 1.0
     },
     {
       "relation": "imports_from",
@@ -68279,5 +68436,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "59ca384b192ce97ca3470690d63fb7ec6b1083c8"
+  "built_at_commit": "d18b8ca03bb4e87592ea145b4dd9b66907144590"
 }
