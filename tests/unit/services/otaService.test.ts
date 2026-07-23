@@ -78,8 +78,7 @@ jest.mock('@/services/auditService', () => ({
 
 import { Device } from '@/models/Device';
 import { FirmwareRelease } from '@/models/FirmwareRelease';
-import type { IFirmwareStorage } from '@/services/firmwareStorageService';
-import { OtaCommandPublisher, OtaService } from '@/services/otaService';
+import { deviceHashBucket, OtaCommandPublisher, OtaService } from '@/services/otaService';
 
 const mockStorage = {
   createPresignedGetUrl: jest.fn().mockResolvedValue('https://objectstorage.ap-hyderabad-1.oraclecloud.com/p/par/firmware.bin')
@@ -468,7 +467,6 @@ describe('OtaService.matchesRollout + failures', () => {
   });
 
   it('DEVICE-13 hash bucket is 40', () => {
-    const { deviceHashBucket } = require('@/services/otaService');
     expect(deviceHashBucket('DEVICE-13')).toBe(40);
   });
 

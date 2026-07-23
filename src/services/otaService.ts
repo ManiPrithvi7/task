@@ -32,7 +32,6 @@ import { OciStorageError } from './ociStorageErrors';
 import { getActiveDeviceCache } from './deviceService';
 import { AuditEventType, getAuditService } from './auditService';
 import { getOtaReleaseLog } from './otaReleaseLog';
-import { getReleaseObjectKey } from '../utils/firmwareReleaseKey';
 import {
   buildOtaMqttDownloadUrl,
   isLocalLanDownloadUrl,
