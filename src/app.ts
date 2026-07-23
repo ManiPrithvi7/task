@@ -1340,7 +1340,16 @@ export class StatsMqttLite {
         process.env.TEST_OTA === 'true'
           ? {
               version: '1.0.1',
-              downloadUrl: buildOtaProxyDownloadUrl('proof:1.0.1')
+              downloadUrl: buildOtaProxyDownloadUrl(
+                this.otaPublicBaseUrl ??
+                  resolveOtaPublicBaseUrl({
+                    otaPublicBaseUrl: process.env.OTA_PUBLIC_BASE_URL,
+                    publicAppUrl: process.env.PUBLIC_APP_URL,
+                    httpHost: this.config.http.host,
+                    httpPort: this.config.http.port
+                  }),
+                'proof:1.0.1'
+              )
             }
           : undefined;
 
