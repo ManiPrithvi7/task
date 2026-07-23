@@ -108,7 +108,7 @@ export function createOtaRoutes(deps: OtaRoutesDeps): Router {
     'https://objectstorage.ap-hyderabad-1.oraclecloud.com/n/ax4egmknthnr/b/proof-firmware-dev-download/o/dev%2Fwifi_ap_project.bin';
 
   router.get('/ota/download/proof:1.0.1', (req: Request, res: Response) => {
-    const filePath = path.resolve('data/*.ino.bin');
+    const filePath = path.resolve('data/ESP32S3_DWIN_MVP_v101.ino.bin');
     try {
       const stat = fs.statSync(filePath);
       res.setHeader('Content-Type', 'application/octet-stream');
