@@ -57,7 +57,7 @@ export function createOtaRoutes(deps: OtaRoutesDeps): Router {
   const isTestOta = () => process.env.TEST_OTA === 'true';
   const LOCAL_PROOF_OTA_VERSION = 'proof:1.0.1';
   // ponytail: single known test bin in data/; rename if you ship a different artifact.
-  const localProofFirmwarePath = () => path.resolve('data/ESP32s3_OTA_v101.ino.bin');
+  const localProofFirmwarePath = () => path.resolve('data/ESP32S3_DWIN_MVP_v101.ino.bin');
 
   function buildLocalProofDownloadUrl(): string {
     const base = (
