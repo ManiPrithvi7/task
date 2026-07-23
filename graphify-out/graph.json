@@ -2846,7 +2846,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "scripts_test_mqtt_mtls",
-      "community": 35,
+      "community": 45,
       "norm_label": "test-mqtt-mtls.ts"
     },
     {
@@ -2856,7 +2856,7 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "scripts_test_mqtt_mtls_main",
-      "community": 35,
+      "community": 45,
       "norm_label": "main()"
     },
     {
@@ -3206,14 +3206,14 @@
       "source_location": "L1315",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_deliverotaonregistration",
-      "community": 12,
+      "community": 123,
       "norm_label": ".deliverotaonregistration()"
     },
     {
       "label": ".cacheActiveDevice()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L1380",
+      "source_location": "L1389",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_cacheactivedevice",
       "community": 12,
@@ -3223,7 +3223,7 @@
       "label": ".handleDeviceLWT()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L1478",
+      "source_location": "L1487",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_handledevicelwt",
       "community": 12,
@@ -3233,7 +3233,7 @@
       "label": ".handleDeviceStatus()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L1558",
+      "source_location": "L1567",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_handledevicestatus",
       "community": 12,
@@ -3243,7 +3243,7 @@
       "label": ".handleDeviceOtaTelemetry()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L1620",
+      "source_location": "L1629",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_handledeviceotatelemetry",
       "community": 12,
@@ -3253,7 +3253,7 @@
       "label": ".sendRegistrationResponse()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L1694",
+      "source_location": "L1703",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_sendregistrationresponse",
       "community": 12,
@@ -3263,7 +3263,7 @@
       "label": ".sendUnregistrationResponse()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L1730",
+      "source_location": "L1739",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_sendunregistrationresponse",
       "community": 12,
@@ -3273,7 +3273,7 @@
       "label": ".extractDeviceId()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L1764",
+      "source_location": "L1773",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_extractdeviceid",
       "community": 12,
@@ -3283,7 +3283,7 @@
       "label": ".initializeHttpServer()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L1770",
+      "source_location": "L1779",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_initializehttpserver",
       "community": 12,
@@ -3293,7 +3293,7 @@
       "label": ".initializeOtaServices()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L1922",
+      "source_location": "L1931",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_initializeotaservices",
       "community": 12,
@@ -3303,7 +3303,7 @@
       "label": ".initializeStatsPublisher()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L1995",
+      "source_location": "L2004",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_initializestatspublisher",
       "community": 12,
@@ -3313,7 +3313,7 @@
       "label": ".initializeConnectRefreshCoordinator()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L2020",
+      "source_location": "L2029",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_initializeconnectrefreshcoordinator",
       "community": 12,
@@ -3323,7 +3323,7 @@
       "label": ".initializeKeepAlive()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L2037",
+      "source_location": "L2046",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_initializekeepalive",
       "community": 12,
@@ -3333,7 +3333,7 @@
       "label": ".stop()",
       "file_type": "code",
       "source_file": "src/app.ts",
-      "source_location": "L2063",
+      "source_location": "L2072",
       "_origin": "ast",
       "id": "src_app_statsmqttlite_stop",
       "community": 16,
@@ -3776,7 +3776,7 @@
       "source_location": "L493",
       "_origin": "ast",
       "id": "config_index_normalizepemfromenv",
-      "community": 45,
+      "community": 58,
       "norm_label": "normalizepemfromenv()"
     },
     {
@@ -3786,7 +3786,7 @@
       "source_location": "L497",
       "_origin": "ast",
       "id": "config_index_loadocicredentialsfromenv",
-      "community": 45,
+      "community": 58,
       "norm_label": "loadocicredentialsfromenv()"
     },
     {
@@ -3796,7 +3796,7 @@
       "source_location": "L525",
       "_origin": "ast",
       "id": "config_index_loadotasigningpublickeypem",
-      "community": 45,
+      "community": 58,
       "norm_label": "loadotasigningpublickeypem()"
     },
     {
@@ -14746,7 +14746,7 @@
       "source_location": "L37",
       "_origin": "ast",
       "id": "utils_mqtttlsoptions_resolvemqtttlsservername",
-      "community": 35,
+      "community": 45,
       "norm_label": "resolvemqtttlsservername()"
     },
     {
@@ -14786,7 +14786,7 @@
       "source_location": "L121",
       "_origin": "ast",
       "id": "utils_mqtttlsoptions_resolvemqtttcphost",
-      "community": 35,
+      "community": 45,
       "norm_label": "resolvemqtttcphost()"
     },
     {
@@ -14796,7 +14796,7 @@
       "source_location": "L133",
       "_origin": "ast",
       "id": "utils_mqtttlsoptions_netisip",
-      "community": 35,
+      "community": 45,
       "norm_label": "netisip()"
     },
     {
@@ -19586,7 +19586,7 @@
       "source_location": "L9",
       "_origin": "ast",
       "id": "docs_csr_requirements_validation_your_requirements",
-      "community": 124,
+      "community": 5,
       "norm_label": "\ud83d\udccb your requirements"
     },
     {
@@ -19596,7 +19596,7 @@
       "source_location": "L11",
       "_origin": "ast",
       "id": "docs_csr_requirements_validation_key_type_ecc_p_256_secp256r1",
-      "community": 124,
+      "community": 5,
       "norm_label": "\u2705 **key type: ecc (p-256 / secp256r1)**"
     },
     {
@@ -19606,7 +19606,7 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "docs_csr_requirements_validation_csr_format_pem_pkcs_10",
-      "community": 124,
+      "community": 5,
       "norm_label": "\u2705 **csr format: pem (pkcs#10)**"
     },
     {
@@ -19616,7 +19616,7 @@
       "source_location": "L19",
       "_origin": "ast",
       "id": "docs_csr_requirements_validation_signature_algorithm_ecdsa_sha_256",
-      "community": 124,
+      "community": 5,
       "norm_label": "\u2705 **signature algorithm: ecdsa + sha-256**"
     },
     {
@@ -19626,7 +19626,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "docs_csr_requirements_validation_public_key_in_csr",
-      "community": 124,
+      "community": 5,
       "norm_label": "\u2705 **public key in csr**"
     },
     {
@@ -19636,7 +19636,7 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "docs_csr_requirements_validation_common_name_cn_device_id",
-      "community": 124,
+      "community": 5,
       "norm_label": "\u2705 **common name (cn) = device_id**"
     },
     {
@@ -19736,7 +19736,7 @@
       "source_location": "L149",
       "_origin": "ast",
       "id": "docs_csr_requirements_validation_validation_checklist",
-      "community": 5,
+      "community": 124,
       "norm_label": "\u2705 validation checklist"
     },
     {
@@ -19746,7 +19746,7 @@
       "source_location": "L151",
       "_origin": "ast",
       "id": "docs_csr_requirements_validation_csr_format",
-      "community": 5,
+      "community": 124,
       "norm_label": "csr format"
     },
     {
@@ -19756,7 +19756,7 @@
       "source_location": "L155",
       "_origin": "ast",
       "id": "docs_csr_requirements_validation_key_type",
-      "community": 5,
+      "community": 124,
       "norm_label": "key type"
     },
     {
@@ -19766,7 +19766,7 @@
       "source_location": "L159",
       "_origin": "ast",
       "id": "docs_csr_requirements_validation_signature_algorithm",
-      "community": 5,
+      "community": 124,
       "norm_label": "signature algorithm"
     },
     {
@@ -19776,7 +19776,7 @@
       "source_location": "L163",
       "_origin": "ast",
       "id": "docs_csr_requirements_validation_common_name",
-      "community": 5,
+      "community": 124,
       "norm_label": "common name"
     },
     {
@@ -19786,7 +19786,7 @@
       "source_location": "L168",
       "_origin": "ast",
       "id": "docs_csr_requirements_validation_public_key",
-      "community": 5,
+      "community": 124,
       "norm_label": "public key"
     },
     {
@@ -22988,9 +22988,9 @@
       "source_file": "install.sh",
       "source_location": "L1",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "install",
-      "target": "home_statsnapp_desktop_proofmqtt_install_sh__entry",
-      "confidence_score": 1.0
+      "target": "home_statsnapp_desktop_proofmqtt_install_sh__entry"
     },
     {
       "relation": "imports_from",
@@ -25853,9 +25853,9 @@
       "source_file": "src/app.ts",
       "source_location": "L60",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_app",
-      "target": "config_otadefaults_buildotaproxydownloadurl",
-      "confidence_score": 1.0
+      "target": "config_otadefaults_buildotaproxydownloadurl"
     },
     {
       "relation": "imports",
@@ -27754,9 +27754,9 @@
       "source_file": "src/app.ts",
       "source_location": "L1620",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_app_statsmqttlite",
-      "target": "src_app_statsmqttlite_handledeviceotatelemetry",
-      "confidence_score": 1.0
+      "target": "src_app_statsmqttlite_handledeviceotatelemetry"
     },
     {
       "relation": "method",
@@ -28889,9 +28889,9 @@
       "source_file": "src/app.ts",
       "source_location": "L1624",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_app_statsmqttlite_handledeviceotatelemetry",
-      "target": "src_app_statsmqttlite_ensuredeviceprovisioned",
-      "confidence_score": 1.0
+      "target": "src_app_statsmqttlite_ensuredeviceprovisioned"
     },
     {
       "relation": "calls",
@@ -28998,6 +28998,17 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src/app.ts",
+      "source_location": "L1345",
+      "weight": 1.0,
+      "source": "src_app_statsmqttlite_deliverotaonregistration",
+      "target": "config_otadefaults_resolveotapublicbaseurl"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/app.ts",
       "source_location": "L1436",
       "weight": 1.0,
       "source": "src_app_statsmqttlite_handledevicelwt",
@@ -29054,9 +29065,9 @@
       "source_file": "src/app.ts",
       "source_location": "L1621",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_app_statsmqttlite_handledeviceotatelemetry",
-      "target": "src_app_statsmqttlite_extractdeviceid",
-      "confidence_score": 1.0
+      "target": "src_app_statsmqttlite_extractdeviceid"
     },
     {
       "relation": "calls",
@@ -44043,9 +44054,9 @@
       "source_file": "src/services/influxService.ts",
       "source_location": "L220",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_influxservice",
-      "target": "repositories_otatelemetryrepo",
-      "confidence_score": 1.0
+      "target": "repositories_otatelemetryrepo"
     },
     {
       "relation": "imports",
@@ -44054,9 +44065,9 @@
       "source_file": "src/services/influxService.ts",
       "source_location": "L26",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_influxservice",
-      "target": "repositories_otatelemetryrepo_otatelemetryinput",
-      "confidence_score": 1.0
+      "target": "repositories_otatelemetryrepo_otatelemetryinput"
     },
     {
       "relation": "imports",
@@ -44065,9 +44076,9 @@
       "source_file": "src/services/influxService.ts",
       "source_location": "L26",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_influxservice",
-      "target": "repositories_otatelemetryrepo_otatelemetryrepo",
-      "confidence_score": 1.0
+      "target": "repositories_otatelemetryrepo_otatelemetryrepo"
     },
     {
       "relation": "imports_from",
@@ -44814,9 +44825,9 @@
       "source_file": "src/services/influxService.ts",
       "source_location": "L239",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_influxservice_influxservice",
-      "target": "repositories_otatelemetryrepo_otatelemetryrepo",
-      "confidence_score": 1.0
+      "target": "repositories_otatelemetryrepo_otatelemetryrepo"
     },
     {
       "relation": "references",
@@ -45276,9 +45287,9 @@
       "source_file": "src/services/influxService.ts",
       "source_location": "L434",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_influxservice_influxservice",
-      "target": "services_influxservice_influxservice_writeotatelemetry",
-      "confidence_score": 1.0
+      "target": "services_influxservice_influxservice_writeotatelemetry"
     },
     {
       "relation": "method",
@@ -45509,9 +45520,9 @@
       "source_file": "src/services/influxService.ts",
       "source_location": "L434",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_influxservice_influxservice_writeotatelemetry",
-      "target": "repositories_otatelemetryrepo_otatelemetryinput",
-      "confidence_score": 1.0
+      "target": "repositories_otatelemetryrepo_otatelemetryinput"
     },
     {
       "relation": "calls",
@@ -51099,9 +51110,9 @@
       "source_file": "src/services/otaService.ts",
       "source_location": "L904",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_otaservice_otaservice",
-      "target": "services_otaservice_otaservice_getlateststableoffer",
-      "confidence_score": 1.0
+      "target": "services_otaservice_otaservice_getlateststableoffer"
     },
     {
       "relation": "method",
@@ -51403,9 +51414,9 @@
       "source_file": "src/services/otaService.ts",
       "source_location": "L913",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_otaservice_otaservice_getlateststableoffer",
-      "target": "services_otaservice_otaservice_buildoffer",
-      "confidence_score": 1.0
+      "target": "services_otaservice_otaservice_buildoffer"
     },
     {
       "relation": "calls",
@@ -51414,9 +51425,9 @@
       "source_file": "src/services/otaService.ts",
       "source_location": "L906",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_otaservice_otaservice_getlateststableoffer",
-      "target": "services_otaservice_otaservice_isdeviceeligible",
-      "confidence_score": 1.0
+      "target": "services_otaservice_otaservice_isdeviceeligible"
     },
     {
       "relation": "calls",
@@ -53057,9 +53068,9 @@
       "source_file": "src/services/redisService.ts",
       "source_location": "L280",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_redisservice_redisservice",
-      "target": "services_redisservice_redisservice_getcommandstats",
-      "confidence_score": 1.0
+      "target": "services_redisservice_redisservice_getcommandstats"
     },
     {
       "relation": "method",
@@ -56631,9 +56642,9 @@
       "source_file": "src/storage/influx/repositories/OtaTelemetryRepo.ts",
       "source_location": "L2",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "repositories_otatelemetryrepo",
-      "target": "influx_baseinfluxrepo",
-      "confidence_score": 1.0
+      "target": "influx_baseinfluxrepo"
     },
     {
       "relation": "imports_from",
@@ -56782,9 +56793,9 @@
       "source_file": "src/storage/influx/repositories/OtaTelemetryRepo.ts",
       "source_location": "L2",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "repositories_otatelemetryrepo",
-      "target": "influx_baseinfluxrepo_baseinfluxrepo",
-      "confidence_score": 1.0
+      "target": "influx_baseinfluxrepo_baseinfluxrepo"
     },
     {
       "relation": "inherits",
@@ -56793,9 +56804,9 @@
       "source_file": "src/storage/influx/repositories/OtaTelemetryRepo.ts",
       "source_location": "L62",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "repositories_otatelemetryrepo_otatelemetryrepo",
-      "target": "influx_baseinfluxrepo_baseinfluxrepo",
-      "confidence_score": 1.0
+      "target": "influx_baseinfluxrepo_baseinfluxrepo"
     },
     {
       "relation": "imports",
@@ -57404,9 +57415,9 @@
       "source_file": "src/storage/influx/repositories/OtaTelemetryRepo.ts",
       "source_location": "L3",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "repositories_otatelemetryrepo",
-      "target": "influx_types",
-      "confidence_score": 1.0
+      "target": "influx_types"
     },
     {
       "relation": "imports",
@@ -57415,9 +57426,9 @@
       "source_file": "src/storage/influx/repositories/OtaTelemetryRepo.ts",
       "source_location": "L3",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "repositories_otatelemetryrepo",
-      "target": "influx_types_buckettarget",
-      "confidence_score": 1.0
+      "target": "influx_types_buckettarget"
     },
     {
       "relation": "contains",
@@ -57425,9 +57436,9 @@
       "source_file": "src/storage/influx/repositories/OtaTelemetryRepo.ts",
       "source_location": "L6",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "repositories_otatelemetryrepo",
-      "target": "repositories_otatelemetryrepo_otatelemetryinput",
-      "confidence_score": 1.0
+      "target": "repositories_otatelemetryrepo_otatelemetryinput"
     },
     {
       "relation": "contains",
@@ -57435,9 +57446,9 @@
       "source_file": "src/storage/influx/repositories/OtaTelemetryRepo.ts",
       "source_location": "L62",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "repositories_otatelemetryrepo",
-      "target": "repositories_otatelemetryrepo_otatelemetryrepo",
-      "confidence_score": 1.0
+      "target": "repositories_otatelemetryrepo_otatelemetryrepo"
     },
     {
       "relation": "imports_from",
@@ -57446,9 +57457,9 @@
       "source_file": "src/storage/influx/repositories/OtaTelemetryRepo.ts",
       "source_location": "L4",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "repositories_otatelemetryrepo",
-      "target": "utils_logger",
-      "confidence_score": 1.0
+      "target": "utils_logger"
     },
     {
       "relation": "imports",
@@ -57457,9 +57468,9 @@
       "source_file": "src/storage/influx/repositories/OtaTelemetryRepo.ts",
       "source_location": "L4",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "repositories_otatelemetryrepo",
-      "target": "utils_logger_logger",
-      "confidence_score": 1.0
+      "target": "utils_logger_logger"
     },
     {
       "relation": "method",
@@ -57467,9 +57478,9 @@
       "source_file": "src/storage/influx/repositories/OtaTelemetryRepo.ts",
       "source_location": "L63",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "repositories_otatelemetryrepo_otatelemetryrepo",
-      "target": "repositories_otatelemetryrepo_otatelemetryrepo_buildpoint",
-      "confidence_score": 1.0
+      "target": "repositories_otatelemetryrepo_otatelemetryrepo_buildpoint"
     },
     {
       "relation": "method",
@@ -57477,9 +57488,9 @@
       "source_file": "src/storage/influx/repositories/OtaTelemetryRepo.ts",
       "source_location": "L110",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "repositories_otatelemetryrepo_otatelemetryrepo",
-      "target": "repositories_otatelemetryrepo_otatelemetryrepo_write",
-      "confidence_score": 1.0
+      "target": "repositories_otatelemetryrepo_otatelemetryrepo_write"
     },
     {
       "relation": "calls",
@@ -57488,9 +57499,9 @@
       "source_file": "src/storage/influx/repositories/OtaTelemetryRepo.ts",
       "source_location": "L112",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "repositories_otatelemetryrepo_otatelemetryrepo_write",
-      "target": "repositories_otatelemetryrepo_otatelemetryrepo_buildpoint",
-      "confidence_score": 1.0
+      "target": "repositories_otatelemetryrepo_otatelemetryrepo_buildpoint"
     },
     {
       "relation": "imports_from",
@@ -67980,5 +67991,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "d0e2ed4f375bb1453a69710f87301492d1555822"
+  "built_at_commit": "e26652cdb07b01a055b567112f7c31f9ad0afe57"
 }

@@ -55,4 +55,12 @@ describe('otaRoutes', () => {
     expect(res.status).toBe(200);
     expect(mockHandle).toHaveBeenCalledWith('dev-1', expect.objectContaining({ type: 'ota_rollback' }));
   });
+
+  it('serves proof:1.0.1 download without mTLS', async () => {
+    const res = await request(buildApp()).get('/api/v1/ota/download/proof%3A1.0.1');
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/octet-stream/);
+    expect(res.headers['x-firmware-version']).toBe('proof:1.0.1');
+    expect(Number(res.headers['content-length'])).toBeGreaterThan(0);
+  });
 });

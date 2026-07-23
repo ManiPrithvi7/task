@@ -54,22 +54,39 @@ export function createOtaRoutes(deps: OtaRoutesDeps): Router {
     return { allowed: true, retryAfter: Math.max(1, Math.ceil((current.resetAt - now) / 1000)) };
   }
 
-  router.get(
-    '/ota/offer/:version',
-    requireMtlsDeviceCert({ allowedSlots: ['primary'] }),
-    async (req: Request, res: Response) => {
-      try {
-        const deviceId = (req as any).deviceId as string;
-        const version = decodeURIComponent(req.params.version);
-        const device = await Device.findOne({ clientId: deviceId });
-        const currentVersion = device?.firmwareVersion || '0.0.0';
+  const isTestOta = () => process.env.TEST_OTA === 'true';
+  const LOCAL_PROOF_OTA_VERSION = 'proof:1.0.1';
+  // ponytail: single known test bin in data/; rename if you ship a different artifact.
+  const localProofFirmwarePath = () => path.resolve('data/ESP32s3_OTA_v104.ino.bin');
 
-        const offer = await deps.otaService.resolveUpdate({
-          deviceId,
-          currentVersion
+  function buildLocalProofDownloadUrl(): string {
+    const base = (
+      process.env.OTA_PUBLIC_BASE_URL ||
+      process.env.PUBLIC_APP_URL ||
+      'https://server.withproof.io'
+    ).replace(/\/+$/, '');
+    return `${base}/api/v1/ota/download/${encodeURIComponent(LOCAL_PROOF_OTA_VERSION)}`;
+  }
+
+  // TEST_OTA: firmware resolves proxy download_url via /ota/offer (Railway cannot forward device mTLS).
+  function skipMtlsWhenTestOta(req: Request, res: Response, next: (err?: unknown) => void): void {
+    if (isTestOta()) {
+      next();
+      return;
+    }
+    void requireMtlsDeviceCert({ allowedSlots: ['primary'] })(req, res, next);
+  }
+
+  router.get('/ota/offer/:version', skipMtlsWhenTestOta, async (req: Request, res: Response) => {
+    try {
+      const version = decodeURIComponent(req.params.version);
+
+      if (isTestOta()) {
+        const release = await FirmwareRelease.findOne({ status: FirmwareReleaseStatus.STABLE }).sort({
+          releasedAt: -1,
+          createdAt: -1
         });
-
-        if (!offer || offer.version !== version) {
+        if (!release) {
           res.status(404).json({
             success: false,
             error: 'No OTA offer for this device and version',
@@ -78,42 +95,78 @@ export function createOtaRoutes(deps: OtaRoutesDeps): Router {
           });
           return;
         }
-
+        let sizeBytes = release.sizeBytes;
+        try {
+          sizeBytes = fs.statSync(localProofFirmwarePath()).size;
+        } catch {
+          // keep release sizeBytes
+        }
         res.json({
           success: true,
-          version: offer.version,
-          download_url: offer.downloadUrl,
-          sha256: offer.sha256,
-          signature: offer.signature,
-          size_bytes: offer.sizeBytes,
-          expires_at: offer.expiresAt,
+          version: '1.0.1',
+          download_url: buildLocalProofDownloadUrl(),
+          sha256: release.sha256,
+          signature: release.signature,
+          size_bytes: sizeBytes,
+          expires_at: release.releasedAt?.toISOString?.() ?? new Date().toISOString(),
           timestamp: new Date().toISOString()
         });
-      } catch (err: unknown) {
-        logger.error('[OTA] offer failed', {
-          error: err instanceof Error ? err.message : String(err)
-        });
-        res.status(500).json({
-          success: false,
-          error: 'Failed to build OTA offer',
-          code: 'OTA_OFFER_ERROR',
-          timestamp: new Date().toISOString()
-        });
+        return;
       }
+
+      const deviceId = (req as { deviceId?: string }).deviceId as string;
+      const device = await Device.findOne({ clientId: deviceId });
+      const currentVersion = device?.firmwareVersion || '0.0.0';
+
+      const offer = await deps.otaService.resolveUpdate({
+        deviceId,
+        currentVersion
+      });
+
+      if (!offer || offer.version !== version) {
+        res.status(404).json({
+          success: false,
+          error: 'No OTA offer for this device and version',
+          code: 'OTA_OFFER_NOT_FOUND',
+          timestamp: new Date().toISOString()
+        });
+        return;
+      }
+
+      res.json({
+        success: true,
+        version: offer.version,
+        download_url: offer.downloadUrl,
+        sha256: offer.sha256,
+        signature: offer.signature,
+        size_bytes: offer.sizeBytes,
+        expires_at: offer.expiresAt,
+        timestamp: new Date().toISOString()
+      });
+    } catch (err: unknown) {
+      logger.error('[OTA] offer failed', {
+        error: err instanceof Error ? err.message : String(err)
+      });
+      res.status(500).json({
+        success: false,
+        error: 'Failed to build OTA offer',
+        code: 'OTA_OFFER_ERROR',
+        timestamp: new Date().toISOString()
+      });
     }
-  );
+  });
 
   const DEV_TEST_OTA_VERSION = 'test:1.0.1';
   const DEV_TEST_FIRMWARE_PUBLIC_URL =
     'https://objectstorage.ap-hyderabad-1.oraclecloud.com/n/ax4egmknthnr/b/proof-firmware-dev-download/o/dev%2Fwifi_ap_project.bin';
 
-  router.get('/ota/download/proof:1.0.1', (req: Request, res: Response) => {
-    const filePath = path.resolve('data/ESP32S3_DWIN_MVP_v101.ino.bin');
+  function serveLocalProofFirmware(_req: Request, res: Response): void {
+    const filePath = localProofFirmwarePath();
     try {
       const stat = fs.statSync(filePath);
       res.setHeader('Content-Type', 'application/octet-stream');
       res.setHeader('Content-Disposition', 'attachment; filename="ESP32s3_OTA_v104.ino.bin"');
-      res.setHeader('X-Firmware-Version', 'proof:1.0.1');
+      res.setHeader('X-Firmware-Version', LOCAL_PROOF_OTA_VERSION);
       res.setHeader('Content-Length', String(stat.size));
       const stream = fs.createReadStream(filePath);
       stream.pipe(res);
@@ -137,16 +190,9 @@ export function createOtaRoutes(deps: OtaRoutesDeps): Router {
         timestamp: new Date().toISOString()
       });
     }
-  });
+  }
 
-  // PILOT v1 ONLY — remove or protect before GA.
-  router.get('/ota/download/:version', (req: Request, res: Response, next) => {
-    if (process.env.PILOT_MODE !== 'true') {
-      next();
-      return;
-    }
-
-    const version = decodeURIComponent(req.params.version || '').trim();
+  function servePilotFirmware(req: Request, res: Response, version: string): void {
     if (!isValidPilotVersion(version)) {
       res.status(400).json({
         success: false,
@@ -222,14 +268,28 @@ export function createOtaRoutes(deps: OtaRoutesDeps): Router {
           });
         }
       });
-  });
+  }
 
-  router.get(
-    '/ota/download/:version',
-    requireMtlsDeviceCert({ allowedSlots: ['primary'] }),
-    async (req: Request, res: Response) => {
+  // One download route: local TEST_OTA bin → pilot open proxy → mTLS OCI.
+  router.get('/ota/download/:version', async (req: Request, res: Response, next) => {
+    const version = decodeURIComponent(req.params.version || '').trim();
+
+    if (version === LOCAL_PROOF_OTA_VERSION) {
+      serveLocalProofFirmware(req, res);
+      return;
+    }
+
+    if (process.env.PILOT_MODE === 'true') {
+      servePilotFirmware(req, res, version);
+      return;
+    }
+
+    void requireMtlsDeviceCert({ allowedSlots: ['primary'] })(req, res, async (err?: unknown) => {
+      if (err) {
+        next(err);
+        return;
+      }
       try {
-        const version = decodeURIComponent(req.params.version);
         const release = await FirmwareRelease.findOne({
           version,
           status: FirmwareReleaseStatus.STABLE
@@ -251,13 +311,13 @@ export function createOtaRoutes(deps: OtaRoutesDeps): Router {
 
         const stream = await storage.getObjectStream(getReleaseObjectKey(release));
         stream.pipe(res);
-      } catch (err: unknown) {
+      } catch (downloadErr: unknown) {
         logger.error('[OTA] download proxy failed', {
-          error: err instanceof Error ? err.message : String(err)
+          error: downloadErr instanceof Error ? downloadErr.message : String(downloadErr)
         });
         if (!res.headersSent) {
-          const status = err instanceof OciStorageError ? err.httpStatus : 500;
-          const code = err instanceof OciStorageError ? err.code : 'OTA_DOWNLOAD_ERROR';
+          const status = downloadErr instanceof OciStorageError ? downloadErr.httpStatus : 500;
+          const code = downloadErr instanceof OciStorageError ? downloadErr.code : 'OTA_DOWNLOAD_ERROR';
           res.status(status).json({
             success: false,
             error: 'Download failed',
@@ -266,8 +326,8 @@ export function createOtaRoutes(deps: OtaRoutesDeps): Router {
           });
         }
       }
-    }
-  );
+    });
+  });
 
   router.post('/ota/report', requireMtlsDeviceCert({ allowedSlots: ['primary'] }), async (req: Request, res: Response) => {
     try {

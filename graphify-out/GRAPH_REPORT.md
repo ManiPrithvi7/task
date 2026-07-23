@@ -1,16 +1,16 @@
 # Graph Report - proofmqtt  (2026-07-23)
 
 ## Corpus Check
-- 269 files · ~138,241 words
+- 269 files · ~138,468 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 2228 nodes · 4315 edges · 167 communities (134 shown, 33 thin omitted)
+- 2228 nodes · 4316 edges · 167 communities (134 shown, 33 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 6 edges (avg confidence: 0.75)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `d0e2ed4f`
+- Built from commit: `e26652cd`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -196,8 +196,8 @@
   scripts/verify-gmb-audience.ts → src/lib/socials/gmb-pubsub.ts
 - `main()` --calls--> `loadConfig()`  [EXTRACTED]
   scripts/ota/upload-firmware-oci.ts → src/config/index.ts
-- `main()` --calls--> `loadConfig()`  [EXTRACTED]
-  scripts/test-mqtt-mtls.ts → src/config/index.ts
+- `main()` --calls--> `buildNodeTlsConnectOptions()`  [EXTRACTED]
+  scripts/test-mqtt-mtls.ts → src/utils/mqttTlsOptions.ts
 - `buildConfigRoutesApp()` --calls--> `createConfigRoutes()`  [EXTRACTED]
   tests/unit/routes/configRoutes.test.ts → src/routes/configRoutes.ts
 
@@ -224,7 +224,7 @@ Nodes (27): buildObjectKey(), buildParUrl(), { common, objectstorage }, createOc
 
 ### Community 5 - "Community 5"
 Cohesion: 0.11
-Nodes (18): Common Name, 📊 Comparison: Your Spec vs Server Support, CSR Format, CSR Requirements Validation, 📝 Example: ESP32 CSR Generation, ✅ Final Verdict, Key Type, 🚀 Next Steps (+10 more)
+Nodes (18): ✅ **Common Name (CN) = device_id**, 📊 Comparison: Your Spec vs Server Support, ✅ **CSR Format: PEM (PKCS#10)**, CSR Requirements Validation, 📝 Example: ESP32 CSR Generation, ✅ Final Verdict, ✅ **Key Type: ECC (P-256 / secp256r1)**, 🚀 Next Steps (+10 more)
 
 ### Community 6 - "Community 6"
 Cohesion: 0.07
@@ -343,8 +343,8 @@ Cohesion: 0.17
 Nodes (12): Admin OTA (interim → planned), Attack surface (production), Change log, Controls verified (positive), Executive summary, POS / integrations webhooks (production today), Production OTA (target state — already implemented except dev route), proofmqtt Security Assessment (+4 more)
 
 ### Community 35 - "Community 35"
-Cohesion: 0.24
-Nodes (14): setMqttTlsClientPem(), main(), applyMqttJsTlsOptions(), buildMqttTlsPrecheckOptions(), buildNodeTlsConnectOptions(), netIsIp(), normalizeTlsPem(), readMqttTlsVersionOptions() (+6 more)
+Cohesion: 0.35
+Nodes (10): setMqttTlsClientPem(), applyMqttJsTlsOptions(), buildMqttTlsPrecheckOptions(), buildNodeTlsConnectOptions(), normalizeTlsPem(), readMqttTlsVersionOptions(), readTlsVersion(), TlsVersion (+2 more)
 
 ### Community 36 - "Community 36"
 Cohesion: 0.18
@@ -375,8 +375,8 @@ Cohesion: 0.11
 Nodes (17): deviceId, lastSeen, userId, deviceId, lastSeen, userId, accessToken, deviceId (+9 more)
 
 ### Community 45 - "Community 45"
-Cohesion: 0.23
-Nodes (12): deprecatedWarned, envBool(), envInt(), envString(), resolveMqttClientId(), warnDeprecatedEnv(), loadConfig(), loadOciCredentialsFromEnv() (+4 more)
+Cohesion: 0.20
+Nodes (13): deprecatedWarned, envBool(), envInt(), envString(), resolveMqttClientId(), warnDeprecatedEnv(), loadConfig(), normalizeInfluxDbUrl() (+5 more)
 
 ### Community 46 - "Community 46"
 Cohesion: 0.13
@@ -423,8 +423,8 @@ Cohesion: 0.12
 Nodes (17): DeviceOtaState, ObjectHeadResult, FinalizeValidationCode, FinalizeValidationError, FinalizeValidationInput, OtaActiveRelease, OtaCommandPublisher, OtaEventHandler (+9 more)
 
 ### Community 58 - "Community 58"
-Cohesion: 0.12
-Nodes (27): AppEnvConfig, AppFeaturesConfig, AuthConfig, decodeBase64ToUtf8(), DEFAULT_PROVISIONING_CA_STORAGE_PATH, describePrivateKeyPemKind(), firstPemEnv(), getProvisioningRootCaCertFromEnv() (+19 more)
+Cohesion: 0.11
+Nodes (30): AppEnvConfig, AppFeaturesConfig, AuthConfig, decodeBase64ToUtf8(), DEFAULT_PROVISIONING_CA_STORAGE_PATH, describePrivateKeyPemKind(), firstPemEnv(), getProvisioningRootCaCertFromEnv() (+22 more)
 
 ### Community 59 - "Community 59"
 Cohesion: 0.13
@@ -631,12 +631,12 @@ Cohesion: 0.60
 Nodes (3): verify-broker-tls.sh script, usage(), verify_one()
 
 ### Community 123 - "Community 123"
-Cohesion: 0.53
+Cohesion: 0.48
 Nodes (4): buildOtaProxyDownloadUrl(), OtaDownloadMode, resolveOtaDownloadMode(), resolveOtaPublicBaseUrl()
 
 ### Community 124 - "Community 124"
 Cohesion: 0.33
-Nodes (6): ✅ **Common Name (CN) = device_id**, ✅ **CSR Format: PEM (PKCS#10)**, ✅ **Key Type: ECC (P-256 / secp256r1)**, ✅ **Public Key in CSR**, ✅ **Signature Algorithm: ECDSA + SHA-256**, 📋 Your Requirements
+Nodes (6): Common Name, CSR Format, Key Type, Public Key, Signature Algorithm, ✅ Validation Checklist
 
 ### Community 125 - "Community 125"
 Cohesion: 0.09
@@ -728,7 +728,7 @@ _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `logger` connect `Community 16` to `Community 2`, `Community 3`, `Community 6`, `Community 8`, `Community 10`, `Community 12`, `Community 18`, `Community 19`, `Community 21`, `Community 154`, `Community 30`, `Community 31`, `Community 36`, `Community 41`, `Community 43`, `shouldSkipForStimulate`, `Community 45`, `Community 49`, `Community 50`, `Community 52`, `Community 55`, `Community 56`, `Community 58`, `Community 62`, `Community 65`, `Community 67`, `Community 76`, `Community 78`, `Community 83`, `Community 84`, `Community 87`, `Community 106`, `Community 126`?**
   _High betweenness centrality (0.059) - this node is a cross-community bridge._
-- **Why does `StatsMqttLite` connect `Community 12` to `Community 0`, `Community 6`, `Community 8`, `Community 9`, `Community 10`, `Community 16`, `Community 17`, `Community 24`, `Community 26`, `Community 39`, `Community 40`, `Community 41`, `Community 49`, `Community 50`, `Community 58`, `Community 59`, `Community 73`, `Community 75`, `Community 82`, `Community 91`, `Community 99`, `Community 101`, `Community 112`, `Community 125`?**
+- **Why does `StatsMqttLite` connect `Community 12` to `Community 0`, `Community 6`, `Community 8`, `Community 9`, `Community 10`, `Community 16`, `Community 17`, `Community 24`, `Community 26`, `Community 39`, `Community 40`, `Community 41`, `Community 49`, `Community 50`, `Community 58`, `Community 59`, `Community 73`, `Community 75`, `Community 82`, `Community 91`, `Community 99`, `Community 101`, `Community 112`, `Community 123`, `Community 125`?**
   _High betweenness centrality (0.037) - this node is a cross-community bridge._
 - **Why does `InfluxService` connect `Community 0` to `Community 160`, `Community 164`, `Community 133`, `Community 37`, `Community 165`, `Community 10`, `Community 12`, `Community 76`, `Community 56`, `Community 90`, `Community 155`, `Community 156`, `Community 62`?**
   _High betweenness centrality (0.029) - this node is a cross-community bridge._
