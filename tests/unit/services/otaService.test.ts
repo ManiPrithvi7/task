@@ -298,6 +298,20 @@ describe('OtaCommandPublisher', () => {
     expiresAt: new Date().toISOString()
   };
 
+  const previousTestOta = process.env.TEST_OTA;
+
+  beforeEach(() => {
+    delete process.env.TEST_OTA;
+  });
+
+  afterAll(() => {
+    if (previousTestOta === undefined) {
+      delete process.env.TEST_OTA;
+    } else {
+      process.env.TEST_OTA = previousTestOta;
+    }
+  });
+
   function makePublisher(downloadMode: 'presigned' | 'proxy' = 'proxy') {
     return new OtaCommandPublisher(
       { publish: jest.fn().mockResolvedValue(undefined) } as never,
@@ -323,6 +337,26 @@ describe('OtaCommandPublisher', () => {
   });
 
   it('rejects LAN download_url for MQTT publish', async () => {
+    const publisher = makePublisher();
+    await expect(
+      publisher.publishUpdateToDevice(
+        'DEVICE-17',
+        { ...baseOffer, downloadUrl: 'http://192.168.29.95:8765/firmware.bin' },
+        false
+      )
+    ).rejects.toThrow(/Refusing to publish LAN/);
+  });
+
+  it('allows proxy download_url when TEST_OTA=true', async () => {
+    process.env.TEST_OTA = 'true';
+    const publisher = makePublisher('proxy');
+    await expect(
+      publisher.publishUpdateToDevice('DEVICE-17', { ...baseOffer, downloadUrl: proxyUrl }, false)
+    ).resolves.toBeUndefined();
+  });
+
+  it('still rejects LAN download_url when TEST_OTA=true', async () => {
+    process.env.TEST_OTA = 'true';
     const publisher = makePublisher();
     await expect(
       publisher.publishUpdateToDevice(
