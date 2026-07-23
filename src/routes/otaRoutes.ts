@@ -107,13 +107,13 @@ export function createOtaRoutes(deps: OtaRoutesDeps): Router {
   const DEV_TEST_FIRMWARE_PUBLIC_URL =
     'https://objectstorage.ap-hyderabad-1.oraclecloud.com/n/ax4egmknthnr/b/proof-firmware-dev-download/o/dev%2Fwifi_ap_project.bin';
 
-  router.get('/ota/download/proof:1.1', (req: Request, res: Response) => {
-    const filePath = path.resolve('data/*.bin');
+  router.get('/ota/download/proof:1.0.1', (req: Request, res: Response) => {
+    const filePath = path.resolve('data/ESP32s3_OTA_v104.ino.bin');
     try {
       const stat = fs.statSync(filePath);
       res.setHeader('Content-Type', 'application/octet-stream');
       res.setHeader('Content-Disposition', 'attachment; filename="ESP32s3_OTA_v104.ino.bin"');
-      res.setHeader('X-Firmware-Version', 'proof:1.1');
+      res.setHeader('X-Firmware-Version', 'proof:1.0.1');
       res.setHeader('Content-Length', String(stat.size));
       const stream = fs.createReadStream(filePath);
       stream.pipe(res);

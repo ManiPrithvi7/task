@@ -294,6 +294,10 @@ export class OtaCommandPublisher {
   ) {}
 
   private assertPublishableDownloadUrl(downloadUrl: string, version: string): void {
+    // TEST_OTA allows proxy download URLs (e.g. /api/v1/ota/download/proof:1.0.1).
+    if (process.env.TEST_OTA === 'true') {
+      return;
+    }
     if (isLocalLanDownloadUrl(downloadUrl)) {
       throw new Error(
         `[OTA] Refusing to publish LAN/dev download_url for ${version} — use OCI Object Storage PAR`

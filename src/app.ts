@@ -1335,20 +1335,36 @@ export class StatsMqttLite {
       await this.otaService.deliverPendingToDevice(deviceId, currentVersion);
 
       const offer = await this.otaService.resolveUpdate({ deviceId, currentVersion });
-      // TEST_OTA: force MQTT payload version to 1.0.1 (download_url/sha256/signature unchanged).
-      const testOtaVersion =
-        process.env.TEST_OTA === 'true' ? '1.0.1' : undefined;
+      // TEST_OTA: force MQTT version + proxy download_url to proof:1.0.1.
+      const testOta =
+        process.env.TEST_OTA === 'true'
+          ? {
+              version: '1.0.1',
+              downloadUrl: `${(
+                process.env.PUBLIC_APP_URL ||
+                process.env.OTA_PUBLIC_BASE_URL ||
+                'https://server.withproof.io'
+              ).replace(/\/+$/, '')}/api/v1/ota/download/${encodeURIComponent('proof:1.0.1')}`
+            }
+          : undefined;
 
       if (offer && this.otaCommandPublisher) {
-        const toPublish = testOtaVersion ? { ...offer, version: testOtaVersion } : offer;
+        const toPublish = testOta
+          ? { ...offer, version: testOta.version, downloadUrl: testOta.downloadUrl }
+          : offer;
         await this.otaCommandPublisher.publishUpdateToDevice(deviceId, toPublish, false);
       } else if (process.env.TEST_OTA === 'true' && this.otaCommandPublisher) {
         const testOffer = await this.otaService.getLatestStableOffer(deviceId);
-        if (testOffer) {
-          const toPublish = { ...testOffer, version: '1.0.1' };
-          logger.info('[OTA] TEST_OTA — publishing latest stable release on registration', {
+        if (testOffer && testOta) {
+          const toPublish = {
+            ...testOffer,
+            version: testOta.version,
+            downloadUrl: testOta.downloadUrl
+          };
+          logger.info('[OTA] TEST_OTA — publishing forced proof:1.0.1 on registration', {
             deviceId,
             version: toPublish.version,
+            downloadUrl: toPublish.downloadUrl,
             releaseVersion: testOffer.version
           });
           await this.otaCommandPublisher.publishUpdateToDevice(deviceId, toPublish, false);
