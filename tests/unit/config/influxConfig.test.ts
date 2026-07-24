@@ -84,4 +84,31 @@ describe('influx config validation', () => {
     expect(config.influxdb.complianceBucket).toBe('custom_compliance');
     expect(() => validateConfig(config)).not.toThrow();
   });
+
+  it('throws when REDIS_URL missing in production', () => {
+    process.env = { ...process.env, ...baseEnv(), NODE_ENV: 'production' };
+    cleanEnv();
+    delete process.env.REDIS_URL;
+    delete process.env.TEST_OTA;
+    const config = loadConfig();
+    expect(config.redis.url).toBeUndefined();
+    expect(() => validateConfig(config)).toThrow(/REDIS_URL is required in production/);
+  });
+
+  it('throws when JWT secret missing in production with provisioning enabled', () => {
+    process.env = {
+      ...process.env,
+      ...baseEnv(),
+      NODE_ENV: 'production',
+      REDIS_URL: 'rediss://default:token@example.upstash.io:6379',
+      AUTH_SECRET: 'test-auth-secret'
+    };
+    cleanEnv();
+    delete process.env.JWT_SECRET;
+    delete process.env.PROVISIONING_JWT_SECRET;
+    delete process.env.TEST_OTA;
+    const config = loadConfig();
+    expect(config.provisioning.jwtSecret).toBe('');
+    expect(() => validateConfig(config)).toThrow(/JWT_SECRET or PROVISIONING_JWT_SECRET is required/);
+  });
 });

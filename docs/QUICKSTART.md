@@ -147,4 +147,21 @@ chmod 777 data/
 
 ---
 
+## Testing
+
+```bash
+# Unit tests (default CI gate)
+bun run check
+
+# HTTP behavior-contract E2E (mocked externals)
+bun run test:e2e
+
+# Full gate
+bun run check:full
+```
+
+See [tests/e2e/README.md](../tests/e2e/README.md) for flow coverage. Manual MQTT/device E2E: `scripts/ota-e2e/`.
+
+---
+
 **You're ready to test your firmware! 🎯**

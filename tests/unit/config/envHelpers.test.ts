@@ -1,4 +1,4 @@
-import { resolveMqttClientId } from '@/config/envHelpers';
+import { assertTestOtaAllowed, isTestOtaEnabled, resolveMqttClientId } from '@/config/envHelpers';
 
 describe('resolveMqttClientId', () => {
   const origEnv = process.env;
@@ -35,5 +35,31 @@ describe('resolveMqttClientId', () => {
     process.env.MQTT_CLIENT_ID = 'proof-server';
     process.env.MQTT_CLIENT_ID_STRICT = 'true';
     expect(resolveMqttClientId()).toBe('proof-server');
+  });
+});
+
+describe('assertTestOtaAllowed', () => {
+  const origEnv = process.env;
+
+  beforeEach(() => {
+    process.env = { ...origEnv };
+    delete process.env.TEST_OTA;
+    process.env.NODE_ENV = 'development';
+  });
+
+  afterAll(() => {
+    process.env = origEnv;
+  });
+
+  it('allows TEST_OTA in development', () => {
+    process.env.TEST_OTA = 'true';
+    expect(() => assertTestOtaAllowed()).not.toThrow();
+    expect(isTestOtaEnabled()).toBe(true);
+  });
+
+  it('throws when TEST_OTA is set in production', () => {
+    process.env.TEST_OTA = 'true';
+    process.env.NODE_ENV = 'production';
+    expect(() => assertTestOtaAllowed()).toThrow(/TEST_OTA=true is not allowed/);
   });
 });

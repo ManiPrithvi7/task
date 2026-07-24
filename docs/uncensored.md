@@ -300,3 +300,46 @@ The PKI/mTLS layer is the best-engineered part of this codebase. Protect it, tes
 ---
 
 *This report reflects the repository state as of July 2026. Re-run line counts and test inventory after major refactors.*
+
+---
+
+## Appendix A — In-process feature env gates
+
+Subsystems stay in one deployable but are gated by environment. See [CONFIG_MATRIX.md](CONFIG_MATRIX.md) for the full matrix.
+
+| Subsystem | Primary gate | Disabled when |
+|-----------|--------------|---------------|
+| Provisioning / PKI | `PROVISIONING_ENABLED` (default on) | `PROVISIONING_ENABLED=false` |
+| Instagram poller | Redis connected + Lua scripts loaded | Redis down or poller init skipped |
+| OTA | `OTA_ENABLED=true` | unset / false |
+| GMB webhooks | `WEBHOOK_ENABLED` + Pub/Sub audience in prod | `WEBHOOK_ENABLED=false` or missing audience |
+| Stimulate (TEMP) | `STIMULATE_DEVICE` set | unset |
+| TEST OTA fan-out | `TEST_OTA=true` | blocked in production (`assertTestOtaAllowed`) |
+
+Startup logs a subsystem summary after Phase 2 init (`📋 Enabled subsystems`).
+
+---
+
+## Appendix B — Explicit deferrals (July 2026 improvement plan)
+
+| Item | Status | Reason |
+|------|--------|--------|
+| CRL / OCSP | Deferred | [POST_PILOT_ROADMAP.md](POST_PILOT_ROADMAP.md) / pilot exceptions |
+| Admin IdP / RBAC | Deferred | Product IdP choice pending; domain-list auth remains |
+| Microservice extraction | Declined | In-process modularization (`src/bootstrap/`) chosen instead |
+| Implicit OTA success removal | Document-only | Business logic — see [SERVER_OTA_REQUIREMENTS.md](SERVER_OTA_REQUIREMENTS.md) |
+| Remove `_dbPath` from CAService | Deferred | Breaking constructor for negligible gain |
+| Optional InfluxDB at startup | Deferred | Operational model change |
+| Remove `stimulate/` | Deferred | Product decision |
+
+---
+
+## Appendix C — Post-plan refactor notes (July 2026)
+
+Improvements applied without changing valid production business flows:
+
+- Security: prod JWT/Redis/TEST_OTA guards, caService fail-closed, mTLS DB blip → 503, XFF download URL fix
+- Tests: `mtlsAuth`, `caService`, `deviceProvisioningGate`, E2E harness (`bun run test:e2e`)
+- Modularization: `src/bootstrap/` (device registration, OTA coordinator, HTTP routes, Phase 2 init)
+- OTA registration defer queue: `OTA_REGISTRATION_DEFER_CONCURRENCY` (default 10)
+- Config: domain modules under `src/config/`, `docs/CONFIG_MATRIX.md`, `bun scripts/validate-env.ts`

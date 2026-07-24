@@ -180,17 +180,5 @@
   "178": "@types/compression",
   "179": "@types/cors",
   "180": "@types/express",
-  "181": "@types/jsonwebtoken",
-  "182": "@types/node-forge",
-  "183": "@types/supertest",
-  "184": "typescript",
-  "185": "@typescript-eslint/parser",
-  "186": "flash-baseline.sh",
-  "187": "generate-keys.sh",
-  "188": "sign-firmware.sh",
-  "189": "upload-release.ts",
-  "190": "generate-broker-cert.sh",
-  "191": "promotionConfig.ts",
-  "192": "swaggerSchemas.ts",
-  "193": "{\n  verifyShopifyWebhook,\n  verifySquareWebhook,\n  isSquarePaymentEvent,\n  isSquareInvoiceEvent,\n  isSquareAppWebhookEvent,\n  parseSquareWebhookEnvelope,\n  getIdString,\n  buildReviewFromNotification,\n  isGmbTestNotification,\n  resolveGmbAccountResourceName,\n  resolveGmbLocationResourceName,\n  resolveGmbReviewPayload,\n  resolveGmbReviewResourceName\n}"
+  "181": "@types/jsonwebtoken"
 }

@@ -18,6 +18,7 @@ import type { OtaEventHandler } from '../services/otaService';
 import type { OtaService } from '../services/otaService';
 import { logger } from '../utils/logger';
 import { resolveLocalTestOtaFirmware } from '../utils/localTestOtaFirmware';
+import { assertTestOtaAllowed, isTestOtaEnabled } from '../config/envHelpers';
 
 export interface OtaRoutesDeps {
   otaConfig: OtaConfig;
@@ -54,7 +55,13 @@ export function createOtaRoutes(deps: OtaRoutesDeps): Router {
     return { allowed: true, retryAfter: Math.max(1, Math.ceil((current.resetAt - now) / 1000)) };
   }
 
-  const isTestOta = () => process.env.TEST_OTA === 'true';
+  const isTestOta = () => {
+    if (isTestOtaEnabled()) {
+      assertTestOtaAllowed();
+      return true;
+    }
+    return false;
+  };
   const LOCAL_PROOF_OTA_VERSION = 'proof:1.0.1';
 
   function buildLocalProofDownloadUrl(): string {
