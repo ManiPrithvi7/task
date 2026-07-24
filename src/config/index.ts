@@ -1,5 +1,4 @@
 import dotenv from 'dotenv';
-import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from '../utils/logger';
@@ -8,9 +7,33 @@ import {
   validateWebhookConfig,
   type WebhookConfig
 } from './webhookConfig';
-import { normalizeTlsPem, resolveMqttTlsServername } from '../utils/mqttTlsOptions';
 import { configureLogger } from '../utils/logger';
-import { envBool, envInt, envString, resolveMqttClientId } from './envHelpers';
+import { envBool, envInt, envString, assertTestOtaAllowed } from './envHelpers';
+import {
+  loadInfluxDbConfig,
+  normalizeInfluxDbUrl,
+  type InfluxDBConfig
+} from './influxConfig';
+import {
+  loadInstagramPollingConfig,
+  loadInstagramServerlessConfig,
+  type InstagramPollingConfig,
+  type InstagramServerlessConfig
+} from './instagramPollingConfig';
+import {
+  loadMqttConfig,
+  normalizeMqttPemFromEnv,
+  setMqttTlsClientPem,
+  type MqttConfig
+} from './mqttConfig';
+import {
+  DEFAULT_PROVISIONING_CA_STORAGE_PATH,
+  getProvisioningRootCaCertFromEnv,
+  getProvisioningRootCaKeyFromEnv,
+  loadProvisioningConfig,
+  writeProvisioningRootCaFromEnv,
+  type ProvisioningConfig
+} from './provisioningConfig';
 import {
   OTA_CHECK_RATE_LIMIT_SEC,
   OTA_MQTT_PUSH_CONCURRENCY,
@@ -32,245 +55,6 @@ export type { WebhookConfig };
 // Load environment variables
 dotenv.config();
 
-/** Normalize PEM pasted in env with literal `\n` (e.g. Railway). */
-export function normalizeMqttPemFromEnv(raw: string): string {
-  return raw.trim().replace(/\\n/g, '\n');
-}
-
-function looksLikePem(value: string): boolean {
-  return value.includes('-----BEGIN');
-}
-
-function decodeBase64ToUtf8(b64: string | undefined): string | undefined {
-  if (!b64?.trim()) return undefined;
-  try {
-    return Buffer.from(b64.trim(), 'base64').toString('utf8');
-  } catch {
-    return undefined;
-  }
-}
-
-/** First env whose value looks like a PEM block; normalizes escaped newlines. */
-function firstPemEnv(...names: string[]): string | undefined {
-  for (const name of names) {
-    const v = process.env[name];
-    if (v?.trim() && looksLikePem(v)) {
-      return normalizeMqttPemFromEnv(v);
-    }
-  }
-  return undefined;
-}
-
-function looksLikeCertificatePem(value: string): boolean {
-  return value.includes('-----BEGIN CERTIFICATE-----');
-}
-
-function looksLikePrivateKeyPem(value: string): boolean {
-  return /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/.test(value);
-}
-
-/**
- * Provisioning Root CA certificate PEM — base64 only, same as broker-trust CA: `MQTT_TLS_CA_BASE64`.
- * Written to disk by `writeProvisioningRootCaFromEnv` for CAService; not used for validation when only MQTT mTLS is needed without an env signing key.
- */
-function getProvisioningRootCaCertFromEnv(): string | undefined {
-  const fromB64 = decodeBase64ToUtf8(process.env.MQTT_TLS_CA_BASE64);
-  const certCandidate = fromB64 ? normalizeMqttPemFromEnv(fromB64) : undefined;
-  if (certCandidate && looksLikeCertificatePem(certCandidate)) return certCandidate;
-  return undefined;
-}
-
-/**
- * Provisioning Root CA private key PEM — base64 only: `MQTT_TLS_CA_KEY_BASE64`.
- * Required only when you want the app to sign CSRs using a Root CA key from env (paired with `MQTT_TLS_CA_BASE64`).
- */
-function getProvisioningRootCaKeyFromEnv(): string | undefined {
-  const fromB64 = decodeBase64ToUtf8(process.env.MQTT_TLS_CA_KEY_BASE64);
-  const keyCandidate = fromB64 ? normalizeMqttPemFromEnv(fromB64) : undefined;
-  if (keyCandidate && looksLikePrivateKeyPem(keyCandidate)) return keyCandidate;
-  return undefined;
-}
-
-/** Default Root CA directory (env decode + auto-generated CA). Prefer `data/certs` (writable in Docker). Override with `CA_STORAGE_PATH` or `PROVISIONING_CA_DIR`. */
-export const DEFAULT_PROVISIONING_CA_STORAGE_PATH = path.resolve(
-  process.env.DATA_DIR?.trim() || path.resolve(process.cwd(), 'data'),
-  'certs'
-);
-
-/** MQTT TLS: env-only (BASE64 or *_PEM). Never read or write data/.mqtt-tls/ for broker/client PEMs. */
-function resolveMqttTlsPemFromEnv(): {
-  caPem?: string;
-  clientCertPem?: string;
-  clientKeyPem?: string;
-} {
-  const caPem =
-    firstPemEnv('MQTT_TLS_CA_PEM', 'MQTT_TLS_CA_CERT') ||
-    decodeBase64ToUtf8(process.env.MQTT_TLS_CA_BASE64);
-  const clientCertPem =
-    firstPemEnv('MQTT_TLS_CLIENT_CERT_PEM') ||
-    decodeBase64ToUtf8(process.env.MQTT_TLS_CLIENT_CERT_BASE64);
-  const clientKeyPem =
-    firstPemEnv('MQTT_TLS_CLIENT_KEY_PEM') ||
-    decodeBase64ToUtf8(process.env.MQTT_TLS_CLIENT_KEY_BASE64);
-  return {
-    caPem: caPem && looksLikeCertificatePem(caPem) ? normalizeTlsPem(caPem) : undefined,
-    clientCertPem:
-      clientCertPem && looksLikeCertificatePem(clientCertPem) ? normalizeTlsPem(clientCertPem) : undefined,
-    clientKeyPem:
-      clientKeyPem && looksLikePrivateKeyPem(clientKeyPem) ? normalizeTlsPem(clientKeyPem) : undefined
-  };
-}
-
-/** Load MQTT TLS PEMs from env into memory only (no disk persistence). */
-function loadMqttTlsFromEnv(): {
-  caPem?: string;
-  clientCertPem?: string;
-  clientKeyPem?: string;
-} {
-  const resolved = resolveMqttTlsPemFromEnv();
-  const { caPem, clientCertPem, clientKeyPem } = resolved;
-  if (!caPem && !clientCertPem && !clientKeyPem) {
-    return {};
-  }
-  logger.info('MQTT TLS credentials loaded from environment (in-memory only)', {
-    hasCa: !!caPem,
-    hasClientCert: !!clientCertPem,
-    hasClientKey: !!clientKeyPem
-  });
-  return resolved;
-}
-
-/** Update in-memory MQTT client cert/key (e.g. after CREATE_MQTT_CLIENT_CERT). */
-export function setMqttTlsClientPem(config: AppConfig, clientCertPem: string, clientKeyPem: string): void {
-  if (!config.mqtt.tls) {
-    config.mqtt.tls = { enabled: true };
-  }
-  config.mqtt.tls.clientCertPem = normalizeTlsPem(clientCertPem);
-  config.mqtt.tls.clientKeyPem = normalizeTlsPem(clientKeyPem);
-  config.mqtt.tls.enabled = true;
-}
-
-/**
- * Decode provisioning Root CA from env and write root-ca.crt / root-ca.key so CAService
- * loads the same material from disk (storagePath + fixed filenames).
- * Returns the directory used, or undefined so `caStoragePath` falls back to `CA_STORAGE_PATH` / {@link DEFAULT_PROVISIONING_CA_STORAGE_PATH}.
- */
-function sha256HexPrefix(pemUtf8: string, hexChars = 16): string {
-  return crypto.createHash('sha256').update(pemUtf8, 'utf8').digest('hex').slice(0, hexChars);
-}
-
-function describePrivateKeyPemKind(pem: string): 'PKCS#1 RSA' | 'PKCS#8' | 'EC' | 'unknown' {
-  if (pem.includes('BEGIN RSA PRIVATE KEY')) return 'PKCS#1 RSA';
-  if (pem.includes('BEGIN PRIVATE KEY')) return 'PKCS#8';
-  if (pem.includes('BEGIN EC PRIVATE KEY')) return 'EC';
-  return 'unknown';
-}
-
-function writeProvisioningRootCaFromEnv(): string | undefined {
-  const caB64 = process.env.MQTT_TLS_CA_BASE64?.trim() ?? '';
-  const keyB64 = process.env.MQTT_TLS_CA_KEY_BASE64?.trim() ?? '';
-
-  logger.info('Provisioning Root CA: env probe (lengths only, values not logged)', {
-    source: 'MQTT_TLS_CA_BASE64 + MQTT_TLS_CA_KEY_BASE64',
-    MQTT_TLS_CA_BASE64_present: caB64.length > 0,
-    MQTT_TLS_CA_BASE64_length: caB64.length,
-    MQTT_TLS_CA_KEY_BASE64_present: keyB64.length > 0,
-    MQTT_TLS_CA_KEY_BASE64_length: keyB64.length,
-    PROVISIONING_CA_DIR: process.env.PROVISIONING_CA_DIR?.trim() || '(default)'
-  });
-
-  const certPem = getProvisioningRootCaCertFromEnv();
-  const keyPem = getProvisioningRootCaKeyFromEnv();
-
-  if (caB64.length > 0 && !certPem) {
-    logger.warn(
-      'Provisioning Root CA: MQTT_TLS_CA_BASE64 is set but decoded value is not a valid certificate PEM (check base64 and PEM format).'
-    );
-  }
-  if (keyB64.length > 0 && !keyPem) {
-    logger.warn(
-      'Provisioning Root CA: MQTT_TLS_CA_KEY_BASE64 is set but decoded value is not a recognized private key PEM (check base64 and PEM format).'
-    );
-  }
-
-  if (!certPem || !keyPem) {
-    if (caB64.length > 0 || keyB64.length > 0) {
-      logger.info('Provisioning Root CA: skipping write from env until both cert and key decode successfully', {
-        certDecoded: !!certPem,
-        keyDecoded: !!keyPem
-      });
-    }
-    return undefined;
-  }
-
-  logger.info('Provisioning Root CA: read PEM from environment (decoded)', {
-    cert_pem_bytes: Buffer.byteLength(certPem, 'utf8'),
-    cert_sha256_prefix: sha256HexPrefix(certPem),
-    key_pem_bytes: Buffer.byteLength(keyPem, 'utf8'),
-    key_kind: describePrivateKeyPemKind(keyPem)
-  });
-
-  const dirRaw = process.env.PROVISIONING_CA_DIR?.trim();
-  const dir = dirRaw
-    ? path.isAbsolute(dirRaw)
-      ? dirRaw
-      : path.resolve(process.cwd(), dirRaw)
-    : DEFAULT_PROVISIONING_CA_STORAGE_PATH;
-
-  fs.mkdirSync(dir, { recursive: true });
-  const certPath = path.join(dir, 'root-ca.crt');
-  const keyPath = path.join(dir, 'root-ca.key');
-  const certOut = certPem.endsWith('\n') ? certPem : `${certPem}\n`;
-  const keyOut = keyPem.endsWith('\n') ? keyPem : `${keyPem}\n`;
-  fs.writeFileSync(certPath, certOut, { encoding: 'utf8', mode: 0o644 });
-  fs.writeFileSync(keyPath, keyOut, { encoding: 'utf8', mode: 0o600 });
-
-  const certStat = fs.statSync(certPath);
-  const keyStat = fs.statSync(keyPath);
-  logger.info('Provisioning Root CA: wrote files from env (CAService will load these paths)', {
-    certPath,
-    keyPath,
-    cert_file_bytes: certStat.size,
-    key_file_bytes: keyStat.size,
-    caStoragePath: dir
-  });
-  return dir;
-}
-
-export interface MqttConfig {
-  broker: string;
-  port: number;
-  clientId: string;
-  /**
-   * Derived: true when MQTT_USERNAME and MQTT_PASSWORD are both unset or empty (after trim).
-   * Then CONNECT uses no user/pass and the broker should authenticate via client TLS certificate.
-   */
-  authX509Only?: boolean;
-  username?: string;
-  password?: string;
-  /** Optional prefix prepended to all topics (e.g. '' or 'proof.mqtt'). */
-  topicPrefix: string;
-  /** Topic root for device topics (e.g. proof.mqtt). Used for proof.mqtt/device_123/active, instagram, gmb, pos. */
-  topicRoot: string;
-  /** mqtt.js reconnect interval in ms (default 2000). */
-  reconnectPeriod?: number;
-  /** Custom reconnect cap; 0 = infinite (see mqttClient.ts). */
-  maxReconnectAttempts?: number;
-  /** Pre-resolve broker hostname before connect (MQTT_DNS_PREFLIGHT_ENABLED=true). */
-  dnsPreflightEnabled?: boolean;
-  /** TLS / mTLS configuration for connecting to MQTT broker (optional) */
-  tls?: {
-    enabled?: boolean;
-    /** Broker CA + client cert/key: only from MQTT_TLS_*_BASE64 / MQTT_TLS_*_PEM env (in-memory). */
-    caPem?: string;
-    clientCertPem?: string;
-    clientKeyPem?: string;
-    rejectUnauthorized?: boolean;
-    /** TLS SNI / cert hostname (e.g. broker cert CN when MQTT_BROKER is a TCP proxy hostname). */
-    servername?: string;
-  };
-}
-
 export interface HttpConfig {
   port: number;
   host: string;
@@ -282,39 +66,6 @@ export interface StorageConfig {
   dataDir: string;
   sessionTTL: number;
   deviceCleanupInterval: number;
-}
-
-export interface ProvisioningConfig {
-  enabled: boolean;
-  tokenTTL: number;
-  jwtSecret: string;
-  caStoragePath: string;
-  rootCAValidityYears: number;
-  deviceCertValidityDays: number;
-  certificateDbPath: string;
-  /** Require device to have an active (provisioned) certificate before accepting registration (mTLS alignment). */
-  requireMtlsForRegistration: boolean;
-  /** Certificate Common Name (CN) prefix for devices (e.g. 'PROOF_') */
-  cnPrefix: string;
-  /** CN format: legacy (PROOF-deviceId) or structured (PROOF-order-batch-device) */
-  cnFormat: 'legacy' | 'structured';
-  /** PKI governance: hash-chained audit log (AuditService) */
-  auditLogEnabled: boolean;
-  /** PKI governance: certificate transparency Merkle log (requires Influx at runtime) */
-  transparencyLogEnabled: boolean;
-  /** Deferred enforce mode — default false (audit-only rollout) */
-  enforceRuntimeKuEku: boolean;
-  /** Validate cert chains to root CA at registration (default true) */
-  chainValidationEnabled: boolean;
-  intermediateCAEnabled: boolean;
-  /** Certificate profile for signing and validation */
-  certProfile?: {
-    validityDays: number;
-    keyUsage: string[]; // e.g. ['digitalSignature','keyEncipherment']
-    extendedKeyUsage: string[]; // e.g. ['clientAuth']
-    requireSanDeviceId: boolean;
-    minKeyBits: number;
-  };
 }
 
 export interface MongoDBConfig {
@@ -362,73 +113,6 @@ export interface AuthConfig {
 /**
  * POST target for Instagram metrics (serverless worker, e.g. Vercel). Main server forwards device batches here.
  */
-export interface InstagramServerlessConfig {
-  fetchUrl: string;
-  apiKey?: string;
-  timeoutMs: number;
-}
-
-/**
- * Instagram dual-scheduler tuning (Redis Lua + HTTP serverless fetch).
- */
-export interface InstagramPollingConfig {
-  priorityIntervalMs: number;
-  backgroundIntervalMs: number;
-  priorityTtlMs: number;
-  batchSize: number;
-  backoffThreshold: number;
-  backoffWindowMs: number;
-  /** Max devices processed from priority zset per tick (Phase C fairness). 0 = unlimited. */
-  priorityCapPerCycle: number;
-  /** Trim priority_zset to at most this many members (removes soonest-expiring first). 0 = off. */
-  priorityZsetMaxMembers: number;
-  /** Repeat attention: max ms added to previous expiry per touch (Phase C decay). 0 = off. */
-  priorityRefreshMaxDeltaMs: number;
-  /** Hard ceiling: priority score ≤ now + this. 0 = off. */
-  priorityAbsoluteMaxFutureMs: number;
-  /** Background tick: max devices to consider after fair rotation. 0 = unlimited. */
-  backgroundCapPerCycle: number;
-  /** Rotate background cursor across active devices (Redis `ig:bg:fair_offset`). Default true. */
-  backgroundFairRotate: boolean;
-  /** Max serverless invocations per rolling minute (all poller paths). 0 = off. */
-  globalFetchBudgetPerMinute: number;
-  /** Min interval between fetch requests for same device from poller (0 = off). */
-  fetchDedupeWindowMs: number;
-  /** Use in-process circuit gate instead of Redis (rollback: set false). */
-  useLocalCircuit: boolean;
-  useLocalBackoff: boolean;
-  useLocalBudget: boolean;
-  useLocalDedupe: boolean;
-  useLocalFairOffset: boolean;
-}
-
-export interface InfluxDBConfig {
-  /** Required primary dependency — validated in validateConfig (INFLUXDB_TOKEN). */
-  url: string;
-  token: string;
-  org: string;
-  /** Operational metrics bucket (ig_metrics, gmb_metrics, mqtt_delivery, etc.). Default: metrics */
-  bucket: string;
-  /** Compliance/PKI bucket (pki_audit, ct_log, ota_release_log, device_state_log). Default: pki_compliance. Retention: 3650d. */
-  complianceBucket: string;
-  /** Default true — append line protocol to disk; background worker POSTs batches over HTTP. */
-  diskQueueEnabled: boolean;
-  /** fsync after every WAL append when true (power-loss safe; higher I/O). */
-  diskQueueSyncOnAppend: boolean;
-  diskQueuePath: string;
-  diskQueueFlushMs: number;
-  diskQueueBatchMax: number;
-  diskQueueMaxLinesPerFile: number;
-  /** Influx JS WriteApi batchSize. */
-  clientBatchSize: number;
-  /** Influx JS WriteApi flushInterval (ms). */
-  clientFlushIntervalMs: number;
-  /** Max length for audit string fields (error_message, details JSON, etc.). */
-  auditMaxFieldLength: number;
-  /** Log every write to console (development mode). */
-  logWrites: boolean;
-}
-
 export type { OtaDownloadMode };
 
 export interface OtaOciCredentials {
@@ -469,19 +153,19 @@ export interface OtaConfig {
   mqttPushConcurrency: number;
 }
 
-/**
- * Trim and strip trailing slashes for Influx base URL.
- *
- * Accepts either a full URL (`https://host:port`) or a host[:port] string (common in PaaS dashboards),
- * in which case we default to `http://` so the Influx client has a valid scheme.
- */
-export function normalizeInfluxDbUrl(raw: string): string {
-  const trimmed = raw.trim().replace(/\/+$/, '');
-  if (!/^https?:\/\//i.test(trimmed)) {
-    return `http://${trimmed}`;
-  }
-  return trimmed;
-}
+export {
+  normalizeMqttPemFromEnv,
+  setMqttTlsClientPem,
+  normalizeInfluxDbUrl,
+  DEFAULT_PROVISIONING_CA_STORAGE_PATH
+};
+export type {
+  MqttConfig,
+  ProvisioningConfig,
+  InstagramServerlessConfig,
+  InstagramPollingConfig,
+  InfluxDBConfig
+};
 
 export interface AppConfig {
   mqtt: MqttConfig;
@@ -560,212 +244,33 @@ export function loadConfig(): AppConfig {
   const dataDir = process.env.DATA_DIR || './data';
 
   const provisioningCaDirFromEnv = writeProvisioningRootCaFromEnv();
-
-  const mqttUsername = process.env.MQTT_USERNAME?.trim() || '';
-  const mqttPassword = process.env.MQTT_PASSWORD?.trim() || '';
-  const hasMqttUserPass = mqttUsername.length > 0 && mqttPassword.length > 0;
-  const mtlsOnlyExplicitOff =
-    process.env.MQTT_MTLS_ONLY === 'false' ||
-    process.env.MQTT_MTLS_ONLY === '0' ||
-    process.env.MQTT_AUTH_X509_ONLY === 'false';
-  const mtlsOnlyExplicitOn =
-    process.env.MQTT_MTLS_ONLY === 'true' ||
-    process.env.MQTT_MTLS_ONLY === '1' ||
-    process.env.MQTT_AUTH_X509_ONLY === 'true';
-  /** Default: X.509-only when username/password are not both set (production mTLS path). */
-  const authX509Only = !mtlsOnlyExplicitOff && (mtlsOnlyExplicitOn || !hasMqttUserPass);
-
-  if (process.env.MQTT_TLS_CA?.trim()) {
-    logger.warn(
-      'MQTT_TLS_CA is ignored; use MQTT_TLS_CA_BASE64 or MQTT_TLS_CA_PEM / MQTT_TLS_CA_CERT (in-memory only).'
-    );
-  }
-  if (process.env.MQTT_TLS_CLIENT_CERT?.trim()) {
-    logger.warn(
-      'MQTT_TLS_CLIENT_CERT is ignored; use MQTT_TLS_CLIENT_CERT_BASE64 or MQTT_TLS_CLIENT_CERT_PEM (in-memory only).'
-    );
-  }
-  if (process.env.MQTT_TLS_CLIENT_KEY?.trim()) {
-    logger.warn(
-      'MQTT_TLS_CLIENT_KEY is ignored; use MQTT_TLS_CLIENT_KEY_BASE64 or MQTT_TLS_CLIENT_KEY_PEM (in-memory only).'
-    );
-  }
-
-  const mqttRuntimeTls = loadMqttTlsFromEnv();
-  const caPemResolved = mqttRuntimeTls.caPem;
-  const clientCertPemResolved = mqttRuntimeTls.clientCertPem;
-  const clientKeyPemResolved = mqttRuntimeTls.clientKeyPem;
-
-  const tlsExplicitOn =
-    process.env.MQTT_TLS_ENABLED === 'true' || process.env.MQTT_TLS === 'true';
-  const tlsEnabled =
-    tlsExplicitOn ||
-    !!caPemResolved ||
-    !!clientCertPemResolved ||
-    !!clientKeyPemResolved ||
-    !!process.env.MQTT_TLS_CA_BASE64?.trim() ||
-    !!process.env.MQTT_TLS_CLIENT_CERT_BASE64?.trim() ||
-    !!process.env.MQTT_TLS_CLIENT_KEY_BASE64?.trim() ||
-    !!process.env.MQTT_TLS_CA_PEM?.trim() ||
-    !!process.env.MQTT_TLS_CA_CERT?.trim() ||
-    !!process.env.MQTT_TLS_CLIENT_CERT_PEM?.trim() ||
-    !!process.env.MQTT_TLS_CLIENT_KEY_PEM?.trim();
+  const mqtt = loadMqttConfig();
+  const instagramServerless = loadInstagramServerlessConfig();
+  const instagramPolling = loadInstagramPollingConfig();
+  const influxdb = loadInfluxDbConfig(dataDir);
 
   const redisUrl = process.env.REDIS_URL?.trim();
 
-  const instagramServerless: InstagramServerlessConfig = {
-    fetchUrl: process.env.INSTAGRAM_SERVERLESS_URL?.trim() || process.env.VERCEL_INSTAGRAM_FETCH_URL?.trim() || '',
-    apiKey:
-      process.env.INSTAGRAM_SERVERLESS_API_KEY?.trim() ||
-      process.env.VERCEL_INSTAGRAM_FETCH_API_KEY?.trim() ||
-      undefined,
-    timeoutMs: parseInt(process.env.INSTAGRAM_SERVERLESS_TIMEOUT_MS || '30000', 10)
-  };
 
-  const instagramPolling: InstagramPollingConfig = {
-    priorityIntervalMs: parseInt(process.env.IG_POLL_PRIORITY_INTERVAL_MS || '15000', 10),
-    backgroundIntervalMs: parseInt(process.env.IG_POLL_BACKGROUND_INTERVAL_MS || '90000', 10),
-    priorityTtlMs: parseInt(process.env.IG_POLL_PRIORITY_TTL_MS || '120000', 10),
-    batchSize: envInt('IG_POLL_BATCH_SIZE', 50, ['BATCH_SIZE']),
-    backoffThreshold: parseInt(process.env.IG_POLL_BACKOFF_THRESHOLD || '6', 10),
-    backoffWindowMs: parseInt(process.env.IG_POLL_BACKOFF_WINDOW_MS || '60000', 10),
-    priorityCapPerCycle: parseInt(process.env.IG_POLL_PRIORITY_CAP_PER_CYCLE || '0', 10),
-    priorityZsetMaxMembers: parseInt(process.env.IG_POLL_PRIORITY_ZSET_MAX_MEMBERS || '0', 10),
-    priorityRefreshMaxDeltaMs: parseInt(process.env.IG_POLL_PRIORITY_REFRESH_MAX_DELTA_MS || '0', 10),
-    priorityAbsoluteMaxFutureMs: parseInt(process.env.IG_POLL_PRIORITY_MAX_FUTURE_MS || '0', 10),
-    backgroundCapPerCycle: parseInt(process.env.IG_POLL_BACKGROUND_CAP_PER_CYCLE || '0', 10),
-    backgroundFairRotate: process.env.IG_POLL_BACKGROUND_FAIR_ROTATE === 'false' ? false : true,
-    globalFetchBudgetPerMinute: parseInt(process.env.IG_GLOBAL_FETCH_BUDGET_PER_MIN || '0', 10),
-    fetchDedupeWindowMs: parseInt(process.env.IG_FETCH_DEDUPE_WINDOW_MS || '45000', 10),
-    useLocalCircuit: process.env.IG_USE_LOCAL_CIRCUIT !== 'false',
-    useLocalBackoff: process.env.IG_USE_LOCAL_BACKOFF !== 'false',
-    useLocalBudget: process.env.IG_USE_LOCAL_BUDGET !== 'false',
-    useLocalDedupe: process.env.IG_USE_LOCAL_DEDUPE !== 'false',
-    useLocalFairOffset: process.env.IG_USE_LOCAL_FAIR_OFFSET !== 'false'
-  };
 
-  const bgMultRaw = process.env.IG_POLL_BACKGROUND_INTERVAL_MULTIPLIER_LOW_POWER?.trim();
-  if (bgMultRaw) {
-    const bgMult = parseFloat(bgMultRaw);
-    if (bgMult > 1 && Number.isFinite(bgMult)) {
-      instagramPolling.backgroundIntervalMs = Math.round(instagramPolling.backgroundIntervalMs * bgMult);
-      logger.info('IG_POLL_BACKGROUND_INTERVAL_MULTIPLIER_LOW_POWER applied to background interval', {
-        multiplier: bgMult,
-        backgroundIntervalMs: instagramPolling.backgroundIntervalMs
-      });
-    }
-  }
   const metricsCollectionEnabled = envBool('ENABLE_METRICS_COLLECTION', true);
   const influxHealthRetries = envInt('INFLUXDB_HEALTH_RETRIES', 3, ['MAX_RETRIES']);
   process.env.INFLUXDB_HEALTH_RETRIES = String(influxHealthRetries);
 
-  const influxToken = process.env.INFLUXDB_TOKEN?.trim() || '';
-  /** Prefer INFLUXDB_URL; fall back to INFLUXDB_HOST (many stacks use HOST + PORT). */
-  const influxUrlRaw =
-    process.env.INFLUXDB_URL?.trim() ||
-    process.env.INFLUXDB_HOST?.trim() ||
-    'http://localhost:8086';
-  const influxUrl = normalizeInfluxDbUrl(influxUrlRaw);
-  const influxDiskQueueDisabled =
-    process.env.INFLUXDB_DISK_QUEUE === 'false' || process.env.INFLUXDB_DISK_QUEUE === '0';
-  const influxDiskQueueEnabled = !influxDiskQueueDisabled;
-  const influxDiskQueueSyncOnAppend =
-    process.env.INFLUXDB_DISK_QUEUE_SYNC === 'true' || process.env.INFLUXDB_DISK_QUEUE_SYNC === '1';
-  const influxQueuePathRaw = process.env.INFLUXDB_DISK_QUEUE_PATH?.trim();
-  const influxQueuePath = influxQueuePathRaw
-    ? path.isAbsolute(influxQueuePathRaw)
-      ? influxQueuePathRaw
-      : path.resolve(process.cwd(), influxQueuePathRaw)
-    : path.join(path.resolve(dataDir), 'influx-write-queue.lines');
-  const influxQueueFlushMs = Math.max(
-    1000,
-    envInt('INFLUXDB_QUEUE_FLUSH_MS', 1000, ['BATCH_TIMEOUT'])
-  );
-  const influxQueueBatchMax = Math.max(
-    1,
-    parseInt(process.env.INFLUXDB_QUEUE_BATCH_MAX || '500', 10) || 500
-  );
-  const influxQueueMaxLinesRaw = parseInt(process.env.INFLUXDB_QUEUE_MAX_LINES_PER_FILE || '100000', 10);
-  const influxQueueMaxLinesPerFile =
-    Number.isFinite(influxQueueMaxLinesRaw) && influxQueueMaxLinesRaw > 0 ? influxQueueMaxLinesRaw : 100_000;
-  const influxClientBatchSize = Math.max(
-    1,
-    parseInt(process.env.INFLUXDB_CLIENT_BATCH_SIZE || '500', 10) || 500
-  );
-  const influxClientFlushIntervalMs = Math.max(
-    100,
-    parseInt(process.env.INFLUXDB_CLIENT_FLUSH_INTERVAL_MS || '1000', 10) || 1000
-  );
-  const influxAuditMaxFieldRaw = parseInt(process.env.INFLUX_AUDIT_MAX_FIELD_LENGTH || '4096', 10);
-  const influxAuditMaxFieldLength =
-    Number.isFinite(influxAuditMaxFieldRaw) && influxAuditMaxFieldRaw > 0 ? influxAuditMaxFieldRaw : 4096;
-
   const config: AppConfig = {
-    mqtt: {
-      broker: process.env.MQTT_BROKER || 'broker.withproof.io',
-      port: parseInt(process.env.MQTT_PORT || '8883', 10),
-      clientId: resolveMqttClientId(),
-      authX509Only,
-      username: hasMqttUserPass ? mqttUsername : undefined,
-      password: hasMqttUserPass ? mqttPassword : undefined,
-      topicPrefix: process.env.MQTT_TOPIC_PREFIX || '',
-      topicRoot: process.env.MQTT_TOPIC_ROOT || 'proof.mqtt',
-      reconnectPeriod: parseInt(process.env.MQTT_RECONNECT_PERIOD || '2000', 10),
-      maxReconnectAttempts: parseInt(process.env.MQTT_MAX_RECONNECT_ATTEMPTS ?? '0', 10),
-      dnsPreflightEnabled: process.env.MQTT_DNS_PREFLIGHT_ENABLED === 'true',
-      tls: {
-        enabled: tlsEnabled,
-        caPem: caPemResolved,
-        clientCertPem: clientCertPemResolved,
-        clientKeyPem: clientKeyPemResolved,
-        rejectUnauthorized: process.env.MQTT_TLS_REJECT_UNAUTHORIZED !== 'false',
-        servername: resolveMqttTlsServername(
-          process.env.MQTT_BROKER || 'broker.withproof.io',
-          process.env.MQTT_TLS_SERVERNAME?.trim() || process.env.MQTT_TLS_VERIFY_HOST?.trim()
-        )
-      }
-    },
+    mqtt,
     http: {
-      port: parseInt(process.env.PORT || process.env.HTTP_PORT || '3002'),
+      port: parseInt(process.env.PORT || process.env.HTTP_PORT || '3002', 10),
       host: process.env.HTTP_HOST || '0.0.0.0',
       requestLogging: envBool('ENABLE_REQUEST_LOGGING', true),
       healthChecksEnabled: envBool('ENABLE_HEALTH_CHECKS', true)
     },
     storage: {
       dataDir,
-      sessionTTL: parseInt(process.env.SESSION_TTL || '86400'),
-      deviceCleanupInterval: parseInt(process.env.DEVICE_CLEANUP_INTERVAL || '3600')
+      sessionTTL: parseInt(process.env.SESSION_TTL || '86400', 10),
+      deviceCleanupInterval: parseInt(process.env.DEVICE_CLEANUP_INTERVAL || '3600', 10)
     },
-    provisioning: {
-      enabled: process.env.PROVISIONING_ENABLED !== 'false',  // Enabled by default
-      tokenTTL: parseInt(process.env.PROVISIONING_TOKEN_TTL || '6000'),  // 1 hour
-      jwtSecret: process.env.JWT_SECRET || process.env.PROVISIONING_JWT_SECRET || 'mqtt-publisher-lite-secret-key-change-in-production',
-      caStoragePath:
-        provisioningCaDirFromEnv ||
-        (process.env.CA_STORAGE_PATH?.trim()
-          ? path.isAbsolute(process.env.CA_STORAGE_PATH)
-            ? process.env.CA_STORAGE_PATH
-            : path.resolve(process.cwd(), process.env.CA_STORAGE_PATH)
-          : DEFAULT_PROVISIONING_CA_STORAGE_PATH),
-      rootCAValidityYears: parseInt(process.env.ROOT_CA_VALIDITY_YEARS || '10'),
-      deviceCertValidityDays: parseInt(process.env.DEVICE_CERT_VALIDITY_DAYS || '90'),
-      certificateDbPath: process.env.CERTIFICATE_DB_PATH || `${dataDir}/certificates.db`,
-      requireMtlsForRegistration: process.env.REQUIRE_MTLS_FOR_REGISTRATION !== 'false',  // Default true: only provisioned devices can register
-      cnPrefix: process.env.CERT_CN_PREFIX || 'PROOF_',
-      cnFormat: process.env.CERT_CN_FORMAT === 'structured' ? 'structured' : 'legacy',
-      auditLogEnabled: process.env.PKI_AUDIT_LOG_ENABLED !== 'false',
-      transparencyLogEnabled: process.env.TRANSPARENCY_LOG_ENABLED !== 'false',
-      enforceRuntimeKuEku: process.env.ENFORCE_RUNTIME_KU_EKU !== 'false',
-      chainValidationEnabled: process.env.CHAIN_VALIDATION_ENABLED !== 'false',
-      intermediateCAEnabled: process.env.INTERMEDIATE_CA_ENABLED === 'true',
-      certProfile: {
-        validityDays: parseInt(process.env.CERT_VALIDITY_DAYS || String(process.env.DEVICE_CERT_VALIDITY_DAYS || '90'), 10),
-        keyUsage: (process.env.CERT_KEY_USAGE || 'digitalSignature,keyEncipherment').split(',').map(s => s.trim()).filter(Boolean),
-        extendedKeyUsage: (process.env.CERT_EXTENDED_KEY_USAGE || 'clientAuth').split(',').map(s => s.trim()).filter(Boolean),
-        requireSanDeviceId: process.env.CERT_SAN_REQUIRE_DEVICE_ID !== 'false',
-        minKeyBits: parseInt(process.env.CERT_MIN_KEY_BITS || '2048', 10)
-      }
-    },
+    provisioning: loadProvisioningConfig(dataDir, provisioningCaDirFromEnv),
     mongodb: {
       uri: process.env.MONGODB_URI || process.env.MONGO_URI || '',
       dbName: process.env.MONGODB_DB_NAME || 'statsmqtt',
@@ -798,24 +303,7 @@ export function loadConfig(): AppConfig {
     },
     webhooks: loadWebhookConfig(),
     instagramServerless,
-    influxdb: {
-      url: influxUrl,
-      token: influxToken,
-      org: process.env.INFLUXDB_ORG?.trim() || 'statsmqtt',
-      /** Matches typical Influx 2 Docker init (e.g. DOCKER_INFLUXDB_INIT_BUCKET); override via INFLUXDB_BUCKET. */
-      bucket: process.env.INFLUXDB_BUCKET?.trim() || 'metrics',
-      complianceBucket: process.env.INFLUXDB_COMPLIANCE_BUCKET?.trim() || 'pki_compliance',
-      diskQueueEnabled: influxDiskQueueEnabled,
-      diskQueueSyncOnAppend: influxDiskQueueSyncOnAppend,
-      diskQueuePath: influxQueuePath,
-      diskQueueFlushMs: influxQueueFlushMs,
-      diskQueueBatchMax: influxQueueBatchMax,
-      diskQueueMaxLinesPerFile: influxQueueMaxLinesPerFile,
-      clientBatchSize: influxClientBatchSize,
-      clientFlushIntervalMs: influxClientFlushIntervalMs,
-      auditMaxFieldLength: influxAuditMaxFieldLength,
-      logWrites: envString('NODE_ENV', 'development') === 'development'
-    },
+    influxdb,
     instagramPolling
   };
 
@@ -909,6 +397,8 @@ export function loadConfig(): AppConfig {
 }
 
 export function validateConfig(config: AppConfig): void {
+  assertTestOtaAllowed();
+
   if (!config.mqtt.broker) {
     throw new Error('MQTT broker is required');
   }
@@ -919,7 +409,11 @@ export function validateConfig(config: AppConfig): void {
     throw new Error('Invalid HTTP port');
   }
   if (config.provisioning.enabled && !config.provisioning.jwtSecret) {
-    throw new Error('JWT secret is required when provisioning is enabled');
+    throw new Error(
+      config.app.env === 'production'
+        ? 'JWT_SECRET or PROVISIONING_JWT_SECRET is required in production when provisioning is enabled.'
+        : 'JWT secret is required when provisioning is enabled'
+    );
   }
   if (config.provisioning.enabled && !config.auth.secret) {
     throw new Error('AUTH_SECRET is required when provisioning is enabled. Set AUTH_SECRET environment variable.');
@@ -975,6 +469,11 @@ export function validateConfig(config: AppConfig): void {
       );
     }
     if (!config.ota.releaseWebhookSecret) {
+      if (config.app.env === 'production') {
+        throw new Error(
+          'OTA_RELEASE_WEBHOOK_SECRET is required in production when OTA is enabled.'
+        );
+      }
       logger.warn(
         '[OTA] OTA_RELEASE_WEBHOOK_SECRET not set — CI webhook ingest disabled until configured'
       );
@@ -1002,12 +501,11 @@ export function validateConfig(config: AppConfig): void {
       );
     }
   }
-  // Redis: only one supported config method is REDIS_URL (rediss://...).
-  // if (config.app.env === 'production' && !config.redis.url) {
-  //   throw new Error(
-  //     'REDIS_URL is required in production. Set REDIS_URL to your Upstash Redis TLS endpoint (rediss://...@...upstash.io:6379).'
-  //   );
-  // }
+  if (config.app.env === 'production' && !config.redis.url) {
+    throw new Error(
+      'REDIS_URL is required in production. Set REDIS_URL to your Upstash Redis TLS endpoint (rediss://...@...upstash.io:6379).'
+    );
+  }
   if (!config.redis.url) {
     logger.warn('REDIS_URL not set. Redis features disabled; provisioning tokens will fall back to in-memory storage.');
     config.redis.enabled = false;
@@ -1033,10 +531,8 @@ export function validateConfig(config: AppConfig): void {
   logger.info('Configuration validated successfully');
 }
 
-// # Replace AUTH_TOKEN with your admin JWT and PUBLISHER_URL with your server URL
-// PROV=$(curl -s -X POST "http://localhost:3002/api/v1/onboarding" \
-//   -H "Authorization: Bearer eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2Q0JDLUhTNTEyIiwia2lkIjoic2JSbkJueXR2VDBzN1VkTXE2VGhMUmxhU2ljcU1reHFERi1FRGRoV2NJNldTaUtwT0tORkY2eFllMm1YaGwtbFVXVlh2VXJKakFienpLY0hDRTlOYXcifQ..vCOb0KfIkeYbSpYvm2zmmw.Ne7vrHllldHCfCXo0n5o6zlLPS7dsAuGV2NjQWtX0kioTDdfwIclJBp9vkObjiWfZq3zIfWbXl9edB4TgHneAxlASo5QglL_JrnEyqgnz8eLIHpQsrHM5fkBeLGLf3hyHe_0HQrElwqSF61EE4SWX2-8bq0jgWEkElcmyYHgo32V2SjEUHxA3ParFhDz0Bx9ICouCzxvXTSsui61XcC3CAIMJGN4WYxZu5Ug157hmkPVsIhuFYuSDt4dQwkiotF0cjLi_F9A0L7u3gsPbUInlpJ2dQyqtz2cJ3XY6ceJMC60adFqECMjnro7LMH62_Kifm6o-hc6KtuALuc_7hqPGzp_Sxyn6pLMgSbDMOne7F5Cr446ujPWByGVaaWq_1v48GAraozlfxRfjKkm2CMhj6-O4dEFzMhXrUE3R-r9AfE25vd_DROo3zY50h_lpD6P.DeVYKY5KqNgHXULXboDy-5UTsQQLm6a7xiD5U30pgjE" \
+// Example onboarding curl (replace AUTH_TOKEN with your admin JWT):
+// curl -s -X POST "http://localhost:3002/api/v1/onboarding" \
+//   -H "Authorization: Bearer <AUTH_TOKEN>" \
 //   -H "Content-Type: application/json" \
-//   -d '{"device_id":"unified-server-dev"}' | jq -r '.provisioning_token')
-
-// echo "Provisioning token: $PROV"
+//   -d '{"device_id":"unified-server-dev"}'

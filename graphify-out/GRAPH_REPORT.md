@@ -340,8 +340,8 @@ Cohesion: 0.47
 Nodes (5): dashboardLink(), formatText(), sendOtaSlackAlert(), SlackOtaAlertKind, SlackOtaAlertPayload
 
 ### Community 22 - "Community 22"
-Cohesion: 0.07
-Nodes (30): bun-types, ES2020, stimulate/**/*, **/*.test.ts, compilerOptions, allowSyntheticDefaultImports, baseUrl, declaration (+22 more)
+Cohesion: 0.09
+Nodes (21): compilerOptions, allowSyntheticDefaultImports, baseUrl, declaration, declarationMap, esModuleInterop, forceConsistentCasingInFileNames, lib (+13 more)
 
 ### Community 23 - "Community 23"
 Cohesion: 0.05
@@ -384,8 +384,8 @@ Cohesion: 0.12
 Nodes (17): Admin API (Bearer user JWT), CI webhook — automated release + staged rollout, Device HTTP — `GET /api/v1/ota/download/:version` (proxy mode, optional), Device HTTP — `POST /api/v1/ota/report` (optional fallback), Enable OTA, Finalize validation (server), MQTT — device → server telemetry (legacy, non-pilot), MQTT — server → device commands (+9 more)
 
 ### Community 33 - "Community 33"
-Cohesion: 0.18
-Nodes (11): ⚡ 30-Second Setup, Can't connect to MQTT broker?, 📂 Check Your Data, 🔧 Customize, Data not saving?, 📚 Next Steps, Port 3002 in use?, 🚀 Quick Start Guide - MQTT Publisher Lite (+3 more)
+Cohesion: 0.17
+Nodes (12): ⚡ 30-Second Setup, Can't connect to MQTT broker?, 📂 Check Your Data, 🔧 Customize, Data not saving?, 📚 Next Steps, Port 3002 in use?, 🚀 Quick Start Guide - MQTT Publisher Lite (+4 more)
 
 ### Community 34 - "Community 34"
 Cohesion: 0.17
@@ -420,8 +420,8 @@ Cohesion: 0.14
 Nodes (16): ACLRule, ACLRuleSchema, DeviceACL, DeviceACLSchema, DeviceTier, IDeviceACL, IRedemption, Redemption (+8 more)
 
 ### Community 42 - "Community 42"
-Cohesion: 0.14
-Nodes (14): scripts, build, check, coverage, dev, format, lint, lint:fix (+6 more)
+Cohesion: 0.12
+Nodes (17): scripts, build, check, check:full, coverage, dev, format, lint (+9 more)
 
 ### Community 43 - "Community 43"
 Cohesion: 0.16
@@ -460,8 +460,12 @@ Cohesion: 0.13
 Nodes (20): getLocalStimLock(), LoopState, parseGmbTarget(), parseIgTarget(), parseIntervalMs(), parsePlatforms(), parseStep(), refreshStimLock() (+12 more)
 
 ### Community 53 - "Community 53"
-Cohesion: 0.08
-Nodes (23): extends, ignorePatterns, dist/, node_modules/, parser, parserOptions, project, plugins (+15 more)
+Cohesion: 0.13
+Nodes (14): extends, ignorePatterns, parser, parserOptions, project, plugins, root, rules (+6 more)
+
+### Community 55 - "Community 55"
+Cohesion: 0.20
+Nodes (14): buildTestOtaDownloadUrl(), deliverOtaOnRegistration(), executeOtaRegistrationDelivery(), fanOutTestOtaToActiveDevices(), publishTestOtaToDevice(), initializeOtaServices(), resolveOtaPublicBaseUrl(), startRolloutScheduler() (+6 more)
 
 ### Community 54 - "Community 54"
 Cohesion: 0.21
@@ -497,7 +501,7 @@ Nodes (27): 10. Verdict table, 11. Bottom line, 1. Architecture, 2. Security —
 
 ### Community 64 - "Community 64"
 Cohesion: 0.24
-Nodes (5): main(), OCI_PYTHON_SDK_CONNECTION_TIMEOUT, OCI_PYTHON_SDK_READ_TIMEOUT, instance.sh script, write_metadata()
+Nodes (5): instance.sh script, main(), OCI_PYTHON_SDK_CONNECTION_TIMEOUT, OCI_PYTHON_SDK_READ_TIMEOUT, write_metadata()
 
 ### Community 65 - "Community 65"
 Cohesion: 0.14
@@ -584,8 +588,8 @@ Cohesion: 0.17
 Nodes (11): ACLCacheEntry, ACLRule, ACLStats, ACLValidationResult, CertificateInfo, DeviceACL, DeviceConnectionInfo, DeviceTier (+3 more)
 
 ### Community 88 - "Community 88"
-Cohesion: 0.20
-Nodes (9): jest, tests/**/*.ts, compilerOptions, noEmit, types, extends, include, node (+1 more)
+Cohesion: 0.33
+Nodes (5): compilerOptions, noEmit, types, extends, include
 
 ### Community 89 - "Community 89"
 Cohesion: 0.20
@@ -633,7 +637,7 @@ Nodes (6): fetchInstagramProfileMetrics(), InstagramProfileFetchAudit, Instagram
 
 ### Community 100 - "Community 100"
 Cohesion: 0.83
-Nodes (3): cleanup_stale_jest(), on_interrupt(), run-unit-tests.sh script
+Nodes (3): run-unit-tests.sh script, cleanup_stale_jest(), on_interrupt()
 
 ### Community 101 - "Community 101"
 Cohesion: 0.22
@@ -652,8 +656,8 @@ Cohesion: 1.00
 Nodes (3): baseUrl(), getJson(), main()
 
 ### Community 106 - "Community 106"
-Cohesion: 0.50
-Nodes (5): extractBearerToken(), getGmbPubsubAudience(), verifyPubSubPushRequest(), GmbPubsubVerifyConfig, PubSubPushVerificationResult
+Cohesion: 0.20
+Nodes (8): fetchInstagramMetrics(), sleep(), fetchInstagramProfileMetrics(), InstagramProfileFetchAudit, InstagramProfileFetchError, InstagramProfileFetchResult, InstagramProfileMetrics, sha256Hex()
 
 ### Community 108 - "Community 108"
 Cohesion: 0.27
@@ -720,8 +724,8 @@ Cohesion: 0.50
 Nodes (4): Production commands, Production OCI flow (server + Oracle Object Storage), Production verification checklist, Server prerequisites
 
 ### Community 130 - "Community 130"
-Cohesion: 0.33
-Nodes (5): DeviceInfo, MqttMessage, PublishOptions, SessionInfo, UserInfo
+Cohesion: 0.22
+Nodes (8): event, info, description, name, _postman_id, schema, item, variable
 
 ### Community 131 - "Community 131"
 Cohesion: 0.33
@@ -744,8 +748,12 @@ Cohesion: 0.17
 Nodes (10): Apply with `gh` (from a machine that has local secrets), Branch protection (`main` on proof-firmware), Decisions, Firmware CI — Week 1 `staging` environment, Related, Rotate `OTA_RELEASE_WEBHOOK_SECRET`, Secrets (source map — never commit values), Variables (+2 more)
 
 ### Community 136 - "Community 136"
-Cohesion: 0.22
-Nodes (8): exclude, extends, include, dist, node_modules, src/**/*, tests/**/*, ./tsconfig.json
+Cohesion: 0.50
+Nodes (3): exclude, extends, include
+
+### Community 137 - "Community 137"
+Cohesion: 0.32
+Nodes (3): DeviceMetricsRepo, DeviceMetrics, SystemMetrics
 
 ### Community 137 - "Community 137"
 Cohesion: 0.60

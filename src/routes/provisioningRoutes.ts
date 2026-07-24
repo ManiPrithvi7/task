@@ -728,11 +728,15 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
           certificateId: certId
         });
 
-        // Absolute download URL so clients can use it directly (avoids wrong path when client appends to sign-csr path)
+        // Absolute download URL (trust proxy sets req.protocol; optional PROVISIONING_PUBLIC_BASE_URL override)
         const pathOnly = `/api/v1/certificates/${certId}/download`;
-        const host = req.get('host') || '';
-        const protocol = req.protocol || (req.get('x-forwarded-proto') ?? 'http');
-        const downloadUrl = host ? `${protocol}://${host}${pathOnly}` : pathOnly;
+        const publicBase = process.env.PROVISIONING_PUBLIC_BASE_URL?.trim();
+        const downloadUrl = publicBase
+          ? `${publicBase.replace(/\/+$/, '')}${pathOnly}`
+          : (() => {
+              const host = req.get('host') || '';
+              return host ? `${req.protocol}://${host}${pathOnly}` : pathOnly;
+            })();
 
         // Return certificate and Root CA (provisioning token marked consumed; do not reuse)
         res.set('X-Response-Type', 'certificate-issued');

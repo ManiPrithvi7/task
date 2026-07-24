@@ -82,3 +82,20 @@ export function resolveMqttClientId(): string {
 
   return base;
 }
+
+/** True when TEST_OTA env bypass is active (dev/CI only — blocked in production). */
+export function isTestOtaEnabled(): boolean {
+  return process.env.TEST_OTA === 'true';
+}
+
+/**
+ * TEST_OTA bypasses OTA gates — allowed only outside production.
+ * Call from validateConfig and any route that honors TEST_OTA.
+ */
+export function assertTestOtaAllowed(): void {
+  if (!isTestOtaEnabled()) return;
+  const env = process.env.NODE_ENV?.trim() || 'development';
+  if (env === 'production') {
+    throw new Error('TEST_OTA=true is not allowed when NODE_ENV=production');
+  }
+}

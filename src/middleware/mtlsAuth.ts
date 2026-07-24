@@ -156,7 +156,22 @@ export function requireMtlsDeviceCert(opts?: { allowedSlots?: MtlsCertSlot[] }) 
       return;
     }
 
-    const certDoc = await findActiveCertForSlots(identity.deviceId, allowedSlots);
+    let certDoc: Awaited<ReturnType<typeof findActiveCertForSlots>>;
+    try {
+      certDoc = await findActiveCertForSlots(identity.deviceId, allowedSlots);
+    } catch (err: unknown) {
+      logger.error('mTLS certificate lookup failed', {
+        deviceId: identity.deviceId,
+        error: err instanceof Error ? err.message : String(err)
+      });
+      res.status(503).json({
+        success: false,
+        error: 'Certificate lookup temporarily unavailable',
+        code: 'CERT_LOOKUP_UNAVAILABLE',
+        device_id: identity.deviceId
+      });
+      return;
+    }
     if (!certDoc) {
       res.status(403).json({
         success: false,

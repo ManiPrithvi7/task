@@ -48,4 +48,46 @@ describe('DeferredDeviceWorkQueue', () => {
     resolveFirst();
     await first;
   });
+
+  it('dedupes ota_registration by deviceId', async () => {
+    const q = new DeferredDeviceWorkQueue();
+    q.enqueueOtaRegistration('DEVICE-1', '1.0.0');
+    q.enqueueOtaRegistration('DEVICE-1', '1.0.1');
+    expect(q.pendingCount()).toBe(1);
+
+    const processed: string[] = [];
+    await q.processAll(async (item) => {
+      if (item.type === 'ota_registration') {
+        processed.push(`${item.deviceId}:${item.currentVersion}`);
+      }
+    });
+    expect(processed).toEqual(['DEVICE-1:1.0.1']);
+  });
+
+  it('processes ota_registration with concurrency cap', async () => {
+    const q = new DeferredDeviceWorkQueue();
+    for (let i = 0; i < 6; i += 1) {
+      q.enqueueOtaRegistration(`DEVICE-${i}`, '1.0.0');
+    }
+
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const processed: string[] = [];
+
+    await q.processAll(
+      async (item) => {
+        if (item.type !== 'ota_registration') return;
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise((r) => setTimeout(r, 20));
+        processed.push(item.deviceId);
+        inFlight -= 1;
+      },
+      { otaRegistrationConcurrency: 2 }
+    );
+
+    expect(processed).toHaveLength(6);
+    expect(maxInFlight).toBeLessThanOrEqual(2);
+    expect(maxInFlight).toBeGreaterThan(1);
+  });
 });

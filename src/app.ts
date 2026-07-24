@@ -1,21 +1,32 @@
 import { logger } from './utils/logger';
-import { resolveLocalTestOtaFirmware } from './utils/localTestOtaFirmware';
 import { loadConfig, validateConfig, AppConfig, setMqttTlsClientPem } from './config';
+import type { BootstrapHost } from './bootstrap/bootstrapHost';
+import {
+  extractDeviceIdFromTopic,
+  cacheActiveDevice,
+  handleDeviceRegistration as handleDeviceRegistrationBootstrap,
+  handleDeviceLWT as handleDeviceLWTBootstrap,
+  handleDeviceStatus as handleDeviceStatusBootstrap,
+  handleDeviceOtaTelemetry as handleDeviceOtaTelemetryBootstrap
+} from './bootstrap/deviceRegistrationHandler';
+import { initializePhase2 as runPhase2Bootstrap } from './bootstrap/serviceInitializer';
+import { initializeOtaServices as initializeOtaServicesBootstrap } from './bootstrap/otaServiceBootstrap';
+import {
+  deliverOtaOnRegistration as deliverOtaOnRegistrationCoord,
+  executeOtaRegistrationDelivery,
+  type OtaRegistrationCoordinatorDeps
+} from './bootstrap/otaRegistrationCoordinator';
 import { HttpServer } from './servers/httpServer';
 import { MqttClientManager } from './servers/mqttClient';
 import { StatsPublisher } from './services/statsPublisher';
 import { ConnectRefreshCoordinator } from './services/connectRefreshCoordinator';
-import { DeferredDeviceWorkQueue } from './services/deferredDeviceWork';
+import { DeferredDeviceWorkQueue, resolveOtaRegistrationDeferConcurrency } from './services/deferredDeviceWork';
 import {
   flushMessageBuffer,
   routeMqttMessage,
   type MqttIngressHandlers,
   type MqttIngressRouterState
 } from './services/mqttIngressRouter';
-import { clearAllPublishHashesForDevice } from './services/mqttChangeDetection';
-import { getLocalPromoRotationCache } from './services/localCaches';
-import { createConnectionsRoutes } from './routes/connectionsRoutes';
-import { cacheUserIntegrations } from './services/userIntegrationCache';
 import { GmbConnectPull } from './services/gmbConnectPull';
 import { ProvisioningService } from './services/provisioningService';
 import { CAService } from './services/caService';
@@ -29,10 +40,9 @@ import {
   republishCachedScreensForActiveDevices
 } from './services/startupCacheRepublish';
 import { StimulateService } from './services/stimulateService';
-import { InfluxService, createInfluxService, resetInfluxService } from './services/influxService';
-import { parsePilotBootPayload, isPilotOtaStatusEvent, normalizeOtaEventKey } from './utils/pilotOtaPayload';
-import { AuditService, createAuditService } from './services/auditService';
-import { TransparencyLog, createTransparencyLog } from './services/transparencyLog';
+import { InfluxService } from './services/influxService';
+import { AuditService } from './services/auditService';
+import { TransparencyLog } from './services/transparencyLog';
 import {
   InstagramServerlessBridge,
   InstagramDirectFetchInvoker,
@@ -50,30 +60,14 @@ import { Device, type IDevice } from './models/Device';
 import { DeviceCertificate, DeviceCertificateStatus } from './models/DeviceCertificate';
 import { User } from './models/User';
 import { Social, Provider as SocialProvider } from './models/Social';
-import { createProvisioningRoutes } from './routes/provisioningRoutes';
-import { createConfigRoutes } from './routes/configRoutes';
-import { createLifecycleRoutes } from './routes/lifecycleRoutes';
-import { createRecoveryRoutes } from './routes/recoveryRoutes';
-import { createOtaRoutes } from './routes/otaRoutes';
-import { createOtaAdminRoutes } from './routes/otaAdminRoutes';
-import { createWebhookRoutes, type OtaReleaseWebhookDeps } from './routes/webhookRoutes';
-import { createDashboardRoutes } from './routes/dashboardRoutes';
-import { createIntegrationRoutes } from './routes/integrationRoutes';
-import { createInfluxQueryRoutes } from './routes/influxQueryRoutes';
 import { createFirmwareStorageService } from './services/firmwareStorageService';
-import { resolveOtaPublicBaseUrl, buildOtaProxyDownloadUrl } from './config/otaDefaults';
 import {
-  initOtaSigningState,
   OtaService,
   OtaCommandPublisher,
   OtaEventHandler,
   OtaRedisState
 } from './services/otaService';
-import { backfillFirmwareReleaseStageFields } from './models/FirmwareRelease';
-import { startRolloutScheduler, type RolloutSchedulerHandle } from './jobs/rolloutScheduler';
-import { initOtaSigningKeyAudit } from './services/otaSigningKeyService';
-import { createOtaReleaseLog } from './services/otaReleaseLog';
-import { createRecoverySessionService } from './services/recoverySessionService';
+import { type RolloutSchedulerHandle } from './jobs/rolloutScheduler';
 import { getTokenStore } from './storage/tokenStore';
 import * as dns from 'dns';
 import * as tls from 'tls';
@@ -87,11 +81,7 @@ import {
   resolveMqttTlsServername,
   type MqttTlsConnectMaterial
 } from './utils/mqttTlsOptions';
-import { validateKeyUsageAndEKU } from './utils/certValidator';
-import { validateCertificateChain } from './services/chainValidator';
-import { getAuditService, AuditEventType } from './services/auditService';
-import { createDeviceStateLogService, getDeviceStateLogService } from './services/deviceStateLogService';
-import crypto from 'crypto';
+import { ensureDeviceProvisioned as checkDeviceProvisioned } from './services/deviceProvisioningGate';
 
 export class StatsMqttLite {
   private config: AppConfig;
@@ -162,6 +152,22 @@ export class StatsMqttLite {
   constructor() {
     this.config = loadConfig();
     validateConfig(this.config);
+  }
+
+  private bootstrapHost(): BootstrapHost {
+    return this as unknown as BootstrapHost;
+  }
+
+  private otaRegistrationDeps(): OtaRegistrationCoordinatorDeps {
+    return {
+      config: this.config,
+      otaService: this.otaService,
+      otaCommandPublisher: this.otaCommandPublisher,
+      otaPublicBaseUrl: this.otaPublicBaseUrl,
+      deferredWork: this.deferredWork,
+      isServicesReady: this.isServicesReady,
+      processDeferredWork: () => this.processDeferredWork()
+    };
   }
 
   private getRedisClientOrNull() {
@@ -317,53 +323,20 @@ export class StatsMqttLite {
   }
 
   private async initializePhase2(): Promise<void> {
-    logger.info('📈 Initializing InfluxDB...');
-    await this.initializeInfluxDB();
-    await this.initializePkiGovernance();
-
-    const deviceStateLog = createDeviceStateLogService();
-    await deviceStateLog.initialize();
-
-    if (this.config.provisioning.enabled && !this.caService) {
-      await this.initializeProvisioning();
-    }
-
-    await this.initializeInstagramPoller();
-    await this.initializeHttpServer();
-    await this.initializeStatsPublisher();
-    this.initializeConnectRefreshCoordinator();
-    await this.initializeStimulateService();
-    this.initializeKeepAlive();
-
-    this.isServicesReady = true;
-    this.mqttIngressState.isServicesReady = true;
-    logger.info('🟢 All services ready — draining deferred work and message buffer');
-
-    await this.processDeferredWork();
-    await this.flushMqttMessageBuffer();
-  }
-
-  /** TEMP STIMULATE — remove after testing. In-process IG/GMB ramps when STIMULATE_DEVICE is set. */
-  private async initializeStimulateService(): Promise<void> {
-    if (!this.mqttClient) {
-      logger.warn('[STIM] MQTT client missing — skip stimulate service');
-      return;
-    }
-    this.stimulateService = new StimulateService();
-    await this.stimulateService.start(
-      this.mqttClient,
-      this.redisService ?? null,
-      this.config.mqtt.topicRoot,
-      this.config.webhooks.mqttPublishEnabled
-    );
+    await runPhase2Bootstrap(this.bootstrapHost());
   }
 
   private buildMqttIngressHandlers(): MqttIngressHandlers {
+    const host = this.bootstrapHost();
     return {
-      onActive: (topic, message) => this.handleDeviceRegistration(topic, message),
-      onLwt: (topic, message) => this.handleDeviceLWT(topic, message),
-      onStatus: (topic, message) => this.handleDeviceStatus(topic, message),
-      onOtaTelemetry: (topic, message) => this.handleDeviceOtaTelemetry(topic, message),
+      onActive: (topic, message) =>
+        handleDeviceRegistrationBootstrap(host, topic, message as Record<string, unknown>),
+      onLwt: (topic, message) =>
+        handleDeviceLWTBootstrap(host, topic, message as Record<string, unknown>),
+      onStatus: (topic, message) =>
+        handleDeviceStatusBootstrap(host, topic, message as Record<string, unknown>),
+      onOtaTelemetry: (topic, message) =>
+        handleDeviceOtaTelemetryBootstrap(host, topic, message as Record<string, unknown>),
       onScreenEcho: (topic, message) => {
         logger.debug('Screen message received', {
           topic,
@@ -382,7 +355,7 @@ export class StatsMqttLite {
       updateLastSeen: (deviceId) =>
         this.deviceService.updateLastSeen(deviceId).catch(() => undefined),
       ensureProvisioned: (deviceId) => this.ensureDeviceProvisioned(deviceId),
-      extractDeviceId: (topic) => this.extractDeviceId(topic)
+      extractDeviceId: (topic) => extractDeviceIdFromTopic(host, topic)
     };
   }
 
@@ -406,23 +379,34 @@ export class StatsMqttLite {
 
   private async processDeferredWork(): Promise<void> {
     const coordinator = this.connectRefreshCoordinator;
-    if (!coordinator) {
-      logger.warn('[DEFERRED_WORK] Connect refresh coordinator not ready — skipping drain');
-      return;
-    }
 
-    const result = await this.deferredWork.processAll(async (item) => {
-      if (item.type !== 'connect_refresh') return;
-      try {
-        await coordinator.refresh(item.deviceId);
-      } catch (err: unknown) {
-        logger.error('[DEFERRED_WORK] connect_refresh failed', {
-          deviceId: item.deviceId,
-          error: err instanceof Error ? err.message : String(err)
-        });
-        throw err;
-      }
-    });
+    const result = await this.deferredWork.processAll(
+      async (item) => {
+        if (item.type === 'connect_refresh') {
+          if (!coordinator) {
+            logger.warn('[DEFERRED_WORK] Connect refresh coordinator not ready — skipping connect_refresh', {
+              deviceId: item.deviceId
+            });
+            return;
+          }
+          try {
+            await coordinator.refresh(item.deviceId);
+          } catch (err: unknown) {
+            logger.error('[DEFERRED_WORK] connect_refresh failed', {
+              deviceId: item.deviceId,
+              error: err instanceof Error ? err.message : String(err)
+            });
+            throw err;
+          }
+          return;
+        }
+
+        if (item.type === 'ota_registration') {
+          await executeOtaRegistrationDelivery(this.otaRegistrationDeps(), item.deviceId, item.currentVersion);
+        }
+      },
+      { otaRegistrationConcurrency: resolveOtaRegistrationDeferConcurrency() }
+    );
 
     if (result.processed > 0 || result.failed > 0 || result.skippedStale > 0) {
       logger.info('[DEFERRED_WORK] Drain complete', result);
@@ -457,7 +441,9 @@ export class StatsMqttLite {
   private async restoreActiveAndRepublishFromCache(): Promise<void> {
     try {
       const client = this.getRedisClientOrNull();
-      await restoreActiveDevicesFromRedis(client, (deviceId) => this.cacheActiveDevice(deviceId));
+      await restoreActiveDevicesFromRedis(client, (deviceId) =>
+        cacheActiveDevice(this.bootstrapHost(), deviceId)
+      );
 
       if (!this.mqttClient) {
         logger.warn('[STARTUP_CACHE] MQTT client missing — skip cache republish');
@@ -576,119 +562,6 @@ export class StatsMqttLite {
         'Set REDIS_URL (recommended, e.g. Upstash). Fix the connection or set REDIS_ENABLED=false to use in-memory tokens (not persistent).'
       );
     }
-  }
-
-  private async initializeInfluxDB(): Promise<void> {
-    try {
-      this.influxService = createInfluxService(this.config.influxdb);
-      const healthy = await this.influxService.healthCheck();
-
-      if (!healthy) {
-        await resetInfluxService();
-        this.influxService = undefined;
-        throw new Error(
-          'InfluxDB unreachable or misconfigured. Verify INFLUXDB_URL, INFLUXDB_TOKEN, INFLUXDB_ORG, INFLUXDB_BUCKET, INFLUXDB_COMPLIANCE_BUCKET.'
-        );
-      }
-
-      logger.info('📈 InfluxDB connected', {
-        url: this.config.influxdb.url,
-        org: this.config.influxdb.org,
-        bucket: this.config.influxdb.bucket,
-        complianceBucket: this.config.influxdb.complianceBucket,
-        diskQueue: this.config.influxdb.diskQueueEnabled,
-        diskQueueSync: this.config.influxdb.diskQueueSyncOnAppend
-      });
-    } catch (err: unknown) {
-      await resetInfluxService();
-      this.influxService = undefined;
-      throw err;
-    }
-  }
-
-  /**
-   * PKI governance (audit-only rollout): hash-chained audit log + optional CT log.
-   * Rollback: set PKI_AUDIT_LOG_ENABLED=false and TRANSPARENCY_LOG_ENABLED=false, redeploy.
-   */
-  private async initializePkiGovernance(): Promise<void> {
-    if (!this.config.provisioning.auditLogEnabled) {
-      logger.info('PKI audit log disabled (PKI_AUDIT_LOG_ENABLED=false)');
-      return;
-    }
-
-    const fallbackLogPath = path.join(
-      this.config.provisioning.caStoragePath,
-      'audit.log'
-    );
-
-    this.auditService = createAuditService({ fallbackLogPath });
-    await this.auditService.initialize();
-    logger.info('PKI AuditService initialized (hash-chain)');
-
-    if (!this.config.provisioning.transparencyLogEnabled) {
-      logger.info('PKI transparency log disabled (TRANSPARENCY_LOG_ENABLED=false)');
-      return;
-    }
-
-    if (!this.influxService) {
-      logger.warn(
-        'TRANSPARENCY_LOG_ENABLED=true but InfluxDB unavailable — CT log disabled (audit log still active via file fallback)'
-      );
-      return;
-    }
-
-    this.transparencyLog = createTransparencyLog({ enabled: true });
-    await this.transparencyLog.initialize();
-    logger.info('PKI TransparencyLog initialized (Merkle tree → Influx ct_log)');
-  }
-
-  private async initializeInstagramPoller(): Promise<void> {
-    if (!this.redisService?.isRedisConnected()) {
-      logger.info('📉 Instagram poller disabled (Redis not connected)');
-      return;
-    }
-
-    const igPoll = this.config.instagramPolling!;
-    const sl = this.config.instagramServerless;
-    const fetchUrl = sl?.fetchUrl?.trim();
-
-    let fetchInvoker: InstagramFetchInvoker;
-    if (fetchUrl) {
-      this.instagramServerlessBridge = new InstagramServerlessBridge(sl!, this.mqttClient);
-      fetchInvoker = this.instagramServerlessBridge;
-      logger.info('📡 Instagram fetch mode: serverless (INSTAGRAM_SERVERLESS_URL set)');
-    } else {
-      this.instagramServerlessBridge = undefined;
-      fetchInvoker = new InstagramDirectFetchInvoker(this.mqttClient);
-      logger.info(
-        '📡 Instagram fetch mode: direct (Graph API on this server). Set INSTAGRAM_SERVERLESS_URL to offload to a worker.'
-      );
-    }
-
-    this.instagramPoller = new InstagramPoller(fetchInvoker, this.redisService, {
-      priorityIntervalMs: igPoll.priorityIntervalMs,
-      backgroundIntervalMs: igPoll.backgroundIntervalMs,
-      priorityTtlMs: igPoll.priorityTtlMs,
-      batchSize: igPoll.batchSize,
-      backoffThreshold: igPoll.backoffThreshold,
-      backoffWindowMs: igPoll.backoffWindowMs,
-      priorityCapPerCycle: igPoll.priorityCapPerCycle,
-      fetchDedupeWindowMs: igPoll.fetchDedupeWindowMs,
-      priorityZsetMaxMembers: igPoll.priorityZsetMaxMembers,
-      priorityRefreshMaxDeltaMs: igPoll.priorityRefreshMaxDeltaMs,
-      priorityAbsoluteMaxFutureMs: igPoll.priorityAbsoluteMaxFutureMs,
-      backgroundCapPerCycle: igPoll.backgroundCapPerCycle,
-      backgroundFairRotate: igPoll.backgroundFairRotate,
-      globalFetchBudgetPerMinute: igPoll.globalFetchBudgetPerMinute,
-      useLocalCircuit: igPoll.useLocalCircuit,
-      useLocalBackoff: igPoll.useLocalBackoff,
-      useLocalBudget: igPoll.useLocalBudget,
-      useLocalDedupe: igPoll.useLocalDedupe,
-      useLocalFairOffset: igPoll.useLocalFairOffset
-    });
-
-    await this.instagramPoller.start();
-    logger.info('✅ Instagram poller initialized (dual schedulers enabled)');
   }
 
   /** Readiness for Instagram polling (Redis + Lua + poller; serverless URL optional). */
@@ -1045,1105 +918,19 @@ export class StatsMqttLite {
     logger.info('Subscribed to non-lifecycle proof.mqtt topics', { count: topics.length, root });
   }
 
-  /**
-   * Validates that the device is allowed for mTLS-aligned registration (has active provisioned certificate).
-   * Enforces CN match, optional KU/EKU, and chain validation when enabled in config.
-   */
   private async ensureDeviceProvisioned(deviceId: string): Promise<boolean> {
-    if (!this.config.provisioning.requireMtlsForRegistration) {
-      return true;
-    }
-    if (!this.caService) {
-      return true;
-    }
-
-    const cert = await this.caService.findActiveCertificateByDeviceId(deviceId, {
-      slots: ['primary', 'staging']
+    return checkDeviceProvisioned(deviceId, {
+      provisioning: this.config.provisioning,
+      caService: this.caService
     });
-    if (!cert) {
-      const auditSvc = getAuditService();
-      if (auditSvc) {
-        await auditSvc
-          .logEvent({
-            event: AuditEventType.DEVICE_AUTH_FAILED,
-            deviceId,
-            details: { reason: 'NO_ACTIVE_CERTIFICATE' }
-          })
-          .catch(() => undefined);
-      }
-      return false;
-    }
-
-    const certSlot = cert.slot ?? 'primary';
-
-    let expectedCN: string;
-    try {
-      expectedCN = this.caService.formatExpectedCN(deviceId);
-    } catch {
-      const prefix = this.config.provisioning.cnPrefix || process.env.CERT_CN_PREFIX || 'PROOF';
-      expectedCN = `${String(prefix).trim()}-${deviceId}`;
-    }
-
-    if (cert.cn !== expectedCN) {
-      logger.warn('Certificate CN mismatch for device - provisioning rejected', {
-        deviceId,
-        expectedCN,
-        certCN: cert.cn
-      });
-      const auditSvc = getAuditService();
-      if (auditSvc) {
-        await auditSvc
-          .logEvent({
-            event: AuditEventType.DEVICE_AUTH_FAILED,
-            deviceId,
-            certificateFingerprint: cert.fingerprint,
-            details: { reason: 'CN_MISMATCH', expectedCN, certCN: cert.cn }
-          })
-          .catch(() => undefined);
-      }
-      return false;
-    }
-
-    if (this.config.provisioning.enforceRuntimeKuEku && cert.certificate) {
-      const kuResult = validateKeyUsageAndEKU(cert.certificate);
-      if (!kuResult.valid) {
-        logger.warn('[PKI:KU_EKU] Certificate validation failed — rejecting', {
-          deviceId,
-          errors: kuResult.errors
-        });
-        const auditSvc = getAuditService();
-        if (auditSvc) {
-          await auditSvc
-            .logEvent({
-              event: AuditEventType.KU_EKU_VALIDATION_FAILED,
-              deviceId,
-              certificateFingerprint: cert.fingerprint,
-              details: {
-                reason: 'KU_EKU_INVALID',
-                errors: kuResult.errors,
-                missingExtensions: kuResult.errors.filter((e) => e.includes('missing')),
-                hasDigitalSignature: kuResult.hasDigitalSignature,
-                hasClientAuth: kuResult.hasClientAuth,
-                hasProhibitedKeyCertSign: kuResult.hasProhibitedKeyCertSign,
-                slot: certSlot
-              }
-            })
-            .catch(() => undefined);
-        }
-        return false;
-      }
-    }
-
-    if (
-      this.config.provisioning.chainValidationEnabled &&
-      cert.certificate &&
-      cert.ca_certificate
-    ) {
-      try {
-        const rootCAPem = this.caService.getRootCACertificate();
-        const chainResult = validateCertificateChain(cert.certificate, [], rootCAPem);
-        if (!chainResult.valid) {
-          logger.warn('[PKI:CHAIN] Certificate chain validation failed — rejecting', {
-            deviceId,
-            errors: chainResult.errors
-          });
-          const auditSvc = getAuditService();
-          if (auditSvc) {
-            await auditSvc
-              .logEvent({
-                event: AuditEventType.CHAIN_VALIDATION_FAILED,
-                deviceId,
-                certificateFingerprint: cert.fingerprint,
-                details: {
-                  reason: 'CHAIN_INVALID',
-                  failurePoint: chainResult.errors[0] ?? 'unknown',
-                  errors: chainResult.errors,
-                  chainSubjects: chainResult.chainSubjects,
-                  slot: certSlot
-                }
-              })
-              .catch(() => undefined);
-          }
-          return false;
-        }
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        logger.error('[PKI:CHAIN] Chain validation error — rejecting', {
-          deviceId,
-          error: msg
-        });
-        const auditSvc = getAuditService();
-        if (auditSvc) {
-          await auditSvc
-            .logEvent({
-              event: AuditEventType.CHAIN_VALIDATION_FAILED,
-              deviceId,
-              certificateFingerprint: cert.fingerprint,
-              details: { reason: 'CHAIN_VALIDATION_ERROR', failurePoint: msg, slot: certSlot }
-            })
-            .catch(() => undefined);
-        }
-        return false;
-      }
-    }
-
-    const auditSvc = getAuditService();
-    if (auditSvc) {
-      await auditSvc
-        .logEvent({
-          event: AuditEventType.DEVICE_AUTH_SUCCESS,
-          deviceId,
-          certificateFingerprint: cert.fingerprint,
-          details: {
-            slot: certSlot,
-            cn: cert.cn,
-            expiresAt: cert.expires_at?.toISOString?.() ?? String(cert.expires_at)
-          }
-        })
-        .catch(() => undefined);
-    }
-
-    return true;
-  }
-
-  private async handleDeviceRegistration(topic: string, message: any): Promise<void> {
-    const deviceId = this.extractDeviceId(topic);
-    if (!deviceId) return;
-
-    // ✅ mTLS: validate device has been provisioned (active certificate) before accepting registration
-    const allowed = await this.ensureDeviceProvisioned(deviceId);
-    if (!allowed) {
-      logger.warn('🔒 Registration rejected: no active certificate for this device_id', { deviceId });
-      await this.sendRegistrationResponse(deviceId, false, 'Device not provisioned.', false);
-      return;
-    }
-
-    // ✅ /active topic ONLY handles device registration (client connects)
-    // ✅ /lwt topic handles ALL disconnections (both graceful and unexpected)
-    //    - Broker publishes LWT automatically when client disconnects
-    //    - Works for: Ctrl+C, power cut, crash, network failure, force close
-    
-    logger.info('📱 Device Registration Received', {
-      deviceId,
-      userId: message.userId || message.user_id,
-      deviceType: message.deviceType || message.device_type,
-      os: message.os,
-      type: message.type
-    });
-
-    const pilotBoot = parsePilotBootPayload(message);
-    const fwVersion =
-      pilotBoot.fwVersion || message.appVersion || message.app_version;
-
-    // Register device if not exists. Use topic-derived deviceId as canonical id so
-    // DeviceService lookups and StatsPublisher topics match subscriber topics (e.g. proof.mqtt/<deviceId>/instagram).
-    const existingDevice = await this.deviceService.getDevice(deviceId);
-    if (!existingDevice) {
-      await this.deviceService.registerDevice({
-        deviceId,
-        clientId: deviceId, // Must match topic segment so we publish to proof.mqtt/<deviceId>/...
-        macID: deviceId,
-        username: message.userId || message.user_id || 'unknown',
-        status: 'active',
-        lastSeen: new Date(),
-        metadata: {
-          mqttClientId: message.clientId, // Optional: actual MQTT client id for debugging
-          deviceType: message.deviceType || message.device_type,
-          os: message.os,
-          appVersion: fwVersion,
-          bootType: pilotBoot.bootType,
-          ipAddress: pilotBoot.ipAddress,
-          registeredAt: new Date().toISOString()
-        }
-      });
-      logger.info('✅ New device registered', { deviceId });
-      
-      // Send registration confirmation for new device
-      await this.sendRegistrationResponse(deviceId, true, 'Device registered successfully', true);
-    } else {
-      if (typeof fwVersion === 'string' && fwVersion.trim()) {
-        await Device.updateOne(
-          { clientId: deviceId },
-          {
-            $set: {
-              firmwareVersion: fwVersion.trim(),
-              firmwareReportedAt: new Date(),
-              lastSeenAt: new Date()
-            }
-          }
-        );
-      }
-      logger.info('✅ Existing device reconnected', { deviceId, fwVersion: fwVersion || undefined });
-      
-      // Send registration confirmation for existing device
-      await this.sendRegistrationResponse(deviceId, true, 'Device reconnected successfully', false);
-    }
-
-    if (this.otaService && typeof fwVersion === 'string' && fwVersion.trim()) {
-      void this.otaService
-        .maybeRecordImplicitOtaSuccess(deviceId, fwVersion.trim(), pilotBoot.bootType)
-        .catch((err: unknown) => {
-        logger.warn('[OTA] Implicit success check failed', {
-          deviceId,
-          error: err instanceof Error ? err.message : String(err)
-        });
-      });
-    }
-
-    void this.influxService
-      ?.writeOtaEvent({
-        deviceId,
-        event: 'boot',
-        source: 'device_status',
-        fwVersion: typeof fwVersion === 'string' ? fwVersion : undefined,
-        ipAddress: pilotBoot.ipAddress,
-        timestamp: pilotBoot.timestamp
-      })
-      .catch(() => undefined);
-
-    // Cache active device in Redis with userId + user preferences (one-time MongoDB read)
-    logger.info('📋 [LIFECYCLE:REGISTER] Caching device in Redis active list', { deviceId });
-    await this.cacheActiveDevice(deviceId);
-    await this.redisMarkDeviceActive(deviceId);
-
-    const mongoUserId = (await Device.findOne({ clientId: deviceId }).select({ userId: 1 }).lean())?.userId
-      ?.toString();
-
-    const ip = pilotBoot.ipAddress;
-    void getDeviceStateLogService().recordTransition({
-      deviceId,
-      event: 'active',
-      fwVersion: typeof fwVersion === 'string' ? fwVersion : undefined,
-      ipHash: ip ? crypto.createHash('sha256').update(ip).digest('hex') : undefined,
-      userIdAtTime: mongoUserId,
-      reason: 'registration',
-    }).catch(() => undefined);
-    if (mongoUserId) {
-      void cacheUserIntegrations(mongoUserId).catch((err: unknown) => {
-        logger.warn('[LIFECYCLE:REGISTER] Integration cache warm failed', {
-          deviceId,
-          userId: mongoUserId,
-          error: err instanceof Error ? err.message : String(err)
-        });
-      });
-    }
-
-    this.deferredWork.enqueueConnectRefresh(deviceId);
-    if (this.isServicesReady) {
-      void this.processDeferredWork().catch((err: unknown) => {
-        logger.error('[DEFERRED_WORK] Failed after registration', {
-          deviceId,
-          error: err instanceof Error ? err.message : String(err)
-        });
-      });
-    }
-
-    // TEMP STIMULATE — /active on allowlisted device restarts ramp from 0
-    if (this.stimulateService) {
-      void this.stimulateService.resetOnDeviceConnect(deviceId).catch((err: unknown) => {
-        logger.warn('[STIM] resetOnDeviceConnect failed', {
-          deviceId,
-          error: err instanceof Error ? err.message : String(err)
-        });
-      });
-    }
-
-    logger.info('📋 [LIFECYCLE:REGISTER] Device registration complete', { deviceId });
-
-    void this.deliverOtaOnRegistration(deviceId, fwVersion);
-  }
-
-  private buildTestOtaDownloadUrl(): string {
-    return buildOtaProxyDownloadUrl(
-      this.otaPublicBaseUrl ??
-        resolveOtaPublicBaseUrl({
-          otaPublicBaseUrl: process.env.OTA_PUBLIC_BASE_URL,
-          publicAppUrl: process.env.PUBLIC_APP_URL,
-          httpHost: this.config.http.host,
-          httpPort: this.config.http.port
-        }),
-      'proof:1.0.1'
-    );
-  }
-
-  /** TEST_OTA: forced proof:1.0.1 proxy offer — no version / eligibility / rollout gates. */
-  private async publishTestOtaToDevice(
-    deviceId: string,
-    reason: 'registration' | 'active_cache_fanout'
-  ): Promise<boolean> {
-    if (!this.otaService || !this.otaCommandPublisher) return false;
-
-    const baseOffer = await this.otaService.getLatestStableOfferUngated();
-    if (!baseOffer) {
-      logger.warn('[OTA] TEST_OTA — no STABLE release to build offer from', { deviceId, reason });
-      return false;
-    }
-
-    const localFw = resolveLocalTestOtaFirmware();
-    if (!localFw) {
-      logger.warn('[OTA] TEST_OTA — no firmware .bin found in data/', { deviceId, reason });
-      return false;
-    }
-
-    const toPublish = {
-      ...baseOffer,
-      version: '1.0.1',
-      downloadUrl: this.buildTestOtaDownloadUrl(),
-      sizeBytes: localFw.sizeBytes
-    };
-    logger.info('[OTA] TEST_OTA — ungated publish proof:1.0.1', {
-      deviceId,
-      reason,
-      version: toPublish.version,
-      downloadUrl: toPublish.downloadUrl,
-      sizeBytes: toPublish.sizeBytes,
-      firmwareFile: localFw.filename,
-      releaseVersion: baseOffer.version
-    });
-    await this.otaCommandPublisher.publishUpdateToDevice(deviceId, toPublish, false);
-    return true;
-  }
-
-  private async fanOutTestOtaToActiveDevices(): Promise<void> {
-    const devices = await getActiveDeviceCache().getAllActive();
-    let pushed = 0;
-    for (const d of devices) {
-      try {
-        if (await this.publishTestOtaToDevice(d.deviceId, 'active_cache_fanout')) {
-          pushed += 1;
-        }
-      } catch (err: unknown) {
-        logger.warn('[OTA] TEST_OTA fan-out failed for device', {
-          deviceId: d.deviceId,
-          error: err instanceof Error ? err.message : String(err)
-        });
-      }
-    }
-    logger.info('[OTA] TEST_OTA — fan-out complete', { pushed, total: devices.length });
   }
 
   private async deliverOtaOnRegistration(deviceId: string, appVersion?: string): Promise<void> {
-    if (!this.config.ota?.enabled || !this.otaService) {
-      return;
-    }
-
-    // TEST_OTA: every registering device gets forced offer (no version gate).
-    if (process.env.TEST_OTA === 'true') {
-      try {
-        await this.publishTestOtaToDevice(deviceId, 'registration');
-      } catch (err: unknown) {
-        logger.warn('[OTA] TEST_OTA registration delivery failed', {
-          deviceId,
-          error: err instanceof Error ? err.message : String(err)
-        });
-      }
-      return;
-    }
-
-    let currentVersion =
-      typeof appVersion === 'string' && appVersion.trim() ? appVersion.trim() : undefined;
-
-    if (!currentVersion || currentVersion === '1.0.0') {
-      const device = await Device.findOne({ clientId: deviceId }).select({ firmwareVersion: 1 });
-      if (device?.firmwareVersion?.trim()) {
-        currentVersion = device.firmwareVersion.trim();
-      }
-    }
-
-    if (!currentVersion) {
-      logger.warn('[OTA] Skipping registration OTA — no currentVersion', {
-        deviceId,
-        appVersion: appVersion || null
-      });
-      return;
-    }
-
-    try {
-      await this.otaService.deliverPendingToDevice(deviceId, currentVersion);
-
-      const offer = await this.otaService.resolveUpdate({ deviceId, currentVersion });
-      if (offer && this.otaCommandPublisher) {
-        await this.otaCommandPublisher.publishUpdateToDevice(deviceId, offer, false);
-      }
-    } catch (err: unknown) {
-      logger.warn('[OTA] Registration delivery failed', {
-        deviceId,
-        error: err instanceof Error ? err.message : String(err)
-      });
-    }
-  }
-
-  /**
-   * Load Device from MongoDB, Instagram tokens from `Social`, write active device + Redis IG meta.
-   */
-  private async cacheActiveDevice(deviceId: string): Promise<void> {
-    try {
-      logger.info('📋 [LIFECYCLE:CACHE] Step 1/2 — Device lookup (MongoDB)', { deviceId });
-      const deviceDoc = await Device.findOne({ clientId: deviceId });
-      if (!deviceDoc) {
-        logger.warn('📋 [LIFECYCLE:CACHE] Device not found in MongoDB — caching defaults only', { deviceId });
-        await this.activeDeviceCache.setActive({
-          deviceId,
-          userId: '',
-          lastSeen: Date.now()
-        });
-        return;
-      }
-
-      logger.info('📋 [LIFECYCLE:CACHE] Step 2/2 — Social (Instagram) for device', {
-        deviceId,
-        userId: deviceDoc.userId?.toString() || 'none',
-        deviceStatus: deviceDoc.status
-      });
-
-      const mongoUserId = deviceDoc.userId?.toString() || '';
-      const hasLinkedMongoUser = Boolean(mongoUserId && mongoose.Types.ObjectId.isValid(mongoUserId));
-
-      if (!hasLinkedMongoUser) {
-        logger.info('📋 [LIFECYCLE:CACHE] Device has no Mongo userId — cannot load Instagram from Social', { deviceId });
-      }
-
-      const igFromSocial = hasLinkedMongoUser ? await this.loadLatestInstagramSocialForUser(mongoUserId) : null;
-      if (hasLinkedMongoUser && !igFromSocial) {
-        logger.warn('📋 [LIFECYCLE:CACHE] No INSTAGRAM `Social` row for owner — add Instagram for this user in the web app', {
-          deviceId,
-          userId: mongoUserId
-        });
-      }
-
-      const active: ActiveDevice = {
-        deviceId,
-        userId: mongoUserId,
-        lastSeen: Date.now(),
-        ...(igFromSocial
-          ? { instagramAccountId: igFromSocial.socialAccountId, accessToken: igFromSocial.accessToken }
-          : {})
-      };
-
-      await this.activeDeviceCache.setActive(active);
-
-      logger.info('📋 [LIFECYCLE:CACHE] Active device record written (Mongo → file + Redis IG key)', {
-        deviceId,
-        userId: mongoUserId || '(none)',
-        instagramFromSocial: Boolean(igFromSocial)
-      });
-
-      const client = this.getRedisClientOrNull();
-      if (!client) return;
-
-      const hashFields: Record<string, string> = {
-        userId: mongoUserId ?? '',
-        status: 'active',
-        power_save: '0',
-        ig_follower_count: String(getIgDeviceRuntimeCache().getFollowers(deviceId) ?? 0),
-        gmb_review_count: String(getIgDeviceRuntimeCache().getGmbReviewCount(deviceId) ?? 0),
-        gmb_profile_id: '',
-        gmb_accessToken: ''
-      };
-      if (igFromSocial) {
-        hashFields.ig_accountId = igFromSocial.socialAccountId;
-        hashFields.ig_accessToken = igFromSocial.accessToken;
-        await writeDeviceHashOnConnect(deviceId, hashFields);
-      } else {
-        try {
-          await client.del(REDIS_KEYS.deviceHash(deviceId));
-        } catch (err: unknown) {
-          logger.debug('Redis: failed to clear device hash (no IG)', {
-            deviceId,
-            error: err instanceof Error ? err.message : String(err)
-          });
-        }
-      }
-    } catch (err: unknown) {
-      logger.error('❌ [LIFECYCLE:CACHE] Failed to cache active device', {
-        deviceId,
-        error: err instanceof Error ? err.message : String(err)
-      });
-    }
-  }
-
-  /**
-   * Handle Last Will and Testament (LWT) messages
-   * ✅ LWT is broker-generated for ALL client disconnections:
-   *    - Graceful shutdown (Ctrl+C, app close)
-   *    - Unexpected disconnect (power cut, crash, network failure)
-   * 
-   * How it works:
-   *    1. Client configures LWT at connection time
-   *    2. Broker stores LWT in memory
-   *    3. When client disconnects (any reason), broker publishes LWT
-   *    4. Server receives LWT and clears Redis active cache (Mongo status unchanged)
-   * 
-   * Payload is minimal: {"type":"un_registration","clientId":"client-XXX"}
-   */
-  private async handleDeviceLWT(topic: string, message: any): Promise<void> {
-    const deviceId = this.extractDeviceId(topic);
-    if (!deviceId) {
-      logger.warn('⚠️ LWT message received but could not extract deviceId', { topic });
-      return;
-    }
-
-    // Validate LWT message format (minimal payload expected)
-    if (message.type !== 'un_registration') {
-      logger.warn('⚠️ Invalid LWT message type', { 
-        deviceId, 
-        type: message.type,
-        expected: 'un_registration'
-      });
-      return;
-    }
-
-    if (!message.clientId) {
-      logger.warn('⚠️ LWT message missing clientId', { deviceId });
-      return;
-    }
-
-    logger.info('💀 LWT: Device Disconnected (Broker-Generated)', {
-      deviceId,
-      clientId: message.clientId,
-      topic: '/lwt',
-      reason: 'Client disconnected (all types: graceful, crash, power cut, etc.)',
-      source: 'broker',
-      mechanism: 'Last Will and Testament'
-    });
-    
-    // Remove from Redis active cache only; Mongo status unchanged (presence → Influx later)
-    logger.info('💀 [LIFECYCLE:LWT] Removing device from Redis active cache', { deviceId });
-    const removed = await this.activeDeviceCache.removeActive(deviceId);
-    await this.redisRemoveDevice(deviceId);
-
-    void getDeviceStateLogService().recordTransition({
-      deviceId,
-      event: 'inactive',
-      reason: 'lwt',
-    }).catch(() => undefined);
-
-    const clearedPublishHashes = await clearAllPublishHashesForDevice(deviceId);
-    getLocalPromoRotationCache().clear(deviceId);
-    if (clearedPublishHashes > 0) {
-      logger.info('💀 [LIFECYCLE:LWT] Cleared MQTT publish dedupe hashes', {
-        deviceId,
-        clearedPublishHashes
-      });
-    }
-
-    // TEMP STIMULATE — stop loops so cache TTL can expire during disconnection
-    if (this.stimulateService) {
-      void this.stimulateService.stopOnDeviceDisconnect(deviceId).catch((err: unknown) => {
-        logger.warn('[STIM] stopOnDeviceDisconnect failed', {
-          deviceId,
-          error: err instanceof Error ? err.message : String(err)
-        });
-      });
-    }
-
-    logger.info('💀 [LIFECYCLE:LWT] Device disconnect processed', {
-      deviceId,
-      removedFromRedis: removed
-    });
-
-    // Maintain polling sets for Instagram dual schedulers
-    try {
-      if (this.redisService?.isRedisConnected()) {
-        const client = this.redisService.getClient();
-        const multi = client.multi();
-        multi.zRem(REDIS_KEYS.priorityZset, deviceId);
-        await multi.exec();
-      }
-    } catch (err: unknown) {
-      logger.warn('Failed to cleanup Instagram polling keys on LWT', {
-        deviceId,
-        error: err instanceof Error ? err.message : String(err)
-      });
-    }
-
-    // Note: No acknowledgment is sent for LWT since the device is already disconnected
-  }
-
-  private async handleDeviceStatus(topic: string, message: any): Promise<void> {
-    const deviceId = this.extractDeviceId(topic);
-    if (!deviceId) return;
-
-    // ✅ mTLS: validate device is provisioned on every device request
-    const allowed = await this.ensureDeviceProvisioned(deviceId);
-    if (!allowed) {
-      logger.warn('🔒 Status update ignored: device not provisioned', { deviceId });
-      return;
-    }
-
-    const eventType = normalizeOtaEventKey(message);
-
-    if (this.otaEventHandler && isPilotOtaStatusEvent(eventType)) {
-      await this.otaEventHandler.handle(deviceId, message);
-    }
-
-    if (eventType && this.influxService) {
-      void this.influxService.writeOtaEvent({
-        deviceId,
-        event: String(eventType),
-        source: 'device_status',
-        fwVersion: message.fw_version || message.current_version,
-        errorMessage: message.error_message,
-        errorCode: message.error_code != null ? String(message.error_code) : undefined,
-        otaBytes: message.ota_bytes,
-        certDaysRemaining: message.cert_days_remaining,
-        certRenewalNeeded: message.cert_renewal_needed,
-        sha256Match: message.sha256_match,
-        signatureValid: message.signature_valid,
-        attemptNumber: message.attempt_number,
-        fromVersion: message.from_version,
-        payloadHash: message.payload_hash || message.expected_sha256,
-        timestamp: message.timestamp
-      }).catch(() => undefined);
-    }
-
-    logger.info('📊 Device Status Update', {
-      deviceId,
-      status: message.status,
-      eventType,
-      uptime: message.uptime
-    });
-  }
-
-  private async handleDeviceOtaTelemetry(topic: string, message: any): Promise<void> {
-    const deviceId = this.extractDeviceId(topic);
-    if (!deviceId) return;
-
-    const allowed = await this.ensureDeviceProvisioned(deviceId);
-    if (!allowed) {
-      logger.warn('🔒 OTA telemetry ignored: device not provisioned', { deviceId });
-      return;
-    }
-
-    const eventType = message?.ota_status || message?.event || message?.type || 'telemetry';
-
-    if (this.otaEventHandler && String(eventType).startsWith('ota_')) {
-      await this.otaEventHandler.handle(deviceId, message);
-    }
-
-    if (this.influxService) {
-      void this.influxService.writeOtaEvent({
-        deviceId,
-        event: String(eventType),
-        source: 'ota_telemetry',
-        fwVersion: message.fw_version || message.current_version,
-        errorMessage: message.error_message,
-        errorCode: message.error_code != null ? String(message.error_code) : undefined,
-        otaBytes: message.ota_bytes,
-        certDaysRemaining: message.cert_days_remaining,
-        certRenewalNeeded: message.cert_renewal_needed,
-        sha256Match: message.sha256_match,
-        signatureValid: message.signature_valid,
-        attemptNumber: message.attempt_number,
-        fromVersion: message.from_version,
-        payloadHash: message.payload_hash || message.expected_sha256,
-        timestamp: message.timestamp
-      }).catch(() => undefined);
-    }
-
-    logger.info('📊 OTA Telemetry', {
-      deviceId,
-      event: eventType,
-      progress: message.ota_progress_pct ?? message.progress,
-      free_heap: message.free_heap,
-      uptime: message.uptime_s ?? message.uptime
-    });
-  }
-
-  private async sendRegistrationResponse(
-    deviceId: string, 
-    success: boolean, 
-    message: string,
-    isNewDevice: boolean = false
-  ): Promise<void> {
-    try {
-      const response = {
-        success,
-        message,
-        deviceId,
-        isNewDevice,
-        timestamp: new Date().toISOString(),
-        serverVersion: '1.0.0'
-      };
-
-      await this.mqttClient.publish({
-        topic: `${this.config.mqtt.topicRoot}/${deviceId}/registration_ack`,
-        payload: JSON.stringify(response),
-        qos: 1,
-        retain: false
-      });
-
-      logger.info('📤 Registration response sent', {
-        deviceId,
-        success,
-        isNewDevice
-      });
-    } catch (error: any) {
-      logger.error('Failed to send registration response', {
-        deviceId,
-        error: error.message
-      });
-    }
-  }
-
-  private async sendUnregistrationResponse(
-    deviceId: string, 
-    success: boolean, 
-    message: string
-  ): Promise<void> {
-    try {
-      const response = {
-        success,
-        message,
-        deviceId,
-        timestamp: new Date().toISOString(),
-        serverVersion: '1.0.0',
-        disconnectType: 'graceful'
-      };
-
-      await this.mqttClient.publish({
-        topic: `${this.config.mqtt.topicRoot}/${deviceId}/unregistration_ack`,
-        payload: JSON.stringify(response),
-        qos: 1,
-        retain: false
-      });
-
-      logger.info('📤 Un-registration response sent', {
-        deviceId,
-        success
-      });
-    } catch (error: any) {
-      logger.error('Failed to send un-registration response', {
-        deviceId,
-        error: error.message
-      });
-    }
-  }
-
-  private extractDeviceId(topic: string): string | null {
-    const root = this.config.mqtt.topicRoot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const match = topic.match(new RegExp(`^${root}/([^/]+)/`));
-    return match ? match[1] : null;
-  }
-
-  private async initializeHttpServer(): Promise<void> {
-    logger.info('🌐 Initializing HTTP server...');
-
-    let otaReleaseWebhook: OtaReleaseWebhookDeps | undefined;
-
-    if (this.config.ota?.enabled) {
-      this.initializeOtaServices();
-      if (this.config.ota.releaseWebhookSecret && this.otaService) {
-        otaReleaseWebhook = {
-          secret: this.config.ota.releaseWebhookSecret,
-          otaService: this.otaService
-        };
-      }
-    }
-
-    const webhookRoutes = createWebhookRoutes({
-      mqttClient: this.mqttClient,
-      topicRoot: this.config.mqtt.topicRoot,
-      webhookConfig: this.config.webhooks,
-      appEnv: this.config.app.env,
-      otaReleaseWebhook
-    });
-
-    this.httpServer = new HttpServer(
-      this.config.http,
-      this.sessionService,
-      this.deviceService,
-      this.mqttClient,
-      () => this.buildReadinessPayload(),
-      [webhookRoutes]
-    );
-    
-    // Add provisioning routes if enabled
-    if (this.config.provisioning.enabled && this.provisioningService && this.caService && this.authService && this.userService) {
-      const provisioningRoutes = createProvisioningRoutes({
-        provisioningService: this.provisioningService,
-        caService: this.caService,
-        authService: this.authService,
-        userService: this.userService
-      });
-      this.httpServer.getApp().use('/api/v1', provisioningRoutes);
-      logger.info('✅ Provisioning routes registered at /api/v1');
-
-      const recoverySessionService = createRecoverySessionService(
-        this.config.redis.keyPrefix || 'proof-mqtt:',
-        this.config.auth.secret
-      );
-
-      const lifecycleRoutes = createLifecycleRoutes({
-        caService: this.caService,
-        recoverySessionService
-      });
-      this.httpServer.getApp().use('/api/v1', lifecycleRoutes);
-      logger.info('✅ Lifecycle routes registered at /api/v1');
-
-      const recoveryRoutes = createRecoveryRoutes({
-        recoverySessionService,
-        authService: this.authService
-      });
-      this.httpServer.getApp().use('/api/v1', recoveryRoutes);
-      logger.info('✅ Recovery routes registered at /api/v1/recovery');
-
-      // Compatibility alias (older clients): /api/recovery/* instead of /api/v1/recovery/*
-      this.httpServer.getApp().use('/api', recoveryRoutes);
-      logger.info('✅ Recovery routes registered at /api/recovery (alias)');
-    }
-    
-    // Device configuration endpoint for devices to fetch broker settings
-    try {
-      const configRoutes = createConfigRoutes({
-        config: this.config,
-        caService: this.caService
-      });
-      this.httpServer.getApp().use('/api/v1', configRoutes);
-      logger.info('✅ Device configuration route registered at /api/v1/mqtt-config');
-    } catch (err: any) {
-      logger.warn('⚠️ Failed to register device configuration route', { error: err instanceof Error ? err.message : String(err) });
-    }
-
-    if (this.config.ota?.enabled) {
-      if (
-        this.firmwareStorageService &&
-        this.otaService &&
-        this.otaCommandPublisher &&
-        this.otaEventHandler
-      ) {
-        const publicBaseUrl = this.otaPublicBaseUrl!;
-
-        const otaRoutes = createOtaRoutes({
-          otaConfig: this.config.ota,
-          otaService: this.otaService,
-          storage: this.firmwareStorageService,
-          eventHandler: this.otaEventHandler,
-          getRedisClient: () => this.getRedisClientOrNull(),
-          redisKeyPrefix: this.config.redis.keyPrefix || 'proof-mqtt:'
-        });
-        this.httpServer.getApp().use('/api/v1', otaRoutes);
-        logger.info('✅ OTA device routes registered at /api/v1/ota/*');
-
-        if (this.authService || this.config.auth.secret) {
-          if (!this.authService && this.config.auth.secret) {
-            this.authService = new AuthService(this.config.auth.secret);
-          }
-          const adminAuth = this.authService!;
-          const otaAdminRoutes = createOtaAdminRoutes({
-            otaConfig: this.config.ota,
-            authService: adminAuth,
-            storage: this.firmwareStorageService,
-            otaService: this.otaService,
-            commandPublisher: this.otaCommandPublisher,
-            publicBaseUrl
-          });
-          this.httpServer.getApp().use('/api/v1/admin/ota', otaAdminRoutes);
-          logger.info('✅ OTA admin routes registered at /api/v1/admin/ota/*');
-        } else {
-          logger.warn('⚠️ OTA admin routes skipped — AuthService not initialized');
-        }
-      }
-    }
-    
-    if (this.influxService) {
-      if (this.authService || this.config.auth?.secret) {
-        if (!this.authService && this.config.auth?.secret) {
-          this.authService = new AuthService(this.config.auth.secret);
-        }
-        if (this.authService) {
-          const dashboardRoutes = createDashboardRoutes({ authService: this.authService });
-          this.httpServer.getApp().use('/api/v1', dashboardRoutes);
-          logger.info('✅ Dashboard routes registered at /api/v1/dashboard/*');
-
-          const integrationRoutes = createIntegrationRoutes({ authService: this.authService });
-          this.httpServer.getApp().use('/api/v1', integrationRoutes);
-          logger.info('✅ Integration routes registered at /api/v1/integrations/*');
-
-          const influxQueryRoutes = createInfluxQueryRoutes({ authService: this.authService });
-          this.httpServer.getApp().use('/api/v1', influxQueryRoutes);
-          logger.info('✅ Influx query proxy registered at POST /api/v1/influx/query');
-        } else {
-          logger.warn('⚠️ Dashboard/integration/query routes skipped — AuthService not initialized');
-        }
-      } else {
-        logger.warn('⚠️ Dashboard/integration/query routes skipped — AUTH_SECRET not configured');
-      }
-    } else {
-      logger.info('⏭️ Dashboard/integration/query routes skipped — InfluxDB unavailable');
-    }
-
-    await this.httpServer.start();
-    
-    logger.info('✅ HTTP server initialized');
+    await deliverOtaOnRegistrationCoord(this.otaRegistrationDeps(), deviceId, appVersion);
   }
 
   private initializeOtaServices(): void {
-    if (!this.config.ota?.enabled) return;
-
-    this.firmwareStorageService = createFirmwareStorageService(this.config.ota);
-    initOtaSigningState(this.config.ota.signingConfirmed);
-    if (this.config.ota.signingPublicKeyPem) {
-      initOtaSigningKeyAudit(this.config.ota.signingPublicKeyPem, 'env');
-    } else if (this.config.ota.signingPublicKeyPath) {
-      try {
-        const pem = fs.readFileSync(this.config.ota.signingPublicKeyPath, 'utf8');
-        initOtaSigningKeyAudit(pem, 'file');
-      } catch {
-        /* key file audit best-effort */
-      }
-    }
-    void this.firmwareStorageService
-      .verifyBucketAccess()
-      .catch((err: unknown) => {
-        logger.error('[OTA] OCI bucket access check failed', {
-          bucket: this.config.ota?.oci.bucket,
-          namespace: this.config.ota?.oci.namespace,
-          error: err instanceof Error ? err.message : String(err)
-        });
-      });
-    this.otaPublicBaseUrl = resolveOtaPublicBaseUrl({
-      otaPublicBaseUrl: process.env.OTA_PUBLIC_BASE_URL,
-      publicAppUrl: process.env.PUBLIC_APP_URL,
-      httpHost: this.config.http.host,
-      httpPort: this.config.http.port
-    });
-
-    this.otaRedisState = new OtaRedisState(
-      () => this.getRedisClientOrNull(),
-      this.config.redis.keyPrefix || 'proof-mqtt:'
-    );
-    this.otaCommandPublisher = new OtaCommandPublisher(
-      this.mqttClient,
-      this.config.mqtt.topicRoot,
-      this.config.ota.broadcastTopic,
-      this.otaRedisState,
-      this.config.ota
-    );
-    this.otaService = new OtaService(
-      this.config.ota,
-      this.firmwareStorageService,
-      this.otaPublicBaseUrl,
-      this.otaCommandPublisher,
-      this.otaRedisState
-    );
-    this.otaEventHandler = new OtaEventHandler(this.otaService, this.otaCommandPublisher);
-
-    void backfillFirmwareReleaseStageFields()
-      .then((n) => {
-        if (n > 0) logger.info('[OTA] Backfilled FirmwareRelease stage fields', { modified: n });
-      })
-      .catch((err: unknown) => {
-        logger.warn('[OTA] Stage field backfill failed (non-fatal)', {
-          error: err instanceof Error ? err.message : String(err)
-        });
-      });
-
-    if (this.otaRedisState) {
-      this.otaRolloutScheduler = startRolloutScheduler({
-        otaService: this.otaService,
-        otaRedisState: this.otaRedisState,
-        otaConfig: this.config.ota
-      });
-    }
-
-    const otaReleaseLog = createOtaReleaseLog();
-    void otaReleaseLog.initialize().catch((err: unknown) => {
-      logger.warn('[OTA] Release log initialization failed (non-fatal)', {
-        error: err instanceof Error ? err.message : String(err)
-      });
-    });
-
-    logger.info('✅ OTA services initialized', {
-      mqttDownloadMode: 'presigned',
-      httpDownloadMode: this.config.ota.downloadMode,
-      publicBaseUrl: this.otaPublicBaseUrl,
-      bucket: this.config.ota.oci.bucket,
-      namespace: this.config.ota.oci.namespace,
-      delivery: 'server-driven',
-      testOta: process.env.TEST_OTA === 'true'
-    });
-    if (this.config.ota.downloadMode === 'proxy') {
-      logger.warn(
-        '[OTA] OTA_DOWNLOAD_MODE=proxy enables GET /api/v1/ota/download only — requires mTLS-capable HTTP edge (not Railway public URL). MQTT always uses OCI presigned PAR.'
-      );
-    }
-
-    if (process.env.TEST_OTA === 'true') {
-      void this.fanOutTestOtaToActiveDevices().catch((err: unknown) => {
-        logger.warn('[OTA] TEST_OTA startup fan-out failed', {
-          error: err instanceof Error ? err.message : String(err)
-        });
-      });
-    }
-  }
-
-  private async initializeStatsPublisher(): Promise<void> {
-    logger.info('📊 Initializing stats publisher...');
-    
-    this.statsPublisher = new StatsPublisher(
-      this.mqttClient,
-      this.deviceService,
-      60 * 1000, // Publish every minute to /instagram, /gmb, /promotion
-      this.caService,
-      this.config.provisioning.requireMtlsForRegistration
-    );
-    
-    await this.statsPublisher.start();
-
-    if (this.httpServer) {
-      const routeDeps = {
-        statsPublisher: this.statsPublisher,
-        topicRoot: this.config.mqtt.topicRoot
-      };
-      this.httpServer.getApp().use('/api/v1', createConnectionsRoutes(routeDeps));
-      logger.info('✅ Connections routes registered at POST /api/v1/connections/validate');
-    }
-
-    logger.info('✅ Stats publisher initialized - publishing every 60s to /instagram, /gmb, /promotion');
-  }
-
-  private initializeConnectRefreshCoordinator(): void {
-    const gmbConnectPull = new GmbConnectPull(
-      this.mqttClient,
-      this.config.webhooks.mqttPublishEnabled,
-      this.config.webhooks
-    );
-    this.connectRefreshCoordinator = new ConnectRefreshCoordinator({
-      mqttClient: this.mqttClient,
-      redisService: this.redisService ?? null,
-      instagramPoller: this.instagramPoller ?? null,
-      instagramPriorityTtlMs: this.config.instagramPolling?.priorityTtlMs ?? 300_000,
-      gmbConnectPull,
-      statsPublisher: this.statsPublisher
-    });
-    logger.info('✅ Connect refresh coordinator initialized (/active → debounced screen pull)');
-  }
-
-  private initializeKeepAlive(): void {
-    if (process.env.ENABLE_SELF_KEEPALIVE !== 'true') {
-      return;
-    }
-
-    const keepAliveInterval = 10 * 60 * 1000;
-
-    this.keepAliveTimer = setInterval(() => {
-      const url = `http://127.0.0.1:${this.config.http.port}/health`;
-      fetch(url)
-        .then((res) => {
-          logger.debug('Keep-alive ping sent', {
-            status: res.status,
-            interval: '10min'
-          });
-        })
-        .catch((err: unknown) => {
-          logger.debug('Keep-alive ping failed (normal if external monitoring exists)', {
-            error: err instanceof Error ? err.message : String(err)
-          });
-        });
-    }, keepAliveInterval);
-
-    logger.info('Keep-alive enabled', { interval: '10 minutes' });
+    initializeOtaServicesBootstrap(this.bootstrapHost());
   }
 
   async stop(): Promise<void> {
