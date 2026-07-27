@@ -21,11 +21,22 @@ Environment variables read by `loadConfig()` / enforced by `validateConfig()`. R
 | `OCI_*` / `OCI_API_PRIVATE_KEY_BASE64` | When OTA on | — | OCI PAR firmware storage |
 | `TEST_OTA` | **Blocked in prod** | off | Dev/CI only (`assertTestOtaAllowed`) |
 | `OTA_REGISTRATION_DEFER_CONCURRENCY` | No | `10` | Registration storm throttle |
+| `DEFERRED_WORK_REARM` | No | on (`false` disables) | Rollback for deferred drain re-arm |
 | `INSTAGRAM_SERVERLESS_URL` | No | off | Poller uses direct Graph if unset |
 | `IG_POLL_*` | No | see `instagramPollingConfig.ts` | Dual Redis schedulers |
 | `STIMULATE_DEVICE` | No | off | In-process IG/GMB ramp (pilot) |
 | `GMB_*` / webhook vars | When GMB webhooks on | see `webhookConfig.ts` | Pub/Sub push verification |
+| `GMB_PUBSUB_SKIP_AUTH_VERIFY` | **Blocked in prod** | off | Fail-fast at `validateWebhookConfig` |
 | `ENABLE_METRICS_COLLECTION` | Must not be `false` | `true` | Disabling throws at validate |
+
+## CI validate-env
+
+Do not run `bun scripts/validate-env.ts --production` on an empty env. Load the checked-in fixture:
+
+```bash
+set -a && source tests/fixtures/prod-env.env && set +a
+bun scripts/validate-env.ts --production
+```
 
 ## Feature env gates (in-process)
 
@@ -37,5 +48,8 @@ Environment variables read by `loadConfig()` / enforced by `validateConfig()`. R
 | GMB webhooks | `webhookConfig` validation | Mounted on HTTP server |
 | Stimulate | `STIMULATE_DEVICE` | TEMP ramp service on `/active` |
 | TEST OTA fan-out | `TEST_OTA=true` (non-prod) | Ungated proof:1.0.1 offers |
+| Deferred drain re-arm | `DEFERRED_WORK_REARM` | Second drain after enqueue-during-flight |
+
+**Pilot limits:** deferred work queue is in-memory (lost on restart / not multi-instance). MQTT ingress buffers max 100 messages during warmup (drop-oldest). See [docs/runbooks/](runbooks/README.md) and [docs/PRODUCTION_HARDENING_PHASE0.md](PRODUCTION_HARDENING_PHASE0.md).
 
 See also [docs/PILOT_V1_EXCEPTIONS.md](PILOT_V1_EXCEPTIONS.md) and [docs/uncensored.md](uncensored.md).

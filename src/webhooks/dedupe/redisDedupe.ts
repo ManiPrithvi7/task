@@ -10,7 +10,11 @@ const KEY_PREFIX = 'webhook:dedupe:';
 export async function tryClaimWebhookDedupe(dedupeKey: string): Promise<boolean> {
   const redis = getRedisService();
   if (!redis?.isRedisConnected()) {
-    logger.warn('[WEBHOOK_DEDUPE] Redis unavailable — processing without dedupe', { dedupeKey });
+    // Pilot: fail-open (process without dedupe). Alert on rising dedupe_fail_open logs.
+    logger.warn('[WEBHOOK_DEDUPE] Redis unavailable — processing without dedupe', {
+      dedupeKey,
+      dedupe_fail_open: true
+    });
     return true;
   }
 
@@ -22,6 +26,7 @@ export async function tryClaimWebhookDedupe(dedupeKey: string): Promise<boolean>
   } catch (err: unknown) {
     logger.warn('[WEBHOOK_DEDUPE] Redis error — allowing processing', {
       dedupeKey,
+      dedupe_fail_open: true,
       error: err instanceof Error ? err.message : String(err)
     });
     return true;

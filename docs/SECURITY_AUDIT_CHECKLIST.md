@@ -186,7 +186,14 @@ issues:
   # These are documented here for Phase 3 perspective but belong in the roadmap
 
   # TODO: Future Phase 3/4 items that go in POST-PILOT_ROADMAP.md
-  # - Secret rotation procedures
-  # - Comprehensive runbooks
-  # - End-to-end load testing results
+  # - Secret rotation procedures — see docs/runbooks/secret-rotation.md
+  # - Comprehensive runbooks — see docs/runbooks/
+  # - End-to-end load testing results — CAPACITY reconnect storm (manual)
   # - Full test coverage metrics
+
+# Residual risks (2026-07-27 hardening pass) — severity for ops awareness
+# - Medium: GMB/OTA webhook dedupe fail-open when Redis down (pilot accepted; alert dedupe_fail_open)
+# - Medium: In-memory deferred queue lost on restart / multi-instance (pilot limit)
+# - Medium: No CRL/OCSP (soft revoke only)
+# - Low: Admin domain-list auth (IdP deferred)
+# - High (ops): M-16 Atlas allowlist, M-17 MQTT firewall still pending

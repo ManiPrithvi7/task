@@ -1,8 +1,15 @@
-import './helpers/registerDeviceCertificateMock';
 import * as crypto from 'crypto';
 import * as forge from 'node-forge';
 import type { NextFunction, Request, Response } from 'express';
 import { requireMtlsDeviceCert } from '@/middleware/mtlsAuth';
+
+jest.mock('@/models/DeviceCertificate', () => ({
+  DeviceCertificate: {
+    findOne: jest.fn()
+  },
+  DeviceCertificateStatus: { active: 'active' }
+}));
+
 import { DeviceCertificate } from '@/models/DeviceCertificate';
 
 const mockFindOne = DeviceCertificate.findOne as jest.Mock;
@@ -22,7 +29,11 @@ function buildTestCert(cn: string) {
   return { pem, fp };
 }
 
-async function invokeMtls(headers: Record<string, string>) {
+async function invokeMtls(
+  headers: Record<string, string>,
+  findOneImpl: jest.Mock
+) {
+  mockFindOne.mockImplementation(findOneImpl);
   const req = {
     headers,
     get(name: string) {
@@ -40,7 +51,12 @@ async function invokeMtls(headers: Record<string, string>) {
   }) as Response['json'];
   const next = jest.fn() as NextFunction;
   await requireMtlsDeviceCert()(req, res as Response, next);
-  return { statusCode: res.statusCode, body: res.body, nextCalled: next.mock.calls.length > 0, req };
+  return {
+    statusCode: res.statusCode,
+    body: res.body as { code?: string },
+    nextCalled: next.mock.calls.length > 0,
+    req
+  };
 }
 
 describe('E2E mTLS HTTP gate', () => {
@@ -48,7 +64,7 @@ describe('E2E mTLS HTTP gate', () => {
 
   beforeEach(() => {
     process.env.CERT_CN_PREFIX = 'PROOF';
-    mockFindOne.mockReset();
+    jest.clearAllMocks();
   });
 
   afterAll(() => {
@@ -58,9 +74,33 @@ describe('E2E mTLS HTTP gate', () => {
 
   it('accepts request when cert fingerprint matches Mongo record', async () => {
     const { pem, fp } = buildTestCert('PROOF_device-1');
-    mockFindOne.mockResolvedValue({ fingerprint: fp, slot: 'primary' });
-    const result = await invokeMtls({ 'x-forwarded-client-cert': pem });
+    const result = await invokeMtls(
+      { 'x-forwarded-client-cert': pem },
+      jest.fn().mockResolvedValue({ fingerprint: fp, slot: 'primary' })
+    );
     expect(result.nextCalled).toBe(true);
     expect((result.req as Request & { deviceId?: string }).deviceId).toBeTruthy();
+  });
+
+  it('rejects fingerprint mismatch with 403', async () => {
+    const { pem } = buildTestCert('PROOF_device-1');
+    const result = await invokeMtls(
+      { 'x-forwarded-client-cert': pem },
+      jest.fn().mockResolvedValue({ fingerprint: 'deadbeef', slot: 'primary' })
+    );
+    expect(result.nextCalled).toBe(false);
+    expect(result.statusCode).toBe(403);
+    expect(result.body?.code).toBe('CERT_FINGERPRINT_MISMATCH');
+  });
+
+  it('returns 503 when certificate lookup throws', async () => {
+    const { pem } = buildTestCert('PROOF_device-1');
+    const result = await invokeMtls(
+      { 'x-forwarded-client-cert': pem },
+      jest.fn().mockRejectedValue(new Error('mongo blip'))
+    );
+    expect(result.nextCalled).toBe(false);
+    expect(result.statusCode).toBe(503);
+    expect(result.body?.code).toBe('CERT_LOOKUP_UNAVAILABLE');
   });
 });

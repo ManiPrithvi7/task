@@ -1,5 +1,5 @@
 import { ensureDeviceProvisioned } from '@/services/deviceProvisioningGate';
-import type { CAService } from '@/services/caService';
+import { CertLookupUnavailableError, type CAService } from '@/services/caService';
 
 jest.mock('@/services/auditService', () => ({
   getAuditService: jest.fn().mockReturnValue(null),
@@ -75,5 +75,19 @@ describe('ensureDeviceProvisioned', () => {
       caService
     });
     expect(result).toBe(false);
+  });
+
+  it('throws CertLookupUnavailableError when CA lookup fails', async () => {
+    const caService = {
+      findActiveCertificateByDeviceId: jest.fn().mockRejectedValue(new CertLookupUnavailableError('db down')),
+      formatExpectedCN: jest.fn()
+    } as unknown as CAService;
+
+    await expect(
+      ensureDeviceProvisioned('device-1', {
+        provisioning: baseProvisioning,
+        caService
+      })
+    ).rejects.toThrow(CertLookupUnavailableError);
   });
 });

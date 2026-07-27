@@ -8,6 +8,8 @@ import type { OtaService } from '../services/otaService';
 import mongoose from 'mongoose';
 import { getRedisService } from '../services/redisService';
 import { logger } from '../utils/logger';
+import { safeEqualString } from '../utils/safeEqual';
+import { tryClaimWebhookDedupe } from '../webhooks/dedupe/redisDedupe';
 
 const WEBHOOK_RAW_LIMIT = '1mb';
 
@@ -66,7 +68,7 @@ export function createWebhookRoutes(deps: WebhookRoutesDeps): Router {
       json(),
       async (req: Request, res: Response) => {
         const token = extractBearerToken(req);
-        if (!secret || !token || token !== secret) {
+        if (!secret || !token || !safeEqualString(token, secret)) {
           res.status(401).json({
             success: false,
             error: 'Unauthorized',
@@ -83,6 +85,21 @@ export function createWebhookRoutes(deps: WebhookRoutesDeps): Router {
         ).trim();
         const sha256 = String(body.sha256 || '').trim();
         const signature = String(body.signature || '').trim();
+
+        const dedupeKey = `ota-release:${version}:${sha256}`;
+        if (version && sha256) {
+          const claimed = await tryClaimWebhookDedupe(dedupeKey);
+          if (!claimed) {
+            res.status(200).json({
+              success: true,
+              duplicate: true,
+              version,
+              timestamp: new Date().toISOString()
+            });
+            return;
+          }
+        }
+
         const sizeBytes =
           typeof body.size_bytes === 'number'
             ? body.size_bytes
@@ -157,7 +174,7 @@ export function createWebhookRoutes(deps: WebhookRoutesDeps): Router {
       json(),
       async (req: Request, res: Response) => {
         const token = extractBearerToken(req);
-        if (!secret || !token || token !== secret) {
+        if (!secret || !token || !safeEqualString(token, secret)) {
           res.status(401).json({
             success: false,
             error: 'Unauthorized',

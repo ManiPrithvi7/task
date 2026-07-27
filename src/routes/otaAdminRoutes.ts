@@ -26,6 +26,7 @@ import type { OtaCommandPublisher } from '../services/otaService';
 import type { OtaService } from '../services/otaService';
 import { AuditEventType, getAuditService } from '../services/auditService';
 import { getOtaReleaseLog } from '../services/otaReleaseLog';
+import { safeEqualString } from '../utils/safeEqual';
 import { logger } from '../utils/logger';
 
 export interface OtaAdminRoutesDeps {
@@ -571,7 +572,7 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
     const token = req.headers.authorization?.startsWith('Bearer ')
       ? req.headers.authorization.substring(7).trim()
       : null;
-    if (otaConfig.releaseWebhookSecret && token && token === otaConfig.releaseWebhookSecret) {
+    if (otaConfig.releaseWebhookSecret && token && safeEqualString(token, otaConfig.releaseWebhookSecret)) {
       return { via: 'webhook' };
     }
     const auth = await requireAdminAuth(req, res, authService);
@@ -649,7 +650,7 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
 
     void getAuditService()
       ?.logEvent({
-        event: AuditEventType.OTA_PUSH_SENT,
+        event: AuditEventType.OTA_ROLLOUT_HALTED,
         userId: auth.userId,
         details: { version, action: 'halt' }
       })
@@ -679,6 +680,14 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
       return;
     }
 
+    void getAuditService()
+      ?.logEvent({
+        event: AuditEventType.OTA_ROLLOUT_RETRYABLE,
+        userId: auth.userId,
+        details: { version, action: 'mark-retryable' }
+      })
+      .catch(() => undefined);
+
     res.json({
       success: true,
       version,
@@ -702,6 +711,14 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
       });
       return;
     }
+
+    void getAuditService()
+      ?.logEvent({
+        event: AuditEventType.OTA_ROLLOUT_RETRIED,
+        userId: auth.userId,
+        details: { version, action: 'retry', status: result.status }
+      })
+      .catch(() => undefined);
 
     res.json({
       success: true,

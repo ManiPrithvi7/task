@@ -4,6 +4,10 @@ import { createWebhookRoutes } from '@/routes/webhookRoutes';
 import type { MqttClientManager } from '@/servers/mqttClient';
 import { loadWebhookConfig } from '@/config/webhookConfig';
 
+jest.mock('@/webhooks/dedupe/redisDedupe', () => ({
+  tryClaimWebhookDedupe: jest.fn().mockResolvedValue(true)
+}));
+
 const mockIngestRelease = jest.fn();
 const mockAdvanceRollout = jest.fn();
 
