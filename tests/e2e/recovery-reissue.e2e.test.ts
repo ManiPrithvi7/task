@@ -53,4 +53,35 @@ describe('E2E recovery reissue flow', () => {
     expect(res.body.device_id).toBe(TEST_DEVICE_ID);
     expect(res.body.certificate).toBe('cert-pem');
   });
+
+  it('rejects invalid recovery token', async () => {
+    const app = createE2eApp();
+    app.use(
+      '/api/v1',
+      createLifecycleRoutes({
+        caService: {
+          revokeAllDeviceCertificates: jest.fn(),
+          signCSR: jest.fn(),
+          getRootCACertificate: jest.fn(),
+          promoteStagingToPrimary: jest.fn()
+        } as never,
+        recoverySessionService: {
+          isAvailable: jest.fn().mockReturnValue(true),
+          verifySession: jest.fn().mockResolvedValue({ ok: false, error: 'RECOVERY_TOKEN_INVALID' }),
+          consumeSession: jest.fn()
+        } as never
+      })
+    );
+
+    const res = await request(app)
+      .post('/api/v1/certificates/reissue')
+      .send({
+        device_id: TEST_DEVICE_ID,
+        csr: SAMPLE_CSR_PEM,
+        recovery_token: 'invalid-token'
+      });
+
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(res.body.success).toBe(false);
+  });
 });

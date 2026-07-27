@@ -20,7 +20,11 @@ import { HttpServer } from './servers/httpServer';
 import { MqttClientManager } from './servers/mqttClient';
 import { StatsPublisher } from './services/statsPublisher';
 import { ConnectRefreshCoordinator } from './services/connectRefreshCoordinator';
-import { DeferredDeviceWorkQueue, resolveOtaRegistrationDeferConcurrency } from './services/deferredDeviceWork';
+import {
+  DeferredDeviceWorkQueue,
+  isDeferredWorkRearmEnabled,
+  resolveOtaRegistrationDeferConcurrency
+} from './services/deferredDeviceWork';
 import {
   flushMessageBuffer,
   routeMqttMessage,
@@ -368,10 +372,11 @@ export class StatsMqttLite {
       async (item) => {
         if (item.type === 'connect_refresh') {
           if (!coordinator) {
-            logger.warn('[DEFERRED_WORK] Connect refresh coordinator not ready — skipping connect_refresh', {
+            // Fail (not silent success) so processAll can retry once / count failed.
+            logger.warn('[DEFERRED_WORK] Connect refresh coordinator not ready', {
               deviceId: item.deviceId
             });
-            return;
+            throw new Error('CONNECT_REFRESH_NOT_READY');
           }
           try {
             await coordinator.refresh(item.deviceId);
@@ -392,8 +397,23 @@ export class StatsMqttLite {
       { otaRegistrationConcurrency: resolveOtaRegistrationDeferConcurrency() }
     );
 
-    if (result.processed > 0 || result.failed > 0 || result.skippedStale > 0) {
-      logger.info('[DEFERRED_WORK] Drain complete', result);
+    logger.info('[DEFERRED_WORK] Drain complete', {
+      pending: result.pendingBefore,
+      processed: result.processed,
+      failed: result.failed,
+      skippedStale: result.skippedStale,
+      requeued: result.requeued,
+      pendingAfter: result.pendingAfter,
+      rearmed: result.rearmed
+    });
+
+    // Rollback: DEFERRED_WORK_REARM=false disables second drain after enqueue-during-flight.
+    if (isDeferredWorkRearmEnabled() && result.rearmed && this.deferredWork.pendingCount() > 0) {
+      void this.processDeferredWork().catch((err: unknown) => {
+        logger.error('[DEFERRED_WORK] Rearm drain failed', {
+          error: err instanceof Error ? err.message : String(err)
+        });
+      });
     }
   }
 

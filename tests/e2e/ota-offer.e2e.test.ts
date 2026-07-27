@@ -1,14 +1,18 @@
-import './helpers/registerDeviceCertificateMock';
 import request from 'supertest';
 import express from 'express';
 import { createOtaRoutes } from '@/routes/otaRoutes';
 
-jest.mock('@/middleware/mtlsAuth', () => ({
-  requireMtlsDeviceCert: () => (req: express.Request, _res: express.Response, next: express.NextFunction) => {
-    (req as express.Request & { deviceId: string }).deviceId = 'device-e2e-1';
-    next();
-  }
+import * as crypto from 'crypto';
+import * as forge from 'node-forge';
+
+jest.mock('@/models/DeviceCertificate', () => ({
+  DeviceCertificate: {
+    findOne: jest.fn()
+  },
+  DeviceCertificateStatus: { active: 'active' }
 }));
+
+import { DeviceCertificate } from '@/models/DeviceCertificate';
 
 jest.mock('@/models/Device', () => ({
   Device: {
@@ -23,14 +27,38 @@ jest.mock('@/models/FirmwareRelease', () => ({
 
 describe('E2E OTA device offer flow', () => {
   const origTestOta = process.env.TEST_OTA;
+  const origPrefix = process.env.CERT_CN_PREFIX;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     delete process.env.TEST_OTA;
+    process.env.CERT_CN_PREFIX = 'PROOF';
+
+    // Generate a forwarded client cert header whose CN maps to deviceId "device-e2e-1".
+    const keys = forge.pki.rsa.generateKeyPair(2048);
+    const cert = forge.pki.createCertificate();
+    cert.publicKey = keys.publicKey;
+    cert.serialNumber = '01';
+    cert.validity.notBefore = new Date();
+    cert.validity.notAfter = new Date(Date.now() + 86400000);
+    cert.setSubject([{ name: 'commonName', value: 'PROOF_device-e2e-1' }]);
+    cert.setIssuer([{ name: 'commonName', value: 'PROOF_device-e2e-1' }]);
+    cert.sign(keys.privateKey, forge.md.sha256.create());
+    const pem = forge.pki.certificateToPem(cert);
+    const fp = new crypto.X509Certificate(pem).fingerprint256.replace(/:/g, '').toLowerCase();
+
+    (DeviceCertificate.findOne as jest.Mock).mockResolvedValue({ fingerprint: fp, slot: 'primary' });
+
+    // Store in closure via process.env so the request builder can access it.
+    process.env.__E2E_CLIENT_CERT_PEM__ = pem;
   });
 
   afterAll(() => {
     if (origTestOta === undefined) delete process.env.TEST_OTA;
     else process.env.TEST_OTA = origTestOta;
+
+    if (origPrefix === undefined) delete process.env.CERT_CN_PREFIX;
+    else process.env.CERT_CN_PREFIX = origPrefix;
+    delete process.env.__E2E_CLIENT_CERT_PEM__;
   });
   it('returns offer when resolveUpdate matches requested version', async () => {
     const mockResolve = jest.fn().mockResolvedValue({
@@ -70,7 +98,15 @@ describe('E2E OTA device offer flow', () => {
       })
     );
 
-    const res = await request(app).get('/api/v1/ota/offer/4.3.1').expect(200);
+    const clientCertPem = process.env.__E2E_CLIENT_CERT_PEM__ as string;
+    // HTTP header values cannot contain raw newlines. The middleware supports escaped "\n".
+    const clientCertPemHeader = clientCertPem
+      .replace(/\r/g, '')
+      .replace(/\n/g, '\\n');
+    const res = await request(app)
+      .get('/api/v1/ota/offer/4.3.1')
+      .set('x-forwarded-client-cert', clientCertPemHeader)
+      .expect(200);
 
     expect(res.body.success).toBe(true);
     expect(res.body.version).toBe('4.3.1');

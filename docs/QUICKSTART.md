@@ -150,17 +150,23 @@ chmod 777 data/
 ## Testing
 
 ```bash
-# Unit tests (default CI gate)
+# Unit tests (CI gate)
 bun run check
 
-# HTTP behavior-contract E2E (mocked externals)
+# HTTP behavior-contract E2E (mocked externals) — also run in CI
 bun run test:e2e
 
 # Full gate
 bun run check:full
+
+# Prod-shaped env validation (fake secrets fixture)
+set -a && source tests/fixtures/prod-env.env && set +a
+bun scripts/validate-env.ts --production
 ```
 
-See [tests/e2e/README.md](../tests/e2e/README.md) for flow coverage. Manual MQTT/device E2E: `scripts/ota-e2e/`.
+Bun: use `engines.bun` from `package.json` (>=1.3.0); CI pins 1.3.x.
+
+See [tests/e2e/README.md](../tests/e2e/README.md) for flow coverage. Manual MQTT/device E2E: `scripts/ota-e2e/`. Ops: [docs/runbooks/](runbooks/README.md). Reconnect-storm capacity notes: [docs/CAPACITY.md](CAPACITY.md).
 
 ---
 

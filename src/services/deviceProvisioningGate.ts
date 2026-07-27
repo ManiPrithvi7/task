@@ -1,5 +1,6 @@
 import type { ProvisioningConfig } from '../config';
 import type { CAService } from './caService';
+import { CertLookupUnavailableError } from './caService';
 import { getAuditService, AuditEventType } from './auditService';
 import { validateCertificateChain } from './chainValidator';
 import { validateKeyUsageAndEKU } from '../utils/certValidator';
@@ -16,6 +17,7 @@ export interface DeviceProvisioningGateDeps {
 /**
  * Validates that the device is allowed for mTLS-aligned registration (has active provisioned certificate).
  * Enforces CN match, optional KU/EKU, and chain validation when enabled in config.
+ * Returns false for unprovisioned/invalid; throws CertLookupUnavailableError on DB blips.
  */
 export async function ensureDeviceProvisioned(
   deviceId: string,
@@ -33,9 +35,18 @@ export async function ensureDeviceProvisioned(
 
   const caService = deps.caService;
 
-  const cert = await caService.findActiveCertificateByDeviceId(deviceId, {
-    slots: ['primary', 'staging']
-  });
+  let cert;
+  try {
+    cert = await caService.findActiveCertificateByDeviceId(deviceId, {
+      slots: ['primary', 'staging']
+    });
+  } catch (err: unknown) {
+    if (err instanceof CertLookupUnavailableError) {
+      logger.error('Registration deferred: certificate lookup unavailable', { deviceId });
+      throw err;
+    }
+    throw err;
+  }
   if (!cert) {
     const auditSvc = getAuditService();
     if (auditSvc) {

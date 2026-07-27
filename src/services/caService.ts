@@ -45,6 +45,15 @@ export class DeviceAlreadyHasCertificateError extends Error {
   }
 }
 
+/** Mongo/DB blip during cert lookup — not the same as “no active certificate”. */
+export class CertLookupUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'CertLookupUnavailableError';
+    Object.setPrototypeOf(this, CertLookupUnavailableError.prototype);
+  }
+}
+
 export interface CAConfig {
   storagePath: string;
   rootCAValidityYears: number;
@@ -667,17 +676,27 @@ export class CAService {
       const slots = (opts?.slots?.length ? opts.slots : (['primary'] as DeviceCertificateSlot[])).map((s) =>
         this.normalizeSlot(s)
       );
+      // Align with mtlsAuth: treat missing slot as primary for pre-migration docs.
+      const slotQuery = {
+        $or: [
+          { slot: { $in: slots } },
+          ...(slots.includes('primary') ? [{ slot: { $exists: false } }] : [])
+        ]
+      };
       const cert = await DeviceCertificate.findOne({
         device_id: deviceId,
         status: DeviceCertificateStatus.active,
-        slot: { $in: slots },
-        expires_at: { $gt: now }
+        expires_at: { $gt: now },
+        ...slotQuery
       }).sort({ slot: 1 }); // primary then staging if both are in query
       return cert || null;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logger.error('Failed to find active certificate (slot-aware)', { deviceId, error: errorMessage });
-      return null;
+      // Distinguish DB blip from missing cert (callers must not treat as unprovisioned).
+      throw new CertLookupUnavailableError(
+        `Certificate lookup temporarily unavailable for device ${deviceId}`
+      );
     }
   }
 

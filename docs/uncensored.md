@@ -92,9 +92,9 @@ Routes are registered imperatively inside `initializeHttpServer()` — no DI con
 
 ### Ugly (corrected from prior drafts)
 
-- **MongoDB errors on registration do *not* bypass mTLS.** `caService.findActiveCertificateByDeviceId()` catches DB errors and returns `null`; `ensureDeviceProvisioned()` then returns `false` and rejects registration. Only **`!caService`** fail-opens.
+- **MongoDB errors on registration do *not* bypass mTLS.** `findActiveCertificateByDeviceId()` throws `CertLookupUnavailableError` on DB blips (distinct from missing cert → `false`). MQTT ingress drops/retries rather than treating as unprovisioned. Only **`!caService`** is a hard reject when the gate is enabled.
 
-- **mTLS HTTP middleware does *not* silently pass on DB failure.** `findActiveCertForSlots()` in `mtlsAuth.ts` has no try/catch. A Mongo throw surfaces as a handler error (typically 500). Missing cert → 403 `CERT_NOT_ACTIVE`. This is fail-closed for missing certs, not fail-open — but unhandled 500s under DB blips are still an availability concern.
+- **mTLS HTTP middleware fails closed on DB blip** with 503 `CERT_LOOKUP_UNAVAILABLE`. Missing cert → 403 `CERT_NOT_ACTIVE`. Fingerprint mismatch → 403.
 
 - **No CRL/OCSP.** Revocation is soft (`status` field in MongoDB). Connected devices are not checked against a distribution point at runtime.
 
@@ -343,3 +343,14 @@ Improvements applied without changing valid production business flows:
 - Modularization: `src/bootstrap/` (device registration, OTA coordinator, HTTP routes, Phase 2 init)
 - OTA registration defer queue: `OTA_REGISTRATION_DEFER_CONCURRENCY` (default 10)
 - Config: domain modules under `src/config/`, `docs/CONFIG_MATRIX.md`, `bun scripts/validate-env.ts`
+
+### Appendix C+ — Production hardening follow-up (2026-07-27)
+
+- Deferred queue: re-arm, one failure retry, coordinator-not-ready fails (not silent success), drain log contract (`pending`/`processed`/`failed`/`skippedStale`/`rearmed`); rollback `DEFERRED_WORK_REARM=false`
+- Misconfig: `GMB_PUBSUB_SKIP_AUTH_VERIFY` fail-fast in prod; CI fixture `tests/fixtures/prod-env.env`
+- OTA webhook: constant-time bearer compare + Redis dedupe on release ingest
+- Cert lookup: slot query aligned with mTLS; DB blip ≠ unprovisioned
+- GMB dedupe fail-open retained as **pilot risk** with `dedupe_fail_open` log field
+- In-memory deferred queue documented as pilot limit; runbooks under `docs/runbooks/`
+- E2E: storm + misconfig + mTLS failure paths; CI runs `test:e2e` + validate-env fixture
+- Phase 0 decisions: [docs/PRODUCTION_HARDENING_PHASE0.md](PRODUCTION_HARDENING_PHASE0.md)

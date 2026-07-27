@@ -2,6 +2,11 @@ import request from 'supertest';
 import express from 'express';
 import { createWebhookRoutes } from '@/routes/webhookRoutes';
 import { TEST_WEBHOOK_SECRET } from './helpers/authFixtures';
+import { tryClaimWebhookDedupe } from '@/webhooks/dedupe/redisDedupe';
+
+jest.mock('@/webhooks/dedupe/redisDedupe', () => ({
+  tryClaimWebhookDedupe: jest.fn().mockResolvedValue(true)
+}));
 
 const mockIngestRelease = jest.fn();
 const mockAdvanceRollout = jest.fn();
@@ -16,8 +21,10 @@ function buildWebhookApp() {
       webhookConfig: {
         enabled: false,
         mqttPublishEnabled: false,
-        deviceTarget: 'all',
-        publicBaseUrl: 'https://example.com'
+        deviceTarget: 'primary',
+        publicBaseUrl: 'https://example.com',
+        gmbFastPathOnly: false,
+        gmbPubsubSkipAuthVerify: false
       },
       appEnv: 'test',
       otaReleaseWebhook: {
@@ -35,6 +42,7 @@ function buildWebhookApp() {
 describe('E2E OTA webhook flow', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    (tryClaimWebhookDedupe as jest.Mock).mockResolvedValue(true);
   });
 
   it('ingests release with valid bearer secret', async () => {
@@ -60,6 +68,20 @@ describe('E2E OTA webhook flow', () => {
 
     expect(res.body.current_percentage).toBe(1);
     expect(mockIngestRelease).toHaveBeenCalled();
+  });
+
+  it('rejects missing or wrong bearer secret', async () => {
+    const app = buildWebhookApp();
+    const missing = await request(app).post('/api/webhooks/ota-release').send({ version: '1.0.0' });
+    expect(missing.status).toBe(401);
+    expect(missing.body.code).toBe('WEBHOOK_UNAUTHORIZED');
+
+    const wrong = await request(app)
+      .post('/api/webhooks/ota-release')
+      .set('Authorization', 'Bearer wrong-secret')
+      .send({ version: '1.0.0' });
+    expect(wrong.status).toBe(401);
+    expect(mockIngestRelease).not.toHaveBeenCalled();
   });
 
   it('returns 409 when rollout advance targets aborted release', async () => {

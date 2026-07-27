@@ -13,6 +13,18 @@
 | **Session TTL** | `src/config/index.ts:20` | `86400s` | 24 hours |
 | **MQTT retries** | `src/servers/mqttClient.ts:19` | `5 attempts` | Exponential backoff |
 | **Pending ACKs** | `src/servers/mqttClient.ts:34` | **Unbounded** | `Map<number, Buffer>` grows with network loss |
+| **Deferred work TTL** | `src/services/deferredDeviceWork.ts` | 30s stale drop | In-memory; not multi-instance; alert on `skippedStale` |
+| **OTA defer concurrency** | `OTA_REGISTRATION_DEFER_CONCURRENCY` | 10 | Caps parallel OTA delivers on registration |
+
+## Reconnect storm (manual / scheduled)
+
+Not in CI. After significant broker outage:
+
+1. Run a controlled reconnect storm against staging (or `scripts/ota-e2e/` harness when available).
+2. Watch `[DEFERRED_WORK] Drain complete` for rising `skippedStale` / `failed`.
+3. Watch `[MQTT_INGRESS] Message buffer overflow`.
+
+See [docs/runbooks/deferred-queue-backlog.md](runbooks/deferred-queue-backlog.md).
 
 ## Redis Storage Limits
 

@@ -65,5 +65,10 @@ export function validateWebhookConfig(config: WebhookConfig, env: string): void 
         `GMB_PUBSUB_AUDIENCE or ${PUBLIC_BASE_URL_ENV_HINT} is required in production for GMB Pub/Sub push.`
       );
     }
+    if (config.gmbPubsubSkipAuthVerify) {
+      throw new Error(
+        'GMB_PUBSUB_SKIP_AUTH_VERIFY must not be enabled in production (fail-fast).'
+      );
+    }
   }
 }
