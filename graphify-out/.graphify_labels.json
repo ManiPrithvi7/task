@@ -183,8 +183,6 @@
   "181": "@types/jsonwebtoken",
   "182": "@types/node-forge",
   "183": "@types/supertest",
-  "184": "typescript",
-  "185": "@typescript-eslint/parser",
   "186": "flash-baseline.sh",
   "187": "generate-keys.sh",
   "188": "sign-firmware.sh",

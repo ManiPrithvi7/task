@@ -1,24 +1,26 @@
 /**
  * CSR Rate Limiter Middleware
- * 
+ *
  * PKI Improvement #6: No Rate Limiting on CSR Submission → Context-Aware Thresholds.
- * 
- * Uses Redis for counter persistence across service restarts and falls back
- * to per-process memory when Redis is unavailable. The fallback is acceptable
- * for a single Pilot v1 instance, but is not shared across multiple instances.
- * 
+ *
+ * When Redis is connected: one short-circuit Lua EVALSHA per request (global → IP → device).
+ * When Redis is absent: per-process in-memory Map (not shared across instances).
+ * When Redis is connected but Lua fails (timeout/NOSCRIPT after reload): fail open — never
+ * re-INCR on Redis (avoids double-count if the script already applied).
+ *
  * Rate Limit Tiers:
- * - Per provisioned device: 10 CSRs / 15 min (CERT_RATE_LIMIT_PROVISIONED)
- * - Per unprovisioned: 3 CSRs / 15 min (CERT_RATE_LIMIT_UNPROVISIONED)
- * - Per IP: 5 CSRs / 15 min (CERT_RATE_LIMIT_PER_IP)
- * - Global CA: 100 CSRs / 1 min (CERT_RATE_LIMIT_GLOBAL)
- * 
+ * - Per provisioned device: 10 CSRs / 15 min (CSR_RATE_LIMIT_PROVISIONED)
+ * - Per unprovisioned: 3 CSRs / 15 min (CSR_RATE_LIMIT_UNPROVISIONED)
+ * - Per IP: 5 CSRs / 15 min (CSR_RATE_LIMIT_PER_IP)
+ * - Global CA: 100 CSRs / 1 min (CSR_RATE_LIMIT_GLOBAL)
+ *
  * Returns HTTP 429 with standard rate limit headers.
  */
 
 import { Request, Response, NextFunction } from 'express';
 import { logger } from '../utils/logger';
 import { getRedisService } from '../services/redisService';
+import { evalCsrRateLimitSha } from './csrRateLimitLua';
 
 export interface RateLimitConfig {
   /** Max CSRs per provisioned device in window */
@@ -43,6 +45,11 @@ const DEFAULT_CONFIG: RateLimitConfig = {
 
 const localCounters = new Map<string, { count: number; expiresAt: number }>();
 
+/** Test helper: clear in-memory counters. */
+export function resetCsrLocalCounters(): void {
+  localCounters.clear();
+}
+
 function incrementLocalCounter(key: string, ttlSeconds: number): { count: number; ttl: number } {
   const now = Date.now();
   const existing = localCounters.get(key);
@@ -58,34 +65,74 @@ function incrementLocalCounter(key: string, ttlSeconds: number): { count: number
 }
 
 /**
- * Increment a Redis counter and return the current count + TTL.
- * If key doesn't exist, creates with TTL.
+ * Local-only short-circuit rate check (Redis absent).
+ * Mirrors Lua: global → IP → device/unprovisioned; stop on first exceed.
  */
-async function incrementCounter(key: string, ttlSeconds: number): Promise<{ count: number; ttl: number }> {
-  const redis = getRedisService();
-  if (!redis) {
-    logger.warn('CSR rate limiter: Redis unavailable, using local in-memory fallback', { key });
-    return incrementLocalCounter(key, ttlSeconds);
+function checkLocalShortCircuit(
+  cfg: RateLimitConfig,
+  clientIp: string,
+  deviceId: string | undefined,
+  minuteBucket: number
+):
+  | { allowed: true }
+  | {
+      allowed: false;
+      retryAfter: number;
+      limit: number;
+      count: number;
+      limitType: string;
+    } {
+  const globalKey = `csr:global:${minuteBucket}`;
+  const globalResult = incrementLocalCounter(globalKey, 60);
+  if (globalResult.count > cfg.globalLimit) {
+    return {
+      allowed: false,
+      retryAfter: globalResult.ttl,
+      limit: cfg.globalLimit,
+      count: globalResult.count,
+      limitType: 'global'
+    };
   }
 
-  try {
-    const client = redis.getClient();
-    if (!client) return incrementLocalCounter(key, ttlSeconds);
+  const ipKey = `csr:ip:${clientIp}`;
+  const ipResult = incrementLocalCounter(ipKey, cfg.windowSeconds);
+  if (ipResult.count > cfg.perIpLimit) {
+    return {
+      allowed: false,
+      retryAfter: ipResult.ttl,
+      limit: cfg.perIpLimit,
+      count: ipResult.count,
+      limitType: 'per_ip'
+    };
+  }
 
-    const count = await client.incr(key);
-
-    // Set TTL only on first increment (count === 1)
-    if (count === 1) {
-      await client.expire(key, ttlSeconds);
+  if (deviceId) {
+    const deviceKey = `csr:provisioned:${deviceId}`;
+    const deviceResult = incrementLocalCounter(deviceKey, cfg.windowSeconds);
+    if (deviceResult.count > cfg.provisionedLimit) {
+      return {
+        allowed: false,
+        retryAfter: deviceResult.ttl,
+        limit: cfg.provisionedLimit,
+        count: deviceResult.count,
+        limitType: 'per_device'
+      };
     }
-
-    const ttl = await client.ttl(key);
-    return { count, ttl: ttl > 0 ? ttl : ttlSeconds };
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    logger.warn('CSR rate limiter: Redis error, using local in-memory fallback', { error: msg, key });
-    return incrementLocalCounter(key, ttlSeconds);
+  } else {
+    const unProvKey = `csr:unprovisioned:${clientIp}`;
+    const unProvResult = incrementLocalCounter(unProvKey, cfg.windowSeconds);
+    if (unProvResult.count > cfg.unprovisionedLimit) {
+      return {
+        allowed: false,
+        retryAfter: unProvResult.ttl,
+        limit: cfg.unprovisionedLimit,
+        count: unProvResult.count,
+        limitType: 'unprovisioned'
+      };
+    }
   }
+
+  return { allowed: true };
 }
 
 /**
@@ -148,98 +195,82 @@ export function csrRateLimiter(config?: Partial<RateLimitConfig>) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
-      const deviceId = req.body?.device_id;
+      const deviceId =
+        typeof req.body?.device_id === 'string' ? req.body.device_id : undefined;
       const minuteBucket = Math.floor(Date.now() / 60000);
 
-      // 1. Global CA rate limit (per minute)
-      const globalKey = `csr:global:${minuteBucket}`;
-      const globalResult = await incrementCounter(globalKey, 60);
-      if (globalResult.count > cfg.globalLimit) {
-        logger.warn('CSR rate limit exceeded: global CA', {
-          count: globalResult.count,
-          limit: cfg.globalLimit,
-          ip: clientIp
-        });
-        await rejectRateLimited(
-          req,
-          res,
-          globalResult.ttl,
-          cfg.globalLimit,
-          cfg.globalLimit - globalResult.count,
-          'global',
-          deviceId
-        );
-        return;
-      }
+      const redis = getRedisService();
+      const redisConnected = Boolean(redis?.isRedisConnected());
 
-      // 2. Per-IP rate limit
-      const ipKey = `csr:ip:${clientIp}`;
-      const ipResult = await incrementCounter(ipKey, cfg.windowSeconds);
-      if (ipResult.count > cfg.perIpLimit) {
-        logger.warn('CSR rate limit exceeded: per-IP', {
-          count: ipResult.count,
-          limit: cfg.perIpLimit,
-          ip: clientIp
-        });
-        await rejectRateLimited(
-          req,
-          res,
-          ipResult.ttl,
-          cfg.perIpLimit,
-          cfg.perIpLimit - ipResult.count,
-          'per_ip',
-          deviceId
-        );
-        return;
-      }
-
-      // 3. Per-device rate limit (provisioned vs unprovisioned)
-      if (deviceId) {
-        const deviceKey = `csr:provisioned:${deviceId}`;
-        const deviceResult = await incrementCounter(deviceKey, cfg.windowSeconds);
-        const limit = cfg.provisionedLimit;
-        if (deviceResult.count > limit) {
-          logger.warn('CSR rate limit exceeded: per-device (provisioned)', {
-            count: deviceResult.count,
-            limit,
-            deviceId,
-            ip: clientIp
+      if (!redisConnected) {
+        logger.warn('CSR rate limiter: Redis unavailable, using local in-memory fallback');
+        const local = checkLocalShortCircuit(cfg, clientIp, deviceId, minuteBucket);
+        if (!local.allowed) {
+          logger.warn(`CSR rate limit exceeded: ${local.limitType}`, {
+            count: local.count,
+            limit: local.limit,
+            ip: clientIp,
+            deviceId
           });
           await rejectRateLimited(
             req,
             res,
-            deviceResult.ttl,
-            limit,
-            limit - deviceResult.count,
-            'per_device',
+            local.retryAfter,
+            local.limit,
+            local.limit - local.count,
+            local.limitType,
             deviceId
           );
           return;
         }
-      } else {
-        // Unprovisioned: use IP + fingerprint as key
-        const unProvKey = `csr:unprovisioned:${clientIp}`;
-        const unProvResult = await incrementCounter(unProvKey, cfg.windowSeconds);
-        if (unProvResult.count > cfg.unprovisionedLimit) {
-          logger.warn('CSR rate limit exceeded: unprovisioned', {
-            count: unProvResult.count,
-            limit: cfg.unprovisionedLimit,
-            ip: clientIp
+        next();
+        return;
+      }
+
+      const thirdKey = deviceId
+        ? `csr:provisioned:${deviceId}`
+        : `csr:unprovisioned:${clientIp}`;
+      const thirdLimit = deviceId ? cfg.provisionedLimit : cfg.unprovisionedLimit;
+      const thirdType = deviceId ? 'per_device' : 'unprovisioned';
+
+      try {
+        const client = redis!.getClient();
+        const result = await evalCsrRateLimitSha(client, {
+          keys: [`csr:global:${minuteBucket}`, `csr:ip:${clientIp}`, thirdKey],
+          limits: [cfg.globalLimit, cfg.perIpLimit, thirdLimit],
+          windows: [60, cfg.windowSeconds, cfg.windowSeconds]
+        });
+
+        if (!result.allowed) {
+          const limitType =
+            result.limitType === 'device' ? thirdType : result.limitType || 'global';
+          logger.warn(`CSR rate limit exceeded: ${limitType}`, {
+            count: result.count,
+            limit: result.limit,
+            ip: clientIp,
+            deviceId
           });
           await rejectRateLimited(
             req,
             res,
-            unProvResult.ttl,
-            cfg.unprovisionedLimit,
-            cfg.unprovisionedLimit - unProvResult.count,
-            'unprovisioned'
+            result.retryAfter,
+            result.limit,
+            result.limit - result.count,
+            limitType,
+            deviceId
           );
           return;
         }
-      }
 
-      // All rate checks passed
-      next();
+        next();
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        // Fail open — do NOT sequential Redis INCR (avoids double-count if Lua applied).
+        logger.warn('CSR rate limiter: Lua/Redis error — allowing request through', {
+          error: msg
+        });
+        next();
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       logger.error('CSR rate limiter error — allowing request through', { error: msg });

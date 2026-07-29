@@ -235,8 +235,8 @@
     "semantic_hash": ""
   },
   "src/middleware/csrRateLimiter.ts": {
-    "mtime": 1784047424.9502106,
-    "ast_hash": "8fcbaa3abf1304f2a3c677d46697df5d",
+    "mtime": 1785339700.7647743,
+    "ast_hash": "6a62eb7babb23d5bedd915715ee30658",
     "semantic_hash": ""
   },
   "src/middleware/mtlsAuth.ts": {
@@ -360,8 +360,8 @@
     "semantic_hash": ""
   },
   "src/servers/httpServer.ts": {
-    "mtime": 1784655301.6189256,
-    "ast_hash": "039b73729238d51a8e9e9c38f7f9cf47",
+    "mtime": 1785339851.1074698,
+    "ast_hash": "0bcd5cacfb399d74fa91bd7c67bb1377",
     "semantic_hash": ""
   },
   "src/servers/mqttClient.ts": {
@@ -485,8 +485,8 @@
     "semantic_hash": ""
   },
   "src/services/otaService.ts": {
-    "mtime": 1784826362.0699904,
-    "ast_hash": "67e99c75c5ef79e06e6489e0bcd61f8a",
+    "mtime": 1785339776.2882903,
+    "ast_hash": "4a8e7f4b61ba5ecf436f8390772caf82",
     "semantic_hash": ""
   },
   "src/services/promotionService.ts": {
@@ -505,8 +505,8 @@
     "semantic_hash": ""
   },
   "src/services/redisService.ts": {
-    "mtime": 1784655612.0692878,
-    "ast_hash": "c4014886b0f4efe4f5e544ec1ab1c788",
+    "mtime": 1785339841.4672205,
+    "ast_hash": "74fbecc17f08900f89f086b77a28846c",
     "semantic_hash": ""
   },
   "src/services/screenEnvelope.ts": {
@@ -765,8 +765,8 @@
     "semantic_hash": ""
   },
   "tests/unit/services/otaService.test.ts": {
-    "mtime": 1784826682.0988257,
-    "ast_hash": "b01b0520945282dd721e13258abf2fb1",
+    "mtime": 1784829265.7388988,
+    "ast_hash": "85146b9d887123b3ff6d820f1c13952d",
     "semantic_hash": ""
   },
   "tests/unit/services/promotionService.test.ts": {
@@ -1392,6 +1392,46 @@
   "docs/SERVER_OTA_REQUIREMENTS.md": {
     "mtime": 1784826381.0308392,
     "ast_hash": "9a71bb055b3f1554dc87e5b1c8f4f75e",
+    "semantic_hash": ""
+  },
+  "scripts/sync-ota-webhook-to-railway.sh": {
+    "mtime": 1785339625.6003113,
+    "ast_hash": "11be79082acb3213432e8b43dc4e129b",
+    "semantic_hash": ""
+  },
+  "src/middleware/csrRateLimitLua.ts": {
+    "mtime": 1785339669.5440726,
+    "ast_hash": "906e41d82f47dce4574a26f518b050af",
+    "semantic_hash": ""
+  },
+  "tests/integration/csrRateLimitLua.test.ts": {
+    "mtime": 1785339741.2430115,
+    "ast_hash": "9950b5b815e8c3934739f6346bbed3f0",
+    "semantic_hash": ""
+  },
+  "tests/unit/middleware/csrRateLimiter.test.ts": {
+    "mtime": 1785339741.1400774,
+    "ast_hash": "050cd956580bb76f43cdc04fbf0ade19",
+    "semantic_hash": ""
+  },
+  "tests/unit/services/otaRedisStateFilterPending.test.ts": {
+    "mtime": 1785339829.866284,
+    "ast_hash": "2edf51ddba45467340171c90ae7385aa",
+    "semantic_hash": ""
+  },
+  "docs/FIRMWARE_CI_STAGING_ENV.md": {
+    "mtime": 1785339625.5994637,
+    "ast_hash": "672416e232a22c05d7630766914eb784",
+    "semantic_hash": ""
+  },
+  "docs/proof-redis usage.md": {
+    "mtime": 1785339872.9760747,
+    "ast_hash": "3e63cec5b3ab3435aa1ba5ec5914477f",
+    "semantic_hash": ""
+  },
+  "docs/uncensored.md": {
+    "mtime": 1785339625.5997381,
+    "ast_hash": "8d5dbc5544487eeea44e32c98d3b49df",
     "semantic_hash": ""
   }
 }

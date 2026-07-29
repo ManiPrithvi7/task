@@ -207,6 +207,11 @@ export interface OtaActiveRelease {
   keyFingerprint?: string;
 }
 
+/** Max members per SMISMEMBER call (arg-size / server-block safety). */
+export const SMISMEMBER_CHUNK_SIZE = 500;
+
+let loggedSMisMemberFallback = false;
+
 export class OtaRedisState {
   constructor(
     private readonly getClient: () => RedisClientType | null,
@@ -328,6 +333,41 @@ export class OtaRedisState {
     return Boolean(await client.sIsMember(this.pendingKey(version), deviceId));
   }
 
+  /**
+   * Batch filter of device IDs that are members of the pending set.
+   * Same as isPending(): when Redis is unavailable (!client), treat all as pending
+   * (fail open for OTA push — may attempt delivery to all online devices during outage).
+   */
+  async filterPending(version: string, deviceIds: string[]): Promise<string[]> {
+    const client = this.getClient();
+    if (!client) return deviceIds;
+    if (deviceIds.length === 0) return [];
+
+    const key = this.pendingKey(version);
+    const pending: string[] = [];
+
+    const hasSMisMember = typeof (client as { smIsMember?: unknown }).smIsMember === 'function';
+    if (!hasSMisMember) {
+      if (!loggedSMisMemberFallback) {
+        loggedSMisMemberFallback = true;
+        logger.warn('[OTA] smIsMember unavailable — falling back to sequential sIsMember');
+      }
+      for (const id of deviceIds) {
+        if (await client.sIsMember(key, id)) pending.push(id);
+      }
+      return pending;
+    }
+
+    for (let i = 0; i < deviceIds.length; i += SMISMEMBER_CHUNK_SIZE) {
+      const chunk = deviceIds.slice(i, i + SMISMEMBER_CHUNK_SIZE);
+      const flags = await client.smIsMember(key, chunk);
+      for (let j = 0; j < chunk.length; j++) {
+        if (flags[j]) pending.push(chunk[j]);
+      }
+    }
+    return pending;
+  }
+
   async isDelivered(deviceId: string, version: string): Promise<boolean> {
     const client = this.getClient();
     if (!client) return false;
@@ -337,16 +377,20 @@ export class OtaRedisState {
   async markDelivered(deviceId: string, version: string): Promise<void> {
     const client = this.getClient();
     if (!client) return;
-    await client.sRem(this.pendingKey(version), deviceId);
-    await client.sAdd(this.deliveredKey(version), deviceId);
-    await client.expire(this.deliveredKey(version), 2592000);
+    const multi = client.multi();
+    multi.sRem(this.pendingKey(version), deviceId);
+    multi.sAdd(this.deliveredKey(version), deviceId);
+    multi.expire(this.deliveredKey(version), 2592000);
+    await multi.exec();
   }
 
   async markPending(deviceId: string, version: string): Promise<void> {
     const client = this.getClient();
     if (!client) return;
-    await client.sAdd(this.pendingKey(version), deviceId);
-    await client.expire(this.pendingKey(version), 2592000);
+    const multi = client.multi();
+    multi.sAdd(this.pendingKey(version), deviceId);
+    multi.expire(this.pendingKey(version), 2592000);
+    await multi.exec();
   }
 
   /** Returns true if this is the first attempt recorded for device in this stage. */
@@ -358,9 +402,12 @@ export class OtaRedisState {
     const client = this.getClient();
     if (!client) return true;
     const key = this.stageAttemptedKey(version, percentage);
-    const added = await client.sAdd(key, deviceId);
-    await client.expire(key, 2592000);
-    return added === 1;
+    const multi = client.multi();
+    multi.sAdd(key, deviceId);
+    multi.expire(key, 2592000);
+    const res = await multi.exec();
+    const added = Array.isArray(res) ? res[0] : undefined;
+    return Number(added) === 1;
   }
 
   async clearStageAttempted(version: string, percentage: number): Promise<void> {
@@ -1507,13 +1554,9 @@ export class OtaService {
     const online = await getActiveDeviceCache().getAllActive();
     const onlineIds = online.map((d) => d.deviceId);
 
-    const candidates: string[] = [];
-    for (const deviceId of onlineIds) {
-      if (!this.otaRedisState || !(await this.otaRedisState.isPending(deviceId, version))) {
-        continue;
-      }
-      candidates.push(deviceId);
-    }
+    const candidates = this.otaRedisState
+      ? await this.otaRedisState.filterPending(version, onlineIds)
+      : onlineIds;
 
     let pushed = 0;
     await mapPool(candidates, this.otaConfig.mqttPushConcurrency || 100, async (deviceId) => {

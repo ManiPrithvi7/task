@@ -206,7 +206,8 @@ describe('OtaService.ingestRelease', () => {
     seedPendingFleet: jest.fn(),
     getActiveRelease: jest.fn().mockResolvedValue(null),
     clearStageAttempted: jest.fn(),
-    markStageAttempted: jest.fn().mockResolvedValue(true)
+    markStageAttempted: jest.fn().mockResolvedValue(true),
+    filterPending: jest.fn().mockImplementation((_v: string, ids: string[]) => Promise.resolve(ids))
   };
 
   const mockPublisher = {

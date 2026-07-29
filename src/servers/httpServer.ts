@@ -11,6 +11,7 @@ import { metricsMiddleware, metricsHandler } from '../middleware/metrics';
 import { SessionService } from '../services/sessionService';
 import { DeviceService } from '../services/deviceService';
 import { MqttClientManager } from './mqttClient';
+import { getRedisService } from '../services/redisService';
 
 export interface HttpConfig {
   port: number;
@@ -177,7 +178,8 @@ export class HttpServer {
       const activeDevices = Array.from(allDevices.values()).filter(d => d.status === 'active');
       const inactiveDevices = allDevices.size - activeDevices.length;
 
-      const health = {
+      const redisSvc = getRedisService();
+      const health: Record<string, unknown> = {
         status: 'ok',
         timestamp: new Date().toISOString(),
         mqtt: {
@@ -193,6 +195,14 @@ export class HttpServer {
           }
         }
       };
+
+      if (redisSvc) {
+        health.redis = {
+          connected: redisSvc.isRedisConnected(),
+          since: redisSvc.getStatsSince(),
+          commands: redisSvc.getCommandStats()
+        };
+      }
 
       res.json(health);
     });

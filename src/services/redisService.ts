@@ -23,13 +23,16 @@ export class RedisService {
   private lastLoggedConnected: boolean | null = null;
   private commandCount: number = 0;
   private commandCountByType: Map<string, number> = new Map();
+  /** Process/service observation window start (for command stats). */
+  private readonly startedAtIso: string = new Date().toISOString();
 
   constructor(config: RedisConfig) {
     this.config = config;
     logger.debug(`${REDIS_LOG_PREFIX} constructor`, {
       configured: !!(config.url && config.url.trim().length > 0),
       db: config.db ?? 0,
-      keyPrefix: config.keyPrefix || 'proof-mqtt:'
+      keyPrefix: config.keyPrefix || 'proof-mqtt:',
+      since: this.startedAtIso
     });
   }
 
@@ -283,6 +286,11 @@ export class RedisService {
       byType[cmd] = count;
     }
     return { total: this.commandCount, byType };
+  }
+
+  /** ISO timestamp when this RedisService instance was constructed. */
+  getStatsSince(): string {
+    return this.startedAtIso;
   }
 
   /**
