@@ -12,32 +12,27 @@ export const REDIS_KEYS = {
   /** Attention queue — keep Redis-backed. */
   priorityZset: 'priority_zset',
 
-  /** Stub only — writer not wired; EXISTS used by poller filter. */
-  igPowerSave: (deviceId: string) => `ig:power_save:${deviceId}`,
+  /** OTA global config HASH (mirrors Mongo FirmwareRelease). */
+  otaActiveRelease: `${keyPrefix}ota:active_release`,
+
+  /** Provisioning token HASH. */
+  provToken: (token: string) => `prov:${token}`,
+
+  /** GMB webhook dedupe. */
+  webhookDedupe: (key: string) => `webhook:dedupe:${key}`,
 
   /** Canonical GMB review count by location (not device). */
   gmbReviews: (locationId: string) => `gmb:reviews:${locationId}`,
 
-  /** @deprecated Phase 5 — replaced by local circuit gate */
-  circuitBlockedUntil: 'instagram:circuit:blocked_until',
+  /** CSR rate limiting. */
+  csrGlobal: (minute: string) => `csr:global:${minute}`,
+  csrIp: (ip: string) => `csr:ip:${ip}`,
 
-  /** @deprecated Phase 5 — data moves to device hash + runtime cache */
+  /** Factory reset recovery sessions. */
+  recoverySession: (deviceId: string) => `${keyPrefix}recovery:session:${deviceId}`,
+
+  /** Legacy followers STRING — dual-read only during hash migration. */
   deviceFollowers: (deviceId: string) => `device:followers:${deviceId}`,
-
-  /** @deprecated Phase 5 — replaced by local backoff */
-  deviceFetchHistory: (deviceId: string) => `device:fetch_history:${deviceId}`,
-
-  /** @deprecated Phase 5 — replaced by local dedupe */
-  fetchDedupe: (deviceId: string) => `ig:fetch_dedupe:${deviceId}`,
-
-  /** @deprecated Phase 5 — replaced by local budget tracker */
-  globalFetchBudget: (minuteSlot: number) => `ig:poll:global_fetch_budget:${minuteSlot}`,
-
-  /** @deprecated Phase 5 — replaced by local fair offset */
-  backgroundFairnessOffset: 'ig:bg:fair_offset',
-
-  /** @deprecated Phase 5 — runtime cache only */
-  igLastPub: (deviceId: string) => `ig:last_pub:${deviceId}`,
 
   /** OTA / recovery — manually prefixed where used. */
   otaKeyPrefix: keyPrefix

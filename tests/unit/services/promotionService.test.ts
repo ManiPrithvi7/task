@@ -143,7 +143,7 @@ describe('promotionService', () => {
     expect(filterSchedulableCampaigns([dto], new Date())).toHaveLength(0);
   });
 
-  it('getNextPromotionIndex returns 0 when Redis unavailable', async () => {
+  it('getNextPromotionIndex returns 0 on first call', async () => {
     expect(await getNextPromotionIndex('dev-1', 3)).toBe(0);
   });
 

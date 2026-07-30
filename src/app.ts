@@ -13,6 +13,7 @@ import {
   type MqttIngressRouterState
 } from './services/mqttIngressRouter';
 import { clearAllPublishHashesForDevice } from './services/mqttChangeDetection';
+import { getLocalPromoRotationCache } from './services/localCaches';
 import { createConnectionsRoutes } from './routes/connectionsRoutes';
 import { cacheUserIntegrations } from './services/userIntegrationCache';
 import { GmbConnectPull } from './services/gmbConnectPull';
@@ -189,18 +190,32 @@ export class StatsMqttLite {
 
   private async redisRemoveDevice(deviceId: string): Promise<void> {
     const client = this.getRedisClientOrNull();
-    if (!client) return;
-    try {
-      const multi = client.multi();
-      multi.sRem(REDIS_KEYS.activeDevices, deviceId);
-      await multi.exec();
-      await markDeviceHashInactive(deviceId);
-    } catch (err: unknown) {
-      logger.debug('Redis: failed to remove device keys', {
-        deviceId,
-        error: err instanceof Error ? err.message : String(err)
-      });
+    if (client) {
+      try {
+        const multi = client.multi();
+        multi.sRem(REDIS_KEYS.activeDevices, deviceId);
+        await multi.exec();
+        // Sync screen-critical counts before clearing local state
+        const runtime = getIgDeviceRuntimeCache();
+        const followers = runtime.getFollowers(deviceId);
+        const gmb = runtime.getGmbReviewCount(deviceId);
+        const updates: Record<string, string> = { status: 'inactive' };
+        if (followers !== undefined) updates.ig_follower_count = String(followers);
+        if (gmb !== undefined) updates.gmb_review_count = String(gmb);
+        const key = REDIS_KEYS.deviceHash(deviceId);
+        const keyType = await client.type(key);
+        if (keyType === 'hash' || keyType === 'none') {
+          await client.hSet(key, updates);
+          await client.expire(key, 7 * 24 * 3600);
+        }
+      } catch (err: unknown) {
+        logger.debug('Redis: failed to remove device keys', {
+          deviceId,
+          error: err instanceof Error ? err.message : String(err)
+        });
+      }
     }
+    await markDeviceHashInactive(deviceId);
   }
 
   /** Latest Instagram row for a Mongo User id (`Social` collection, name `Social` in Atlas). */
@@ -700,18 +715,16 @@ export class StatsMqttLite {
     };
   }
 
-  /** Stub for future power-save wiring — if enabled, gate Redis SET with local state (23h re-SET). */
+  /** Power-save: runtime cache + dirty device hash field (synced by RedisSync). */
   private async setDevicePowerSaveFlag(deviceId: string): Promise<void> {
-    if (!this.redisService?.isRedisConnected()) return;
-    try {
-      await this.redisService.getClient().set(REDIS_KEYS.igPowerSave(deviceId), '1', { EX: 86400 });
-      logger.debug('[IG_POLL] power_save flag set for device', { deviceId });
-    } catch (err: unknown) {
-      logger.warn('[IG_POLL] power_save set failed', {
-        deviceId,
-        error: err instanceof Error ? err.message : String(err)
-      });
+    const runtime = getIgDeviceRuntimeCache();
+    const state = runtime.get(deviceId);
+    if (state?.powerSaveSet && state.powerSaveSetAt && Date.now() - state.powerSaveSetAt < 23 * 3600 * 1000) {
+      return;
     }
+    runtime.set(deviceId, { powerSave: true, powerSaveSet: true, powerSaveSetAt: Date.now() });
+    runtime.markDirty(deviceId, 'power_save');
+    logger.debug('[IG_POLL] power_save flag set for device', { deviceId });
   }
 
   private async initializeProvisioning(): Promise<void> {
@@ -964,11 +977,10 @@ export class StatsMqttLite {
         await this.redisRemoveDevice(deviceId);
         logger.info('⚠️ [LIFECYCLE:PUBACK_TIMEOUT] Complete', { deviceId, removedFromRedis: removed });
       },
-      // On device active (PUBACK received) — update lastSeen in Redis
+      // On device active (PUBACK received) — update lastSeen only; active SET is connect-path only
       async (deviceId: string) => {
         logger.debug('✅ [LIFECYCLE:PUBACK_OK] Device confirmed message receipt', { deviceId });
         await this.activeDeviceCache.updateLastSeen(deviceId);
-        await this.redisMarkDeviceActive(deviceId);
       }
     );
     
@@ -1587,6 +1599,7 @@ export class StatsMqttLite {
     await this.redisRemoveDevice(deviceId);
 
     const clearedPublishHashes = await clearAllPublishHashesForDevice(deviceId);
+    getLocalPromoRotationCache().clear(deviceId);
     if (clearedPublishHashes > 0) {
       logger.info('💀 [LIFECYCLE:LWT] Cleared MQTT publish dedupe hashes', {
         deviceId,

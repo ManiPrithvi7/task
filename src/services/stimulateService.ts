@@ -7,12 +7,17 @@ import type { MqttClientManager } from '../servers/mqttClient';
 import type { RedisService } from './redisService';
 import { logger } from '../utils/logger';
 import { parseStimulateAllowlist, isStimulateDevice } from '../utils/stimulateAllowlist';
-import { runIgTick, STIM_IG_LOCK_TTL_SEC, igStimLockKey } from '../../stimulate/igRunner';
-import { runGmbTick, STIM_GMB_LOCK_TTL_SEC, gmbStimLockKey } from '../../stimulate/gmbRunner';
+import { runIgTick, STIM_IG_LOCK_TTL_SEC } from '../../stimulate/igRunner';
+import { runGmbTick, STIM_GMB_LOCK_TTL_SEC } from '../../stimulate/gmbRunner';
 import { clearStimCache, clearDeviceStimCache, clearAllStimCache, readStimCache } from '../../stimulate/cache';
 import { getActiveDeviceCache } from './deviceService';
+import { getLocalStimLock } from './localCaches';
 
 export type StimulatePlatform = 'instagram' | 'gmb';
+
+function stimLockType(platform: StimulatePlatform): 'ig' | 'gmb' {
+  return platform === 'instagram' ? 'ig' : 'gmb';
+}
 
 type LoopState = {
   deviceId: string;
@@ -53,33 +58,25 @@ function parseGmbTarget(): number {
 }
 
 async function takeStimLock(
-  redis: RedisService | null,
+  _redis: RedisService | null,
   platform: StimulatePlatform,
   deviceId: string
 ): Promise<void> {
-  if (!redis?.isRedisConnected()) return;
-  const key = platform === 'instagram' ? igStimLockKey(deviceId) : gmbStimLockKey(deviceId);
   const ttl = platform === 'instagram' ? STIM_IG_LOCK_TTL_SEC : STIM_GMB_LOCK_TTL_SEC;
-  try {
-    await redis.getClient().set(key, '1', { EX: ttl });
-  } catch {
-    /* best-effort */
-  }
+  const lock = getLocalStimLock();
+  const type = stimLockType(platform);
+  // Force acquire (same as Redis SET overwrite).
+  lock.release(deviceId, type);
+  lock.tryAcquire(deviceId, type, ttl * 1000);
 }
 
 async function refreshStimLock(
-  redis: RedisService | null,
+  _redis: RedisService | null,
   platform: StimulatePlatform,
   deviceId: string
 ): Promise<void> {
-  if (!redis?.isRedisConnected()) return;
-  const key = platform === 'instagram' ? igStimLockKey(deviceId) : gmbStimLockKey(deviceId);
   const ttl = platform === 'instagram' ? STIM_IG_LOCK_TTL_SEC : STIM_GMB_LOCK_TTL_SEC;
-  try {
-    await redis.getClient().expire(key, ttl);
-  } catch {
-    /* ok */
-  }
+  getLocalStimLock().refresh(deviceId, stimLockType(platform), ttl * 1000);
 }
 
 export class StimulateService {
@@ -120,20 +117,13 @@ export class StimulateService {
       return;
     }
 
-    // Drop any leftover in-memory / optional clear of redis locks
+    // Drop any leftover in-memory / local stim locks
     clearAllStimCache();
     if (process.env.STIMULATE_CLEAR === '1') {
       for (const d of devices) {
-        for (const p of platforms) {
-          const key = p === 'instagram' ? igStimLockKey(d) : gmbStimLockKey(d);
-          try {
-            if (redis?.isRedisConnected()) await redis.getClient().del(key);
-          } catch {
-            /* ok */
-          }
-        }
+        getLocalStimLock().releaseAll(d);
       }
-      logger.info('[STIM] STIMULATE_CLEAR=1 — redis locks cleared');
+      logger.info('[STIM] STIMULATE_CLEAR=1 — local stim locks cleared');
     }
 
     const step = parseStep();
@@ -165,6 +155,7 @@ export class StimulateService {
       deviceId,
     });
     this.stopLoopsForDevice(deviceId);
+    getLocalStimLock().releaseAll(deviceId);
   }
 
   /**
@@ -246,11 +237,6 @@ export class StimulateService {
           if (loop.done) return;
           let done = false;
           try {
-            if (!redis) {
-              logger.warn('[STIM] Redis required for ticks — skip', { deviceId, platform });
-              return;
-            }
-            // Only publish when device is currently active (local active-device cache)
             const active = await getActiveDeviceCache().getActive(deviceId);
             if (!active) {
               logger.debug('[STIM] Device not active — skip tick', { deviceId, platform });
@@ -306,9 +292,14 @@ export class StimulateService {
   async stop(): Promise<void> {
     if (!this.running && this.loops.length === 0) return;
     logger.info('[STIM] Stopping in-process stimulate service...');
+    const released = new Set<string>();
     for (const l of this.loops) {
       if (l.timer) clearInterval(l.timer);
       if (l.lockRefreshTimer) clearInterval(l.lockRefreshTimer);
+      if (!released.has(l.deviceId)) {
+        getLocalStimLock().releaseAll(l.deviceId);
+        released.add(l.deviceId);
+      }
     }
     this.loops = [];
     this.running = false;

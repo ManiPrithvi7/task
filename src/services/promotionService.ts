@@ -9,7 +9,6 @@ import {
 import { Provider } from '../models/Social';
 import { getClaimBaseUrl } from '../config/connectionsConfig';
 import { getActiveDeviceCache } from './deviceService';
-import { getRedisService } from './redisService';
 import {
   getUserIntegrations,
   invalidateUserIntegrations,
@@ -19,10 +18,11 @@ import {
 } from './userIntegrationCache';
 import { isCampaignActive } from './campaignSchedule';
 import { invalidateCanvasCache } from './brandCanvasService';
+import {
+  getLocalPromoActiveCache,
+  getLocalPromoRotationCache
+} from './localCaches';
 import { logger } from '../utils/logger';
-
-const PROMO_ACTIVE_KEY_PREFIX = 'promo:active:';
-const PROMO_ROTATION_KEY_PREFIX = 'promo:rotation:';
 
 export type ConnectionValidateEvent =
   | 'social.connected'
@@ -66,14 +66,6 @@ export type PromotionFanoutDeps = {
 export function getPromotionCacheTtlSec(): number {
   const n = Number(process.env.PROMOTION_CACHE_TTL_SEC);
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : 3600;
-}
-
-function promoActiveKey(userId: string): string {
-  return `${PROMO_ACTIVE_KEY_PREFIX}${userId}`;
-}
-
-function promoRotationKey(deviceId: string): string {
-  return `${PROMO_ROTATION_KEY_PREFIX}${deviceId}`;
 }
 
 export function buildCampaignPayload(campaign: ICampaign | CachedCampaignDto): PromotionScreenPayload {
@@ -198,35 +190,20 @@ export async function getEligibleCampaignsForUser(
     return { campaigns: [], integrations: ints };
   }
 
-  const redis = getRedisService();
-  const key = promoActiveKey(userId);
-
-  if (redis?.isRedisConnected()) {
-    try {
-      const cached = await redis.getClient().get(key);
-      if (cached) {
-        const parsed = JSON.parse(cached) as CachedCampaignDto[];
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const active = filterSchedulableCampaigns(parsed);
-          if (active.length > 0) {
-            return { campaigns: active as unknown as ICampaign[], integrations: ints };
-          }
-        }
-      }
-    } catch {
-      /* fall through */
+  const cache = getLocalPromoActiveCache<CachedCampaignDto[]>();
+  const cached = cache.get(userId);
+  if (cached && Array.isArray(cached) && cached.length > 0) {
+    const active = filterSchedulableCampaigns(cached);
+    if (active.length > 0) {
+      return { campaigns: active as unknown as ICampaign[], integrations: ints };
     }
   }
 
   const campaigns = await queryEligibleCampaigns(userId, ints);
   const dto = campaigns.map(toCachedDto);
 
-  if (redis?.isRedisConnected() && dto.length > 0) {
-    try {
-      await redis.getClient().set(key, JSON.stringify(dto), { EX: getPromotionCacheTtlSec() });
-    } catch {
-      /* best-effort */
-    }
+  if (dto.length > 0) {
+    cache.set(userId, dto, getPromotionCacheTtlSec() * 1000);
   }
 
   return { campaigns, integrations: ints };
@@ -236,48 +213,24 @@ export async function getNextPromotionIndex(deviceId: string, total: number): Pr
   if (total <= 0) return 0;
   if (total === 1) return 0;
 
-  const redis = getRedisService();
-  const key = promoRotationKey(deviceId);
-  const ttl = getPromotionCacheTtlSec();
-
-  if (!redis?.isRedisConnected()) return 0;
-
-  try {
-    const currentRaw = await redis.getClient().get(key);
-    const index = currentRaw !== null && currentRaw !== '' ? Number(currentRaw) : 0;
-    const safeIndex = Number.isFinite(index) ? Math.max(0, Math.min(total - 1, Math.floor(index))) : 0;
-    const next = (safeIndex + 1) % total;
-    await redis.getClient().set(key, String(next), { EX: ttl });
-    return safeIndex;
-  } catch {
-    return 0;
-  }
+  const rotation = getLocalPromoRotationCache();
+  const current = rotation.get(deviceId);
+  const safeIndex = Number.isFinite(current)
+    ? ((Math.floor(current) % total) + total) % total
+    : 0;
+  rotation.increment(deviceId);
+  return safeIndex;
 }
 
 export async function invalidatePromotionCache(userId: string): Promise<void> {
-  const redis = getRedisService();
-  if (!redis?.isRedisConnected()) return;
-
-  try {
-    await redis.getClient().del(promoActiveKey(userId));
-  } catch (err: unknown) {
-    logger.warn('[PROMO_CACHE] invalidate failed', {
-      userId,
-      error: err instanceof Error ? err.message : String(err)
-    });
-  }
+  getLocalPromoActiveCache().del(userId);
 }
 
 export async function resetRotationForUser(userId: string): Promise<void> {
-  const redis = getRedisService();
-  if (!redis?.isRedisConnected()) return;
-
   const devices = (await getActiveDeviceCache().getAllActive()).filter((d) => d.userId === userId);
-  try {
-    const client = redis.getClient();
-    await Promise.all(devices.map((d) => client.del(promoRotationKey(d.deviceId))));
-  } catch {
-    /* best-effort */
+  const rotation = getLocalPromoRotationCache();
+  for (const d of devices) {
+    rotation.clear(d.deviceId);
   }
 }
 

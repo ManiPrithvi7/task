@@ -1,5 +1,5 @@
 import { createHash } from 'crypto';
-import { getRedisService } from './redisService';
+import { getLocalPublishHashCache } from './localCaches';
 import type { MqttClientManager } from '../servers/mqttClient';
 
 function stableJson(value: unknown): string {
@@ -17,41 +17,12 @@ export function publishHashRedisKey(deviceId: string, topic: string): string {
 }
 
 export async function clearPublishHash(deviceId: string, topic: string): Promise<boolean> {
-  const redisSvc = getRedisService();
-  if (!redisSvc?.isRedisConnected()) return false;
-
-  try {
-    const deleted = await redisSvc.getClient().del(publishHashRedisKey(deviceId, topic));
-    return deleted > 0;
-  } catch {
-    return false;
-  }
+  return getLocalPublishHashCache().del(deviceId, topic);
 }
 
 /** Clears all screen dedupe hashes for a device (call on LWT disconnect). */
 export async function clearAllPublishHashesForDevice(deviceId: string): Promise<number> {
-  const redisSvc = getRedisService();
-  if (!redisSvc?.isRedisConnected()) return 0;
-
-  const client = redisSvc.getClient();
-  const pattern = `msg:last_hash:${deviceId}:*`;
-  let cursor = 0;
-  let removed = 0;
-
-  try {
-    do {
-      const reply = await client.scan(cursor, { MATCH: pattern, COUNT: 100 });
-      cursor = typeof reply.cursor === 'number' ? reply.cursor : Number(reply.cursor);
-      const keys = reply.keys;
-      if (keys.length > 0) {
-        removed += await client.del(keys);
-      }
-    } while (cursor !== 0);
-  } catch {
-    return removed;
-  }
-
-  return removed;
+  return getLocalPublishHashCache().clear(deviceId);
 }
 
 export async function publishIfChanged(opts: {
@@ -71,29 +42,22 @@ export async function publishIfChanged(opts: {
   const retain = opts.retain ?? false;
   const ttl = opts.hashTtlSec ?? 86400;
 
-  const redisSvc = getRedisService();
   const doPublish = () =>
     opts.mqttClient.publishWithRetry(
       { topic: opts.topic, payload: opts.payload, qos, retain },
       { deviceId: opts.deviceId, source: 'publish_if_changed' }
     );
 
-  if (!redisSvc?.isRedisConnected()) {
-    await doPublish();
-    return { published: true, reason: 'no_redis' };
-  }
-
-  const client = redisSvc.getClient();
+  const cache = getLocalPublishHashCache();
   const newHash = hashPayload(opts.hashInput);
-  const redisKey = publishHashRedisKey(opts.deviceId, opts.topic);
-  const lastHash = await client.get(redisKey);
+  const lastHash = cache.get(opts.deviceId, opts.topic);
 
   if (lastHash && lastHash === newHash) {
     return { published: false, reason: 'unchanged' };
   }
 
   await doPublish();
-  await client.set(redisKey, newHash, { EX: ttl });
+  cache.set(opts.deviceId, opts.topic, newHash, ttl * 1000);
   return { published: true, reason: 'changed' };
 }
 
@@ -118,10 +82,6 @@ export async function publishForce(opts: {
     { deviceId: opts.deviceId, source: opts.source ?? 'publish_force' }
   );
 
-  const redisSvc = getRedisService();
-  if (!redisSvc?.isRedisConnected()) return;
-
   const newHash = hashPayload(opts.hashInput);
-  await redisSvc.getClient().set(publishHashRedisKey(opts.deviceId, opts.topic), newHash, { EX: ttl });
+  getLocalPublishHashCache().set(opts.deviceId, opts.topic, newHash, ttl * 1000);
 }
-

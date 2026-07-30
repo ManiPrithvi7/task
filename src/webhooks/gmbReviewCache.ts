@@ -1,4 +1,8 @@
 import { getRedisService } from '../services/redisService';
+import {
+  getIgDeviceRuntimeCache,
+  syncScreenFieldImmediate
+} from '../services/igDeviceRuntimeCache';
 import { logger } from '../utils/logger';
 
 const KEY_PREFIX = 'gmb:reviews:';
@@ -27,15 +31,25 @@ export async function getGmbReviewCount(locationId: string): Promise<number | nu
 
 export async function setGmbReviewCount(locationId: string, count: number): Promise<void> {
   const redis = getRedisService();
-  if (!redis?.isRedisConnected()) return;
+  const normalized = Math.max(0, Math.round(count));
 
-  try {
-    await redis.getClient().set(`${KEY_PREFIX}${locationId}`, String(Math.max(0, Math.round(count))), { EX: 2592000 });
-  } catch (err: unknown) {
-    logger.warn('[GMB_REVIEW_CACHE] write failed', {
-      locationId,
-      error: err instanceof Error ? err.message : String(err)
-    });
+  if (redis?.isRedisConnected()) {
+    try {
+      await redis.getClient().set(`${KEY_PREFIX}${locationId}`, String(normalized), { EX: 2592000 });
+    } catch (err: unknown) {
+      logger.warn('[GMB_REVIEW_CACHE] write failed', {
+        locationId,
+        error: err instanceof Error ? err.message : String(err)
+      });
+    }
+  }
+
+  const cache = getIgDeviceRuntimeCache();
+  const devices = cache.getByGmbProfileId(locationId);
+  for (const deviceId of devices) {
+    cache.setGmbReviewCount(deviceId, normalized);
+    cache.markDirty(deviceId, 'gmb_review_count');
+    await syncScreenFieldImmediate(deviceId, 'gmb_review_count', normalized);
   }
 }
 

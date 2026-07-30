@@ -1,7 +1,7 @@
 // TEMP STIMULATE — remove after testing
 // Shared env parser so main app doesn't import stimulate/ server.
 
-import { getRedisService } from '../services/redisService';
+import { getLocalStimLock } from '../services/localCaches';
 
 export function parseStimulateAllowlist(): string[] {
   const raw = process.env.STIMULATE_DEVICE?.trim();
@@ -17,17 +17,9 @@ export function isStimulateDevice(deviceId: string): boolean {
   return ids.length > 0 && ids.includes(deviceId);
 }
 
-/** Check Redis stim lock for a given platform. */
+/** Check stim lock for a given platform (local only). */
 export async function hasStimLock(deviceId: string, platform: 'instagram' | 'gmb'): Promise<boolean> {
-  const key = `stim:${platform === 'instagram' ? 'ig' : 'gmb'}:${deviceId}`;
-  const redisSvc = getRedisService();
-  if (!redisSvc?.isRedisConnected()) return false;
-  try {
-    const exists = await redisSvc.getClient().exists(key);
-    return exists === 1;
-  } catch {
-    return false;
-  }
+  return getLocalStimLock().isLocked(deviceId, platform === 'instagram' ? 'ig' : 'gmb');
 }
 
 /** Unified check: allowlisted AND locked for platform. Use in TEMP hooks. */

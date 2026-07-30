@@ -7,11 +7,11 @@ import { logger } from '../utils/logger';
 import { clearAllPublishHashesForDevice } from './mqttChangeDetection';
 import { getUserIntegrations, cacheUserIntegrations } from './userIntegrationCache';
 import { getActiveDeviceCache } from './deviceService';
+import { getLocalConnectDebounce } from './localCaches';
 // TEMP STIMULATE — remove after testing
 import { shouldSkipForStimulate } from '../utils/stimulateAllowlist';
 
 const CONNECT_REFRESH_DEBOUNCE_SEC = 30;
-const CONNECT_REFRESH_KEY_PREFIX = 'device:connect_refresh:';
 
 export type ConnectRefreshCoordinatorDeps = {
   mqttClient: MqttClientManager;
@@ -132,19 +132,7 @@ export class ConnectRefreshCoordinator {
   }
 
   private async isDebounced(deviceId: string): Promise<boolean> {
-    const redis = this.deps.redisService;
-    if (!redis?.isRedisConnected()) return false;
-
-    try {
-      const key = `${CONNECT_REFRESH_KEY_PREFIX}${deviceId}`;
-      const set = await redis.getClient().set(key, '1', { EX: CONNECT_REFRESH_DEBOUNCE_SEC, NX: true });
-      return set !== 'OK';
-    } catch (err: unknown) {
-      logger.debug('[CONNECT_REFRESH] Debounce check failed — proceeding', {
-        deviceId,
-        error: err instanceof Error ? err.message : String(err)
-      });
-      return false;
-    }
+    // shouldRefresh=true means debounce window elapsed (allow full refresh).
+    return !getLocalConnectDebounce().shouldRefresh(deviceId, CONNECT_REFRESH_DEBOUNCE_SEC * 1000);
   }
 }

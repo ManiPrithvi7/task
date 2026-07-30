@@ -271,7 +271,8 @@ describe('OtaService.ingestRelease', () => {
 
     expect(result).toEqual({ ok: true, version: '4.3.1', created: true, currentPercentage: 1 });
     expect(mockRedisState.setActiveRelease).toHaveBeenCalledWith(
-      expect.objectContaining({ keyFingerprint: TEST_KEY_FINGERPRINT })
+      expect.objectContaining({ keyFingerprint: TEST_KEY_FINGERPRINT }),
+      1
     );
     expect(FirmwareRelease.findOneAndUpdate).toHaveBeenCalledWith(
       { version: '4.3.1' },

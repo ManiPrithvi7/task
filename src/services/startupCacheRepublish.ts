@@ -94,6 +94,19 @@ async function republishInstagramFromFollowersCache(
 ): Promise<boolean> {
   if (await shouldSkipForStimulate(deviceId, 'instagram')) return false;
 
+  // Hydrate runtime cache from device hash when possible
+  const redisSvc = getRedisService();
+  if (redisSvc?.isRedisConnected()) {
+    try {
+      const hash = await redisSvc.getClient().hGetAll(`proof.mqtt:device:${deviceId}`);
+      if (hash && Object.keys(hash).length > 0) {
+        getIgDeviceRuntimeCache().hydrateFromHashFields(deviceId, hash);
+      }
+    } catch {
+      /* best-effort */
+    }
+  }
+
   const followers = await readFollowerCountForRepublish(deviceId);
   if (followers === null) return false;
 

@@ -51,22 +51,12 @@ export { REDIS_KEYS };
 
 let sharedCircuitGate: CircuitGate | null = null;
 
-function getOutcomeCircuitGate(client: RedisClientType): CircuitGate {
-  if (sharedCircuitGate) return sharedCircuitGate;
-  return getCircuitBreaker(client);
+function getOutcomeCircuitGate(): CircuitGate {
+  if (!sharedCircuitGate) {
+    sharedCircuitGate = new LocalCircuitGate();
+  }
+  return sharedCircuitGate;
 }
-
-const getCircuitBreaker = (() => {
-  let instance: InstagramCircuitBreaker | null = null;
-  let boundClient: RedisClientType | null = null;
-  return (client: RedisClientType): InstagramCircuitBreaker => {
-    if (!instance || boundClient !== client) {
-      boundClient = client;
-      instance = new InstagramCircuitBreaker(client);
-    }
-    return instance;
-  };
-})();
 
 // ============================================================
 // Polling metrics (instagramPollingMetrics.ts)
@@ -240,34 +230,12 @@ export async function evalAtomicPriorityReadAndPrune(redis: RedisClientType, now
   return Array.isArray(res) ? (res as string[]) : [];
 }
 
-export async function evalAtomicBackoffCheckAndRecord(
-  redis: RedisClientType,
-  deviceId: string,
-  nowMs: number,
-  uuid: string,
-  threshold: number,
-  windowMs: number
-): Promise<boolean> {
-  const res = await redis.eval(atomicBackoffCheckAndRecordLua, {
-    keys: [REDIS_KEYS.deviceFetchHistory(deviceId)],
-    arguments: [String(nowMs), uuid, String(threshold), String(windowMs)]
-  });
-  return String(res) === '1';
-}
-
-export async function evalAtomicFetchBudgetTry(redis: RedisClientType, budgetKey: string, limit: number): Promise<boolean> {
-  const res = await redis.eval(atomicFetchBudgetTryLua, { keys: [budgetKey], arguments: [String(limit)] });
-  return String(res) === '1';
-}
-
 // ============================================================
 // SCRIPT LOAD + EVALSHA helpers (instagramPollingScripts.ts)
 // ============================================================
 
 export interface InstagramPollingScriptSha {
   priorityReadPrune: string;
-  backoffCheckRecord: string;
-  fetchBudgetTry: string;
 }
 
 let loadedSha: InstagramPollingScriptSha | null = null;
@@ -280,17 +248,11 @@ function isNoScript(err: unknown): boolean {
 export async function loadInstagramPollingScripts(redis: RedisClientType, force = false): Promise<InstagramPollingScriptSha> {
   if (loadedSha && !force) return loadedSha;
 
-  const [priorityReadPrune, backoffCheckRecord, fetchBudgetTry] = await Promise.all([
-    redis.scriptLoad(atomicPriorityReadAndPruneLua),
-    redis.scriptLoad(atomicBackoffCheckAndRecordLua),
-    redis.scriptLoad(atomicFetchBudgetTryLua)
-  ]);
+  const priorityReadPrune = await redis.scriptLoad(atomicPriorityReadAndPruneLua);
 
-  loadedSha = { priorityReadPrune, backoffCheckRecord, fetchBudgetTry };
+  loadedSha = { priorityReadPrune };
   logger.info('[IG_POLLING_SCRIPTS] Loaded Lua scripts for EVALSHA', {
     priorityReadPrune,
-    backoffCheckRecord,
-    fetchBudgetTry,
     forceReload: force
   });
   return loadedSha;
@@ -321,147 +283,12 @@ export async function evalAtomicPriorityReadAndPruneEvalSha(redis: RedisClientTy
   return Array.isArray(res) ? (res as string[]) : [];
 }
 
-export async function evalAtomicBackoffCheckAndRecordEvalSha(
-  redis: RedisClientType,
-  deviceId: string,
-  nowMs: number,
-  uuid: string,
-  threshold: number,
-  windowMs: number
-): Promise<boolean> {
-  const res = await evalShaWithFallback(
-    redis,
-    (s) => s.backoffCheckRecord,
-    [REDIS_KEYS.deviceFetchHistory(deviceId)],
-    [String(nowMs), uuid, String(threshold), String(windowMs)]
-  );
-  return String(res) === '1';
-}
-
-export async function evalAtomicFetchBudgetTryEvalSha(redis: RedisClientType, budgetKey: string, limit: number): Promise<boolean> {
-  const res = await evalShaWithFallback(redis, (s) => s.fetchBudgetTry, [budgetKey], [String(limit)]);
-  return String(res) === '1';
-}
-
 export function resetInstagramPollingScriptsCache(): void {
   loadedSha = null;
 }
 
 export function getInstagramPollingScriptSha(): InstagramPollingScriptSha | null {
   return loadedSha;
-}
-
-// ============================================================
-// Circuit breaker (instagramCircuitBreaker.ts)
-// ============================================================
-
-export class InstagramCircuitBreaker {
-  private redis: RedisClientType;
-  private local: { isOpen: boolean; resetTimeMs: number } = { isOpen: false, resetTimeMs: 0 };
-  private lastRedisCheckMs = 0;
-  /** Dedupe concurrent close events within this window (ms). */
-  private lastEmittedClosedAtMs = 0;
-  private static readonly CLOSE_EVENT_DEDUPE_MS = 10_000;
-
-  constructor(redis: RedisClientType, private readonly cacheTtlMs = 5000) {
-    this.redis = redis;
-  }
-
-  private async emitCircuitEvent(
-    state: 'open' | 'closed',
-    reason: string,
-    retryAfterSeconds?: number
-  ): Promise<void> {
-    const influx = getInfluxService();
-    if (!influx) return;
-    try {
-      await influx.writeInstagramCircuitEvent(
-        {
-          state,
-          reason,
-          ...(state === 'open' && retryAfterSeconds !== undefined ? { retryAfterSeconds } : {}),
-          timestamp: new Date()
-        },
-        { flush: true }
-      );
-    } catch (err: unknown) {
-      logger.error('[IG_CIRCUIT] Influx circuit event write failed', {
-        state,
-        reason,
-        error: err instanceof Error ? err.message : String(err)
-      });
-    }
-  }
-
-  private maybeEmitClosed(reason: string): void {
-    const now = Date.now();
-    if (now - this.lastEmittedClosedAtMs < InstagramCircuitBreaker.CLOSE_EVENT_DEDUPE_MS) {
-      return;
-    }
-    this.lastEmittedClosedAtMs = now;
-    void this.emitCircuitEvent('closed', reason);
-  }
-
-  async isOpen(): Promise<boolean> {
-    const now = Date.now();
-    const wasOpenLocally = this.local.isOpen;
-
-    if (now - this.lastRedisCheckMs < this.cacheTtlMs) {
-      const open = this.local.isOpen && now < this.local.resetTimeMs;
-      if (wasOpenLocally && !open) {
-        // Close may lag Redis TTL by up to cacheTtlMs — acceptable for audit.
-        this.maybeEmitClosed('ttl_expired');
-      }
-      return open;
-    }
-
-    const blockedUntilRaw = await this.redis.get(REDIS_KEYS.circuitBlockedUntil);
-    this.lastRedisCheckMs = now;
-
-    const blockedUntil = blockedUntilRaw ? parseInt(blockedUntilRaw, 10) : 0;
-    let nowOpen: boolean;
-    if (blockedUntil && blockedUntil > now) {
-      this.local = { isOpen: true, resetTimeMs: blockedUntil };
-      nowOpen = true;
-    } else {
-      this.local = { isOpen: false, resetTimeMs: 0 };
-      nowOpen = false;
-    }
-
-    if (wasOpenLocally && !nowOpen) {
-      this.maybeEmitClosed('ttl_expired');
-    }
-    return nowOpen;
-  }
-
-  async open(retryAfterSeconds: number, reason: string): Promise<void> {
-    const safeSeconds = Math.max(1, Math.floor(retryAfterSeconds));
-    const resetTimeMs = Date.now() + safeSeconds * 1000;
-
-    await this.redis.set(REDIS_KEYS.circuitBlockedUntil, String(resetTimeMs), {
-      EX: safeSeconds + 60
-    });
-
-    igPollMetricsInc('circuitOpenEvents');
-    this.local = { isOpen: true, resetTimeMs };
-    this.lastRedisCheckMs = Date.now();
-
-    await this.emitCircuitEvent('open', reason, safeSeconds);
-  }
-
-  async reset(): Promise<void> {
-    const wasOpen = this.local.isOpen;
-    await this.redis.del(REDIS_KEYS.circuitBlockedUntil);
-    this.local = { isOpen: false, resetTimeMs: 0 };
-    this.lastRedisCheckMs = Date.now();
-    if (wasOpen) {
-      this.maybeEmitClosed('manual_reset');
-    }
-  }
-
-  getLocalState(): { isOpen: boolean; resetTimeMs: number } {
-    return { ...this.local };
-  }
 }
 
 // ============================================================
@@ -809,13 +636,12 @@ async function readCachedFollowers(deviceId: string): Promise<number | null> {
 
 async function maybeOpenCircuitFromOutcome(row: NormalizedDeviceFetchResult): Promise<void> {
   try {
-    const redisSvc = getRedisService();
-    if (!redisSvc?.isRedisConnected()) return;
-    const breaker = getOutcomeCircuitGate(redisSvc.getClient());
+    const breaker = getOutcomeCircuitGate();
 
     if (!row.success && row.http_status === 429 && row.retry_after_seconds != null) {
       const secs = Math.max(1, Math.floor(row.retry_after_seconds));
       await breaker.open(secs, 'http_429');
+      igPollMetricsInc('circuitOpenEvents');
       logger.warn('[IG_SERVERLESS] Circuit opened (429 Retry-After)', { deviceId: row.deviceId, secs });
       return;
     }
@@ -824,6 +650,7 @@ async function maybeOpenCircuitFromOutcome(row: NormalizedDeviceFetchResult): Pr
     const code = row.error_code !== undefined ? String(row.error_code) : null;
     if (!row.success && code && rateLimitCodes.has(code)) {
       await breaker.open(60, 'api_throttle_code');
+      igPollMetricsInc('circuitOpenEvents');
       logger.warn('[IG_SERVERLESS] Circuit opened (API throttle code)', { deviceId: row.deviceId, code });
     }
   } catch (err: unknown) {
@@ -1090,10 +917,9 @@ async function maybeApplyGlobalCircuit(body: unknown): Promise<void> {
   const secs = (body as { circuit_open_seconds?: unknown }).circuit_open_seconds;
   if (typeof secs !== 'number' || secs <= 0) return;
   try {
-    const redisSvc = getRedisService();
-    if (!redisSvc?.isRedisConnected()) return;
-    const breaker = getOutcomeCircuitGate(redisSvc.getClient());
+    const breaker = getOutcomeCircuitGate();
     await breaker.open(Math.ceil(secs), 'serverless_circuit_open');
+    igPollMetricsInc('circuitOpenEvents');
     logger.warn('[IG_SERVERLESS] Circuit opened from response payload', { seconds: secs });
   } catch {
     /* ignore */
@@ -1162,10 +988,8 @@ export class InstagramServerlessBridge implements InstagramFetchInvoker {
         /* use default */
       }
       try {
-        const redisSvc = getRedisService();
-        if (redisSvc?.isRedisConnected()) {
-          await getOutcomeCircuitGate(redisSvc.getClient()).open(retryAfter, 'http_429');
-        }
+        await getOutcomeCircuitGate().open(retryAfter, 'http_429');
+        igPollMetricsInc('circuitOpenEvents');
       } catch {
         /* ignore */
       }
@@ -1396,59 +1220,12 @@ export class InstagramPoller {
     private readonly redisService: RedisService,
     private readonly config: InstagramPollerConfig
   ) {
-    const redis = this.redisService.getClient();
-    const redisBreaker = new InstagramCircuitBreaker(redis);
-    this.circuitGate = config.useLocalCircuit
-      ? new LocalCircuitGate()
-      : redisBreaker;
-    if (config.useLocalCircuit) {
-      sharedCircuitGate = this.circuitGate;
-    }
-    this.backoff = config.useLocalBackoff
-      ? new LocalDeviceBackoff(config.backoffThreshold, config.backoffWindowMs)
-      : {
-          shouldAllow: (deviceId) =>
-            evalAtomicBackoffCheckAndRecordEvalSha(
-              redis,
-              deviceId,
-              Date.now(),
-              crypto.randomUUID(),
-              config.backoffThreshold,
-              config.backoffWindowMs
-            ),
-          recordSuccess: async () => {},
-          recordError: async () => {}
-        };
-    this.budget = config.useLocalBudget
-      ? new LocalBudgetTracker()
-      : {
-          recordCall: async () => {},
-          isExhausted: async (limit) => {
-            if (!limit || limit <= 0) return false;
-            const slot = Math.floor(Date.now() / 60_000);
-            const key = REDIS_KEYS.globalFetchBudget(slot);
-            const ok = await evalAtomicFetchBudgetTryEvalSha(redis, key, limit);
-            return !ok;
-          }
-        };
-    this.dedupe = config.useLocalDedupe
-      ? new LocalFetchDedupe()
-      : {
-          tryAcquire: async (deviceId, windowMs) => {
-            if (!windowMs || windowMs <= 0) return true;
-            try {
-              const ok = await redis.set(REDIS_KEYS.fetchDedupe(deviceId), '1', { PX: windowMs, NX: true });
-              if (ok === null) {
-                igPollMetricsInc('fetchesDeduped');
-                return false;
-              }
-              return true;
-            } catch {
-              igPollMetricsInc('fetchDedupeRedisErrors');
-              return true;
-            }
-          }
-        };
+    // Phase 4: always local — useLocal* config fields ignored
+    this.circuitGate = getOutcomeCircuitGate();
+    sharedCircuitGate = this.circuitGate;
+    this.backoff = new LocalDeviceBackoff(config.backoffThreshold, config.backoffWindowMs);
+    this.budget = new LocalBudgetTracker();
+    this.dedupe = new LocalFetchDedupe();
   }
 
   async start(): Promise<void> {
@@ -1608,35 +1385,15 @@ export class InstagramPoller {
       return sorted.slice(0, limit);
     }
 
-    let start = 0;
-    if (this.config.useLocalFairOffset) {
-      start = (this.localFairStart % n + n) % n;
-    } else {
-      const redis = this.redisService.getClient();
-      try {
-        const raw = await redis.get(REDIS_KEYS.backgroundFairnessOffset);
-        if (raw) start = (parseInt(raw, 10) % n + n) % n;
-      } catch {
-        /* ignore */
-      }
-    }
+    let start = (this.localFairStart % n + n) % n;
 
     const rotated = start ? [...sorted.slice(start), ...sorted.slice(0, start)] : sorted;
     const windowIds = rotated.slice(0, limit);
 
     const advance = cap > 0 ? Math.min(cap, n) : n;
     const nextStart = (start + advance) % Math.max(1, n);
-    if (this.config.useLocalFairOffset) {
-      this.localFairStart = nextStart;
-      igPollMetricsInc('backgroundFairRotateCycles');
-    } else {
-      try {
-        await this.redisService.getClient().set(REDIS_KEYS.backgroundFairnessOffset, String(nextStart));
-        igPollMetricsInc('backgroundFairRotateCycles');
-      } catch {
-        /* ignore */
-      }
-    }
+    this.localFairStart = nextStart;
+    igPollMetricsInc('backgroundFairRotateCycles');
 
     return windowIds;
   }

@@ -2,7 +2,8 @@ import mongoose from 'mongoose';
 import { Social, Provider } from '../models/Social';
 import { GoogleBusinessProfile } from '../models/GoogleBusinessProfile';
 import { GoogleBusinessLocation } from '../models/GoogleBusinessLocation';
-import { getRedisService } from './redisService';
+import { getLocalIntegrationsCache } from './localCaches';
+import { getIgDeviceRuntimeCache } from './igDeviceRuntimeCache';
 import { logger } from '../utils/logger';
 
 const CACHE_KEY_PREFIX = 'user:integrations:';
@@ -46,6 +47,28 @@ export function getUserIntegrationsCacheTtlSec(): number {
 
 function cacheKey(userId: string): string {
   return `${CACHE_KEY_PREFIX}${userId}`;
+}
+
+function ttlMs(): number {
+  return getUserIntegrationsCacheTtlSec() * 1000;
+}
+
+/** Prefer fresher tokens from device runtime cache when present. */
+function enrichTokensFromRuntime(userId: string, cache: UserIntegrationCache): UserIntegrationCache {
+  const devices = getIgDeviceRuntimeCache().getByUserId(userId);
+  for (const d of devices) {
+    if (cache.instagram && d.igAccessToken?.trim()) {
+      cache.instagram.accessToken = d.igAccessToken.trim();
+      if (d.igAccountId?.trim()) cache.instagram.accountId = d.igAccountId.trim();
+    }
+    if (cache.gmb && d.gmbAccessToken?.trim()) {
+      cache.gmb.accessToken = d.gmbAccessToken.trim();
+      if (d.gmbProfileId?.trim() && !cache.gmb.locationId) {
+        cache.gmb.locationId = d.gmbProfileId.trim();
+      }
+    }
+  }
+  return cache;
 }
 
 async function resolveGmbLocationId(socialId: mongoose.Types.ObjectId): Promise<string | undefined> {
@@ -113,12 +136,8 @@ export async function cacheUserIntegrations(userId: string): Promise<UserIntegra
       }
     }
 
-    const redis = getRedisService();
-    if (redis?.isRedisConnected()) {
-      await redis
-        .getClient()
-        .set(cacheKey(userId), JSON.stringify(cache), { EX: getUserIntegrationsCacheTtlSec() });
-    }
+    enrichTokensFromRuntime(userId, cache);
+    getLocalIntegrationsCache<UserIntegrationCache>().set(cacheKey(userId), cache, ttlMs());
 
     logger.info('[USER_INTEGRATIONS] Cached', {
       userId,
@@ -138,35 +157,15 @@ export async function cacheUserIntegrations(userId: string): Promise<UserIntegra
 }
 
 export async function invalidateUserIntegrations(userId: string): Promise<void> {
-  const redis = getRedisService();
-  if (!redis?.isRedisConnected()) return;
-
-  try {
-    await redis.getClient().del(cacheKey(userId));
-  } catch (err: unknown) {
-    logger.warn('[USER_INTEGRATIONS] invalidate failed', {
-      userId,
-      error: err instanceof Error ? err.message : String(err)
-    });
-  }
+  getLocalIntegrationsCache().del(cacheKey(userId));
 }
 
 /** Read cache; rebuild from Mongo on miss. Returns null if build fails. */
 export async function getUserIntegrations(userId: string): Promise<UserIntegrationCache | null> {
-  const redis = getRedisService();
-
-  if (redis?.isRedisConnected()) {
-    try {
-      const raw = await redis.getClient().get(cacheKey(userId));
-      if (raw) {
-        return JSON.parse(raw) as UserIntegrationCache;
-      }
-    } catch (err: unknown) {
-      logger.debug('[USER_INTEGRATIONS] Redis read failed', {
-        userId,
-        error: err instanceof Error ? err.message : String(err)
-      });
-    }
+  const local = getLocalIntegrationsCache<UserIntegrationCache>();
+  const hit = local.get(cacheKey(userId));
+  if (hit) {
+    return enrichTokensFromRuntime(userId, hit);
   }
 
   return cacheUserIntegrations(userId);
@@ -204,12 +203,7 @@ export async function applySocialDisconnected(
 
   existing.updatedAt = new Date().toISOString();
 
-  const redis = getRedisService();
-  if (redis?.isRedisConnected()) {
-    await redis
-      .getClient()
-      .set(cacheKey(userId), JSON.stringify(existing), { EX: getUserIntegrationsCacheTtlSec() });
-  }
+  getLocalIntegrationsCache<UserIntegrationCache>().set(cacheKey(userId), existing, ttlMs());
 
   return existing;
 }

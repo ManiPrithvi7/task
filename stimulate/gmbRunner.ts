@@ -4,24 +4,23 @@ import type { MqttClientManager } from '../src/servers/mqttClient';
 import { publishGmbScreen } from '../src/webhooks/delivery/publishGmbScreen';
 import { readStimCache, writeStimCache } from './cache';
 import { calcResume, ceilingSequence } from './math';
-import { getRedisService } from '../src/services/redisService';
 import { resolveCelebrationState } from '../src/services/screenEnvelope';
+import { getLocalStimLock } from '../src/services/localCaches';
+import {
+  getIgDeviceRuntimeCache,
+  syncScreenFieldImmediate
+} from '../src/services/igDeviceRuntimeCache';
 
 export const STIM_GMB_LOCK_TTL_SEC = 3600;
 const STIM_GMB_LOCK_KEY_PREFIX = 'stim:gmb:';
 
-export function releaseStimGmbLock(redis: RedisService, deviceId: string): Promise<number> {
-  return redis.getClient().del(`${STIM_GMB_LOCK_KEY_PREFIX}${deviceId}`);
+export function releaseStimGmbLock(_redis: RedisService, deviceId: string): Promise<number> {
+  getLocalStimLock().release(deviceId, 'gmb');
+  return Promise.resolve(1);
 }
 
-export async function ensureStimGmbLock(redis: RedisService, deviceId: string): Promise<boolean> {
-  const key = `${STIM_GMB_LOCK_KEY_PREFIX}${deviceId}`;
-  try {
-    const ok = await redis.getClient().set(key, '1', { NX: true, EX: STIM_GMB_LOCK_TTL_SEC });
-    return ok !== null;
-  } catch {
-    return false;
-  }
+export async function ensureStimGmbLock(_redis: RedisService, deviceId: string): Promise<boolean> {
+  return getLocalStimLock().tryAcquire(deviceId, 'gmb', STIM_GMB_LOCK_TTL_SEC * 1000);
 }
 
 export function gmbStimLockKey(deviceId: string): string {
@@ -29,11 +28,10 @@ export function gmbStimLockKey(deviceId: string): string {
 }
 
 async function updateGmbCache(deviceId: string, reviews: number): Promise<void> {
-  const redisSvc = getRedisService();
-  if (!redisSvc?.isRedisConnected()) return;
-  try {
-    await redisSvc.getClient().set(`gmb:reviews:${deviceId}`, String(reviews));
-  } catch { /* best-effort */ }
+  const runtime = getIgDeviceRuntimeCache();
+  runtime.setGmbReviewCount(deviceId, reviews);
+  runtime.markDirty(deviceId, 'gmb_review_count');
+  void syncScreenFieldImmediate(deviceId, 'gmb_review_count', reviews);
 }
 
 export async function runGmbTick(
@@ -43,7 +41,7 @@ export async function runGmbTick(
   mqttPublishEnabled: boolean,
   step: number,
   target: number,
-  _redis: RedisService,
+  _redis: RedisService | null,
 ): Promise<{ done: boolean; publishedCount: number }> {
   const cache = readStimCache('gmb', deviceId);
   if (cache?.status === 'done') {

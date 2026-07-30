@@ -51,6 +51,14 @@ import {
 } from '../utils/otaRollout';
 import { sendOtaSlackAlert } from '../notifications/slackOta';
 import type { IFirmwareRollout } from '../models/FirmwareRelease';
+import { getLocalOtaFleetTracker } from './igPollCoordination';
+import {
+  getIgDeviceRuntimeCache,
+  syncHashFieldsImmediate
+} from './igDeviceRuntimeCache';
+
+const OTA_ACTIVE_RELEASE_TTL_SEC = 2592000;
+const OTA_DEFERRED_LOG_TTL_MS = 86_400_000;
 
 // ─── Release validation (finalize / CI webhook) ─────────────────────────────
 
@@ -207,12 +215,11 @@ export interface OtaActiveRelease {
   keyFingerprint?: string;
 }
 
-/** Max members per SMISMEMBER call (arg-size / server-block safety). */
-export const SMISMEMBER_CHUNK_SIZE = 500;
-
-let loggedSMisMemberFallback = false;
-
 export class OtaRedisState {
+  private deferredLogUntil = new Map<string, number>();
+  private schedulerLockUntil = 0;
+  private stageAttemptedLocal = new Set<string>();
+
   constructor(
     private readonly getClient: () => RedisClientType | null,
     private readonly keyPrefix: string
@@ -222,24 +229,8 @@ export class OtaRedisState {
     return `${this.keyPrefix}ota:active_release`;
   }
 
-  private previousActiveReleaseKey(): string {
-    return `${this.keyPrefix}ota:previous_active_release`;
-  }
-
-  private pendingKey(version: string): string {
-    return `${this.keyPrefix}ota:pending:${version}`;
-  }
-
-  private deliveredKey(version: string): string {
-    return `${this.keyPrefix}ota:delivered:${version}`;
-  }
-
-  private stageAttemptedKey(version: string, percentage: number): string {
-    return `${this.keyPrefix}ota:stage:${version}:${percentage}:attempted`;
-  }
-
-  private deferredLogKey(deviceId: string): string {
-    return `${this.keyPrefix}ota:deferred:${deviceId}`;
+  private stageAttemptedLocalKey(version: string, percentage: number, deviceId: string): string {
+    return `${version}:${percentage}:${deviceId}`;
   }
 
   schedulerLockKey(): string {
@@ -250,41 +241,88 @@ export class OtaRedisState {
     return `${this.keyPrefix}ota:scheduler:last_run`;
   }
 
-  async setActiveRelease(release: OtaActiveRelease): Promise<void> {
+  private activeReleaseFromHash(hash: Record<string, string>): OtaActiveRelease | null {
+    if (!hash.version) return null;
+    return {
+      version: hash.version,
+      sha256: hash.sha256 || '',
+      signature: hash.signature || '',
+      objectKey: hash.objectKey || '',
+      sizeBytes: Number(hash.sizeBytes) || 0,
+      releasedAt: hash.released_at || hash.releasedAt || '',
+      ...(hash.keyFingerprint ? { keyFingerprint: hash.keyFingerprint } : {})
+    };
+  }
+
+  private async writeActiveReleaseHash(
+    client: RedisClientType,
+    release: OtaActiveRelease,
+    percentage?: string | number
+  ): Promise<void> {
+    const key = this.activeReleaseKey();
+    // Avoid WRONGTYPE if a legacy STRING key still exists.
+    await client.del(key);
+    const fields: Record<string, string> = {
+      version: release.version,
+      sha256: release.sha256,
+      signature: release.signature,
+      objectKey: release.objectKey,
+      sizeBytes: String(release.sizeBytes),
+      released_at: release.releasedAt,
+      percentage: percentage != null ? String(percentage) : '100',
+      firmware_url: ''
+    };
+    if (release.keyFingerprint) fields.keyFingerprint = release.keyFingerprint;
+    await client.hSet(key, fields);
+    await client.expire(key, OTA_ACTIVE_RELEASE_TTL_SEC);
+  }
+
+  async setActiveRelease(
+    release: OtaActiveRelease,
+    percentage?: string | number
+  ): Promise<void> {
+    void getLocalOtaFleetTracker().setActiveRelease(release.version);
+    if (percentage != null) {
+      void getLocalOtaFleetTracker().setRolloutPercentage(Number(percentage));
+    }
+
     const client = this.getClient();
     if (!client) {
       logger.warn('[OTA] Redis unavailable — skipping setActiveRelease');
       return;
     }
-    const current = await this.getActiveRelease();
-    if (current && current.version !== release.version) {
-      await client.set(this.previousActiveReleaseKey(), JSON.stringify(current), { EX: 2592000 });
-    }
-    await client.set(this.activeReleaseKey(), JSON.stringify(release), { EX: 2592000 });
+
+    await this.writeActiveReleaseHash(client, release, percentage);
   }
 
   async getActiveRelease(): Promise<OtaActiveRelease | null> {
     const client = this.getClient();
     if (!client) return null;
-    const raw = await client.get(this.activeReleaseKey());
-    if (!raw) return null;
+
     try {
-      return JSON.parse(raw) as OtaActiveRelease;
+      const hash = await client.hGetAll(this.activeReleaseKey());
+      if (hash && Object.keys(hash).length > 0) {
+        const parsed = this.activeReleaseFromHash(hash);
+        if (parsed) return parsed;
+      }
+    } catch {
+      // Legacy STRING key or wrong type — fall through to GET.
+    }
+
+    try {
+      const raw = await client.get(this.activeReleaseKey());
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as OtaActiveRelease;
+      await this.writeActiveReleaseHash(client, parsed).catch(() => undefined);
+      return parsed;
     } catch {
       return null;
     }
   }
 
   async getPreviousActiveRelease(): Promise<OtaActiveRelease | null> {
-    const client = this.getClient();
-    if (!client) return null;
-    const raw = await client.get(this.previousActiveReleaseKey());
-    if (!raw) return null;
-    try {
-      return JSON.parse(raw) as OtaActiveRelease;
-    } catch {
-      return null;
-    }
+    // Prefer Mongo lookup in OtaService; Redis previous mirror is no longer written.
+    return null;
   }
 
   async clearActiveRelease(): Promise<void> {
@@ -294,103 +332,58 @@ export class OtaRedisState {
   }
 
   /** Set active without copying current → previous (used on abort restore). */
-  async forceSetActiveRelease(release: OtaActiveRelease): Promise<void> {
+  async forceSetActiveRelease(
+    release: OtaActiveRelease,
+    percentage?: string | number
+  ): Promise<void> {
+    void getLocalOtaFleetTracker().setActiveRelease(release.version);
+    if (percentage != null) {
+      void getLocalOtaFleetTracker().setRolloutPercentage(Number(percentage));
+    }
+
     const client = this.getClient();
     if (!client) {
       logger.warn('[OTA] Redis unavailable — skipping forceSetActiveRelease');
       return;
     }
-    await client.set(this.activeReleaseKey(), JSON.stringify(release), { EX: 2592000 });
+
+    await this.writeActiveReleaseHash(client, release, percentage);
   }
 
   async seedPendingFleet(version: string, deviceIds: string[]): Promise<void> {
-    const client = this.getClient();
-    if (!client) return;
-    const key = this.pendingKey(version);
-    await client.del(key);
-    if (deviceIds.length === 0) return;
-    await client.sAdd(key, deviceIds);
-    await client.expire(key, 2592000);
+    getLocalOtaFleetTracker().seedPendingFleet(version, deviceIds);
   }
 
   async addPendingDevices(version: string, deviceIds: string[]): Promise<void> {
-    const client = this.getClient();
-    if (!client || deviceIds.length === 0) return;
-    const key = this.pendingKey(version);
-    await client.sAdd(key, deviceIds);
-    await client.expire(key, 2592000);
+    const fleet = getLocalOtaFleetTracker();
+    for (const id of deviceIds) {
+      await fleet.markPending(id, version, 0);
+    }
   }
 
   async clearPendingFleet(version: string): Promise<void> {
-    const client = this.getClient();
-    if (!client) return;
-    await client.del(this.pendingKey(version));
+    getLocalOtaFleetTracker().clearPendingFleet(version);
   }
 
   async isPending(deviceId: string, version: string): Promise<boolean> {
-    const client = this.getClient();
-    if (!client) return true;
-    return Boolean(await client.sIsMember(this.pendingKey(version), deviceId));
+    return getLocalOtaFleetTracker().isPending(deviceId, version);
   }
 
-  /**
-   * Batch filter of device IDs that are members of the pending set.
-   * Same as isPending(): when Redis is unavailable (!client), treat all as pending
-   * (fail open for OTA push — may attempt delivery to all online devices during outage).
-   */
+  /** Batch filter of device IDs that are members of the local pending set. */
   async filterPending(version: string, deviceIds: string[]): Promise<string[]> {
-    const client = this.getClient();
-    if (!client) return deviceIds;
-    if (deviceIds.length === 0) return [];
-
-    const key = this.pendingKey(version);
-    const pending: string[] = [];
-
-    const hasSMisMember = typeof (client as { smIsMember?: unknown }).smIsMember === 'function';
-    if (!hasSMisMember) {
-      if (!loggedSMisMemberFallback) {
-        loggedSMisMemberFallback = true;
-        logger.warn('[OTA] smIsMember unavailable — falling back to sequential sIsMember');
-      }
-      for (const id of deviceIds) {
-        if (await client.sIsMember(key, id)) pending.push(id);
-      }
-      return pending;
-    }
-
-    for (let i = 0; i < deviceIds.length; i += SMISMEMBER_CHUNK_SIZE) {
-      const chunk = deviceIds.slice(i, i + SMISMEMBER_CHUNK_SIZE);
-      const flags = await client.smIsMember(key, chunk);
-      for (let j = 0; j < chunk.length; j++) {
-        if (flags[j]) pending.push(chunk[j]);
-      }
-    }
-    return pending;
+    return getLocalOtaFleetTracker().filterPending(version, deviceIds);
   }
 
   async isDelivered(deviceId: string, version: string): Promise<boolean> {
-    const client = this.getClient();
-    if (!client) return false;
-    return Boolean(await client.sIsMember(this.deliveredKey(version), deviceId));
+    return getLocalOtaFleetTracker().isDelivered(deviceId, version);
   }
 
   async markDelivered(deviceId: string, version: string): Promise<void> {
-    const client = this.getClient();
-    if (!client) return;
-    const multi = client.multi();
-    multi.sRem(this.pendingKey(version), deviceId);
-    multi.sAdd(this.deliveredKey(version), deviceId);
-    multi.expire(this.deliveredKey(version), 2592000);
-    await multi.exec();
+    await getLocalOtaFleetTracker().markDelivered(deviceId, version);
   }
 
   async markPending(deviceId: string, version: string): Promise<void> {
-    const client = this.getClient();
-    if (!client) return;
-    const multi = client.multi();
-    multi.sAdd(this.pendingKey(version), deviceId);
-    multi.expire(this.pendingKey(version), 2592000);
-    await multi.exec();
+    await getLocalOtaFleetTracker().markPending(deviceId, version, 0);
   }
 
   /** Returns true if this is the first attempt recorded for device in this stage. */
@@ -399,43 +392,37 @@ export class OtaRedisState {
     percentage: number,
     deviceId: string
   ): Promise<boolean> {
-    const client = this.getClient();
-    if (!client) return true;
-    const key = this.stageAttemptedKey(version, percentage);
-    const multi = client.multi();
-    multi.sAdd(key, deviceId);
-    multi.expire(key, 2592000);
-    const res = await multi.exec();
-    const added = Array.isArray(res) ? res[0] : undefined;
-    return Number(added) === 1;
+    const key = this.stageAttemptedLocalKey(version, percentage, deviceId);
+    if (this.stageAttemptedLocal.has(key)) return false;
+    this.stageAttemptedLocal.add(key);
+    return true;
   }
 
   async clearStageAttempted(version: string, percentage: number): Promise<void> {
-    const client = this.getClient();
-    if (!client) return;
-    await client.del(this.stageAttemptedKey(version, percentage));
+    const prefix = `${version}:${percentage}:`;
+    for (const key of [...this.stageAttemptedLocal]) {
+      if (key.startsWith(prefix)) this.stageAttemptedLocal.delete(key);
+    }
   }
 
   /** Returns true if we should emit OTA_CATCHUP_DEFERRED (first time in 24h). */
   async shouldLogCatchupDeferred(deviceId: string): Promise<boolean> {
-    const client = this.getClient();
-    if (!client) return true;
-    const key = this.deferredLogKey(deviceId);
-    const set = await client.set(key, String(Date.now()), { NX: true, EX: 86400 });
-    return set === 'OK';
+    const now = Date.now();
+    const until = this.deferredLogUntil.get(deviceId) ?? 0;
+    if (now < until) return false;
+    this.deferredLogUntil.set(deviceId, now + OTA_DEFERRED_LOG_TTL_MS);
+    return true;
   }
 
   async tryAcquireSchedulerLock(ttlSec: number): Promise<boolean> {
-    const client = this.getClient();
-    if (!client) return true;
-    const set = await client.set(this.schedulerLockKey(), '1', { NX: true, EX: ttlSec });
-    return set === 'OK';
+    const now = Date.now();
+    if (now < this.schedulerLockUntil) return false;
+    this.schedulerLockUntil = now + Math.max(1, ttlSec) * 1000;
+    return true;
   }
 
   async releaseSchedulerLock(): Promise<void> {
-    const client = this.getClient();
-    if (!client) return;
-    await client.del(this.schedulerLockKey());
+    this.schedulerLockUntil = 0;
   }
 
   async markSchedulerRun(now = new Date()): Promise<void> {
@@ -1089,15 +1076,18 @@ export class OtaService {
       const releasedAtIso = input.releasedAt || now.toISOString();
 
       if (this.otaRedisState) {
-        await this.otaRedisState.setActiveRelease({
-          version: release.version,
-          sha256: release.sha256,
-          signature: release.signature,
-          objectKey,
-          sizeBytes: release.sizeBytes,
-          releasedAt: releasedAtIso,
-          keyFingerprint
-        });
+        await this.otaRedisState.setActiveRelease(
+          {
+            version: release.version,
+            sha256: release.sha256,
+            signature: release.signature,
+            objectKey,
+            sizeBytes: release.sizeBytes,
+            releasedAt: releasedAtIso,
+            keyFingerprint
+          },
+          percentage
+        );
         await this.otaRedisState.clearStageAttempted(version, percentage);
 
         const eligibleIds = await this.listRolloutEligibleDeviceIds(release);
@@ -1372,7 +1362,33 @@ export class OtaService {
 
     const prevVersion = aborted.previousVersion;
     if (!prevVersion) {
+      // Fall back to previous STABLE in Mongo when previousVersion unset.
+      const prevStable = await FirmwareRelease.findOne({
+        status: FirmwareReleaseStatus.STABLE,
+        version: { $ne: aborted.version }
+      })
+        .sort({ releasedAt: -1, createdAt: -1 })
+        .lean();
+      if (!prevStable) {
+        await this.otaRedisState.clearActiveRelease();
+        return;
+      }
+      const keyFingerprint = this.otaConfig.signingPublicKeyPem
+        ? computeSigningKeyFingerprint(this.otaConfig.signingPublicKeyPem)
+        : undefined;
       await this.otaRedisState.clearActiveRelease();
+      await this.otaRedisState.forceSetActiveRelease(
+        {
+          version: prevStable.version,
+          sha256: prevStable.sha256,
+          signature: prevStable.signature,
+          objectKey: prevStable.objectKey || prevStable.s3Key || '',
+          sizeBytes: prevStable.sizeBytes,
+          releasedAt: (prevStable.releasedAt || prevStable.createdAt || new Date()).toISOString(),
+          keyFingerprint
+        },
+        prevStable.currentPercentage ?? prevStable.rollout?.percentage ?? 100
+      );
       return;
     }
 
@@ -1382,6 +1398,7 @@ export class OtaService {
       : undefined;
 
     let restored: OtaActiveRelease | null = null;
+    let restoredPct: number | undefined;
     if (prev) {
       restored = {
         version: prev.version,
@@ -1392,14 +1409,12 @@ export class OtaService {
         releasedAt: (prev.releasedAt || prev.createdAt || new Date()).toISOString(),
         keyFingerprint
       };
-    } else {
-      const cached = await this.otaRedisState.getPreviousActiveRelease();
-      if (cached?.version === prevVersion) restored = cached;
+      restoredPct = prev.currentPercentage ?? prev.rollout?.percentage ?? 100;
     }
 
     await this.otaRedisState.clearActiveRelease();
     if (restored) {
-      await this.otaRedisState.forceSetActiveRelease(restored);
+      await this.otaRedisState.forceSetActiveRelease(restored, restoredPct);
     }
   }
 
@@ -1477,6 +1492,8 @@ export class OtaService {
       return;
     }
 
+    await this.syncLocalOtaFleetActiveDevices();
+
     if (!this.matchesRollout(release, device, deviceId)) {
       if (await this.otaRedisState.shouldLogCatchupDeferred(deviceId)) {
         logger.info('OTA_CATCHUP_DEFERRED', {
@@ -1498,6 +1515,18 @@ export class OtaService {
 
     await this.commandPublisher.publishUpdateToDevice(deviceId, offer, false);
     await this.recordStageAttempt(release, deviceId);
+
+    const deliveredAt = Date.now();
+    getIgDeviceRuntimeCache().set(deviceId, {
+      otaStatus: 'delivered',
+      otaTargetVersion: active.version,
+      otaDeliveredAt: deliveredAt
+    });
+    await syncHashFieldsImmediate(deviceId, {
+      ota_status: 'delivered',
+      ota_target_version: active.version,
+      ota_delivered_at: String(deliveredAt)
+    });
   }
 
   async getLatestStableOffer(deviceId: string): Promise<OtaUpdateOffer | null> {
@@ -1525,6 +1554,8 @@ export class OtaService {
   }
 
   private async listRolloutEligibleDeviceIds(release: IFirmwareRelease): Promise<string[]> {
+    await this.syncLocalOtaFleetActiveDevices();
+
     const devices = await Device.find({
       status: { $in: [DeviceStatus.PROVISIONED, DeviceStatus.ACTIVE, DeviceStatus.OFFLINE] }
     }).select({ clientId: 1, userId: 1, status: 1, otaBlockedVersions: 1 });
@@ -1541,6 +1572,15 @@ export class OtaService {
     return out;
   }
 
+  private async syncLocalOtaFleetActiveDevices(): Promise<void> {
+    const online = await getActiveDeviceCache().getAllActive();
+    const registeredAt = new Map(online.map((d) => [d.deviceId, d.lastSeen || 0]));
+    getLocalOtaFleetTracker().setActiveDevices(
+      online.map((d) => d.deviceId),
+      registeredAt
+    );
+  }
+
   private async pushReleaseToOnlineDevices(version: string): Promise<number> {
     if (!this.commandPublisher) return 0;
 
@@ -1552,6 +1592,11 @@ export class OtaService {
     if (!release) return 0;
 
     const online = await getActiveDeviceCache().getAllActive();
+    const registeredAt = new Map(online.map((d) => [d.deviceId, d.lastSeen || 0]));
+    getLocalOtaFleetTracker().setActiveDevices(
+      online.map((d) => d.deviceId),
+      registeredAt
+    );
     const onlineIds = online.map((d) => d.deviceId);
 
     const candidates = this.otaRedisState
@@ -1575,6 +1620,18 @@ export class OtaService {
 
       await this.commandPublisher!.publishUpdateToDevice(deviceId, offer, false);
       await this.recordStageAttempt(release, deviceId);
+
+      const deliveredAt = Date.now();
+      getIgDeviceRuntimeCache().set(deviceId, {
+        otaStatus: 'delivered',
+        otaTargetVersion: version,
+        otaDeliveredAt: deliveredAt
+      });
+      await syncHashFieldsImmediate(deviceId, {
+        ota_status: 'delivered',
+        ota_target_version: version,
+        ota_delivered_at: String(deliveredAt)
+      });
       pushed++;
     });
 
@@ -1651,8 +1708,9 @@ export class OtaService {
       }
       case FirmwareRolloutStrategy.PERCENTAGE: {
         if (pct >= 100) return true;
-        if (allowlist.includes(deviceId)) return true;
-        return deviceHashBucket(deviceId) < pct;
+        const fleet = getLocalOtaFleetTracker();
+        const targets = fleet.getDevicesForRollout(pct, release.version);
+        return allowlist.includes(deviceId) || targets.includes(deviceId);
       }
       case FirmwareRolloutStrategy.ALL:
       default:
@@ -1814,6 +1872,16 @@ export class OtaService {
         }
       }
     );
+
+    getIgDeviceRuntimeCache().set(deviceId, {
+      otaStatus: 'succeeded',
+      otaCurrentVersion: version,
+      otaTargetVersion: undefined
+    });
+    await syncHashFieldsImmediate(deviceId, {
+      ota_status: 'succeeded',
+      ota_current_version: version
+    });
   }
 
   /** Pilot: success when next boot reports fw_version matching pending target or active release. */
