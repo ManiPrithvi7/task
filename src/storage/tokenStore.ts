@@ -394,6 +394,22 @@ export class TokenStore {
   }
 
   /**
+   * Scan Redis keys matching pattern (non-blocking alternative to KEYS).
+   */
+  private async scanKeyCount(pattern: string): Promise<number> {
+    const redis = this.getRedis();
+    if (!redis) return 0;
+    let cursor = 0;
+    let count = 0;
+    do {
+      const result = await redis.scan(cursor, { MATCH: pattern, COUNT: 100 });
+      cursor = typeof result.cursor === 'number' ? result.cursor : Number(result.cursor);
+      count += result.keys.length;
+    } while (cursor !== 0);
+    return count;
+  }
+
+  /**
    * Get statistics
    */
   async getStats(): Promise<{
@@ -406,12 +422,11 @@ export class TokenStore {
       const redis = this.getRedis();
 
       if (redis) {
-        // Use Redis
-      const tokenKeys = await redis.keys(`${this.TOKEN_PREFIX}*`);
-      const deviceKeys = await redis.keys(`${this.DEVICE_PREFIX}*`);
-      return {
-        tokenCount: tokenKeys.length,
-        deviceCount: deviceKeys.length,
+        const tokenCount = await this.scanKeyCount(`${this.TOKEN_PREFIX}*`);
+        const deviceCount = await this.scanKeyCount(`${this.DEVICE_PREFIX}*`);
+        return {
+          tokenCount,
+          deviceCount,
           connected: true,
           storage: 'redis'
         };

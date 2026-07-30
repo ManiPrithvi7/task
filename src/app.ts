@@ -42,6 +42,8 @@ import {
   igPollMetricsInc,
   type InstagramFetchInvoker
 } from './services/instagramService';
+import { getIgDeviceRuntimeCache, writeDeviceHashOnConnect, markDeviceHashInactive } from './services/igDeviceRuntimeCache';
+import { getRedisSyncService } from './services/redisSync';
 import { SessionService } from './services/sessionService';
 import { Device, type IDevice } from './models/Device';
 import { DeviceCertificate, DeviceCertificateStatus } from './models/DeviceCertificate';
@@ -174,8 +176,8 @@ export class StatsMqttLite {
     if (!client) return;
     try {
       const multi = client.multi();
-      multi.sAdd('proof.mqtt:active:devices', deviceId);
-      multi.expire('proof.mqtt:active:devices', 604800);
+      multi.sAdd(REDIS_KEYS.activeDevices, deviceId);
+      multi.expire(REDIS_KEYS.activeDevices, 604800);
       await multi.exec();
     } catch (err: unknown) {
       logger.debug('Redis: failed to add device to active set', {
@@ -190,9 +192,9 @@ export class StatsMqttLite {
     if (!client) return;
     try {
       const multi = client.multi();
-      multi.sRem('proof.mqtt:active:devices', deviceId);
-      multi.del(`proof.mqtt:device:${deviceId}`);
+      multi.sRem(REDIS_KEYS.activeDevices, deviceId);
       await multi.exec();
+      await markDeviceHashInactive(deviceId);
     } catch (err: unknown) {
       logger.debug('Redis: failed to remove device keys', {
         deviceId,
@@ -532,6 +534,7 @@ export class StatsMqttLite {
         keyPrefix: this.config.redis.keyPrefix,
         mode: 'cloud-persistent'
       });
+      getRedisSyncService().start(this.redisService.getClient());
     } catch (error: any) {
       logger.error('❌ Failed to connect to Redis', {
         error: error.message,
@@ -656,7 +659,12 @@ export class StatsMqttLite {
       priorityAbsoluteMaxFutureMs: igPoll.priorityAbsoluteMaxFutureMs,
       backgroundCapPerCycle: igPoll.backgroundCapPerCycle,
       backgroundFairRotate: igPoll.backgroundFairRotate,
-      globalFetchBudgetPerMinute: igPoll.globalFetchBudgetPerMinute
+      globalFetchBudgetPerMinute: igPoll.globalFetchBudgetPerMinute,
+      useLocalCircuit: igPoll.useLocalCircuit,
+      useLocalBackoff: igPoll.useLocalBackoff,
+      useLocalBudget: igPoll.useLocalBudget,
+      useLocalDedupe: igPoll.useLocalDedupe,
+      useLocalFairOffset: igPoll.useLocalFairOffset
     });
 
     await this.instagramPoller.start();
@@ -692,6 +700,7 @@ export class StatsMqttLite {
     };
   }
 
+  /** Stub for future power-save wiring — if enabled, gate Redis SET with local state (23h re-SET). */
   private async setDevicePowerSaveFlag(deviceId: string): Promise<void> {
     if (!this.redisService?.isRedisConnected()) return;
     try {
@@ -1496,26 +1505,28 @@ export class StatsMqttLite {
       const client = this.getRedisClientOrNull();
       if (!client) return;
 
-      try {
-        const deviceMetaKey = `proof.mqtt:device:${deviceId}`;
-        if (igFromSocial) {
-          await client.set(
-            deviceMetaKey,
-            JSON.stringify({
-              instagramAccountId: igFromSocial.socialAccountId,
-              accessToken: igFromSocial.accessToken,
-              tokenExpiresAt: igFromSocial.tokenExp || undefined
-            }),
-            { EX: 604800 }
-          );
-        } else {
-          await client.del(deviceMetaKey);
+      const hashFields: Record<string, string> = {
+        userId: mongoUserId ?? '',
+        status: 'active',
+        power_save: '0',
+        ig_follower_count: String(getIgDeviceRuntimeCache().getFollowers(deviceId) ?? 0),
+        gmb_review_count: String(getIgDeviceRuntimeCache().getGmbReviewCount(deviceId) ?? 0),
+        gmb_profile_id: '',
+        gmb_accessToken: ''
+      };
+      if (igFromSocial) {
+        hashFields.ig_accountId = igFromSocial.socialAccountId;
+        hashFields.ig_accessToken = igFromSocial.accessToken;
+        await writeDeviceHashOnConnect(deviceId, hashFields);
+      } else {
+        try {
+          await client.del(REDIS_KEYS.deviceHash(deviceId));
+        } catch (err: unknown) {
+          logger.debug('Redis: failed to clear device hash (no IG)', {
+            deviceId,
+            error: err instanceof Error ? err.message : String(err)
+          });
         }
-      } catch (err: unknown) {
-        logger.debug('Redis: failed to sync proof.mqtt:device meta', {
-          deviceId,
-          error: err instanceof Error ? err.message : String(err)
-        });
       }
     } catch (err: unknown) {
       logger.error('❌ [LIFECYCLE:CACHE] Failed to cache active device', {
@@ -1604,9 +1615,6 @@ export class StatsMqttLite {
         const client = this.redisService.getClient();
         const multi = client.multi();
         multi.zRem(REDIS_KEYS.priorityZset, deviceId);
-        multi.del(REDIS_KEYS.deviceFetchHistory(deviceId));
-        multi.del(REDIS_KEYS.deviceFollowers(deviceId));
-        multi.del(`instagram:pending:${deviceId}`);
         await multi.exec();
       }
     } catch (err: unknown) {
@@ -2164,6 +2172,11 @@ export class StatsMqttLite {
       // Stop Instagram poller
       if (this.instagramPoller) {
         this.instagramPoller.stop();
+      }
+
+      if (this.redisService?.isRedisConnected()) {
+        getRedisSyncService().stop();
+        await getRedisSyncService().flush(this.redisService.getClient());
       }
 
       // TEMP STIMULATE — remove after testing

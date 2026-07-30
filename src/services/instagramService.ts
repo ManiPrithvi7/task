@@ -30,9 +30,31 @@ import {
 } from '../lib/socials/instagramMetrics';
 import { ensureFreshInstagramAccessToken } from '../lib/socials/instagramTokenRefresh';
 import { buildInstagramScreenPayload, buildScreenEnvelope, getInstagramMegaCrossedMilestones } from './screenEnvelope';
+import { REDIS_KEYS } from '../constants/redisKeys';
+import {
+  LocalBudgetTracker,
+  LocalCircuitGate,
+  LocalDeviceBackoff,
+  LocalFetchDedupe,
+  consumeFetchBudget,
+  type CircuitGate,
+  type DeviceBackoff,
+  type FetchDedupe,
+  type BudgetTracker
+} from './igPollCoordination';
+import {
+  getIgDeviceRuntimeCache,
+  syncScreenFieldImmediate
+} from './igDeviceRuntimeCache';
 
-const igLocalFollowersCache = new Map<string, number>();
-const igLocalLastPublishMs = new Map<string, number>();
+export { REDIS_KEYS };
+
+let sharedCircuitGate: CircuitGate | null = null;
+
+function getOutcomeCircuitGate(client: RedisClientType): CircuitGate {
+  if (sharedCircuitGate) return sharedCircuitGate;
+  return getCircuitBreaker(client);
+}
 
 const getCircuitBreaker = (() => {
   let instance: InstagramCircuitBreaker | null = null;
@@ -167,17 +189,6 @@ export function getInstagramPollingMetricsSnapshot(): Record<string, unknown> {
 // ============================================================
 // Redis keys + Lua atomics (instagramPollingLua.ts)
 // ============================================================
-
-export const REDIS_KEYS = {
-  priorityZset: 'priority_zset',
-  circuitBlockedUntil: 'instagram:circuit:blocked_until',
-  deviceFollowers: (deviceId: string) => `device:followers:${deviceId}`,
-  deviceFetchHistory: (deviceId: string) => `device:fetch_history:${deviceId}`,
-  /** Firmware/device deferred background polling (Phase G); TTL refreshed on MQTT /active payload. */
-  igPowerSave: (deviceId: string) => `ig:power_save:${deviceId}`,
-  /** Round-robin cursor for background device fairness (Phase C). */
-  backgroundFairnessOffset: 'ig:bg:fair_offset'
-} as const;
 
 export const atomicPriorityReadAndPruneLua = `
 local active = redis.call('ZRANGEBYSCORE', KEYS[1], ARGV[1], '+inf')
@@ -678,44 +689,16 @@ export async function publishInstagramScreenIfChanged(
   let forceHeartbeat = false;
   let unchanged = false;
 
-  const redisSvc = getRedisService();
-  if (redisSvc?.isRedisConnected()) {
-    try {
-      const client = redisSvc.getClient();
-      const cacheKey = `device:followers:${deviceId}`;
-      const cachedRaw = await client.get(cacheKey);
-      const cached = cachedRaw !== null ? parseInt(cachedRaw, 10) : null;
-      const next = result.data.followers_count;
+  const runtime = getIgDeviceRuntimeCache();
+  const next = result.data.followers_count;
+  const cached = runtime.getFollowers(deviceId);
+  const lastPubMs = runtime.getLastPub(deviceId);
+  forceHeartbeat = !lastPubMs || (nowMs - lastPubMs) > HEARTBEAT_MS;
+  unchanged = typeof cached === 'number' && cached === next;
 
-      const lastPubKey = `ig:last_pub:${deviceId}`;
-      const lastPubRaw = await client.get(lastPubKey);
-      const lastPubMs = lastPubRaw ? parseInt(lastPubRaw, 10) : 0;
-      forceHeartbeat = !lastPubMs || Number.isNaN(lastPubMs) || (nowMs - lastPubMs) > HEARTBEAT_MS;
-
-      unchanged = typeof cached === 'number' && !Number.isNaN(cached) && cached === next;
-      if (unchanged && !forceHeartbeat) {
-        logger.debug('[IG_SCREEN] No follower change, skip MQTT', { deviceId, followers: next });
-        return;
-      }
-    } catch (err: unknown) {
-      logger.warn('[IG_SCREEN] Change detection failed (continuing)', {
-        deviceId,
-        error: err instanceof Error ? err.message : String(err)
-      });
-    }
-  } else {
-    // Fallback when Redis isn't available: still avoid spamming unchanged values.
-    const next = result.data.followers_count;
-    const prev = igLocalFollowersCache.get(deviceId);
-    unchanged = typeof prev === 'number' && prev === next;
-
-    const lastPubMs = igLocalLastPublishMs.get(deviceId) ?? 0;
-    forceHeartbeat = !lastPubMs || (nowMs - lastPubMs) > HEARTBEAT_MS;
-
-    if (unchanged && !forceHeartbeat) {
-      logger.debug('[IG_SCREEN] No follower change (local), skip MQTT', { deviceId, followers: next });
-      return;
-    }
+  if (unchanged && !forceHeartbeat) {
+    logger.debug('[IG_SCREEN] No follower change, skip MQTT', { deviceId, followers: next });
+    return;
   }
 
   const cache = getActiveDeviceCache();
@@ -757,22 +740,9 @@ export async function publishInstagramScreenIfChanged(
       }
     }
 
-    // Update "last published" markers only after successful publish.
-    if (redisSvc?.isRedisConnected()) {
-      try {
-        const client = redisSvc.getClient();
-        await client.set(`device:followers:${deviceId}`, String(result.data.followers_count), { EX: 86400 });
-        await client.set(`ig:last_pub:${deviceId}`, String(nowMs), { EX: 86400 });
-      } catch (e: unknown) {
-        logger.debug('[IG_SCREEN] Redis publish markers update failed (ignored)', {
-          deviceId,
-          error: e instanceof Error ? e.message : String(e)
-        });
-      }
-    } else {
-      igLocalFollowersCache.set(deviceId, result.data.followers_count);
-      igLocalLastPublishMs.set(deviceId, nowMs);
-    }
+    runtime.setFollowers(deviceId, result.data.followers_count);
+    runtime.setLastPub(deviceId, nowMs);
+    void syncScreenFieldImmediate(deviceId, 'ig_follower_count', result.data.followers_count);
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);
     logger.error('[IG_SCREEN] MQTT publish failed', { deviceId, error: errMsg });
@@ -833,23 +803,15 @@ export type NormalizedDeviceFetchResult = {
 };
 
 async function readCachedFollowers(deviceId: string): Promise<number | null> {
-  const redisSvc = getRedisService();
-  if (!redisSvc?.isRedisConnected()) return null;
-  try {
-    const raw = await redisSvc.getClient().get(REDIS_KEYS.deviceFollowers(deviceId));
-    if (raw === null) return null;
-    const n = parseInt(raw, 10);
-    return Number.isNaN(n) ? null : n;
-  } catch {
-    return null;
-  }
+  const n = getIgDeviceRuntimeCache().getFollowers(deviceId);
+  return n !== undefined ? n : null;
 }
 
 async function maybeOpenCircuitFromOutcome(row: NormalizedDeviceFetchResult): Promise<void> {
   try {
     const redisSvc = getRedisService();
     if (!redisSvc?.isRedisConnected()) return;
-    const breaker = getCircuitBreaker(redisSvc.getClient());
+    const breaker = getOutcomeCircuitGate(redisSvc.getClient());
 
     if (!row.success && row.http_status === 429 && row.retry_after_seconds != null) {
       const secs = Math.max(1, Math.floor(row.retry_after_seconds));
@@ -1130,7 +1092,7 @@ async function maybeApplyGlobalCircuit(body: unknown): Promise<void> {
   try {
     const redisSvc = getRedisService();
     if (!redisSvc?.isRedisConnected()) return;
-    const breaker = getCircuitBreaker(redisSvc.getClient());
+    const breaker = getOutcomeCircuitGate(redisSvc.getClient());
     await breaker.open(Math.ceil(secs), 'serverless_circuit_open');
     logger.warn('[IG_SERVERLESS] Circuit opened from response payload', { seconds: secs });
   } catch {
@@ -1202,7 +1164,7 @@ export class InstagramServerlessBridge implements InstagramFetchInvoker {
       try {
         const redisSvc = getRedisService();
         if (redisSvc?.isRedisConnected()) {
-          await new InstagramCircuitBreaker(redisSvc.getClient()).open(retryAfter, 'http_429');
+          await getOutcomeCircuitGate(redisSvc.getClient()).open(retryAfter, 'http_429');
         }
       } catch {
         /* ignore */
@@ -1254,8 +1216,6 @@ export class InstagramServerlessBridge implements InstagramFetchInvoker {
 // Direct fetch invoker (instagramDirectFetchInvoker.ts)
 // ============================================================
 
-const DEVICE_META_KEY_PREFIX = 'proof.mqtt:device:';
-
 interface ResolvedMeta {
   instagramAccountId: string;
   accessToken: string;
@@ -1306,49 +1266,8 @@ function toNormalizedRow(deviceId: string, result: InstagramFetchResult): Normal
   return row;
 }
 
-async function loadMetaFromRedis(deviceId: string): Promise<ResolvedMeta | null> {
-  const redisSvc = getRedisService();
-  if (!redisSvc?.isRedisConnected()) return null;
-  try {
-    const raw = await redisSvc.getClient().get(`${DEVICE_META_KEY_PREFIX}${deviceId}`);
-    if (!raw) return null;
-    const o = JSON.parse(raw) as Record<string, unknown>;
-    const instagramAccountId = typeof o.instagramAccountId === 'string' ? o.instagramAccountId.trim() : '';
-    const accessToken = typeof o.accessToken === 'string' ? o.accessToken.trim() : '';
-    if (!instagramAccountId || !accessToken) return null;
-    const userId =
-      typeof o.userId === 'string'
-        ? o.userId.trim()
-        : typeof o.user_id === 'string'
-          ? o.user_id.trim()
-          : undefined;
-    return { instagramAccountId, accessToken, ...(userId ? { userId } : {}) };
-  } catch {
-    return null;
-  }
-}
-
 async function resolveDeviceMeta(deviceId: string): Promise<ResolvedMeta | null> {
-  const fromRedis = await loadMetaFromRedis(deviceId);
-  if (fromRedis) {
-    if (!fromRedis.userId) {
-      const local = await loadMetaFromLocalCache(deviceId);
-      if (local?.userId) {
-        fromRedis.userId = local.userId;
-      }
-    }
-    return fromRedis;
-  }
-  return loadMetaFromLocalCache(deviceId);
-}
-
-async function loadMetaFromLocalCache(deviceId: string): Promise<ResolvedMeta | null> {
-  const ad = await getActiveDeviceCache().getActive(deviceId);
-  if (!ad) return null;
-  const instagramAccountId = ad.instagramAccountId?.trim() || '';
-  const accessToken = ad.accessToken?.trim() || '';
-  if (!instagramAccountId || !accessToken) return null;
-  return { instagramAccountId, accessToken, userId: ad.userId };
+  return getIgDeviceRuntimeCache().resolveMeta(deviceId);
 }
 
 export class InstagramDirectFetchInvoker implements InstagramFetchInvoker {
@@ -1454,6 +1373,11 @@ export interface InstagramPollerConfig {
   backgroundCapPerCycle: number;
   backgroundFairRotate: boolean;
   globalFetchBudgetPerMinute: number;
+  useLocalCircuit: boolean;
+  useLocalBackoff: boolean;
+  useLocalBudget: boolean;
+  useLocalDedupe: boolean;
+  useLocalFairOffset: boolean;
 }
 
 export class InstagramPoller {
@@ -1461,14 +1385,70 @@ export class InstagramPoller {
   private backgroundTimer: NodeJS.Timeout | null = null;
   private running = false;
   private scriptsReady = false;
-  private circuit: InstagramCircuitBreaker;
+  private readonly circuitGate: CircuitGate;
+  private readonly backoff: DeviceBackoff;
+  private readonly budget: BudgetTracker;
+  private readonly dedupe: FetchDedupe;
+  private localFairStart = 0;
 
   constructor(
     private readonly fetchInvoker: InstagramFetchInvoker | null,
     private readonly redisService: RedisService,
     private readonly config: InstagramPollerConfig
   ) {
-    this.circuit = new InstagramCircuitBreaker(this.redisService.getClient());
+    const redis = this.redisService.getClient();
+    const redisBreaker = new InstagramCircuitBreaker(redis);
+    this.circuitGate = config.useLocalCircuit
+      ? new LocalCircuitGate()
+      : redisBreaker;
+    if (config.useLocalCircuit) {
+      sharedCircuitGate = this.circuitGate;
+    }
+    this.backoff = config.useLocalBackoff
+      ? new LocalDeviceBackoff(config.backoffThreshold, config.backoffWindowMs)
+      : {
+          shouldAllow: (deviceId) =>
+            evalAtomicBackoffCheckAndRecordEvalSha(
+              redis,
+              deviceId,
+              Date.now(),
+              crypto.randomUUID(),
+              config.backoffThreshold,
+              config.backoffWindowMs
+            ),
+          recordSuccess: async () => {},
+          recordError: async () => {}
+        };
+    this.budget = config.useLocalBudget
+      ? new LocalBudgetTracker()
+      : {
+          recordCall: async () => {},
+          isExhausted: async (limit) => {
+            if (!limit || limit <= 0) return false;
+            const slot = Math.floor(Date.now() / 60_000);
+            const key = REDIS_KEYS.globalFetchBudget(slot);
+            const ok = await evalAtomicFetchBudgetTryEvalSha(redis, key, limit);
+            return !ok;
+          }
+        };
+    this.dedupe = config.useLocalDedupe
+      ? new LocalFetchDedupe()
+      : {
+          tryAcquire: async (deviceId, windowMs) => {
+            if (!windowMs || windowMs <= 0) return true;
+            try {
+              const ok = await redis.set(REDIS_KEYS.fetchDedupe(deviceId), '1', { PX: windowMs, NX: true });
+              if (ok === null) {
+                igPollMetricsInc('fetchesDeduped');
+                return false;
+              }
+              return true;
+            } catch {
+              igPollMetricsInc('fetchDedupeRedisErrors');
+              return true;
+            }
+          }
+        };
   }
 
   async start(): Promise<void> {
@@ -1564,28 +1544,20 @@ export class InstagramPoller {
         logger.info('[STIM_SKIP] Instagram immediate fetch skipped for stim device', { deviceId, trigger });
         return false;
       }
-      if (await this.circuit.isOpen()) return false;
+      if (await this.circuitGate.isOpen()) return false;
 
-      const redis = this.redisService.getClient();
-      const allowed = await evalAtomicBackoffCheckAndRecordEvalSha(
-        redis,
-        deviceId,
-        Date.now(),
-        crypto.randomUUID(),
-        this.config.backoffThreshold,
-        this.config.backoffWindowMs
-      );
+      const allowed = await this.backoff.shouldAllow(deviceId);
       if (!allowed) {
         igPollMetricsInc('attentionImmediateBackoffSkip');
         return false;
       }
 
-      if (!(await this.reserveFetchDedupe(deviceId))) {
-        igPollMetricsInc('attentionImmediateBackoffSkip');
+      if (!(await this.dedupe.tryAcquire(deviceId, this.config.fetchDedupeWindowMs))) {
         return false;
       }
 
-      if (!(await this.consumeGlobalFetchBudget())) {
+      if (!(await consumeFetchBudget(this.budget, this.config.globalFetchBudgetPerMinute))) {
+        igPollMetricsInc('fetchBudgetRejects');
         return false;
       }
 
@@ -1619,59 +1591,10 @@ export class InstagramPoller {
     return this.scriptsReady;
   }
 
-  private async reserveFetchDedupe(deviceId: string): Promise<boolean> {
-    const w = this.config.fetchDedupeWindowMs;
-    if (!w || w <= 0) return true;
-    try {
-      const key = `ig:fetch_dedupe:${deviceId}`;
-      const ok = await this.redisService.getClient().set(key, '1', { PX: w, NX: true });
-      if (ok === null) {
-        igPollMetricsInc('fetchesDeduped');
-        return false;
-      }
-      return true;
-    } catch (err: unknown) {
-      igPollMetricsInc('fetchDedupeRedisErrors');
-      logger.debug('[IG_POLLER] reserveFetchDedupe failed (dedupe disabled for this device)', {
-        deviceId,
-        error: err instanceof Error ? err.message : String(err)
-      });
-      return true;
-    }
-  }
-
-  private async consumeGlobalFetchBudget(): Promise<boolean> {
-    const limit = this.config.globalFetchBudgetPerMinute;
-    if (!limit || limit <= 0) return true;
-    try {
-      const slot = Math.floor(Date.now() / 60_000);
-      const key = `ig:poll:global_fetch_budget:${slot}`;
-      const ok = await evalAtomicFetchBudgetTryEvalSha(this.redisService.getClient(), key, limit);
-      if (!ok) {
-        igPollMetricsInc('fetchBudgetRejects');
-        return false;
-      }
-      return true;
-    } catch {
-      return true;
-    }
-  }
-
-  private async filterOutPowerSave(deviceIds: string[]): Promise<string[]> {
+  private filterOutPowerSave(deviceIds: string[]): string[] {
     if (deviceIds.length === 0) return [];
-    try {
-      const m = this.redisService.getClient().multi();
-      deviceIds.forEach((id) => m.exists(REDIS_KEYS.igPowerSave(id)));
-      const res = await m.exec();
-      const flags = (Array.isArray(res) ? res : []) as Array<number | null | undefined>;
-      return deviceIds.filter((_, i) => (typeof flags[i] === 'number' ? flags[i] : 0) === 0);
-    } catch (err: unknown) {
-      logger.debug('[IG_POLLER] filterOutPowerSave pipeline failed (treat all as not power-save)', {
-        error: err instanceof Error ? err.message : String(err),
-        count: deviceIds.length
-      });
-      return deviceIds;
-    }
+    const runtime = getIgDeviceRuntimeCache();
+    return deviceIds.filter((id) => !runtime.getPowerSave(id));
   }
 
   private async takeBackgroundWindow(deviceIds: string[]): Promise<string[]> {
@@ -1685,25 +1608,34 @@ export class InstagramPoller {
       return sorted.slice(0, limit);
     }
 
-    const redis = this.redisService.getClient();
     let start = 0;
-    try {
-      const raw = await redis.get(REDIS_KEYS.backgroundFairnessOffset);
-      if (raw) start = (parseInt(raw, 10) % n + n) % n;
-    } catch {
-      /* ignore */
+    if (this.config.useLocalFairOffset) {
+      start = (this.localFairStart % n + n) % n;
+    } else {
+      const redis = this.redisService.getClient();
+      try {
+        const raw = await redis.get(REDIS_KEYS.backgroundFairnessOffset);
+        if (raw) start = (parseInt(raw, 10) % n + n) % n;
+      } catch {
+        /* ignore */
+      }
     }
 
     const rotated = start ? [...sorted.slice(start), ...sorted.slice(0, start)] : sorted;
     const windowIds = rotated.slice(0, limit);
 
-    try {
-      const advance = cap > 0 ? Math.min(cap, n) : n;
-      const nextStart = (start + advance) % Math.max(1, n);
-      await redis.set(REDIS_KEYS.backgroundFairnessOffset, String(nextStart));
+    const advance = cap > 0 ? Math.min(cap, n) : n;
+    const nextStart = (start + advance) % Math.max(1, n);
+    if (this.config.useLocalFairOffset) {
+      this.localFairStart = nextStart;
       igPollMetricsInc('backgroundFairRotateCycles');
-    } catch {
-      /* ignore */
+    } else {
+      try {
+        await this.redisService.getClient().set(REDIS_KEYS.backgroundFairnessOffset, String(nextStart));
+        igPollMetricsInc('backgroundFairRotateCycles');
+      } catch {
+        /* ignore */
+      }
     }
 
     return windowIds;
@@ -1757,7 +1689,7 @@ export class InstagramPoller {
 
     try {
       igPollMetricsInc('priorityCycles');
-      if (await this.circuit.isOpen()) {
+      if (await this.circuitGate.isOpen()) {
         logger.debug('[IG_POLLER] Circuit open, skipping priority cycle');
         igPollMetricsInc('circuitOpenSkips');
         return;
@@ -1785,27 +1717,21 @@ export class InstagramPoller {
       }
 
       const eligible: string[] = [];
-      const nowMs = Date.now();
 
       for (const deviceId of active) {
-        const allowed = await evalAtomicBackoffCheckAndRecordEvalSha(
-          redis,
-          deviceId,
-          nowMs,
-          crypto.randomUUID(),
-          this.config.backoffThreshold,
-          this.config.backoffWindowMs
-        );
-        if (!allowed) continue;
-        if (!(await this.reserveFetchDedupe(deviceId))) continue;
-        if (!(await this.consumeGlobalFetchBudget())) break;
+        if (!(await this.backoff.shouldAllow(deviceId))) continue;
+        if (!(await this.dedupe.tryAcquire(deviceId, this.config.fetchDedupeWindowMs))) continue;
+        if (!(await consumeFetchBudget(this.budget, this.config.globalFetchBudgetPerMinute))) {
+          igPollMetricsInc('fetchBudgetRejects');
+          break;
+        }
         eligible.push(deviceId);
       }
 
       if (eligible.length === 0) return;
 
       for (const batch of chunk(eligible, this.config.batchSize)) {
-        if (await this.circuit.isOpen()) break;
+        if (await this.circuitGate.isOpen()) break;
         const ok = await fetchInvoker.invokeFetch(batch, { trigger: 'scheduled' });
         if (ok) {
           batch.forEach(() => igPollMetricsInc('fetchesEnqueued'));
@@ -1824,7 +1750,7 @@ export class InstagramPoller {
 
     try {
       igPollMetricsInc('backgroundCycles');
-      if (await this.circuit.isOpen()) {
+      if (await this.circuitGate.isOpen()) {
         logger.debug('[IG_POLLER] Circuit open, skipping background cycle');
         igPollMetricsInc('circuitOpenSkips');
         return;
@@ -1857,30 +1783,25 @@ export class InstagramPoller {
       const prioritySet = new Set(priorityActive);
       const devicesRaw = allDeviceIds.filter((id) => !prioritySet.has(id));
 
-      const filtered = await this.filterOutPowerSave(devicesRaw);
+      const filtered = this.filterOutPowerSave(devicesRaw);
       const devices = await this.takeBackgroundWindow(filtered);
       if (devices.length === 0) return;
 
       const eligible: string[] = [];
       for (const deviceId of devices) {
-        const allowed = await evalAtomicBackoffCheckAndRecordEvalSha(
-          redis,
-          deviceId,
-          nowMs,
-          crypto.randomUUID(),
-          this.config.backoffThreshold,
-          this.config.backoffWindowMs
-        );
-        if (!allowed) continue;
-        if (!(await this.reserveFetchDedupe(deviceId))) continue;
-        if (!(await this.consumeGlobalFetchBudget())) break;
+        if (!(await this.backoff.shouldAllow(deviceId))) continue;
+        if (!(await this.dedupe.tryAcquire(deviceId, this.config.fetchDedupeWindowMs))) continue;
+        if (!(await consumeFetchBudget(this.budget, this.config.globalFetchBudgetPerMinute))) {
+          igPollMetricsInc('fetchBudgetRejects');
+          break;
+        }
         eligible.push(deviceId);
       }
 
       if (eligible.length === 0) return;
 
       for (const batch of chunk(eligible, this.config.batchSize)) {
-        if (await this.circuit.isOpen()) break;
+        if (await this.circuitGate.isOpen()) break;
         const ok = await fetchInvoker.invokeFetch(batch, { trigger: 'scheduled' });
         if (ok) {
           batch.forEach(() => igPollMetricsInc('fetchesEnqueued'));

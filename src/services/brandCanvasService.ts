@@ -6,6 +6,12 @@ import { logger } from '../utils/logger';
 
 const CANVAS_ACTIVE_KEY_PREFIX = 'canvas:active:';
 
+const canvasLocalCache = new Map<string, { data: CachedBrandCanvasDto; expiresAt: number }>();
+
+function clearCanvasLocalEntry(userId: string): void {
+  canvasLocalCache.delete(userId);
+}
+
 export type CachedBrandCanvasDto = {
   _id: string;
   userId: string;
@@ -81,6 +87,13 @@ export function buildBrandCanvasPayload(
 }
 
 export async function getCachedBrandCanvasAd(userId: string): Promise<IAd | null> {
+  const ttlSec = getCanvasCacheTtlSec();
+  const local = canvasLocalCache.get(userId);
+  if (local && local.expiresAt > Date.now()) {
+    return local.data as unknown as IAd;
+  }
+  if (local) clearCanvasLocalEntry(userId);
+
   const redis = getRedisService();
   const key = canvasActiveKey(userId);
 
@@ -89,6 +102,7 @@ export async function getCachedBrandCanvasAd(userId: string): Promise<IAd | null
       const cached = await redis.getClient().get(key);
       if (cached) {
         const parsed = JSON.parse(cached) as CachedBrandCanvasDto;
+        canvasLocalCache.set(userId, { data: parsed, expiresAt: Date.now() + ttlSec * 1000 });
         return parsed as unknown as IAd;
       }
     } catch {
@@ -99,11 +113,14 @@ export async function getCachedBrandCanvasAd(userId: string): Promise<IAd | null
   const ad = await getRunningBrandCanvasAd(userId);
   if (!ad) return null;
 
+  const dto = toCachedDto(ad);
+  canvasLocalCache.set(userId, { data: dto, expiresAt: Date.now() + ttlSec * 1000 });
+
   if (redis?.isRedisConnected()) {
     try {
       await redis
         .getClient()
-        .set(key, JSON.stringify(toCachedDto(ad)), { EX: getCanvasCacheTtlSec() });
+        .set(key, JSON.stringify(dto), { EX: ttlSec });
     } catch {
       /* best-effort */
     }
@@ -113,6 +130,7 @@ export async function getCachedBrandCanvasAd(userId: string): Promise<IAd | null
 }
 
 export async function invalidateCanvasCache(userId: string): Promise<void> {
+  clearCanvasLocalEntry(userId);
   const redis = getRedisService();
   if (!redis?.isRedisConnected()) return;
 

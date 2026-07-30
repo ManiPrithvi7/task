@@ -9,6 +9,7 @@ import type { MqttClientManager } from '../servers/mqttClient';
 import { getActiveDeviceCache, type ActiveDevice } from './deviceService';
 import { getRedisService } from './redisService';
 import { formatInstagramScreenMqttPayload } from './instagramService';
+import { readFollowerCountForRepublish, getIgDeviceRuntimeCache } from './igDeviceRuntimeCache';
 import { getUserIntegrations } from './userIntegrationCache';
 import { resolveGmbContextForDevice } from '../lib/socials/resolveDeviceGmb';
 import { publishGmbScreen } from '../webhooks/delivery/publishGmbScreen';
@@ -93,18 +94,8 @@ async function republishInstagramFromFollowersCache(
 ): Promise<boolean> {
   if (await shouldSkipForStimulate(deviceId, 'instagram')) return false;
 
-  const redisSvc = getRedisService();
-  if (!redisSvc?.isRedisConnected()) return false;
-
-  let raw: string | null = null;
-  try {
-    raw = await redisSvc.getClient().get(`device:followers:${deviceId}`);
-  } catch {
-    return false;
-  }
-  if (raw === null) return false;
-  const followers = parseInt(raw, 10);
-  if (!Number.isFinite(followers) || followers < 0) return false;
+  const followers = await readFollowerCountForRepublish(deviceId);
+  if (followers === null) return false;
 
   const { topic, payload } = formatInstagramScreenMqttPayload(
     {
@@ -117,12 +108,8 @@ async function republishInstagramFromFollowersCache(
   );
 
   await mqttClient.publish({ topic, payload, qos: 1, retain: true });
-  try {
-    await redisSvc.getClient().set(`ig:last_pub:${deviceId}`, String(Date.now()), { EX: 86400 });
-  } catch {
-    /* best-effort */
-  }
-  logger.info('[STARTUP_CACHE] Republished Instagram from Redis followers cache', {
+  getIgDeviceRuntimeCache().setLastPub(deviceId, Date.now());
+  logger.info('[STARTUP_CACHE] Republished Instagram from device hash / runtime cache', {
     deviceId,
     followers
   });

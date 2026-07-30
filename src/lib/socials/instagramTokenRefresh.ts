@@ -3,9 +3,39 @@ import { ig, isAccessTokenExpired } from './integrations';
 import { Social, Provider } from '../../models/Social';
 import { getRedisService } from '../../services/redisService';
 import { getActiveDeviceCache } from '../../services/deviceService';
+import { REDIS_KEYS } from '../../constants/redisKeys';
 import { logger } from '../../utils/logger';
 
 const DEVICE_META_KEY_PREFIX = 'proof.mqtt:device:';
+
+async function updateDeviceTokenInRedis(deviceId: string, newToken: string, newExp: string): Promise<void> {
+  const redisSvc = getRedisService();
+  if (!redisSvc?.isRedisConnected()) return;
+  const key = REDIS_KEYS.deviceHash(deviceId);
+  try {
+    const client = redisSvc.getClient();
+    const keyType = await client.type(key);
+    if (keyType === 'hash') {
+      await client.hSet(key, {
+        ig_accessToken: newToken,
+        tokenExpiresAt: newExp
+      });
+      return;
+    }
+    const raw = await client.get(`${DEVICE_META_KEY_PREFIX}${deviceId}`);
+    const base =
+      raw && typeof raw === 'string' ? (JSON.parse(raw) as Record<string, unknown>) : {};
+    await client.set(
+      `${DEVICE_META_KEY_PREFIX}${deviceId}`,
+      JSON.stringify({ ...base, accessToken: newToken, tokenExpiresAt: newExp })
+    );
+  } catch (err: unknown) {
+    logger.debug('[IG_TOKEN] Failed to update Redis device meta', {
+      deviceId,
+      error: err instanceof Error ? err.message : String(err)
+    });
+  }
+}
 
 export type InstagramTokenContext = {
   accessToken: string;
@@ -108,30 +138,7 @@ export async function ensureFreshInstagramAccessToken(opts: {
     }
   }
 
-  const redisSvc = getRedisService();
-  if (redisSvc?.isRedisConnected()) {
-    try {
-      const key = `${DEVICE_META_KEY_PREFIX}${opts.deviceId}`;
-      const raw = await redisSvc.getClient().get(key);
-      const base =
-        raw && typeof raw === 'string'
-          ? (JSON.parse(raw) as Record<string, unknown>)
-          : {};
-      await redisSvc.getClient().set(
-        key,
-        JSON.stringify({
-          ...base,
-          accessToken: newToken,
-          tokenExpiresAt: newExp
-        })
-      );
-    } catch (err: unknown) {
-      logger.debug('[IG_TOKEN] Failed to update Redis device meta', {
-        deviceId: opts.deviceId,
-        error: err instanceof Error ? err.message : String(err)
-      });
-    }
-  }
+  await updateDeviceTokenInRedis(opts.deviceId, newToken, newExp);
 
   try {
     const ad = await getActiveDeviceCache().getActive(opts.deviceId);

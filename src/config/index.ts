@@ -394,6 +394,12 @@ export interface InstagramPollingConfig {
   globalFetchBudgetPerMinute: number;
   /** Min interval between fetch requests for same device from poller (0 = off). */
   fetchDedupeWindowMs: number;
+  /** Use in-process circuit gate instead of Redis (rollback: set false). */
+  useLocalCircuit: boolean;
+  useLocalBackoff: boolean;
+  useLocalBudget: boolean;
+  useLocalDedupe: boolean;
+  useLocalFairOffset: boolean;
 }
 
 export interface InfluxDBConfig {
@@ -630,7 +636,12 @@ export function loadConfig(): AppConfig {
     backgroundCapPerCycle: parseInt(process.env.IG_POLL_BACKGROUND_CAP_PER_CYCLE || '0', 10),
     backgroundFairRotate: process.env.IG_POLL_BACKGROUND_FAIR_ROTATE === 'false' ? false : true,
     globalFetchBudgetPerMinute: parseInt(process.env.IG_GLOBAL_FETCH_BUDGET_PER_MIN || '0', 10),
-    fetchDedupeWindowMs: parseInt(process.env.IG_FETCH_DEDUPE_WINDOW_MS || '45000', 10)
+    fetchDedupeWindowMs: parseInt(process.env.IG_FETCH_DEDUPE_WINDOW_MS || '45000', 10),
+    useLocalCircuit: process.env.IG_USE_LOCAL_CIRCUIT !== 'false',
+    useLocalBackoff: process.env.IG_USE_LOCAL_BACKOFF !== 'false',
+    useLocalBudget: process.env.IG_USE_LOCAL_BUDGET !== 'false',
+    useLocalDedupe: process.env.IG_USE_LOCAL_DEDUPE !== 'false',
+    useLocalFairOffset: process.env.IG_USE_LOCAL_FAIR_OFFSET !== 'false'
   };
 
   const bgMultRaw = process.env.IG_POLL_BACKGROUND_INTERVAL_MULTIPLIER_LOW_POWER?.trim();
