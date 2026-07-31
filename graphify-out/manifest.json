@@ -155,8 +155,8 @@
     "semantic_hash": ""
   },
   "src/app.ts": {
-    "mtime": 1785431442.8145757,
-    "ast_hash": "d2db26d90d3e75d1cf2de0f92371db42",
+    "mtime": 1785521139.5781703,
+    "ast_hash": "fa9ae7c6b5ef56d1d86e88fdc803da58",
     "semantic_hash": ""
   },
   "src/config/connectionsConfig.ts": {
@@ -170,8 +170,8 @@
     "semantic_hash": ""
   },
   "src/config/index.ts": {
-    "mtime": 1785431438.9387903,
-    "ast_hash": "305e9b43c9868f036e216c9a12b24808",
+    "mtime": 1785521271.3633838,
+    "ast_hash": "11e35e72debbca3b1ee527a588b31f53",
     "semantic_hash": ""
   },
   "src/config/mongoConnection.ts": {
@@ -370,8 +370,8 @@
     "semantic_hash": ""
   },
   "src/services/auditService.ts": {
-    "mtime": 1784822171.3700354,
-    "ast_hash": "f6441bfc6dfcbdc34bec1664514e4708",
+    "mtime": 1785520790.392891,
+    "ast_hash": "d93758093620dc950dca44f6476e91fe",
     "semantic_hash": ""
   },
   "src/services/authService.ts": {
@@ -435,13 +435,13 @@
     "semantic_hash": ""
   },
   "src/services/influxService.ts": {
-    "mtime": 1784735956.114124,
-    "ast_hash": "2e8180c59676df79e8e8d4794db2eeb3",
+    "mtime": 1785520720.2440953,
+    "ast_hash": "888735508af5fe88391d03bf2ce655f8",
     "semantic_hash": ""
   },
   "src/services/instagramService.ts": {
-    "mtime": 1785431521.5461059,
-    "ast_hash": "ed9e6e5406c3868a15ddccf582fc2665",
+    "mtime": 1785521347.4142811,
+    "ast_hash": "ba3b965c927639f23afc684cedb6aff1",
     "semantic_hash": ""
   },
   "src/services/metrics/dailyMetricsLua.ts": {
@@ -485,8 +485,8 @@
     "semantic_hash": ""
   },
   "src/services/otaService.ts": {
-    "mtime": 1785431946.2828283,
-    "ast_hash": "ab42d0ed547a4c52bea920bff67b1d9f",
+    "mtime": 1785521041.371443,
+    "ast_hash": "fabf98e0c376c685a086457cbc909260",
     "semantic_hash": ""
   },
   "src/services/promotionService.ts": {
@@ -525,8 +525,8 @@
     "semantic_hash": ""
   },
   "src/services/transparencyLog.ts": {
-    "mtime": 1780418433.1247003,
-    "ast_hash": "fefd278d7d3a359881e74fa139360e36",
+    "mtime": 1785520794.9923909,
+    "ast_hash": "02572a151aadfaa11ee17da633b1964c",
     "semantic_hash": ""
   },
   "src/services/userIntegrationCache.ts": {
@@ -630,8 +630,8 @@
     "semantic_hash": ""
   },
   "src/webhooks/delivery/publishGmbScreen.ts": {
-    "mtime": 1784389012.8468757,
-    "ast_hash": "ec5812ba5c7c3bc59c5eb5a4b0d272e0",
+    "mtime": 1785521013.7043943,
+    "ast_hash": "f7069e70b01bc3f44d298a68705900da",
     "semantic_hash": ""
   },
   "src/webhooks/gmb/gmbReviewResolve.ts": {
@@ -645,13 +645,13 @@
     "semantic_hash": ""
   },
   "src/webhooks/gmbHandler.ts": {
-    "mtime": 1784139645.9777498,
-    "ast_hash": "6f135aca380037ed09c69c80afdf25ae",
+    "mtime": 1785521002.2530541,
+    "ast_hash": "b9b52d40c9d34c2e2227360659ff2a2e",
     "semantic_hash": ""
   },
   "src/webhooks/gmbReviewCache.ts": {
-    "mtime": 1785430524.298355,
-    "ast_hash": "e8f0560efe48705e8247fb61f4e8a50a",
+    "mtime": 1785520808.0289035,
+    "ast_hash": "9270edcb6751581fbe678947e00726b5",
     "semantic_hash": ""
   },
   "src/webhooks/influxAudit.ts": {
@@ -1090,8 +1090,8 @@
     "semantic_hash": ""
   },
   "docs/COMPLIANCE.md": {
-    "mtime": 1784047424.9202483,
-    "ast_hash": "acee7875f6883b02842a27ffcb6c48e2",
+    "mtime": 1785521288.349806,
+    "ast_hash": "a522916e616c5d03d6b4a65c5dac0b52",
     "semantic_hash": ""
   },
   "docs/PILOT_V1_EXCEPTIONS.md": {
@@ -1115,8 +1115,8 @@
     "semantic_hash": ""
   },
   "data/active-devices.json": {
-    "mtime": 1785427258.0500076,
-    "ast_hash": "046112c27236b50e674b3fa443ff74ee",
+    "mtime": 1785433584.5369673,
+    "ast_hash": "2affca6549fe0eea59e883af609ad27b",
     "semantic_hash": ""
   },
   "src/lib/socials/syncDeviceGmb.ts": {
@@ -1150,8 +1150,8 @@
     "semantic_hash": ""
   },
   "src/services/otaReleaseLog.ts": {
-    "mtime": 1784047424.9542093,
-    "ast_hash": "7e41e4c0e6b086bfa05e092f68314db9",
+    "mtime": 1785520793.720434,
+    "ast_hash": "60d5f0746ea4efc1f15f0530c8775fa9",
     "semantic_hash": ""
   },
   "src/services/otaSigningKeyService.ts": {
@@ -1180,13 +1180,13 @@
     "semantic_hash": ""
   },
   "stimulate/gmbRunner.ts": {
-    "mtime": 1785431727.2273962,
-    "ast_hash": "338510cc100d148c202887b4aafd3b54",
+    "mtime": 1785433231.9786603,
+    "ast_hash": "ed0d4304d01a3938bba8931118bfe442",
     "semantic_hash": ""
   },
   "stimulate/igRunner.ts": {
-    "mtime": 1785431726.9027417,
-    "ast_hash": "651aced53a7e27c1cb2fa7ff7760e32a",
+    "mtime": 1785433223.543523,
+    "ast_hash": "496d4f22536b50e02f6765f805be1807",
     "semantic_hash": ""
   },
   "stimulate/math.ts": {
@@ -1195,8 +1195,8 @@
     "semantic_hash": ""
   },
   "tests/unit/services/influxServiceBucketRouting.test.ts": {
-    "mtime": 1784139645.97875,
-    "ast_hash": "abe00e7a746ed39fab04d27e55424dc0",
+    "mtime": 1785521292.4308326,
+    "ast_hash": "fd0e20042240b4a578244d0514742d3b",
     "semantic_hash": ""
   },
   "tests/unit/services/startupCacheRepublish.test.ts": {
@@ -1225,8 +1225,8 @@
     "semantic_hash": ""
   },
   "src/services/stimulateService.ts": {
-    "mtime": 1785431678.4262176,
-    "ast_hash": "10f02fe0519ee25274ac7459106a0083",
+    "mtime": 1785433227.4308817,
+    "ast_hash": "2e88240b0bf004cdcd7e6f834d133aef",
     "semantic_hash": ""
   },
   "tests/unit/services/screenEnvelope.test.ts": {
@@ -1240,13 +1240,13 @@
     "semantic_hash": ""
   },
   "src/middleware/querySanitizer.ts": {
-    "mtime": 1784735956.1134133,
-    "ast_hash": "9a05d672643a3a4c18a7ba82d77692b4",
+    "mtime": 1785520851.026627,
+    "ast_hash": "8ffd42aefcf23e92967d91febfdf2e60",
     "semantic_hash": ""
   },
   "src/routes/dashboardRoutes.ts": {
-    "mtime": 1784307180.613266,
-    "ast_hash": "3c8fd4dbd630c78a205b904653f84b47",
+    "mtime": 1785521267.6686475,
+    "ast_hash": "8e4681faca225f6f4c620b76d3a502cb",
     "semantic_hash": ""
   },
   "src/routes/influxQueryRoutes.ts": {
@@ -1255,38 +1255,33 @@
     "semantic_hash": ""
   },
   "src/routes/integrationRoutes.ts": {
-    "mtime": 1784307170.6528115,
-    "ast_hash": "a816a261f5312cc939ef63d4b2a76840",
+    "mtime": 1785521030.218241,
+    "ast_hash": "c11ba24fadf74f0f706f56de4e88a943",
     "semantic_hash": ""
   },
   "src/storage/influx/BaseInfluxRepo.ts": {
-    "mtime": 1784735956.1145933,
-    "ast_hash": "0d29c33c9b8d5787dec611142ae386a5",
+    "mtime": 1785520420.7382262,
+    "ast_hash": "d0e3d6e905e235d167f64c67f4a6491e",
     "semantic_hash": ""
   },
   "src/storage/influx/repositories/CtLogRepo.ts": {
-    "mtime": 1784139645.9773917,
-    "ast_hash": "da58bb2decd734b212fbeea383b4af13",
-    "semantic_hash": ""
-  },
-  "src/storage/influx/repositories/DeviceMetricsRepo.ts": {
-    "mtime": 1784139645.97756,
-    "ast_hash": "e0b42d6e735167e28ada872a04ac70df",
+    "mtime": 1785520500.0193315,
+    "ast_hash": "f0155a4db249ce0cbfa7e2340ad6e1a7",
     "semantic_hash": ""
   },
   "src/storage/influx/repositories/InstagramAuditRepo.ts": {
-    "mtime": 1784139645.97756,
-    "ast_hash": "1304b722ad2f7827698184a52e532339",
+    "mtime": 1785520477.4362395,
+    "ast_hash": "9c8d3f75d7fe3312f08685328b94b344",
     "semantic_hash": ""
   },
   "src/storage/influx/repositories/PkiAuditRepo.ts": {
-    "mtime": 1784139645.97756,
-    "ast_hash": "3d53e9e229e4c8a025a5705ade317952",
+    "mtime": 1785520489.3735492,
+    "ast_hash": "c45273cf9083929d7172a169f4e88dea",
     "semantic_hash": ""
   },
   "src/storage/influx/repositories/WebhookAuditRepo.ts": {
-    "mtime": 1784139645.97756,
-    "ast_hash": "1fb1ed8735210e76d8c080deb6114753",
+    "mtime": 1785520480.5995142,
+    "ast_hash": "7eb4de519bd7c1f9d24c438af9d764dc",
     "semantic_hash": ""
   },
   "src/storage/influx/types.ts": {
@@ -1312,11 +1307,6 @@
   "tests/unit/stimulate/igRunner.test.ts": {
     "mtime": 1784654686.6536727,
     "ast_hash": "c945d67c2631325f7a1e820cb2dff558",
-    "semantic_hash": ""
-  },
-  "src/storage/influx/repositories/DeviceOtaEventsRepo.ts": {
-    "mtime": 1784735956.1146612,
-    "ast_hash": "893c62c844a2bfeaf4ee38f0482a2196",
     "semantic_hash": ""
   },
   "src/utils/influxQueueError.ts": {
@@ -1347,11 +1337,6 @@
   "install.sh": {
     "mtime": 1784654686.6902506,
     "ast_hash": "4b183299c922a2a67877cac6b8ac6928",
-    "semantic_hash": ""
-  },
-  "src/storage/influx/repositories/OtaTelemetryRepo.ts": {
-    "mtime": 1784654686.6942668,
-    "ast_hash": "f8cf75bb7dac410491286d62c24bb04a",
     "semantic_hash": ""
   },
   "src/utils/localTestOtaFirmware.ts": {
@@ -1440,8 +1425,8 @@
     "semantic_hash": ""
   },
   "src/services/igDeviceRuntimeCache.ts": {
-    "mtime": 1785430224.0012093,
-    "ast_hash": "4334c745cce4bb373004c5ee1d8a6ddb",
+    "mtime": 1785520804.460192,
+    "ast_hash": "b55c8f808a24bf70439483d3cb455a3b",
     "semantic_hash": ""
   },
   "src/services/igPollCoordination.ts": {
@@ -1477,6 +1462,81 @@
   "tests/unit/services/redisSync.test.ts": {
     "mtime": 1785431239.9332292,
     "ast_hash": "1c37c6d09624c427ebf6cb1726077497",
+    "semantic_hash": ""
+  },
+  "scripts/smoke-redis-local.ts": {
+    "mtime": 1785432871.5998063,
+    "ast_hash": "ca70f59353c9025c921ae90faab59a1a",
+    "semantic_hash": ""
+  },
+  "src/services/deviceStateLogService.ts": {
+    "mtime": 1785520500.534869,
+    "ast_hash": "9ff8500b715223794cbd212b4cb30981",
+    "semantic_hash": ""
+  },
+  "src/storage/influx/repositories/DeviceActiveRepo.ts": {
+    "mtime": 1785520441.4295986,
+    "ast_hash": "60a7d4496821e571ddea1ff5096a6307",
+    "semantic_hash": ""
+  },
+  "src/storage/influx/repositories/DeviceStateLogRepo.ts": {
+    "mtime": 1785520448.435706,
+    "ast_hash": "aa5ea72518279d68a3d11a0c2d2dfa82",
+    "semantic_hash": ""
+  },
+  "src/storage/influx/repositories/GmbMetricsRepo.ts": {
+    "mtime": 1785520430.2953777,
+    "ast_hash": "2040ac868b04e09cee05e26e8f02aa37",
+    "semantic_hash": ""
+  },
+  "src/storage/influx/repositories/GmbMilestoneRepo.ts": {
+    "mtime": 1785520433.846766,
+    "ast_hash": "ce8b5c3fe06291d3e1c8e4b5fdaa49f6",
+    "semantic_hash": ""
+  },
+  "src/storage/influx/repositories/IgMetricsRepo.ts": {
+    "mtime": 1785520425.1442857,
+    "ast_hash": "aaff6a2e592a8ef116cfaf373ce07916",
+    "semantic_hash": ""
+  },
+  "src/storage/influx/repositories/IgMilestoneRepo.ts": {
+    "mtime": 1785520427.6414406,
+    "ast_hash": "25ad16d7421023c6b651bfc3b220100b",
+    "semantic_hash": ""
+  },
+  "src/storage/influx/repositories/MqttDeliveryRepo.ts": {
+    "mtime": 1785520437.281534,
+    "ast_hash": "ee832d84f46bda8bdca008a83769fd65",
+    "semantic_hash": ""
+  },
+  "src/storage/influx/repositories/OtaEventsRepo.ts": {
+    "mtime": 1785520448.8778234,
+    "ast_hash": "55a6555420c1f3be48cea41680b24efa",
+    "semantic_hash": ""
+  },
+  "src/utils/velocityPerDay.ts": {
+    "mtime": 1785520422.792455,
+    "ast_hash": "08781810d9c9094c3974ad0a02d3c281",
+    "semantic_hash": ""
+  },
+  "tests/unit/storage/influx/deviceStateLogHash.test.ts": {
+    "mtime": 1785521405.011308,
+    "ast_hash": "25ec1f56fa66778487fbf42463db5e4b",
+    "semantic_hash": ""
+  },
+  "tests/unit/storage/influx/truncateCompliance.test.ts": {
+    "mtime": 1785521307.925309,
+    "ast_hash": "3e89da50317dba8b56e79887c06c2dfd",
+    "semantic_hash": ""
+  },
+  "tests/unit/utils/velocityPerDay.test.ts": {
+    "mtime": 1785521297.9233632,
+    "ast_hash": "e45ef071fd2766a24d89fe3b1476d44d",
+    "semantic_hash": ""
+  },
+  "influx_issue.md": {
+    "mtime": 1785519413.5114682,
+    "ast_hash": "04bc6cbc7a59f4eeb90373f054ac18ac",
     "semantic_hash": ""
   }
 }

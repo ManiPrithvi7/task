@@ -13,6 +13,8 @@ export interface DeviceRuntimeState {
   igAccountId?: string;
   igAccessToken?: string;
   igFollowerCount?: number;
+  /** Epoch ms when igFollowerCount was last set — used for milestone velocity. */
+  lastFollowerCountTimestamp?: number;
   gmbProfileId?: string;
   gmbAccessToken?: string;
   gmbReviewCount?: number;
@@ -98,8 +100,14 @@ class IgDeviceRuntimeCacheImpl {
     return this.devices.get(deviceId)?.igFollowerCount;
   }
 
-  setFollowers(deviceId: string, count: number): void {
-    this.entry(deviceId).igFollowerCount = count;
+  setFollowers(deviceId: string, count: number, atMs: number = Date.now()): void {
+    const e = this.entry(deviceId);
+    e.igFollowerCount = count;
+    e.lastFollowerCountTimestamp = atMs;
+  }
+
+  getLastFollowerCountTimestamp(deviceId: string): number | undefined {
+    return this.devices.get(deviceId)?.lastFollowerCountTimestamp;
   }
 
   getGmbReviewCount(deviceId: string): number | undefined {

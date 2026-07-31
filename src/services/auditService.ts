@@ -165,7 +165,8 @@ export class AuditService {
     const sequence = this.lastSequence + 1;
 
     // Build hash content: deterministic JSON of all audit fields + previousHash
-    const hashContent = this.buildHashContent({
+    // Keep orderId/batchId in hash preimage for chain continuity (no longer stored as Influx tags).
+    const hashPreimage = this.buildHashContent({
       timestamp: timestamp.toISOString(),
       event: data.event,
       deviceId: data.deviceId || null,
@@ -179,7 +180,7 @@ export class AuditService {
     });
 
     const hash = this.config.hashChainEnabled
-      ? this.computeHash(hashContent)
+      ? this.computeHash(hashPreimage)
       : crypto.randomBytes(16).toString('hex');
 
     const entry: AuditEntry = {
@@ -203,15 +204,14 @@ export class AuditService {
       try {
         await influx.writeAuditEvent({
           event: data.event,
-          deviceId: data.deviceId,
+          deviceId: data.deviceId || 'system',
           userId: data.userId,
-          orderId: data.orderId,
-          batchId: data.batchId,
           serialNumber: data.serialNumber,
           certificateFingerprint: data.certificateFingerprint,
           sequence,
           hash,
           previousHash,
+          hashPreimage,
           details: data.details
         });
 

@@ -407,9 +407,9 @@ export interface InfluxDBConfig {
   url: string;
   token: string;
   org: string;
-  /** Operational metrics bucket (e.g. device_metrics, social_metrics). Default: metrics */
+  /** Operational metrics bucket (ig_metrics, gmb_metrics, mqtt_delivery, etc.). Default: metrics */
   bucket: string;
-  /** Compliance/PKI bucket (e.g. pki_audit, ct_log). Default: pki_compliance */
+  /** Compliance/PKI bucket (pki_audit, ct_log, ota_release_log, device_state_log). Default: pki_compliance. Retention: 3650d. */
   complianceBucket: string;
   /** Default true — append line protocol to disk; background worker POSTs batches over HTTP. */
   diskQueueEnabled: boolean;

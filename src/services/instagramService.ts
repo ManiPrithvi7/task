@@ -31,6 +31,7 @@ import {
 import { ensureFreshInstagramAccessToken } from '../lib/socials/instagramTokenRefresh';
 import { buildInstagramScreenPayload, buildScreenEnvelope, getInstagramMegaCrossedMilestones } from './screenEnvelope';
 import { REDIS_KEYS } from '../constants/redisKeys';
+import { computeVelocityPerDay } from '../utils/velocityPerDay';
 import {
   LocalBudgetTracker,
   LocalCircuitGate,
@@ -546,15 +547,15 @@ export async function publishInstagramScreenIfChanged(
     const influx = getInfluxService();
     if (influx) {
       try {
-        await influx.writeInstagramMqttDelivery(
+        const payloadSha256 = crypto.createHash('sha256').update(payload, 'utf8').digest('hex');
+        await influx.writeMqttDelivery(
           {
+            platform: 'instagram',
             deviceId,
-            userId: result.user_id?.trim() || 'unknown',
-            instagramAccountId: result.instagram_account_id,
-            correlationId: result.correlation_id,
             success: true,
-            wasHeartbeat: forceHeartbeat && unchanged,
             payloadSizeBytes: Buffer.byteLength(payload, 'utf8'),
+            correlationId: result.correlation_id,
+            payloadSha256,
             timestamp: new Date()
           },
           { flush: false }
@@ -577,15 +578,15 @@ export async function publishInstagramScreenIfChanged(
     const influx = getInfluxService();
     if (influx) {
       try {
-        await influx.writeInstagramMqttDelivery(
+        const payloadSha256 = crypto.createHash('sha256').update(payload, 'utf8').digest('hex');
+        await influx.writeMqttDelivery(
           {
+            platform: 'instagram',
             deviceId,
-            userId: result.user_id?.trim() || 'unknown',
-            instagramAccountId: result.instagram_account_id,
-            correlationId: result.correlation_id,
             success: false,
-            wasHeartbeat: forceHeartbeat && unchanged,
             payloadSizeBytes: Buffer.byteLength(payload, 'utf8'),
+            correlationId: result.correlation_id,
+            payloadSha256,
             errorMessage: errMsg,
             timestamp: new Date()
           },
@@ -721,7 +722,6 @@ export async function applyInstagramServerlessDeviceOutcome(
           httpStatus: row.http_status,
           retryAfterSeconds: row.retry_after_seconds,
           cacheHit: row.cache_hit,
-          mediaCount: row.media_count,
           apiEndpoint: row.api_endpoint,
           primaryResponseSha256: row.primary_response_sha256,
           detailsResponseSha256: row.details_response_sha256,
@@ -733,16 +733,18 @@ export async function applyInstagramServerlessDeviceOutcome(
       );
 
       if (row.success && row.followers_count != null) {
-        await influx.writeInstagramFollowersGauge(deviceId, igAccount, row.followers_count, auditTs, {
-          flush: false,
-          mediaCount: row.media_count
-        });
+        await influx.writeIgMetrics({
+          deviceId,
+          igId: igAccount || 'unknown',
+          trigger,
+          followersCount: row.followers_count,
+          timestamp: auditTs,
+        }, { flush: false });
 
         if (oldFollowers === null) {
           await influx.writeProfileBaseline({
             deviceId,
             platform: 'instagram',
-            userId,
             followers: row.followers_count,
             connectedAt: auditTs,
             timestamp: auditTs
@@ -751,22 +753,20 @@ export async function applyInstagramServerlessDeviceOutcome(
       }
 
       if (row.success && newFollowers !== null && oldFollowers !== null && igAccount) {
+        const runtime = getIgDeviceRuntimeCache();
+        const lastTs = runtime.getLastFollowerCountTimestamp(deviceId);
+        const velocity = computeVelocityPerDay(oldFollowers, newFollowers, lastTs ?? null, auditTs.getTime());
         for (const milestone of getCrossedMilestones(oldFollowers, newFollowers)) {
-          await influx.writeMilestoneCrossed(
-            {
-              platform: 'instagram',
-              deviceId,
-              userId,
-              instagramAccountId: igAccount,
-              trigger,
-              milestone,
-              oldValue: oldFollowers,
-              newValue: newFollowers,
-              timestamp: auditTs
-            },
-            { flush: false }
-          );
+          await influx.writeIgMilestone({
+            deviceId,
+            igId: igAccount,
+            followersCount: newFollowers,
+            velocity,
+            createdAt: auditTs.toISOString(),
+            timestamp: auditTs,
+          }, { flush: false });
         }
+        runtime.setFollowers(deviceId, newFollowers, auditTs.getTime());
       }
 
       if (e2eMs !== undefined && cid) {

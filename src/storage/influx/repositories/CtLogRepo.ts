@@ -6,18 +6,21 @@ import { logger } from '../../../utils/logger';
 export interface TransparencyEntryInput {
   index: number;
   leafHash: string;
+  leafPreimage?: string;
   rootHash: string;
   inclusionProof: string;
   certFingerprint: string;
   serialNumber: string;
   cn: string;
   deviceId: string;
+  userIdAtTime?: string;
   issuedAt: Date;
 }
 
 export interface OtaReleaseEntryInput {
   index: number;
   leafHash: string;
+  leafPreimage?: string;
   rootHash: string;
   inclusionProof: string;
   version: string;
@@ -29,17 +32,21 @@ export interface OtaReleaseEntryInput {
 
 export class CtLogRepo extends BaseInfluxRepo<TransparencyEntryInput> {
   buildPoint(input: TransparencyEntryInput): Point {
-    return new Point('ct_log')
+    const point = new Point('ct_log')
       .tag('device_id', input.deviceId)
-      .tag('cn', input.cn)
-      .tag('source', 'mqtt-publisher-lite')
       .intField('index', input.index)
       .stringField('leaf_hash', input.leafHash)
       .stringField('root_hash', input.rootHash)
       .stringField('inclusion_proof', input.inclusionProof)
       .stringField('cert_fingerprint', input.certFingerprint)
       .stringField('serial_number', input.serialNumber)
-      .timestamp(input.issuedAt);
+      .stringField('cn', input.cn);
+
+    if (input.leafPreimage) point.stringField('leaf_preimage', input.leafPreimage);
+    if (input.userIdAtTime) point.stringField('user_id_at_time', input.userIdAtTime);
+
+    point.timestamp(input.issuedAt);
+    return point;
   }
 
   async write(input: TransparencyEntryInput): Promise<void> {
@@ -54,20 +61,22 @@ export class CtLogRepo extends BaseInfluxRepo<TransparencyEntryInput> {
     }
   }
 
+  // TODO: extract to OtaReleaseLogRepo
   async writeOtaReleaseEntry(input: OtaReleaseEntryInput): Promise<void> {
     try {
       const point = new Point('ota_release_log')
         .tag('version', input.version)
-        .tag('source', 'mqtt-publisher-lite')
         .intField('index', input.index)
         .stringField('leaf_hash', input.leafHash)
         .stringField('root_hash', input.rootHash)
         .stringField('inclusion_proof', input.inclusionProof)
         .stringField('sha256', input.sha256)
         .stringField('object_key', input.objectKey)
-        .stringField('key_fingerprint', input.keyFingerprint)
-        .timestamp(input.releasedAt);
+        .stringField('key_fingerprint', input.keyFingerprint);
 
+      if (input.leafPreimage) point.stringField('leaf_preimage', input.leafPreimage);
+
+      point.timestamp(input.releasedAt);
       await this.submit(point, BucketTarget.COMPLIANCE, true);
       logger.debug('OTA release log entry written to InfluxDB', { index: input.index, version: input.version });
     } catch (error) {

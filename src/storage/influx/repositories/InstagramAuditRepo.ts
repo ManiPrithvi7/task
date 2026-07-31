@@ -3,12 +3,7 @@ import { BaseInfluxRepo } from '../BaseInfluxRepo';
 import { BucketTarget } from '../types';
 import {
   InstagramFetchAuditInfluxInput,
-  InstagramMilestoneCrossedInfluxInput,
-  InstagramMqttDeliveryInfluxInput,
-  InstagramCircuitEventInfluxInput,
-  MilestoneCrossedInfluxInput,
   ProfileBaselineInfluxInput,
-  VelocityWeeklyInfluxInput,
 } from '../../../services/influxService';
 import { logger } from '../../../utils/logger';
 
@@ -16,18 +11,16 @@ export class InstagramAuditRepo extends BaseInfluxRepo<InstagramFetchAuditInflux
   buildPoint(input: InstagramFetchAuditInfluxInput): Point {
     const point = new Point('instagram_fetch_audit')
       .tag('device_id', input.deviceId)
-      .stringField('user_id_at_time', input.userId || 'unknown')
       .tag('success', input.success ? 'true' : 'false')
-      .tag('trigger_type', input.triggerType);
+      .tag('trigger_type', input.triggerType)
+      .intField('duration_ms', Math.max(0, Math.round(input.durationMs)));
 
-    if (input.correlationId) point.tag('correlation_id', input.correlationId);
-    if (input.instagramAccountId) point.tag('instagram_account_id', input.instagramAccountId);
-    if (input.apiEndpoint) point.tag('api_endpoint', input.apiEndpoint);
+    if (input.correlationId) point.stringField('correlation_id', input.correlationId);
+    if (input.instagramAccountId) point.stringField('instagram_account_id', input.instagramAccountId);
+    if (input.apiEndpoint) point.stringField('api_endpoint', input.apiEndpoint);
     if (!input.success && input.errorCode !== undefined && input.errorCode !== null && String(input.errorCode) !== '') {
-      point.tag('error_code', String(input.errorCode));
+      point.stringField('error_code', String(input.errorCode));
     }
-
-    point.intField('duration_ms', Math.max(0, Math.round(input.durationMs)));
 
     if (input.oldFollowers !== null && input.oldFollowers !== undefined && !Number.isNaN(input.oldFollowers)) {
       point.intField('old_followers', Math.round(input.oldFollowers));
@@ -44,11 +37,8 @@ export class InstagramAuditRepo extends BaseInfluxRepo<InstagramFetchAuditInflux
     if (typeof input.cacheHit === 'boolean') {
       point.booleanField('cache_hit', input.cacheHit);
     }
-    if (typeof input.mediaCount === 'number' && Number.isFinite(input.mediaCount)) {
-      point.intField('media_count', Math.round(input.mediaCount));
-    }
     if (!input.success && input.errorMessage) {
-      point.stringField('error_message', this.truncate(input.errorMessage));
+      point.stringField('error_message', this.truncate(input.errorMessage, BucketTarget.METRICS));
     }
     if (input.primaryResponseSha256) {
       point.stringField('primary_response_sha256', input.primaryResponseSha256);
@@ -73,107 +63,31 @@ export class InstagramAuditRepo extends BaseInfluxRepo<InstagramFetchAuditInflux
     }
   }
 
-  async writeFollowersGauge(
-    deviceId: string,
-    instagramAccountId: string,
-    followers: number,
-    timestamp?: Date,
-    mediaCount?: number,
-  ): Promise<void> {
-    const point = new Point('instagram_metrics')
-      .tag('device_id', deviceId)
-      .tag('instagram_account_id', instagramAccountId || 'unknown')
-      .intField('followers', Math.round(followers));
-    if (typeof mediaCount === 'number' && Number.isFinite(mediaCount)) {
-      point.intField('media_count', Math.round(mediaCount));
-    }
-    point.timestamp(timestamp ?? new Date());
-    await this.submit(point, BucketTarget.METRICS, true);
-  }
-
-  async writeMilestoneCrossed(input: MilestoneCrossedInfluxInput): Promise<void> {
-    const point = new Point('milestone_crossed')
-      .tag('platform', input.platform)
-      .tag('device_id', input.deviceId)
-      .stringField('user_id_at_time', input.userId || 'unknown')
-      .tag('trigger', input.trigger)
-      .intField('milestone', Math.round(input.milestone))
-      .intField('old_value', Math.round(input.oldValue))
-      .intField('new_value', Math.round(input.newValue));
-    if (input.platform === 'instagram' && input.instagramAccountId) {
-      point.tag('instagram_account_id', input.instagramAccountId);
-    }
-    if (input.platform === 'gmb' && input.locationId) {
-      point.tag('location_id', input.locationId);
-    }
-    point.timestamp(input.timestamp ?? new Date());
-    await this.submit(point, BucketTarget.METRICS, true);
-  }
-
-  async writeInstagramMilestoneCrossed(input: InstagramMilestoneCrossedInfluxInput): Promise<void> {
-    await this.writeMilestoneCrossed({
-      platform: 'instagram',
-      deviceId: input.deviceId,
-      userId: input.userId,
-      trigger: input.trigger,
-      milestone: input.milestone,
-      oldValue: input.oldFollowers,
-      newValue: input.newFollowers,
-      instagramAccountId: input.instagramAccountId,
-      timestamp: input.timestamp,
-    });
-  }
-
-  async writeMqttDelivery(input: InstagramMqttDeliveryInfluxInput): Promise<void> {
-    const point = new Point('instagram_mqtt_delivery')
-      .tag('device_id', input.deviceId)
-      .stringField('user_id_at_time', input.userId || 'unknown');
-    if (input.instagramAccountId) point.tag('instagram_account_id', input.instagramAccountId);
-    if (input.correlationId) point.tag('correlation_id', input.correlationId);
-    point
-      .booleanField('success', input.success)
-      .booleanField('was_heartbeat', input.wasHeartbeat)
-      .intField('payload_size_bytes', Math.max(0, Math.round(input.payloadSizeBytes)));
-    if (!input.success && input.errorMessage) {
-      point.stringField('error_message', this.truncate(input.errorMessage));
-    }
-    point.timestamp(input.timestamp ?? new Date());
-    await this.submit(point, BucketTarget.METRICS, true);
-  }
-
-  async writeCircuitEvent(input: InstagramCircuitEventInfluxInput): Promise<void> {
-    const point = new Point('instagram_circuit_event')
-      .tag('state', input.state)
-      .tag('reason', input.reason);
-    if (input.state === 'open' && typeof input.retryAfterSeconds === 'number' && Number.isFinite(input.retryAfterSeconds)) {
-      point.intField('retry_after_seconds', Math.max(1, Math.round(input.retryAfterSeconds)));
-    }
-    point.timestamp(input.timestamp ?? new Date());
-    await this.submit(point, BucketTarget.METRICS, true);
-  }
-
   async writeProfileBaseline(input: ProfileBaselineInfluxInput): Promise<void> {
     const point = new Point('profile_baseline')
       .tag('device_id', input.deviceId)
       .tag('platform', input.platform)
-      .stringField('user_id_at_time', input.userId || 'unknown')
-      .intField('followers', Math.round(input.followers))
       .stringField('connected_at', input.connectedAt.toISOString());
-    if (input.platform === 'gmb' && typeof input.rating === 'number') {
-      point.floatField('rating', input.rating);
-    }
-    point.timestamp(input.timestamp ?? new Date());
-    await this.submit(point, BucketTarget.METRICS, true);
-  }
 
-  async writeVelocityWeekly(input: VelocityWeeklyInfluxInput): Promise<void> {
-    const point = new Point('velocity_weekly')
-      .tag('device_id', input.deviceId)
-      .tag('platform', input.platform)
-      .tag('week_of_year', input.weekOfYear)
-      .intField('count', Math.round(input.count))
-      .floatField('velocity_per_day', input.velocityPerDay)
-      .timestamp(input.timestamp ?? new Date());
+    if (input.platform === 'instagram' && typeof input.followers === 'number') {
+      point.intField('followers', Math.round(input.followers));
+    }
+    if (input.platform === 'gmb') {
+      if (typeof input.reviews === 'number') {
+        point.intField('reviews', Math.round(input.reviews));
+      } else if (typeof input.followers === 'number') {
+        // legacy callers may still pass review count as followers
+        point.intField('reviews', Math.round(input.followers));
+      }
+      if (typeof input.rating === 'number') {
+        point.floatField('rating', input.rating);
+      }
+      if (input.locationId) {
+        point.stringField('location_id', input.locationId);
+      }
+    }
+
+    point.timestamp(input.timestamp ?? new Date());
     await this.submit(point, BucketTarget.METRICS, true);
   }
 

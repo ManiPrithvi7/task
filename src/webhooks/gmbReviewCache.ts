@@ -6,20 +6,40 @@ import {
 import { logger } from '../utils/logger';
 
 const KEY_PREFIX = 'gmb:reviews:';
+const TS_KEY_PREFIX = 'gmb:reviews:ts:';
+
+export type GmbReviewCacheEntry = {
+  count: number;
+  updatedAtMs: number | null;
+};
 
 /**
  * Last known verified review count per GMB location — milestone state cache (not webhook dedupe).
- * First event per location seeds baseline; cache miss skips milestone_crossed.
+ * First event per location seeds baseline; cache miss skips milestone write.
  */
 export async function getGmbReviewCount(locationId: string): Promise<number | null> {
+  const entry = await getGmbReviewCacheEntry(locationId);
+  return entry?.count ?? null;
+}
+
+export async function getGmbReviewCacheEntry(locationId: string): Promise<GmbReviewCacheEntry | null> {
   const redis = getRedisService();
   if (!redis?.isRedisConnected()) return null;
 
   try {
-    const raw = await redis.getClient().get(`${KEY_PREFIX}${locationId}`);
+    const client = redis.getClient();
+    const [raw, tsRaw] = await Promise.all([
+      client.get(`${KEY_PREFIX}${locationId}`),
+      client.get(`${TS_KEY_PREFIX}${locationId}`)
+    ]);
     if (raw === null || raw === undefined) return null;
     const parsed = parseInt(raw, 10);
-    return Number.isFinite(parsed) ? parsed : null;
+    if (!Number.isFinite(parsed)) return null;
+    const updatedAtMs = tsRaw != null ? parseInt(tsRaw, 10) : NaN;
+    return {
+      count: parsed,
+      updatedAtMs: Number.isFinite(updatedAtMs) ? updatedAtMs : null
+    };
   } catch (err: unknown) {
     logger.warn('[GMB_REVIEW_CACHE] read failed', {
       locationId,
@@ -32,10 +52,15 @@ export async function getGmbReviewCount(locationId: string): Promise<number | nu
 export async function setGmbReviewCount(locationId: string, count: number): Promise<void> {
   const redis = getRedisService();
   const normalized = Math.max(0, Math.round(count));
+  const nowMs = Date.now();
 
   if (redis?.isRedisConnected()) {
     try {
-      await redis.getClient().set(`${KEY_PREFIX}${locationId}`, String(normalized), { EX: 2592000 });
+      const client = redis.getClient();
+      await Promise.all([
+        client.set(`${KEY_PREFIX}${locationId}`, String(normalized), { EX: 2592000 }),
+        client.set(`${TS_KEY_PREFIX}${locationId}`, String(nowMs), { EX: 2592000 })
+      ]);
     } catch (err: unknown) {
       logger.warn('[GMB_REVIEW_CACHE] write failed', {
         locationId,

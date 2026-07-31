@@ -14,9 +14,10 @@ import { publishGmbScreen } from './delivery/publishGmbScreen';
 import { scheduleGmbEnrichment } from './gmbEnrichmentWorker';
 import {
   getGmbCrossedMilestones,
-  getGmbReviewCount,
+  getGmbReviewCacheEntry,
   setGmbReviewCount
 } from './gmbReviewCache';
+import { computeVelocityPerDay } from '../utils/velocityPerDay';
 import { webhookInfluxBatch, flushWebhookInflux } from './influxAudit';
 import { WebhookLatencyTracker } from '../services/webhookMetrics';
 import { logger } from '../utils/logger';
@@ -56,8 +57,9 @@ export async function handleGmbWebhook(req: Request, res: Response, deps: Webhoo
     influx: import('../services/influxService').InfluxService,
     overrides: {
       deviceId?: string; locationId?: string; eventType?: string; webhookId?: string;
-      userId?: string; processedAt?: string; processingMs?: number;
+      processedAt?: string; processingMs?: number;
       verified?: boolean; signatureValid?: boolean; errorMessage?: string;
+      resolvedDeviceCount?: number; correlationId?: string;
     }
   ) => {
     await influx.writeGmbWebhookAudit({
@@ -70,10 +72,11 @@ export async function handleGmbWebhook(req: Request, res: Response, deps: Webhoo
       payloadSha256,
       deviceId: overrides.deviceId,
       webhookId: overrides.webhookId,
-      userId: overrides.userId,
       processedAt: overrides.processedAt,
       processingMs: overrides.processingMs,
       errorMessage: overrides.errorMessage,
+      resolvedDeviceCount: overrides.resolvedDeviceCount,
+      correlationId: overrides.correlationId,
       timestamp: new Date()
     }, { flush: false });
   };
@@ -88,18 +91,6 @@ export async function handleGmbWebhook(req: Request, res: Response, deps: Webhoo
         skipAuthVerify: deps.webhookConfig.gmbPubsubSkipAuthVerify
       },
       isProduction
-    );
-
-    await webhookInfluxBatch((influx) =>
-      influx.writeWebhookReceived(
-        {
-          platform: 'gmb',
-          eventType: 'pubsub_push',
-          verified: verification.valid,
-          timestamp: new Date()
-        },
-        { flush: false }
-      )
     );
 
     if (!verification.valid) {
@@ -190,23 +181,10 @@ export async function handleGmbWebhook(req: Request, res: Response, deps: Webhoo
 
     const devices = ctx ? await resolveDevicesForUser(ctx.userId, deps.webhookConfig.deviceTarget) : [];
 
-    await webhookInfluxBatch((influx) =>
-      influx.writeWebhookDeviceResolution(
-        {
-          platform: 'gmb',
-          externalId: location,
-          userId: ctx?.userId,
-          resolvedDeviceCount: devices.length,
-          timestamp: new Date()
-        },
-        { flush: false }
-      )
-    );
-
     if (!ctx) {
       logger.info('[GMB_WEBHOOK] no_linked_location', { account, location, eventType });
       await webhookInfluxBatch((influx) =>
-        writeGmbAudit(influx, { webhookId, locationId: location, eventType, errorMessage: 'no_linked_location' })
+        writeGmbAudit(influx, { webhookId, locationId: location, eventType, resolvedDeviceCount: 0, errorMessage: 'no_linked_location' })
       );
       tracker.finish('gmb', { dedupeKey, skippedPublish: true });
       return ack(res, 'No linked social/location — acknowledged', { account, location });
@@ -219,19 +197,17 @@ export async function handleGmbWebhook(req: Request, res: Response, deps: Webhoo
       writeGmbAudit(influx, {
         webhookId, locationId: location, eventType,
         deviceId: devices[0]?.clientId,
-        userId: ctx.userId
+        resolvedDeviceCount: devices.length,
       })
     );
 
     await webhookInfluxBatch((influx) =>
-      influx.writeGmbReviewSnapshot({
+      influx.writeGmbMetrics({
         deviceId: devices[0]?.clientId || location,
         locationId: location,
-        userId: ctx.userId,
-        totalReviews: verifiedReview,
+        trigger: 'webhook',
+        reviewsCount: verifiedReview,
         averageRating: rating,
-        newReviews24h: eventType === 'NEW_REVIEW' ? 1 : 0,
-        newReviews7d: 0,
         timestamp: new Date()
       }, { flush: false })
     );
@@ -244,40 +220,34 @@ export async function handleGmbWebhook(req: Request, res: Response, deps: Webhoo
       mqttPublish: deps.webhookConfig.mqttPublishEnabled
     });
 
-    // Milestone state from Redis cache — first event per location seeds baseline, not a crossing.
-    const cachedOldCount = await getGmbReviewCount(location);
-    if (cachedOldCount === null) {
+    const cached = await getGmbReviewCacheEntry(location);
+    if (cached === null) {
       await setGmbReviewCount(location, verifiedReview);
       await webhookInfluxBatch((influx) =>
         influx.writeProfileBaseline({
-          deviceId: location,
+          deviceId: devices[0]?.clientId || location,
           platform: 'gmb',
-          userId: ctx.userId,
-          followers: verifiedReview,
+          reviews: verifiedReview,
           rating: typeof rating === 'number' && rating > 0 ? rating : undefined,
+          locationId: location,
           connectedAt: new Date(),
           timestamp: new Date()
         }, { flush: false })
       );
     } else {
       const auditTs = new Date();
+      const velocity = computeVelocityPerDay(cached.count, verifiedReview, cached.updatedAtMs, auditTs.getTime());
       for (const device of devices) {
-        for (const milestone of getGmbCrossedMilestones(cachedOldCount, verifiedReview)) {
+        for (const _milestone of getGmbCrossedMilestones(cached.count, verifiedReview)) {
           await webhookInfluxBatch((influx) =>
-            influx.writeMilestoneCrossed(
-              {
-                platform: 'gmb',
-                deviceId: device.clientId,
-                userId: ctx.userId,
-                trigger: eventType,
-                milestone,
-                oldValue: cachedOldCount,
-                newValue: verifiedReview,
-                locationId: location,
-                timestamp: auditTs
-              },
-              { flush: false }
-            )
+            influx.writeGmbMilestone({
+              deviceId: device.clientId,
+              locationId: location,
+              reviewsCount: verifiedReview,
+              velocity,
+              createdAt: auditTs.toISOString(),
+              timestamp: auditTs
+            }, { flush: false })
           );
         }
       }

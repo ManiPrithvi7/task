@@ -90,6 +90,8 @@ import {
 import { validateKeyUsageAndEKU } from './utils/certValidator';
 import { validateCertificateChain } from './services/chainValidator';
 import { getAuditService, AuditEventType } from './services/auditService';
+import { createDeviceStateLogService, getDeviceStateLogService } from './services/deviceStateLogService';
+import crypto from 'crypto';
 
 export class StatsMqttLite {
   private config: AppConfig;
@@ -318,6 +320,9 @@ export class StatsMqttLite {
     logger.info('📈 Initializing InfluxDB...');
     await this.initializeInfluxDB();
     await this.initializePkiGovernance();
+
+    const deviceStateLog = createDeviceStateLogService();
+    await deviceStateLog.initialize();
 
     if (this.config.provisioning.enabled && !this.caService) {
       await this.initializeProvisioning();
@@ -1286,12 +1291,11 @@ export class StatsMqttLite {
     }
 
     void this.influxService
-      ?.writeDeviceOtaEvent({
+      ?.writeOtaEvent({
         deviceId,
         event: 'boot',
-        sourceTopic: 'active',
+        source: 'device_status',
         fwVersion: typeof fwVersion === 'string' ? fwVersion : undefined,
-        bootType: pilotBoot.bootType,
         ipAddress: pilotBoot.ipAddress,
         timestamp: pilotBoot.timestamp
       })
@@ -1304,6 +1308,16 @@ export class StatsMqttLite {
 
     const mongoUserId = (await Device.findOne({ clientId: deviceId }).select({ userId: 1 }).lean())?.userId
       ?.toString();
+
+    const ip = pilotBoot.ipAddress;
+    void getDeviceStateLogService().recordTransition({
+      deviceId,
+      event: 'active',
+      fwVersion: typeof fwVersion === 'string' ? fwVersion : undefined,
+      ipHash: ip ? crypto.createHash('sha256').update(ip).digest('hex') : undefined,
+      userIdAtTime: mongoUserId,
+      reason: 'registration',
+    }).catch(() => undefined);
     if (mongoUserId) {
       void cacheUserIntegrations(mongoUserId).catch((err: unknown) => {
         logger.warn('[LIFECYCLE:REGISTER] Integration cache warm failed', {
@@ -1598,6 +1612,12 @@ export class StatsMqttLite {
     const removed = await this.activeDeviceCache.removeActive(deviceId);
     await this.redisRemoveDevice(deviceId);
 
+    void getDeviceStateLogService().recordTransition({
+      deviceId,
+      event: 'inactive',
+      reason: 'lwt',
+    }).catch(() => undefined);
+
     const clearedPublishHashes = await clearAllPublishHashesForDevice(deviceId);
     getLocalPromoRotationCache().clear(deviceId);
     if (clearedPublishHashes > 0) {
@@ -1658,39 +1678,22 @@ export class StatsMqttLite {
     }
 
     if (eventType && this.influxService) {
-      void this.influxService.writeOtaTelemetry({
+      void this.influxService.writeOtaEvent({
         deviceId,
         event: String(eventType),
-        timestamp: message.timestamp,
-        current_version: message.current_version || message.fw_version,
-        target_version: message.target_version,
-        from_version: message.from_version,
-        to_version: message.to_version,
-        attempted_version: message.attempted_version,
-        reverted_to: message.reverted_to,
-        fw_version: message.fw_version,
-        reason: message.reason,
-        error_code: message.error_code,
-        error_message: message.error_message,
-        partition: message.partition,
-        boot_reason: message.boot_reason,
-        uptime_s: message.uptime_s ?? message.uptime,
-        free_heap: message.free_heap,
-        battery: message.battery,
-        signal_strength: message.signal_strength,
-        ota_state: message.ota_state,
-        checks_passed: message.checks_passed,
-        checks_total: message.checks_total,
-        attempt_number: message.attempt_number,
-        attempt_count: message.attempt_count,
-        sha256_match: message.sha256_match,
-        signature_valid: message.signature_valid,
-        time_sync_ok: message.time_sync_ok,
-        download_duration_ms: message.download_duration_ms,
-        validation_duration_ms: message.validation_duration_ms,
-        firmware_size: message.firmware_size,
-        cooldown_remaining_s: message.cooldown_remaining_s,
-        source_topic: 'status'
+        source: 'device_status',
+        fwVersion: message.fw_version || message.current_version,
+        errorMessage: message.error_message,
+        errorCode: message.error_code != null ? String(message.error_code) : undefined,
+        otaBytes: message.ota_bytes,
+        certDaysRemaining: message.cert_days_remaining,
+        certRenewalNeeded: message.cert_renewal_needed,
+        sha256Match: message.sha256_match,
+        signatureValid: message.signature_valid,
+        attemptNumber: message.attempt_number,
+        fromVersion: message.from_version,
+        payloadHash: message.payload_hash || message.expected_sha256,
+        timestamp: message.timestamp
       }).catch(() => undefined);
     }
 
@@ -1719,51 +1722,22 @@ export class StatsMqttLite {
     }
 
     if (this.influxService) {
-      void this.influxService.writeOtaTelemetry({
+      void this.influxService.writeOtaEvent({
         deviceId,
         event: String(eventType),
-        timestamp: message.timestamp,
-        current_version: message.current_version || message.fw_version,
-        target_version: message.target_version,
-        from_version: message.from_version,
-        to_version: message.to_version,
-        offered_version: message.offered_version,
-        attempted_version: message.attempted_version,
-        reverted_to: message.reverted_to,
-        fw_version: message.fw_version,
-        ota_progress_pct: message.ota_progress_pct ?? message.progress,
-        ota_bytes: message.ota_bytes,
-        ota_bytes_total: message.ota_bytes_total,
-        elapsed_ms: message.elapsed_ms,
-        estimated_remaining_ms: message.estimated_remaining_ms,
-        download_duration_ms: message.download_duration_ms,
-        validation_duration_ms: message.validation_duration_ms,
-        reason: message.reason,
-        error_code: message.error_code,
-        error_message: message.error_message,
-        http_code: message.http_code,
-        expected_sha256: message.expected_sha256,
-        computed_sha256: message.computed_sha256,
-        uptime_s: message.uptime_s ?? message.uptime,
-        free_heap: message.free_heap,
-        battery: message.battery,
-        signal_strength: message.signal_strength,
-        wifi_rssi: message.wifi_rssi,
-        cert_days_remaining: message.cert_days_remaining,
-        cert_renewal_needed: message.cert_renewal_needed,
-        partition: message.partition,
-        boot_reason: message.boot_reason,
-        ota_state: message.ota_state,
-        checks_passed: message.checks_passed,
-        checks_total: message.checks_total,
-        attempt_number: message.attempt_number,
-        attempt_count: message.attempt_count,
-        firmware_size: message.firmware_size ?? message.firmwareSize ?? message.sizeBytes,
-        cooldown_remaining_s: message.cooldown_remaining_s,
-        sha256_match: message.sha256_match,
-        signature_valid: message.signature_valid,
-        time_sync_ok: message.time_sync_ok,
-        source_topic: 'telemetry'
+        source: 'ota_telemetry',
+        fwVersion: message.fw_version || message.current_version,
+        errorMessage: message.error_message,
+        errorCode: message.error_code != null ? String(message.error_code) : undefined,
+        otaBytes: message.ota_bytes,
+        certDaysRemaining: message.cert_days_remaining,
+        certRenewalNeeded: message.cert_renewal_needed,
+        sha256Match: message.sha256_match,
+        signatureValid: message.signature_valid,
+        attemptNumber: message.attempt_number,
+        fromVersion: message.from_version,
+        payloadHash: message.payload_hash || message.expected_sha256,
+        timestamp: message.timestamp
       }).catch(() => undefined);
     }
 

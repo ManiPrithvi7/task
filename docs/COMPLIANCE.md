@@ -2,22 +2,26 @@
 
 ## Overview
 
-The application now uses a **dual-bucket architecture** to separate operational metrics from compliance/PKI data:
+The application uses a **dual-bucket architecture** to separate operational metrics from compliance/PKI data:
 
-| Bucket | Purpose | Measurements | Suggested Retention |
+| Bucket | Purpose | Measurements | Retention |
 |--------|---------|-------------|-------------------|
-| **`metrics`** | Operational time-series | `device_metrics`, `social_metrics`, `system_metrics`, `instagram_fetch_audit`, `instagram_metrics`, `instagram_mqtt_delivery`, `instagram_circuit_event`, `instagram_attention_e2e`, `webhook_received`, `webhook_device_resolution`, `webhook_mqtt_delivery`, `milestone_crossed`, `rate_limit_events` | 30 days |
-| **`pki_compliance`** | PKI hash chain + CT log + OTA release log | `pki_audit`, `ct_log`, `ota_release_log` | 1 year+ |
+| **`metrics`** | Operational time-series | `instagram_fetch_audit`, `ig_metrics`, `ig_milestone`, `gmb_metrics`, `gmb_milestone`, `profile_baseline`, `instagram_attention_e2e`, `mqtt_delivery`, `gmb_webhook_audit`, `device_ota_events`, `device_active` | **30 days** |
+| **`pki_compliance`** | PKI hash chain + CT log + OTA release log + device state chain | `pki_audit`, `ct_log`, `ota_release_log`, `device_state_log` | **3650 days** (10 years — WebTrust/ETSI) |
 
 Configured via env vars: `INFLUXDB_BUCKET` (default: `metrics`) and `INFLUXDB_COMPLIANCE_BUCKET` (default: `pki_compliance`). See `src/config/index.ts` and `.env.example`.
+
+**InfluxDB retention is per-bucket, not per-measurement.** All measurements in a bucket share that bucket's retention policy. The application cannot set retention independently — it is an administrative control via InfluxDB CLI/API.
+
+---
 
 ## Migration from Single Bucket
 
 Before deploying the dual-bucket code, ops must:
 
-1. **Create `pki_compliance` bucket** in InfluxDB with long retention (1 year+).
-2. **Set retention on `metrics` bucket** to ~30 days (via InfluxDB API/CLI).
-3. **Migrate existing PKI data** — if `pki_audit` / `ct_log` already exist in the current `metrics` bucket, migrate them to avoid chain reset:
+1. **Create `pki_compliance` bucket** in InfluxDB with **3650d** retention.
+2. **Set retention on `metrics` bucket** to **30 days** (via InfluxDB API/CLI).
+3. **Migrate existing PKI data** — if compliance measurements already exist in the `metrics` bucket (from before dual-bucket routing), migrate them to avoid chain reset / data loss:
 
 ```flux
 // Copy pki_audit from metrics → pki_compliance
@@ -26,55 +30,81 @@ from(bucket: "metrics")
   |> filter(fn: (r) => r._measurement == "pki_audit")
   |> to(bucket: "pki_compliance", org: "<org>")
 
-// Same for ct_log
+// Copy ct_log from metrics → pki_compliance
 from(bucket: "metrics")
   |> range(start: 0)
   |> filter(fn: (r) => r._measurement == "ct_log")
   |> to(bucket: "pki_compliance", org: "<org>")
+
+// Copy ota_release_log from metrics → pki_compliance
+from(bucket: "metrics")
+  |> range(start: 0)
+  |> filter(fn: (r) => r._measurement == "ota_release_log")
+  |> to(bucket: "pki_compliance", org: "<org>")
 ```
 
-Optional post-migration: drop `pki_audit` / `ct_log` series from `metrics` to avoid duplicate storage.
+Optional post-migration: drop `pki_audit` / `ct_log` / `ota_release_log` series from `metrics` to avoid duplicate storage.
+
+### Post-deploy retention command
+
+```bash
+influx bucket update --name pki_compliance --retention 3650d --org <org>
+influx bucket update --name metrics --retention 30d --org <org>
+```
+
+---
 
 ## Application Configuration
 
-- `INFLUXDB_BUCKET` — Default `metrics` (operational bucket)
-- `INFLUXDB_COMPLIANCE_BUCKET` — Default `pki_compliance` (PKI/compliance bucket)
-- `METRICS_RETENTION_DAYS` — Default 30 (configurable via `.env`)
-- Source: `src/config/index.ts`
-- Usage: "Reserved hint" for operational guidance only; actual retention controlled by InfluxDB bucket policies
+| Env / setting | Role |
+|---|---|
+| `INFLUXDB_BUCKET` | Operational bucket name (default `metrics`) |
+| `INFLUXDB_COMPLIANCE_BUCKET` | Compliance bucket name (default `pki_compliance`) |
+| `METRICS_RETENTION_DAYS` | **Not an application control.** Documented hint only (`src/config/index.ts` → `metricsRetentionDays`). Actual retention is set exclusively via InfluxDB bucket policies. |
+
+Source: `src/config/index.ts`, `.env.example`.
 
 ### Actual Retention Mechanism
 
-InfluxDB retention is configured administratively:
-
-- **Primary Control:** InfluxDB bucket retention policies
+- **Primary control:** InfluxDB bucket retention policies
 - **Applied by:** InfluxDB service administrators
-- **Configuration Tool:** InfluxDB API/CLI (not through this application)
+- **Configuration tool:** InfluxDB API/CLI (not through this application’s write path)
+
+---
 
 ## Retention Policy Details
 
-### Proposed Retention Periods
+### Retention Periods
 
-| Component | Suggested Days | Rationale |
-|-----------|----------------|-----------|
-| **Device Activity** | 30 | Standard industry practice |
-| **OTA Events** | 90 | Auditing needs longer than device data |
-| **Certificate Operations** | 180 | Compliance requirements |
-| **PKI Audit Chain** | 365+ | Chain continuity requirement |
+| Bucket | Retention | Measurements | Rationale |
+|--------|-----------|-------------|-----------|
+| `metrics` | 30d | `instagram_fetch_audit`, `ig_metrics`, `ig_milestone`, `gmb_metrics`, `gmb_milestone`, `profile_baseline`, `instagram_attention_e2e`, `mqtt_delivery`, `gmb_webhook_audit`, `device_ota_events`, `device_active` | Operational monitoring and dashboard trends — no compliance requirement beyond 30d |
+| `pki_compliance` | 3650d | `pki_audit`, `ct_log`, `ota_release_log`, `device_state_log` | WebTrust/ETSI CA audit (7yr+), certificate lifetime transparency, firmware release integrity, device state chain continuity |
+
+**Product decision (OTA / device events):** `device_ota_events` and `device_active` remain in the `metrics` bucket at **30d**. There is no separate 90-day OTA retention today. If 90-day OTA retention becomes a product requirement, choose one of:
+
+1. Increase `metrics` bucket retention to 90 days (affects all 11 metrics measurements), or
+2. Create a third bucket (e.g. `device_audit`) with 90-day retention and move those measurements there.
 
 ### Architecture
 
 ```
 InfluxService (dual-bucket routing)
   ├── metricsWriteApi → "metrics" bucket (30d retention)
-  └── complianceWriteApi → "pki_compliance" bucket (1yr+ retention)
+  └── complianceWriteApi → "pki_compliance" bucket (3650d retention)
 
 Disk queues (optional WAL):
   ├── {diskQueuePath}.metrics
   └── {diskQueuePath}.compliance
+
+BaseInfluxRepo.submit(point, BucketTarget, …)
+  ├── BucketTarget.METRICS    → metrics WriteApi / metrics disk queue
+  └── BucketTarget.COMPLIANCE → compliance WriteApi / compliance disk queue
 ```
 
 Query API is org-scoped; bucket is specified in each Flux query via `resolveBucket(target)`.
+
+---
 
 ## Compliance Considerations
 
@@ -82,76 +112,115 @@ Query API is org-scoped; bucket is specified in each Flux query via `resolveBuck
 
 | Regulation | Requirement | Compliance Status |
 |------------|-------------|-------------------|
-| **GDPR** | Data minimization | Not applicable to metrics |
-| **SOX** | Audit trail retention | 90-180 days (pki_compliance meets this) |
-| **HIPAA** | Protected health info storage | No PHI in metrics |
-| **Privacy Act** | Data retention periods | Addressed by tiered buckets |
+| **GDPR** | Data minimization, pseudonymization | ✅ `device_active.ip_hash` is SHA-256 pseudonymized; `user_id_at_time` is a user reference on `device_active` / compliance logs. 30-day retention in the `metrics` bucket supports data minimization for operational fields. |
+| **WebTrust/ETSI** | CA audit log retention (typically 7+ years) | ✅ `pki_audit` in `pki_compliance` with **3650d** retention |
+| **CT Policy** | Certificate transparency log retention | ✅ `ct_log` in `pki_compliance` with **3650d** retention |
+| **SOX** | Audit trail retention (5–7 years) | ✅ Compliance measurements (`pki_audit`, `ct_log`, `ota_release_log`, `device_state_log`) in the 3650d bucket |
+| **HIPAA** | Protected health info storage | No PHI in these measurements |
 
 ### Data Loss Risks
 
-1. **Administrative Dependency:** Retention requires InfluxDB admin action; application cannot self-police
-2. **No Tiering:** Cannot apply different retention to different data types
-3. **No Enforcement:** Application may write excessive historical data
-4. **No Cost Control:** Retention policy affects storage costs but isn't optimized
+1. **Per-measurement retention is not possible within a bucket.** If a specific measurement (e.g. `device_ota_events`) needs longer retention than the bucket default, either extend the whole bucket or move the measurement to a separate bucket. Mitigation: document retention-mismatch measurements and create additional buckets if product requires it.
+
+2. **Compliance bucket retention requires administrative action.** If `pki_compliance` is not set to **3650d** by ops, the PKI audit chain, CT log, OTA release log, and device state chain will be deleted after InfluxDB’s default retention. Mitigation: verify retention as part of the deployment checklist; prefer a boot-time health check that logs a warning when compliance retention is below 3650d (see Recommendations).
+
+3. **Mis-routed writes.** If a repo accidentally writes compliance data to the `metrics` bucket, it will be deleted after 30 days. Mitigation: `BaseInfluxRepo.submit()` routes by `BucketTarget`; new repos must specify the correct target. Dual WriteApis and separate disk queues reduce accidental mixing.
+
+4. **Cost growth on the compliance bucket.** 3650d retention increases storage cost over time; monitor volume and InfluxDB Cloud pricing.
+
+---
 
 ## Recommendations
 
-### Immediate Actions (Pre-Pilot)
+### Immediate Actions (Pre-Pilot / Deploy)
 
-1. **Document Administrative Controls:** Ensure InfluxDB bucket policies match operational requirements
-2. **Monitor Usage:** Track actual data growth and retention impact
-3. **Cost Awareness:** Document storage costs at different retention periods
+1. Set bucket policies: `metrics` → **30d**, `pki_compliance` → **3650d**
+2. Run migration Flux for `pki_audit`, `ct_log`, and `ota_release_log` if any still live in `metrics`
+3. Confirm retention via InfluxDB CLI/UI as part of the deploy checklist
+4. Monitor storage growth on both buckets
+
+### Boot-time retention verification (recommended)
+
+`InfluxService.healthCheck()` already probes InfluxDB health and API reachability. Extend it (or a one-shot init check) to read the compliance bucket retention and warn if below 3650 days:
+
+```typescript
+// Recommended addition to influxService health/init — verify compliance bucket retention
+const buckets = await this.bucketsApi.getBuckets({ org, name: complianceBucket });
+const bucket = buckets.buckets?.[0];
+if (bucket?.retentionRules?.[0]?.everySeconds !== undefined) {
+  const retentionDays = bucket.retentionRules[0].everySeconds / 86400;
+  if (retentionDays < 3650) {
+    logger.warn(
+      `pki_compliance bucket retention is ${retentionDays}d — recommended 3650d for WebTrust/ETSI compliance`
+    );
+  }
+}
+```
+
+The application still cannot *set* retention; it can only **detect misconfiguration** and alert operators.
 
 ### Post-Pilot Actions
 
-1. **Automated Retention:** Implement application-side enforcement in `POST-PILOT_ROADMAP.md`
-2. **Bucket Segregation:** Separate retention for different data types
-3. **Policy Lifecycle:** Automate retention policy adjustments based on compliance requirements
+1. Decide whether OTA/device events need >30d retention (third bucket vs raise `metrics` retention)
+2. Implement the boot-time retention warning above if not already shipped
+3. Automate cost/usage reporting for the compliance bucket
+
+---
 
 ## Monitoring & Alerting
 
 ### Current Monitoring
 
-- **InfluxDB dashboards:** Track storage usage and data volume
-- **Application logs:** Track data writes and errors
-- **Cost reporting:** Monitor infrastructure costs
+- InfluxDB dashboards: storage usage and data volume
+- Application logs: write failures and disk-queue backpressure
+- Cost reporting: infrastructure / InfluxDB Cloud spend
 
 ### Recommended Enhancements
 
-- Alert when retention periods approach their limits
-- Monitor data growth against retention policy
-- Track compliance adherence through audits
+- Alert when `pki_compliance` retention drifts below 3650d
+- Alert on unusual write volume to either bucket
+- Periodic audit that compliance measurements are only present in `pki_compliance`
+
+---
 
 ## Financial Impact
 
+Values below are **placeholders** — fill after InfluxDB Cloud (or self-hosted) pricing confirmation.
+
 | Retention Period | Monthly Cost (Estimated) | Data Volume (GB) |
 |------------------|--------------------------|-------------------|
-| 30 Days | $X.XX | 10-50 |
-| 90 Days | $X.XX | 30-150 |
-| 180 Days | $X.XX | 60-300 |
+| 30 Days (`metrics`) | $X.XX | 10–50 |
+| 3650 Days (`pki_compliance`) | $X.XX | TBD (grows with cert/OTA/device-state volume) |
+
+---
 
 ## Technical Challenges
 
 ### Integration Points
 
-1. **InfluxDB Admin:** Requires coordination with infrastructure team
-2. **Configuration Drift:** Manual management increases consistency risk
-3. **Cost Estimation:** Current InfluxDB pricing requires validation
+1. **InfluxDB Admin:** Retention requires coordination with the infrastructure team
+2. **Configuration Drift:** Manual bucket policies can diverge from this document
+3. **Cost Estimation:** Confirm InfluxDB pricing against actual compliance-bucket growth
 
 ### Development Barriers
 
-1. **No Native Support:** Application cannot modify InfluxDB retention via API
-2. **Single Point of Control:** All metrics share the same retention
-3. **Implementation Overhead:** Automated solution requires significant development
+1. **No write-path retention control:** The app cannot change InfluxDB retention via the metrics write path
+2. **Bucket-level granularity:** All measurements in a bucket share one retention (by design)
+3. **Detection vs enforcement:** Boot checks can warn; only admin CLI/API can fix retention
+
+---
 
 ## Conclusion
 
-The dual-bucket architecture addresses the **no-tiering** limitation of the previous single-bucket approach. PKI audit data now lives in a separate bucket with longer retention, while operational metrics remain in the short-retention metrics bucket.
+The dual-bucket architecture provides **tiered retention**: short-lived operational metrics (`metrics`, 30d) vs long-lived compliance evidence (`pki_compliance`, 3650d), with routing enforced in `BaseInfluxRepo.submit()` via `BucketTarget`.
 
-For true compliance with retention requirements:
+For deploy readiness:
 
-- **Immediate:** Document administrative controls and document responsibilities
-- **Post-Pilot:** Consider custom metrics service or migration to InfluxDB-compatible solution with API control
+- **Ops:** Set and verify bucket retention (30d / 3650d); migrate any leftover compliance series from `metrics`
+- **App:** Keep routing correct; optionally warn on boot when compliance retention is too short
+- **Product:** Explicitly decide if OTA/device events need longer than 30d (today: no — they stay in `metrics`)
+
+---
 
 ## Appendices
 
@@ -159,17 +228,18 @@ For true compliance with retention requirements:
 
 - [ ] Document current retention policy changes if modified
 - [ ] Track administrative decisions and reasoning
-- [ ] Maintain audit log of retention policy enforcement attempts
+- [ ] Record deploy checklist confirmation of 3650d on `pki_compliance`
 
 ### Appendix B: Cost Tracking
 
-- [ ] Implement automated cost tracking for different retention periods
+- [ ] Fill Financial Impact estimates after pricing confirmation
 - [ ] Document actual costs vs. estimates
 - [ ] Set up cost alerts at predetermined thresholds
 
 ## References
 
-- `src/config/index.ts` — Configuration documentation
-- `src/services/influxService.ts` — Dual-bucket routing implementation
+- `src/config/index.ts` — Bucket names and `METRICS_RETENTION_DAYS` hint
+- `src/services/influxService.ts` — Dual-bucket routing and health check
+- `src/storage/influx/BaseInfluxRepo.ts` — `BucketTarget` submit routing
 - InfluxDB bucket administration documentation
 - Cloud infrastructure cost reporting

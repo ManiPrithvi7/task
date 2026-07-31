@@ -82,13 +82,11 @@ export async function publishGmbScreen(
   }
   if (audit) {
     await webhookInfluxBatch((influx) =>
-      influx.writeWebhookMqttDelivery(
+      influx.writeMqttDelivery(
         {
           platform: 'gmb',
           deviceId: audit.deviceId,
-          userId: audit.userId,
           success,
-          published,
           payloadSizeBytes: Buffer.byteLength(payload, 'utf8'),
           payloadSha256: sha256Payload(payload),
           errorMessage,

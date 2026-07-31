@@ -3,8 +3,8 @@
  * Time-series metrics storage for device, social media, and system metrics.
  *
  * Dual-bucket architecture:
- *   metrics      — operational time-series (device_metrics, social_metrics, instagram_fetch_audit, etc.)
- *   pki_compliance — PKI hash chain + CT log (pki_audit, ct_log)
+ *   metrics      — operational time-series (ig_metrics, gmb_metrics, mqtt_delivery, etc.)
+ *   pki_compliance — PKI hash chain + CT log (pki_audit, ct_log, device_state_log)
  *
  * Local: docker compose InfluxDB 2.x (e.g. 8086).
  * Hosted: set INFLUXDB_URL to the public HTTPS origin only — no port when TLS terminates at the proxy (e.g. Render → container :10000).
@@ -17,47 +17,18 @@ import { InfluxDBConfig } from '../config';
 import { InfluxDiskQueue } from './influxDiskQueue';
 
 import { BucketTarget } from '../storage/influx/types';
-import { DeviceMetricsRepo } from '../storage/influx/repositories/DeviceMetricsRepo';
-import { DeviceOtaEventsRepo, DeviceOtaEventInput } from '../storage/influx/repositories/DeviceOtaEventsRepo';
+import { IgMetricsRepo, type IgMetricsInput } from '../storage/influx/repositories/IgMetricsRepo';
+import { IgMilestoneRepo, type IgMilestoneInput } from '../storage/influx/repositories/IgMilestoneRepo';
+import { GmbMetricsRepo, type GmbMetricsInput } from '../storage/influx/repositories/GmbMetricsRepo';
+import { GmbMilestoneRepo, type GmbMilestoneInput } from '../storage/influx/repositories/GmbMilestoneRepo';
+import { MqttDeliveryRepo, type MqttDeliveryInput } from '../storage/influx/repositories/MqttDeliveryRepo';
+import { DeviceActiveRepo, type DeviceActiveInput } from '../storage/influx/repositories/DeviceActiveRepo';
+import { DeviceStateLogRepo, type DeviceStateLogInput } from '../storage/influx/repositories/DeviceStateLogRepo';
+import { OtaEventsRepo, type OtaEventsInput } from '../storage/influx/repositories/OtaEventsRepo';
 import { InstagramAuditRepo } from '../storage/influx/repositories/InstagramAuditRepo';
 import { WebhookAuditRepo } from '../storage/influx/repositories/WebhookAuditRepo';
-import { PkiAuditRepo } from '../storage/influx/repositories/PkiAuditRepo';
-import { CtLogRepo } from '../storage/influx/repositories/CtLogRepo';
-import { OtaTelemetryRepo, type OtaTelemetryInput } from '../storage/influx/repositories/OtaTelemetryRepo';
-
-export interface DeviceMetrics {
-  temperature?: number;
-  humidity?: number;
-  pressure?: number;
-  battery?: number;
-  signal_strength?: number;
-  location?: string;
-  status?: string;
-  timestamp?: string | Date;
-  [key: string]: unknown;
-}
-
-export interface SocialMetrics {
-  followers?: number;
-  following?: number;
-  posts?: number;
-  likes?: number;
-  comments?: number;
-  shares?: number;
-  engagement_rate?: number;
-  post_id?: string;
-  content_type?: string;
-  [key: string]: unknown;
-}
-
-export interface SystemMetrics {
-  cpu_usage?: number;
-  memory_usage?: number;
-  connected_clients?: number;
-  mqtt_messages?: number;
-  uptime?: number;
-  [key: string]: unknown;
-}
+import { PkiAuditRepo, type PkiAuditInput } from '../storage/influx/repositories/PkiAuditRepo';
+import { CtLogRepo, type TransparencyEntryInput, type OtaReleaseEntryInput } from '../storage/influx/repositories/CtLogRepo';
 
 export interface InstagramFetchAuditInfluxInput {
   deviceId: string;
@@ -74,114 +45,20 @@ export interface InstagramFetchAuditInfluxInput {
   httpStatus?: number;
   retryAfterSeconds?: number;
   cacheHit?: boolean;
-  mediaCount?: number;
   apiEndpoint?: string;
   primaryResponseSha256?: string;
   detailsResponseSha256?: string;
   timestamp?: Date;
 }
 
-export interface InstagramMilestoneCrossedInfluxInput {
-  deviceId: string;
-  userId: string;
-  instagramAccountId: string;
-  trigger: string;
-  milestone: number;
-  oldFollowers: number;
-  newFollowers: number;
-  timestamp?: Date;
-}
-
-export interface InstagramMqttDeliveryInfluxInput {
-  deviceId: string;
-  userId: string;
-  instagramAccountId?: string;
-  correlationId?: string;
-  success: boolean;
-  wasHeartbeat: boolean;
-  payloadSizeBytes: number;
-  errorMessage?: string;
-  timestamp?: Date;
-}
-
-export interface InstagramCircuitEventInfluxInput {
-  state: 'open' | 'closed';
-  reason: string;
-  retryAfterSeconds?: number;
-  timestamp?: Date;
-}
-
-export type WebhookPlatform = 'gmb';
-
-export interface WebhookReceivedInfluxInput {
-  platform: WebhookPlatform;
-  eventType: string;
-  verified: boolean;
-  locationId?: string;
-  timestamp?: Date;
-}
-
-export interface WebhookDeviceResolutionInfluxInput {
-  platform: WebhookPlatform;
-  externalId: string;
-  userId?: string;
-  resolvedDeviceCount: number;
-  errorMessage?: string;
-  timestamp?: Date;
-}
-
-export interface WebhookMqttDeliveryInfluxInput {
-  platform: WebhookPlatform;
-  deviceId: string;
-  userId?: string;
-  success: boolean;
-  published: boolean;
-  payloadSizeBytes: number;
-  payloadSha256: string;
-  errorMessage?: string;
-  timestamp?: Date;
-}
-
-export interface MilestoneCrossedInfluxInput {
-  platform: 'instagram' | 'gmb';
-  deviceId: string;
-  userId: string;
-  trigger: string;
-  milestone: number;
-  oldValue: number;
-  newValue: number;
-  instagramAccountId?: string;
-  locationId?: string;
-  timestamp?: Date;
-}
-
 export interface ProfileBaselineInfluxInput {
   deviceId: string;
   platform: 'instagram' | 'gmb';
-  userId: string;
-  followers: number;
+  followers?: number;
+  reviews?: number;
   rating?: number;
+  locationId?: string;
   connectedAt: Date;
-  timestamp?: Date;
-}
-
-export interface VelocityWeeklyInfluxInput {
-  deviceId: string;
-  platform: 'instagram' | 'gmb' | 'combined';
-  weekOfYear: string;
-  count: number;
-  velocityPerDay: number;
-  timestamp?: Date;
-}
-
-export interface GmbReviewSnapshotInfluxInput {
-  deviceId: string;
-  locationId: string;
-  userId: string;
-  totalReviews: number;
-  averageRating: number;
-  newReviews24h: number;
-  newReviews7d: number;
   timestamp?: Date;
 }
 
@@ -190,7 +67,6 @@ export interface GmbWebhookAuditInfluxInput {
   locationId: string;
   eventType: string;
   webhookId?: string;
-  userId?: string;
   receivedAt: string;
   processedAt?: string;
   processingMs?: number;
@@ -198,26 +74,25 @@ export interface GmbWebhookAuditInfluxInput {
   signatureValid: boolean;
   payloadSizeBytes: number;
   payloadSha256: string;
+  resolvedDeviceCount?: number;
+  correlationId?: string;
   errorMessage?: string;
   timestamp?: Date;
 }
 
-export interface GmbVelocityWeeklyInfluxInput {
-  deviceId: string;
-  locationId: string;
-  weekOfYear: string;
-  userId: string;
-  reviewCountStart: number;
-  reviewCountEnd: number;
-  newReviews: number;
-  velocityPerDay: number;
-  ratingStart: number;
-  ratingEnd: number;
-  ratingDelta: number;
-  timestamp?: Date;
-}
-
-export type { OtaTelemetryInput };
+export type { OtaEventsInput };
+export type {
+  IgMetricsInput,
+  IgMilestoneInput,
+  GmbMetricsInput,
+  GmbMilestoneInput,
+  MqttDeliveryInput,
+  DeviceActiveInput,
+  DeviceStateLogInput,
+  PkiAuditInput,
+  TransparencyEntryInput,
+  OtaReleaseEntryInput,
+};
 export { BucketTarget };
 export type { BucketTarget as BucketTargetType };
 
@@ -230,13 +105,18 @@ export class InfluxService {
   private metricsDiskQueue: InfluxDiskQueue | null = null;
   private complianceDiskQueue: InfluxDiskQueue | null = null;
 
-  deviceMetrics: DeviceMetricsRepo;
-  deviceOtaEvents: DeviceOtaEventsRepo;
+  igMetrics: IgMetricsRepo;
+  igMilestone: IgMilestoneRepo;
+  gmbMetrics: GmbMetricsRepo;
+  gmbMilestone: GmbMilestoneRepo;
+  mqttDelivery: MqttDeliveryRepo;
+  deviceActive: DeviceActiveRepo;
+  deviceStateLog: DeviceStateLogRepo;
+  otaEvents: OtaEventsRepo;
   instagramAudit: InstagramAuditRepo;
   webhookAudit: WebhookAuditRepo;
   pkiAudit: PkiAuditRepo;
   ctLog: CtLogRepo;
-  otaTelemetry: OtaTelemetryRepo;
 
   private resolveBucket(target: BucketTarget): string {
     return target === BucketTarget.COMPLIANCE ? this.config.complianceBucket : this.config.bucket;
@@ -299,13 +179,18 @@ export class InfluxService {
       });
     }
 
-    this.deviceMetrics = new DeviceMetricsRepo(this.config, this.metricsWriteApi, this.metricsDiskQueue);
-    this.deviceOtaEvents = new DeviceOtaEventsRepo(this.config, this.metricsWriteApi, this.metricsDiskQueue);
+    this.igMetrics = new IgMetricsRepo(this.config, this.metricsWriteApi, this.metricsDiskQueue);
+    this.igMilestone = new IgMilestoneRepo(this.config, this.metricsWriteApi, this.metricsDiskQueue);
+    this.gmbMetrics = new GmbMetricsRepo(this.config, this.metricsWriteApi, this.metricsDiskQueue);
+    this.gmbMilestone = new GmbMilestoneRepo(this.config, this.metricsWriteApi, this.metricsDiskQueue);
+    this.mqttDelivery = new MqttDeliveryRepo(this.config, this.metricsWriteApi, this.metricsDiskQueue);
+    this.deviceActive = new DeviceActiveRepo(this.config, this.metricsWriteApi, this.metricsDiskQueue);
+    this.deviceStateLog = new DeviceStateLogRepo(this.config, this.complianceWriteApi, this.complianceDiskQueue);
+    this.otaEvents = new OtaEventsRepo(this.config, this.metricsWriteApi, this.metricsDiskQueue);
     this.instagramAudit = new InstagramAuditRepo(this.config, this.metricsWriteApi, this.metricsDiskQueue);
     this.webhookAudit = new WebhookAuditRepo(this.config, this.metricsWriteApi, this.metricsDiskQueue);
     this.pkiAudit = new PkiAuditRepo(this.config, this.complianceWriteApi, this.complianceDiskQueue);
     this.ctLog = new CtLogRepo(this.config, this.complianceWriteApi, this.complianceDiskQueue);
-    this.otaTelemetry = new OtaTelemetryRepo(this.config, this.metricsWriteApi, this.metricsDiskQueue);
   }
 
   private logInfluxBatchFlush(lines: string[], source: string): void {
@@ -313,87 +198,47 @@ export class InfluxService {
     logger.info('InfluxDB batch flush', { source, count: lines.length, lines });
   }
 
-  async writeDeviceMetrics(deviceId: string, metrics: DeviceMetrics): Promise<void> {
-    await this.deviceMetrics.write({ deviceId, metrics });
+  // ── Metrics writes ─────────────────────────────────────────────────
+
+  async writeIgMetrics(input: IgMetricsInput, opts?: { flush?: boolean }): Promise<void> {
+    await this.igMetrics.write(input);
   }
 
-  async writeDeviceOtaEvent(input: DeviceOtaEventInput): Promise<void> {
-    await this.deviceOtaEvents.write(input);
+  async writeIgMilestone(input: IgMilestoneInput, opts?: { flush?: boolean }): Promise<void> {
+    await this.igMilestone.write(input);
   }
 
-  async writeSocialMetrics(platform: string, userId: string, metrics: SocialMetrics): Promise<void> {
-    await this.deviceMetrics.writeSocialMetrics(platform, userId, metrics as unknown as Record<string, unknown>);
+  async writeGmbMetrics(input: GmbMetricsInput, opts?: { flush?: boolean }): Promise<void> {
+    await this.gmbMetrics.write(input);
   }
 
-  async writeSystemMetrics(metrics: SystemMetrics): Promise<void> {
-    await this.deviceMetrics.writeSystemMetrics(metrics);
+  async writeGmbMilestone(input: GmbMilestoneInput, opts?: { flush?: boolean }): Promise<void> {
+    await this.gmbMilestone.write(input);
   }
+
+  async writeMqttDelivery(input: MqttDeliveryInput, opts?: { flush?: boolean }): Promise<void> {
+    await this.mqttDelivery.write(input);
+  }
+
+  async writeDeviceActive(input: DeviceActiveInput): Promise<void> {
+    await this.deviceActive.write(input);
+  }
+
+  async writeDeviceStateLog(input: DeviceStateLogInput): Promise<void> {
+    await this.deviceStateLog.write(input);
+  }
+
+  async writeOtaEvent(input: OtaEventsInput): Promise<void> {
+    await this.otaEvents.write(input);
+  }
+
+  // ── Audit writes ───────────────────────────────────────────────────
 
   async writeInstagramFetchAudit(
     input: InstagramFetchAuditInfluxInput,
     opts?: { flush?: boolean }
   ): Promise<void> {
     await this.instagramAudit.write(input);
-  }
-
-  async writeInstagramFollowersGauge(
-    deviceId: string,
-    instagramAccountId: string,
-    followers: number,
-    timestamp?: Date,
-    opts?: { flush?: boolean; mediaCount?: number }
-  ): Promise<void> {
-    await this.instagramAudit.writeFollowersGauge(deviceId, instagramAccountId, followers, timestamp, opts?.mediaCount);
-  }
-
-  async writeMilestoneCrossed(
-    input: MilestoneCrossedInfluxInput,
-    opts?: { flush?: boolean }
-  ): Promise<void> {
-    await this.instagramAudit.writeMilestoneCrossed(input);
-  }
-
-  /** @deprecated Use writeMilestoneCrossed with platform=instagram */
-  async writeInstagramMilestoneCrossed(
-    input: InstagramMilestoneCrossedInfluxInput,
-    opts?: { flush?: boolean }
-  ): Promise<void> {
-    await this.instagramAudit.writeInstagramMilestoneCrossed(input);
-  }
-
-  async writeWebhookReceived(
-    input: WebhookReceivedInfluxInput,
-    opts?: { flush?: boolean }
-  ): Promise<void> {
-    await this.webhookAudit.write(input);
-  }
-
-  async writeWebhookDeviceResolution(
-    input: WebhookDeviceResolutionInfluxInput,
-    opts?: { flush?: boolean }
-  ): Promise<void> {
-    await this.webhookAudit.writeDeviceResolution(input);
-  }
-
-  async writeWebhookMqttDelivery(
-    input: WebhookMqttDeliveryInfluxInput,
-    opts?: { flush?: boolean }
-  ): Promise<void> {
-    await this.webhookAudit.writeMqttDelivery(input);
-  }
-
-  async writeInstagramMqttDelivery(
-    input: InstagramMqttDeliveryInfluxInput,
-    opts?: { flush?: boolean }
-  ): Promise<void> {
-    await this.instagramAudit.writeMqttDelivery(input);
-  }
-
-  async writeInstagramCircuitEvent(
-    input: InstagramCircuitEventInfluxInput,
-    opts?: { flush?: boolean }
-  ): Promise<void> {
-    await this.instagramAudit.writeCircuitEvent(input);
   }
 
   async writeProfileBaseline(
@@ -403,36 +248,11 @@ export class InfluxService {
     await this.instagramAudit.writeProfileBaseline(input);
   }
 
-  async writeVelocityWeekly(
-    input: VelocityWeeklyInfluxInput,
-    opts?: { flush?: boolean }
-  ): Promise<void> {
-    await this.instagramAudit.writeVelocityWeekly(input);
-  }
-
-  async writeGmbReviewSnapshot(
-    input: GmbReviewSnapshotInfluxInput,
-    opts?: { flush?: boolean }
-  ): Promise<void> {
-    await this.webhookAudit.writeGmbReviewSnapshot(input);
-  }
-
   async writeGmbWebhookAudit(
     input: GmbWebhookAuditInfluxInput,
     opts?: { flush?: boolean }
   ): Promise<void> {
     await this.webhookAudit.writeGmbWebhookAudit(input);
-  }
-
-  async writeGmbVelocityWeekly(
-    input: GmbVelocityWeeklyInfluxInput,
-    opts?: { flush?: boolean }
-  ): Promise<void> {
-    await this.webhookAudit.writeGmbVelocityWeekly(input);
-  }
-
-  async writeOtaTelemetry(input: OtaTelemetryInput, opts?: { flush?: boolean }): Promise<void> {
-    await this.otaTelemetry.write(input);
   }
 
   async writeInstagramAttentionE2eLatency(
@@ -445,6 +265,33 @@ export class InfluxService {
     await this.instagramAudit.writeAttentionE2eLatency(deviceId, triggerType, latencyMs, timestamp);
   }
 
+  // ── Compliance writes ──────────────────────────────────────────────
+
+  async writeAuditEvent(data: {
+    event: string;
+    deviceId: string;
+    userId?: string;
+    serialNumber?: string;
+    certificateFingerprint?: string;
+    sequence?: number;
+    hash?: string;
+    previousHash?: string;
+    hashPreimage?: string;
+    details?: Record<string, unknown>;
+  }): Promise<void> {
+    await this.pkiAudit.write(data);
+  }
+
+  async writeTransparencyEntry(data: TransparencyEntryInput): Promise<void> {
+    await this.ctLog.write(data);
+  }
+
+  async writeOtaReleaseEntry(data: OtaReleaseEntryInput): Promise<void> {
+    await this.ctLog.writeOtaReleaseEntry(data);
+  }
+
+  // ── Flush / close ─────────────────────────────────────────────────
+
   async flushWrites(): Promise<void> {
     const metricsDone = this.metricsDiskQueue
       ? this.metricsDiskQueue.flushNow()
@@ -455,81 +302,7 @@ export class InfluxService {
     await Promise.all([metricsDone, complianceDone]);
   }
 
-  async queryDeviceMetrics(deviceId: string, startTime: string, endTime?: string): Promise<Record<string, unknown>[]> {
-    try {
-      const end = endTime || new Date().toISOString();
-      const query = `
-        from(bucket: "${this.resolveBucket(BucketTarget.METRICS)}")
-          |> range(start: ${startTime}, stop: ${end})
-          |> filter(fn: (r) => r._measurement == "device_metrics")
-          |> filter(fn: (r) => r.device_id == "${deviceId}")
-          |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
-      `;
-      const results: Record<string, unknown>[] = [];
-      return new Promise((resolve, reject) => {
-        this.queryApi.queryRows(query, {
-          next(row, tableMeta) { results.push(tableMeta.toObject(row)); },
-          error(error) { reject(error); },
-          complete() { resolve(results); }
-        });
-      });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('Failed to query device metrics', { deviceId, error: errorMessage });
-      throw error;
-    }
-  }
-
-  async querySocialMetrics(platform: string, userId: string, startTime: string, endTime?: string): Promise<Record<string, unknown>[]> {
-    try {
-      const end = endTime || new Date().toISOString();
-      const query = `
-        from(bucket: "${this.resolveBucket(BucketTarget.METRICS)}")
-          |> range(start: ${startTime}, stop: ${end})
-          |> filter(fn: (r) => r._measurement == "social_metrics")
-          |> filter(fn: (r) => r.platform == "${platform}")
-          |> filter(fn: (r) => r.user_id == "${userId}")
-          |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
-      `;
-      const results: Record<string, unknown>[] = [];
-      return new Promise((resolve, reject) => {
-        this.queryApi.queryRows(query, {
-          next(row, tableMeta) { results.push(tableMeta.toObject(row)); },
-          error(error) { reject(error); },
-          complete() { resolve(results); }
-        });
-      });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('Failed to query social metrics', { platform, userId, error: errorMessage });
-      throw error;
-    }
-  }
-
-  async getLatestDeviceMetrics(deviceId: string): Promise<Record<string, unknown> | null> {
-    try {
-      const query = `
-        from(bucket: "${this.resolveBucket(BucketTarget.METRICS)}")
-          |> range(start: -1h)
-          |> filter(fn: (r) => r._measurement == "device_metrics")
-          |> filter(fn: (r) => r.device_id == "${deviceId}")
-          |> last()
-          |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
-      `;
-      const results: Record<string, unknown>[] = [];
-      return new Promise((resolve, reject) => {
-        this.queryApi.queryRows(query, {
-          next(row, tableMeta) { results.push(tableMeta.toObject(row)); },
-          error(error) { reject(error); },
-          complete() { resolve(results.length > 0 ? results[0] : null); }
-        });
-      });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('Failed to get latest device metrics', { deviceId, error: errorMessage });
-      throw error;
-    }
-  }
+  // ── Queries ────────────────────────────────────────────────────────
 
   async queryFlux<T = Record<string, unknown>>(fluxQuery: string): Promise<T[]> {
     const results: T[] = [];
@@ -542,7 +315,7 @@ export class InfluxService {
     });
   }
 
-  async queryInstagramMetrics(
+  async queryIgMetrics(
     deviceId: string,
     startTime: string,
     endTime?: string
@@ -551,11 +324,168 @@ export class InfluxService {
     return this.queryFlux(`
       from(bucket: "${this.config.bucket}")
         |> range(start: ${startTime}, stop: ${end})
-        |> filter(fn: (r) => r._measurement == "instagram_metrics")
+        |> filter(fn: (r) => r._measurement == "ig_metrics")
         |> filter(fn: (r) => r.device_id == "${deviceId}")
         |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
         |> sort(columns: ["_time"])
     `);
+  }
+
+  async queryIgMilestones(
+    deviceId: string,
+    startTime?: string,
+    endTime?: string
+  ): Promise<Record<string, unknown>[]> {
+    const start = startTime || '-90d';
+    const end = endTime || new Date().toISOString();
+    return this.queryFlux(`
+      from(bucket: "${this.config.bucket}")
+        |> range(start: ${start}, stop: ${end})
+        |> filter(fn: (r) => r._measurement == "ig_milestone")
+        |> filter(fn: (r) => r.device_id == "${deviceId}")
+        |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+        |> sort(columns: ["_time"], desc: true)
+    `);
+  }
+
+  async queryGmbMetrics(
+    locationId: string,
+    startTime: string,
+    endTime?: string
+  ): Promise<Record<string, unknown>[]> {
+    const end = endTime || new Date().toISOString();
+    return this.queryFlux(`
+      from(bucket: "${this.config.bucket}")
+        |> range(start: ${startTime}, stop: ${end})
+        |> filter(fn: (r) => r._measurement == "gmb_metrics")
+        |> filter(fn: (r) => r.location_id == "${locationId}")
+        |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+        |> sort(columns: ["_time"])
+    `);
+  }
+
+  async queryGmbMilestones(
+    locationId: string,
+    startTime?: string,
+    endTime?: string
+  ): Promise<Record<string, unknown>[]> {
+    const start = startTime || '-90d';
+    const end = endTime || new Date().toISOString();
+    return this.queryFlux(`
+      from(bucket: "${this.config.bucket}")
+        |> range(start: ${start}, stop: ${end})
+        |> filter(fn: (r) => r._measurement == "gmb_milestone")
+        |> filter(fn: (r) => r.location_id == "${locationId}")
+        |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+        |> sort(columns: ["_time"], desc: true)
+    `);
+  }
+
+  async queryMqttDelivery(
+    deviceId: string,
+    platform: string,
+    startTime: string,
+    endTime?: string
+  ): Promise<Record<string, unknown>[]> {
+    const end = endTime || new Date().toISOString();
+    return this.queryFlux(`
+      from(bucket: "${this.config.bucket}")
+        |> range(start: ${startTime}, stop: ${end})
+        |> filter(fn: (r) => r._measurement == "mqtt_delivery")
+        |> filter(fn: (r) => r.device_id == "${deviceId}")
+        |> filter(fn: (r) => r.platform == "${platform}")
+        |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+        |> sort(columns: ["_time"], desc: true)
+    `);
+  }
+
+  async queryDeviceActive(
+    deviceId: string,
+    startTime: string,
+    endTime?: string
+  ): Promise<Record<string, unknown>[]> {
+    const end = endTime || new Date().toISOString();
+    return this.queryFlux(`
+      from(bucket: "${this.config.bucket}")
+        |> range(start: ${startTime}, stop: ${end})
+        |> filter(fn: (r) => r._measurement == "device_active")
+        |> filter(fn: (r) => r.device_id == "${deviceId}")
+        |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+        |> sort(columns: ["_time"], desc: true)
+    `);
+  }
+
+  async queryLatestDeviceStateEntry(
+    deviceId: string
+  ): Promise<{ sequence: number; hash: string } | null> {
+    try {
+      const fluxQuery = `
+        from(bucket: "${this.resolveBucket(BucketTarget.COMPLIANCE)}")
+          |> range(start: -3650d)
+          |> filter(fn: (r) => r._measurement == "device_state_log")
+          |> filter(fn: (r) => r.device_id == "${deviceId}")
+          |> filter(fn: (r) => r._field == "hash" or r._field == "sequence")
+          |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+          |> sort(columns: ["_time"], desc: true)
+          |> limit(n: 1)
+      `;
+      return new Promise((resolve, reject) => {
+        let result: { sequence: number; hash: string } | null = null;
+        this.queryApi.queryRows(fluxQuery, {
+          next(row, tableMeta) {
+            const obj = tableMeta.toObject(row);
+            if (obj.sequence !== undefined && obj.hash) {
+              result = {
+                sequence: typeof obj.sequence === 'number' ? obj.sequence : parseInt(String(obj.sequence), 10),
+                hash: String(obj.hash)
+              };
+            }
+          },
+          error(error) { reject(error); },
+          complete() { resolve(result); }
+        });
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error('Failed to query latest device state entry', { deviceId, error: errorMessage });
+      return null;
+    }
+  }
+
+  async queryLatestDeviceStateEntries(): Promise<Map<string, { sequence: number; hash: string }>> {
+    try {
+      const fluxQuery = `
+        from(bucket: "${this.resolveBucket(BucketTarget.COMPLIANCE)}")
+          |> range(start: -3650d)
+          |> filter(fn: (r) => r._measurement == "device_state_log")
+          |> filter(fn: (r) => r._field == "hash" or r._field == "sequence")
+          |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+          |> group(columns: ["device_id"])
+          |> sort(columns: ["_time"], desc: true)
+          |> limit(n: 1)
+      `;
+      const results = new Map<string, { sequence: number; hash: string }>();
+      return new Promise((resolve, reject) => {
+        this.queryApi.queryRows(fluxQuery, {
+          next(row, tableMeta) {
+            const obj = tableMeta.toObject(row);
+            const deviceId = String(obj.device_id || '');
+            if (deviceId && obj.sequence !== undefined && obj.hash) {
+              results.set(deviceId, {
+                sequence: typeof obj.sequence === 'number' ? obj.sequence : parseInt(String(obj.sequence), 10),
+                hash: String(obj.hash)
+              });
+            }
+          },
+          error(error) { reject(error); },
+          complete() { resolve(results); }
+        });
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error('Failed to query latest device state entries', { error: errorMessage });
+      return new Map();
+    }
   }
 
   async queryInstagramAudit(
@@ -572,28 +502,6 @@ export class InfluxService {
         |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
         |> sort(columns: ["_time"], desc: true)
     `);
-  }
-
-  async queryMilestones(
-    deviceId: string,
-    platform?: string,
-    startTime?: string,
-    endTime?: string
-  ): Promise<Record<string, unknown>[]> {
-    const start = startTime || '-90d';
-    const end = endTime || new Date().toISOString();
-    let flux = `
-      from(bucket: "${this.config.bucket}")
-        |> range(start: ${start}, stop: ${end})
-        |> filter(fn: (r) => r._measurement == "milestone_crossed")
-        |> filter(fn: (r) => r.device_id == "${deviceId}")
-    `;
-    if (platform) {
-      flux += `  |> filter(fn: (r) => r.platform == "${platform}")\n`;
-    }
-    flux += `  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
-        |> sort(columns: ["_time"], desc: true)`;
-    return this.queryFlux(flux);
   }
 
   async queryProfileBaseline(
@@ -613,90 +521,6 @@ export class InfluxService {
     return results.length > 0 ? results[0] : null;
   }
 
-  async queryVelocityWeekly(
-    deviceId: string,
-    platform: string,
-    weekOfYear?: string
-  ): Promise<Record<string, unknown>[]> {
-    let flux = `
-      from(bucket: "${this.config.bucket}")
-        |> range(start: -90d)
-        |> filter(fn: (r) => r._measurement == "velocity_weekly")
-        |> filter(fn: (r) => r.device_id == "${deviceId}")
-        |> filter(fn: (r) => r.platform == "${platform}")
-    `;
-    if (weekOfYear) {
-      flux += `  |> filter(fn: (r) => r.week_of_year == "${weekOfYear}")\n`;
-    }
-    flux += `  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
-        |> sort(columns: ["_time"], desc: true)`;
-    return this.queryFlux(flux);
-  }
-
-  async queryWebhookEvents(
-    locationId: string,
-    startTime: string,
-    endTime?: string
-  ): Promise<Record<string, unknown>[]> {
-    const end = endTime || new Date().toISOString();
-    return this.queryFlux(`
-      from(bucket: "${this.config.bucket}")
-        |> range(start: ${startTime}, stop: ${end})
-        |> filter(fn: (r) => r._measurement == "webhook_received")
-        |> filter(fn: (r) => r.location_id == "${locationId}")
-        |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
-        |> sort(columns: ["_time"], desc: true)
-    `);
-  }
-
-  async queryWebhookMqttDeliveries(
-    deviceId: string,
-    startTime: string,
-    endTime?: string
-  ): Promise<Record<string, unknown>[]> {
-    const end = endTime || new Date().toISOString();
-    return this.queryFlux(`
-      from(bucket: "${this.config.bucket}")
-        |> range(start: ${startTime}, stop: ${end})
-        |> filter(fn: (r) => r._measurement == "webhook_mqtt_delivery")
-        |> filter(fn: (r) => r.device_id == "${deviceId}")
-        |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
-        |> sort(columns: ["_time"], desc: true)
-    `);
-  }
-
-  async queryInstagramMqttDeliveries(
-    deviceId: string,
-    startTime: string,
-    endTime?: string
-  ): Promise<Record<string, unknown>[]> {
-    const end = endTime || new Date().toISOString();
-    return this.queryFlux(`
-      from(bucket: "${this.config.bucket}")
-        |> range(start: ${startTime}, stop: ${end})
-        |> filter(fn: (r) => r._measurement == "instagram_mqtt_delivery")
-        |> filter(fn: (r) => r.device_id == "${deviceId}")
-        |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
-        |> sort(columns: ["_time"], desc: true)
-    `);
-  }
-
-  async queryGmbReviewSnapshots(
-    locationId: string,
-    startTime: string,
-    endTime?: string
-  ): Promise<Record<string, unknown>[]> {
-    const end = endTime || new Date().toISOString();
-    return this.queryFlux(`
-      from(bucket: "${this.config.bucket}")
-        |> range(start: ${startTime}, stop: ${end})
-        |> filter(fn: (r) => r._measurement == "gmb_review_snapshot")
-        |> filter(fn: (r) => r.location_id == "${locationId}")
-        |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
-        |> sort(columns: ["_time"], desc: true)
-    `);
-  }
-
   async queryGmbWebhookAudits(
     locationId: string,
     startTime: string,
@@ -708,38 +532,6 @@ export class InfluxService {
         |> range(start: ${startTime}, stop: ${end})
         |> filter(fn: (r) => r._measurement == "gmb_webhook_audit")
         |> filter(fn: (r) => r.location_id == "${locationId}")
-        |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
-        |> sort(columns: ["_time"], desc: true)
-    `);
-  }
-
-  async queryGmbVelocityWeekly(
-    locationId: string,
-    weekOfYear?: string
-  ): Promise<Record<string, unknown>[]> {
-    let flux = `
-      from(bucket: "${this.config.bucket}")
-        |> range(start: -90d)
-        |> filter(fn: (r) => r._measurement == "gmb_velocity_weekly")
-        |> filter(fn: (r) => r.location_id == "${locationId}")
-    `;
-    if (weekOfYear) {
-      flux += `  |> filter(fn: (r) => r.week_of_year == "${weekOfYear}")\n`;
-    }
-    flux += `  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
-        |> sort(columns: ["_time"], desc: true)`;
-    return this.queryFlux(flux);
-  }
-
-  async queryInstagramCircuitEvents(
-    startTime: string,
-    endTime?: string
-  ): Promise<Record<string, unknown>[]> {
-    const end = endTime || new Date().toISOString();
-    return this.queryFlux(`
-      from(bucket: "${this.config.bucket}")
-        |> range(start: ${startTime}, stop: ${end})
-        |> filter(fn: (r) => r._measurement == "instagram_circuit_event")
         |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
         |> sort(columns: ["_time"], desc: true)
     `);
@@ -759,169 +551,6 @@ export class InfluxService {
         |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
         |> sort(columns: ["_time"], desc: true)
     `);
-  }
-
-  async queryRateLimitEvents(
-    startTime: string,
-    endTime?: string,
-    limitType?: string
-  ): Promise<Record<string, unknown>[]> {
-    const end = endTime || new Date().toISOString();
-    let flux = `
-      from(bucket: "${this.config.bucket}")
-        |> range(start: ${startTime}, stop: ${end})
-        |> filter(fn: (r) => r._measurement == "rate_limit_events")
-    `;
-    if (limitType) {
-      flux += `  |> filter(fn: (r) => r.limit_type == "${limitType}")\n`;
-    }
-    flux += `  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
-        |> sort(columns: ["_time"], desc: true)`;
-    return this.queryFlux(flux);
-  }
-
-  async writeAuditEvent(data: {
-    event: string;
-    deviceId?: string;
-    userId?: string;
-    orderId?: string;
-    batchId?: string;
-    serialNumber?: string;
-    certificateFingerprint?: string;
-    sequence?: number;
-    hash?: string;
-    previousHash?: string;
-    details?: Record<string, unknown>;
-  }): Promise<void> {
-    await this.pkiAudit.write(data);
-  }
-
-  async writeRateLimitEvent(data: {
-    limitType: string;
-    endpoint: string;
-    ip: string;
-    count: number;
-    limit: number;
-    deviceId?: string;
-  }): Promise<void> {
-    await this.deviceMetrics.writeRateLimitEvent(data);
-  }
-
-  async queryAuditEvents(startTime: string, endTime?: string, eventType?: string): Promise<Record<string, unknown>[]> {
-    try {
-      const end = endTime || new Date().toISOString();
-      let fluxQuery = `
-        from(bucket: "${this.resolveBucket(BucketTarget.COMPLIANCE)}")
-          |> range(start: ${startTime}, stop: ${end})
-          |> filter(fn: (r) => r._measurement == "pki_audit")
-      `;
-      if (eventType) {
-        fluxQuery += `  |> filter(fn: (r) => r.event == "${eventType}")\n`;
-      }
-      fluxQuery += `  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")`;
-      const results: Record<string, unknown>[] = [];
-      return new Promise((resolve, reject) => {
-        this.queryApi.queryRows(fluxQuery, {
-          next(row, tableMeta) { results.push(tableMeta.toObject(row)); },
-          error(error) { reject(error); },
-          complete() { resolve(results); }
-        });
-      });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('Failed to query PKI audit events', { error: errorMessage });
-      throw error;
-    }
-  }
-
-  async writeTransparencyEntry(data: {
-    index: number;
-    leafHash: string;
-    rootHash: string;
-    inclusionProof: string;
-    certFingerprint: string;
-    serialNumber: string;
-    cn: string;
-    deviceId: string;
-    issuedAt: Date;
-  }): Promise<void> {
-    await this.ctLog.write(data);
-  }
-
-  async writeOtaReleaseEntry(data: {
-    index: number;
-    leafHash: string;
-    rootHash: string;
-    inclusionProof: string;
-    version: string;
-    sha256: string;
-    objectKey: string;
-    keyFingerprint: string;
-    releasedAt: Date;
-  }): Promise<void> {
-    await this.ctLog.writeOtaReleaseEntry(data);
-  }
-
-  async queryOtaReleaseLeaves(): Promise<Array<{ index: number; leafHash: string }>> {
-    try {
-      const fluxQuery = `
-        from(bucket: "${this.resolveBucket(BucketTarget.COMPLIANCE)}")
-          |> range(start: 0)
-          |> filter(fn: (r) => r._measurement == "ota_release_log")
-          |> filter(fn: (r) => r._field == "leaf_hash" or r._field == "index")
-          |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
-          |> sort(columns: ["index"])
-      `;
-      const results: Array<{ index: number; leafHash: string }> = [];
-      return new Promise((resolve, reject) => {
-        this.queryApi.queryRows(fluxQuery, {
-          next(row, tableMeta) {
-            const obj = tableMeta.toObject(row);
-            results.push({
-              index: typeof obj.index === 'number' ? obj.index : parseInt(String(obj.index), 10),
-              leafHash: String(obj.leaf_hash || '')
-            });
-          },
-          error(error) { reject(error); },
-          complete() { resolve(results); }
-        });
-      });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('Failed to query OTA release log leaves', { error: errorMessage });
-      return [];
-    }
-  }
-
-  async queryTransparencyLeaves(): Promise<Array<{ index: number; leafHash: string }>> {
-    try {
-      const fluxQuery = `
-        from(bucket: "${this.resolveBucket(BucketTarget.COMPLIANCE)}")
-          |> range(start: 0)
-          |> filter(fn: (r) => r._measurement == "ct_log")
-          |> filter(fn: (r) => r._field == "leaf_hash" or r._field == "index")
-          |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
-          |> sort(columns: ["index"])
-      `;
-      const results: Array<{ index: number; leafHash: string }> = [];
-      return new Promise((resolve, reject) => {
-        this.queryApi.queryRows(fluxQuery, {
-          next(row, tableMeta) {
-            const obj = tableMeta.toObject(row);
-            results.push({
-              index: typeof obj.index === 'number' ? obj.index : parseInt(String(obj.index), 10),
-              leafHash: String(obj.leaf_hash || '')
-            });
-          },
-          error(error) { reject(error); },
-          complete() { resolve(results); }
-        });
-      });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('Failed to query CT log leaves', { error: errorMessage });
-      return [];
-    }
   }
 
   async queryLatestAuditEntry(): Promise<{ sequence: number; hash: string } | null> {
@@ -998,6 +627,70 @@ export class InfluxService {
       return [];
     }
   }
+
+  async queryOtaReleaseLeaves(): Promise<Array<{ index: number; leafHash: string }>> {
+    try {
+      const fluxQuery = `
+        from(bucket: "${this.resolveBucket(BucketTarget.COMPLIANCE)}")
+          |> range(start: 0)
+          |> filter(fn: (r) => r._measurement == "ota_release_log")
+          |> filter(fn: (r) => r._field == "leaf_hash" or r._field == "index")
+          |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+          |> sort(columns: ["index"])
+      `;
+      const results: Array<{ index: number; leafHash: string }> = [];
+      return new Promise((resolve, reject) => {
+        this.queryApi.queryRows(fluxQuery, {
+          next(row, tableMeta) {
+            const obj = tableMeta.toObject(row);
+            results.push({
+              index: typeof obj.index === 'number' ? obj.index : parseInt(String(obj.index), 10),
+              leafHash: String(obj.leaf_hash || '')
+            });
+          },
+          error(error) { reject(error); },
+          complete() { resolve(results); }
+        });
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error('Failed to query OTA release log leaves', { error: errorMessage });
+      return [];
+    }
+  }
+
+  async queryTransparencyLeaves(): Promise<Array<{ index: number; leafHash: string }>> {
+    try {
+      const fluxQuery = `
+        from(bucket: "${this.resolveBucket(BucketTarget.COMPLIANCE)}")
+          |> range(start: 0)
+          |> filter(fn: (r) => r._measurement == "ct_log")
+          |> filter(fn: (r) => r._field == "leaf_hash" or r._field == "index")
+          |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+          |> sort(columns: ["index"])
+      `;
+      const results: Array<{ index: number; leafHash: string }> = [];
+      return new Promise((resolve, reject) => {
+        this.queryApi.queryRows(fluxQuery, {
+          next(row, tableMeta) {
+            const obj = tableMeta.toObject(row);
+            results.push({
+              index: typeof obj.index === 'number' ? obj.index : parseInt(String(obj.index), 10),
+              leafHash: String(obj.leaf_hash || '')
+            });
+          },
+          error(error) { reject(error); },
+          complete() { resolve(results); }
+        });
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error('Failed to query CT log leaves', { error: errorMessage });
+      return [];
+    }
+  }
+
+  // ── Health check ───────────────────────────────────────────────────
 
   async healthCheck(): Promise<boolean> {
     const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -1197,6 +890,10 @@ export function createInfluxService(config: InfluxDBConfig): InfluxService {
 
 export function getInfluxService(): InfluxService | null {
   return influxServiceInstance;
+}
+
+export function setInfluxService(svc: InfluxService): void {
+  influxServiceInstance = svc;
 }
 
 export async function resetInfluxService(): Promise<void> {

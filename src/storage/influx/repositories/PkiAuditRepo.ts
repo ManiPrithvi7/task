@@ -5,15 +5,15 @@ import { logger } from '../../../utils/logger';
 
 export interface PkiAuditInput {
   event: string;
-  deviceId?: string;
+  /** Required — CA-level events use "system". */
+  deviceId: string;
   userId?: string;
-  orderId?: string;
-  batchId?: string;
   serialNumber?: string;
   certificateFingerprint?: string;
   sequence?: number;
   hash?: string;
   previousHash?: string;
+  hashPreimage?: string;
   details?: Record<string, unknown>;
 }
 
@@ -21,20 +21,20 @@ export class PkiAuditRepo extends BaseInfluxRepo<PkiAuditInput> {
   buildPoint(input: PkiAuditInput): Point {
     const point = new Point('pki_audit')
       .tag('event', input.event)
-      .tag('source', 'mqtt-publisher-lite');
+      .tag('device_id', input.deviceId || 'system');
 
-    if (input.deviceId) point.tag('device_id', input.deviceId);
-    if (input.orderId) point.tag('order_id', input.orderId);
-    if (input.batchId) point.tag('batch_id', input.batchId);
     if (input.userId) point.stringField('user_id_at_time', input.userId);
     if (input.serialNumber) point.stringField('serial_number', input.serialNumber);
     if (input.certificateFingerprint) point.stringField('cert_fingerprint', input.certificateFingerprint);
     if (typeof input.sequence === 'number') point.intField('sequence', input.sequence);
     if (input.hash) point.stringField('hash', input.hash);
     if (input.previousHash) point.stringField('previous_hash', input.previousHash);
-    if (input.details) point.stringField('details', this.truncate(JSON.stringify(input.details)));
+    if (input.hashPreimage) point.stringField('hash_preimage', input.hashPreimage);
+    // Compliance bucket: details never truncated
+    if (input.details) {
+      point.stringField('details', JSON.stringify(input.details));
+    }
 
-    point.intField('count', 1);
     point.timestamp(new Date());
     return point;
   }

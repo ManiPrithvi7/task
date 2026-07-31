@@ -200,5 +200,8 @@
   "198": "node-forge",
   "199": "oci-sdk",
   "200": "prom-client",
-  "201": "uuid"
+  "201": "uuid",
+  "202": "husky",
+  "203": "winston",
+  "204": "@types/node"
 }

@@ -90,18 +90,17 @@ export function createDashboardRoutes(deps: DashboardRoutesDeps): Router {
 
     try {
       const range = req.query.range || '-90d';
-      const [metrics, baseline, milestones, velocity] = await Promise.all([
-        influx.queryInstagramMetrics(deviceId, String(range)),
+      const [metrics, baseline, milestones] = await Promise.all([
+        influx.queryIgMetrics(deviceId, String(range)),
         influx.queryProfileBaseline(deviceId, 'instagram'),
-        influx.queryMilestones(deviceId, 'instagram', String(range)),
-        influx.queryVelocityWeekly(deviceId, 'instagram'),
+        influx.queryIgMilestones(deviceId, String(range)),
       ]);
 
       res.json({
         metrics: sanitizeForDashboard(metrics),
         baseline,
         milestones: sanitizeForDashboard(milestones),
-        velocity: sanitizeForDashboard(velocity),
+        velocity: sanitizeForDashboard(milestones),
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -148,20 +147,19 @@ export function createDashboardRoutes(deps: DashboardRoutesDeps): Router {
 
     try {
       const range = req.query.range || '-90d';
-      const [webhookEvents, reviewSnapshots, baseline, milestones, velocity] = await Promise.all([
-        influx.queryWebhookEvents(locationId, String(range)),
-        influx.queryGmbReviewSnapshots(locationId, String(range)),
+      const [webhookAudits, gmbMetrics, baseline, milestones] = await Promise.all([
+        influx.queryGmbWebhookAudits(locationId, String(range)),
+        influx.queryGmbMetrics(locationId, String(range)),
         influx.queryProfileBaseline(locationId, 'gmb'),
-        influx.queryMilestones(locationId, 'gmb', String(range)),
-        influx.queryVelocityWeekly(locationId, 'gmb'),
+        influx.queryGmbMilestones(locationId, String(range)),
       ]);
 
       res.json({
-        webhook_events: sanitizeForDashboard(webhookEvents),
-        review_snapshots: sanitizeForDashboard(reviewSnapshots),
+        webhook_events: sanitizeForDashboard(webhookAudits),
+        review_snapshots: sanitizeForDashboard(gmbMetrics),
         baseline,
         milestones: sanitizeForDashboard(milestones),
-        velocity: sanitizeForDashboard(velocity),
+        velocity: sanitizeForDashboard(milestones),
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -208,7 +206,7 @@ export function createDashboardRoutes(deps: DashboardRoutesDeps): Router {
 
     try {
       const range = req.query.range || '-90d';
-      const snapshots = await influx.queryGmbReviewSnapshots(locationId, String(range));
+      const snapshots = await influx.queryGmbMetrics(locationId, String(range));
       res.json({ review_snapshots: sanitizeForDashboard(snapshots) });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -255,9 +253,9 @@ export function createDashboardRoutes(deps: DashboardRoutesDeps): Router {
     }
 
     try {
-      const weekOfYear = req.query.week as string | undefined;
-      const velocity = await influx.queryGmbVelocityWeekly(locationId, weekOfYear);
-      res.json({ velocity: sanitizeForDashboard(velocity) });
+      const range = req.query.range || '-90d';
+      const milestones = await influx.queryGmbMilestones(locationId, String(range));
+      res.json({ velocity: sanitizeForDashboard(milestones) });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Velocity query failed', detail: msg });
@@ -304,10 +302,10 @@ export function createDashboardRoutes(deps: DashboardRoutesDeps): Router {
     try {
       const range = req.query.range || '-7d';
       const audits = await influx.queryGmbWebhookAudits(locationId, String(range));
-      const webhookDeliveries = await influx.queryWebhookMqttDeliveries(locationId, String(range));
+      const mqttDeliveries = await influx.queryMqttDelivery(locationId, 'gmb', String(range));
       res.json({
         webhook_audits: sanitizeForDashboard(audits),
-        mqtt_deliveries: sanitizeForDashboard(webhookDeliveries),
+        mqtt_deliveries: sanitizeForDashboard(mqttDeliveries),
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -361,17 +359,17 @@ export function createDashboardRoutes(deps: DashboardRoutesDeps): Router {
 
     try {
       const range = req.query.range || '-7d';
-      const [igAudit, igMqtt, webhookMqtt, e2e] = await Promise.all([
+      const [igAudit, igMqtt, gmbMqtt, e2e] = await Promise.all([
         influx.queryInstagramAudit(deviceId, String(range)),
-        influx.queryInstagramMqttDeliveries(deviceId, String(range)),
-        influx.queryWebhookMqttDeliveries(deviceId, String(range)),
+        influx.queryMqttDelivery(deviceId, 'instagram', String(range)),
+        influx.queryMqttDelivery(deviceId, 'gmb', String(range)),
         influx.queryInstagramAttentionE2e(deviceId, String(range)),
       ]);
 
       res.json({
         instagram_fetch_audit: sanitizeForDashboard(igAudit),
-        instagram_mqtt_delivery: sanitizeForDashboard(igMqtt),
-        webhook_mqtt_delivery: sanitizeForDashboard(webhookMqtt),
+        mqtt_delivery_instagram: sanitizeForDashboard(igMqtt),
+        mqtt_delivery_gmb: sanitizeForDashboard(gmbMqtt),
         attention_e2e: sanitizeForDashboard(e2e),
       });
     } catch (err: unknown) {

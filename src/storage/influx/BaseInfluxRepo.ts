@@ -11,8 +11,12 @@ export abstract class BaseInfluxRepo<TInput> {
     protected readonly diskQueue: InfluxDiskQueue | null,
   ) {}
 
-  protected truncate(value: string): string {
-    return value.slice(0, this.config.auditMaxFieldLength);
+  /** Never truncates compliance-bucket data. Metrics may be sliced to auditMaxFieldLength. */
+  protected truncate(value: string, target: BucketTarget): string {
+    if (target === BucketTarget.COMPLIANCE) return value;
+    const max = this.config.auditMaxFieldLength;
+    if (value.length <= max) return value;
+    return value.slice(0, Math.max(0, max - 3)) + '...';
   }
 
   protected async submit(point: Point, target: BucketTarget, flushImmediately: boolean): Promise<void> {

@@ -110,6 +110,7 @@ export class TransparencyLog {
         await influx.writeTransparencyEntry({
           index,
           leafHash,
+          leafPreimage: leafData,
           rootHash,
           inclusionProof: JSON.stringify(inclusionProof),
           certFingerprint,

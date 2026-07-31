@@ -684,12 +684,12 @@ export class OtaEventHandler {
         );
 
         void getInfluxService()
-          ?.writeDeviceOtaEvent({
+          ?.writeOtaEvent({
             deviceId,
             event: 'ota_fail',
-            sourceTopic: 'status',
+            source: 'ota_service',
             fwVersion: version,
-            reason,
+            errorMessage: reason,
             timestamp: pilot.timestamp
           })
           .catch(() => undefined);

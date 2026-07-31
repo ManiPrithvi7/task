@@ -43,6 +43,7 @@ export class OtaReleaseLog {
 
     try {
       const timestamp = releasedAt || new Date();
+      // Exact leaf preimage — do NOT change formula (breaks existing Merkle tree).
       const leafData = `${version}|${sha256}|${objectKey}|${keyFingerprint || ''}|${timestamp.toISOString()}`;
       const leafHash = this.hash(leafData);
 
@@ -57,6 +58,7 @@ export class OtaReleaseLog {
         await influx.writeOtaReleaseEntry({
           index,
           leafHash,
+          leafPreimage: leafData,
           rootHash,
           inclusionProof: proofJson,
           version,

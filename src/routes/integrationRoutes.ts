@@ -139,7 +139,6 @@ export function createIntegrationRoutes(deps: IntegrationRoutesDeps): Router {
         await influx.writeProfileBaseline({
           deviceId: socialAccountId,
           platform: 'instagram',
-          userId: auth.userId,
           followers: baseline.followers,
           connectedAt: now,
           timestamp: now,
@@ -171,9 +170,9 @@ export function createIntegrationRoutes(deps: IntegrationRoutesDeps): Router {
         await influx.writeProfileBaseline({
           deviceId: location.locationId,
           platform: 'gmb',
-          userId: auth.userId,
-          followers: baseline.followers,
+          reviews: baseline.followers,
           rating: baseline.rating,
+          locationId: location.locationId,
           connectedAt: now,
           timestamp: now,
         }, { flush: false });
