@@ -2,6 +2,8 @@
 exact = true
 
 [test]
+# Only discover tests under tests/ — ignore stale compiled suites in dist/
+root = "./tests"
 preload = ["./tests/setup.ts"]
 
 [run]
