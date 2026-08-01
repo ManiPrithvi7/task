@@ -128,6 +128,11 @@ export class AuditService {
    * Must be called before logging any events.
    */
   async initialize(): Promise<void> {
+    if (this.initialized) {
+      logger.warn('AuditService already initialized — skipping re-init');
+      return;
+    }
+
     try {
       const influx = getInfluxService();
       if (influx) {
@@ -278,6 +283,21 @@ export class AuditService {
           allValid = false;
           if (firstBrokenSequence === undefined) firstBrokenSequence = entry.sequence;
         }
+
+        // Recompute hash from stored preimage when available (legacy rows may omit it)
+        if (entry.hashPreimage) {
+          const expectedHash = this.computeHash(entry.hashPreimage);
+          if (entry.hash !== expectedHash) {
+            logger.error('Audit chain integrity violation: hash recomputation mismatch', {
+              sequence: entry.sequence,
+              expected: expectedHash.substring(0, 16) + '...',
+              found: entry.hash.substring(0, 16) + '...'
+            });
+            allValid = false;
+            if (firstBrokenSequence === undefined) firstBrokenSequence = entry.sequence;
+          }
+        }
+
         previousHash = entry.hash;
       }
 
@@ -309,7 +329,10 @@ export class AuditService {
   // --- Private helpers ---
 
   private buildHashContent(fields: Record<string, unknown>): string {
-    return JSON.stringify(fields, Object.keys(fields).sort());
+    // Sort top-level keys only — do NOT use a replacer array (it filters nested keys)
+    return JSON.stringify(
+      Object.fromEntries(Object.entries(fields).sort()),
+    );
   }
 
   private computeHash(content: string): string {

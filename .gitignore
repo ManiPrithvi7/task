@@ -5,6 +5,7 @@
 *.pfx
 *.key.der
 node_modules/
+test-suite/
 dist/
 graphify-out/
 session-*.md

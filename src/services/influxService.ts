@@ -589,7 +589,7 @@ export class InfluxService {
 
   async queryAuditChain(startTime?: string): Promise<Array<{
     sequence: number; hash: string; previousHash: string;
-    event: string; timestamp: string;
+    event: string; timestamp: string; hashPreimage?: string;
   }>> {
     try {
       const start = startTime || '0';
@@ -597,25 +597,32 @@ export class InfluxService {
         from(bucket: "${this.resolveBucket(BucketTarget.COMPLIANCE)}")
           |> range(start: ${start})
           |> filter(fn: (r) => r._measurement == "pki_audit")
-          |> filter(fn: (r) => r._field == "sequence" or r._field == "hash" or r._field == "previous_hash")
+          |> filter(fn: (r) => r._field == "sequence" or r._field == "hash" or r._field == "previous_hash" or r._field == "hash_preimage")
           |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
           |> sort(columns: ["_time"])
       `;
       const results: Array<{
         sequence: number; hash: string; previousHash: string;
-        event: string; timestamp: string;
+        event: string; timestamp: string; hashPreimage?: string;
       }> = [];
       return new Promise((resolve, reject) => {
         this.queryApi.queryRows(fluxQuery, {
           next(row, tableMeta) {
             const obj = tableMeta.toObject(row);
-            results.push({
+            const entry: {
+              sequence: number; hash: string; previousHash: string;
+              event: string; timestamp: string; hashPreimage?: string;
+            } = {
               sequence: typeof obj.sequence === 'number' ? obj.sequence : parseInt(String(obj.sequence), 10),
               hash: String(obj.hash || ''),
               previousHash: String(obj.previous_hash || ''),
               event: String(obj.event || ''),
               timestamp: String(obj._time || '')
-            });
+            };
+            if (obj.hash_preimage) {
+              entry.hashPreimage = String(obj.hash_preimage);
+            }
+            results.push(entry);
           },
           error(error) { reject(error); },
           complete() { resolve(results); }

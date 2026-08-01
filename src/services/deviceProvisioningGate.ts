@@ -2,7 +2,7 @@ import type { ProvisioningConfig } from '../config';
 import type { CAService } from './caService';
 import { CertLookupUnavailableError } from './caService';
 import { getAuditService, AuditEventType } from './auditService';
-import { validateCertificateChain } from './chainValidator';
+import * as chainValidator from './chainValidator';
 import { validateKeyUsageAndEKU } from '../utils/certValidator';
 import { logger } from '../utils/logger';
 
@@ -124,7 +124,7 @@ export async function ensureDeviceProvisioned(
   if (deps.provisioning.chainValidationEnabled && cert.certificate && cert.ca_certificate) {
     try {
       const rootCAPem = caService.getRootCACertificate();
-      const chainResult = validateCertificateChain(cert.certificate, [], rootCAPem);
+      const chainResult = chainValidator.validateCertificateChain(cert.certificate, [], rootCAPem);
       if (!chainResult.valid) {
         logger.warn('[PKI:CHAIN] Certificate chain validation failed — rejecting', {
           deviceId,

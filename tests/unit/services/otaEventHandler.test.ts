@@ -1,14 +1,19 @@
 import { OtaEventHandler } from '@/services/otaService';
 
 import { Device } from '@/models/Device';
+import { AuditEventType, getAuditService } from '@/services/auditService';
 
 jest.mock('@/services/influxService', () => ({
   getInfluxService: () => null
 }));
 
 jest.mock('@/services/auditService', () => ({
-  AuditEventType: { OTA_SUCCESS: 'OTA_SUCCESS', OTA_ROLLBACK: 'OTA_ROLLBACK', OTA_DEVICE_STATE_CHANGED: 'OTA_DEVICE_STATE_CHANGED' },
-  getAuditService: () => null
+  AuditEventType: {
+    OTA_SUCCESS: 'OTA_SUCCESS',
+    OTA_ROLLBACK: 'OTA_ROLLBACK',
+    OTA_DEVICE_STATE_CHANGED: 'OTA_DEVICE_STATE_CHANGED'
+  },
+  getAuditService: jest.fn()
 }));
 
 jest.mock('@/models/Device', () => ({
@@ -25,6 +30,7 @@ jest.mock('@/models/Device', () => ({
 }));
 
 describe('OtaEventHandler', () => {
+  const mockLogEvent = jest.fn().mockResolvedValue(undefined);
   const recordOtaSuccess = jest.fn().mockResolvedValue(undefined);
   const markDeviceDelivered = jest.fn().mockResolvedValue(undefined);
   const recordOtaFailure = jest.fn().mockResolvedValue({ blocked: false, failures: 1 });
@@ -45,6 +51,7 @@ describe('OtaEventHandler', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    (getAuditService as jest.Mock).mockReturnValue({ logEvent: mockLogEvent });
     (Device.findOne as jest.Mock).mockReturnValue({
       select: jest.fn().mockReturnValue({
         lean: jest.fn().mockResolvedValue({
@@ -95,5 +102,16 @@ describe('OtaEventHandler', () => {
   it('ignores ota_progress in pilot mode', async () => {
     await handler.handle('dev-1', { event: 'ota_progress' });
     expect(updateOtaState).not.toHaveBeenCalled();
+  });
+
+  // Defect pin: otaService.ts uses OTA_ROLLBACK for both ota_fail and ota_rollback branches.
+  it.each([
+    ['ota_fail', { type: 'ota_fail', version: '4.3.1', reason: 'flash_error' }],
+    ['ota_rollback', { type: 'ota_rollback', attempted_version: '4.3.1', reason: 'health failed' }]
+  ])('logs OTA_ROLLBACK audit for %s (known ternary defect)', async (_label, payload) => {
+    await handler.handle('dev-1', payload);
+    expect(mockLogEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ event: AuditEventType.OTA_ROLLBACK })
+    );
   });
 });

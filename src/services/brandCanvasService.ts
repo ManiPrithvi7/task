@@ -16,8 +16,16 @@ export type CachedBrandCanvasDto = {
 };
 
 export function getCanvasCacheTtlSec(): number {
-  const n = Number(process.env.CANVAS_CACHE_TTL_SEC || process.env.PROMOTION_CACHE_TTL_SEC);
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 3600;
+  const parsePositive = (raw: string | undefined): number | null => {
+    if (raw === undefined || raw === '') return null;
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
+  };
+  return (
+    parsePositive(process.env.CANVAS_CACHE_TTL_SEC) ??
+    parsePositive(process.env.PROMOTION_CACHE_TTL_SEC) ??
+    3600
+  );
 }
 
 function canvasActiveKey(userId: string): string {
