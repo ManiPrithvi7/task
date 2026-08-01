@@ -34,6 +34,9 @@ export const REDIS_KEYS = {
   /** Legacy followers STRING — dual-read only during hash migration. */
   deviceFollowers: (deviceId: string) => `device:followers:${deviceId}`,
 
+  /** Legacy IG fetch history ZSET — dual-read/cleanup only; polling moved to local backoff. */
+  deviceFetchHistory: (deviceId: string) => `device:fetch_history:${deviceId}`,
+
   /** OTA / recovery — manually prefixed where used. */
   otaKeyPrefix: keyPrefix
 } as const;

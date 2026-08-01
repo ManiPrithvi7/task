@@ -252,12 +252,11 @@ export async function handleDeviceRegistration(
   }
 
   void host.influxService
-    ?.writeDeviceOtaEvent({
+    ?.writeOtaEvent({
       deviceId,
       event: 'boot',
-      sourceTopic: 'active',
+      source: 'active',
       fwVersion: typeof fwVersion === 'string' ? fwVersion : undefined,
-      bootType: pilotBoot.bootType,
       ipAddress: pilotBoot.ipAddress,
       timestamp: pilotBoot.timestamp
     })
@@ -421,39 +420,18 @@ export async function handleDeviceStatus(
   }
 
   if (eventType && host.influxService) {
-    void host.influxService.writeOtaTelemetry({
+    void host.influxService.writeOtaEvent({
       deviceId,
       event: String(eventType),
+      source: 'status',
       timestamp: message.timestamp as string | undefined,
-      current_version: (message.current_version || message.fw_version) as string | undefined,
-      target_version: message.target_version as string | undefined,
-      from_version: message.from_version as string | undefined,
-      to_version: message.to_version as string | undefined,
-      attempted_version: message.attempted_version as string | undefined,
-      reverted_to: message.reverted_to as string | undefined,
-      fw_version: message.fw_version as string | undefined,
-      reason: message.reason as string | undefined,
-      error_code: message.error_code as string | undefined,
-      error_message: message.error_message as string | undefined,
-      partition: message.partition as string | undefined,
-      boot_reason: message.boot_reason as string | undefined,
-      uptime_s: (message.uptime_s ?? message.uptime) as number | undefined,
-      free_heap: message.free_heap as number | undefined,
-      battery: message.battery as number | undefined,
-      signal_strength: message.signal_strength as number | undefined,
-      ota_state: message.ota_state as string | undefined,
-      checks_passed: message.checks_passed as number | undefined,
-      checks_total: message.checks_total as number | undefined,
-      attempt_number: message.attempt_number as number | undefined,
-      attempt_count: message.attempt_count as number | undefined,
-      sha256_match: message.sha256_match as boolean | undefined,
-      signature_valid: message.signature_valid as boolean | undefined,
-      time_sync_ok: message.time_sync_ok as boolean | undefined,
-      download_duration_ms: message.download_duration_ms as number | undefined,
-      validation_duration_ms: message.validation_duration_ms as number | undefined,
-      firmware_size: message.firmware_size as number | undefined,
-      cooldown_remaining_s: message.cooldown_remaining_s as number | undefined,
-      source_topic: 'status'
+      fwVersion: (message.current_version || message.fw_version) as string | undefined,
+      fromVersion: message.from_version as string | undefined,
+      errorMessage: message.error_message as string | undefined,
+      errorCode: message.error_code as string | undefined,
+      attemptNumber: (message.attempt_number ?? message.attempt_count) as number | undefined,
+      sha256Match: message.sha256_match as boolean | undefined,
+      signatureValid: message.signature_valid as boolean | undefined
     }).catch(() => undefined);
   }
 
@@ -486,51 +464,21 @@ export async function handleDeviceOtaTelemetry(
   }
 
   if (host.influxService) {
-    void host.influxService.writeOtaTelemetry({
+    void host.influxService.writeOtaEvent({
       deviceId,
       event: String(eventType),
+      source: 'telemetry',
       timestamp: message.timestamp as string | undefined,
-      current_version: (message.current_version || message.fw_version) as string | undefined,
-      target_version: message.target_version as string | undefined,
-      from_version: message.from_version as string | undefined,
-      to_version: message.to_version as string | undefined,
-      offered_version: message.offered_version as string | undefined,
-      attempted_version: message.attempted_version as string | undefined,
-      reverted_to: message.reverted_to as string | undefined,
-      fw_version: message.fw_version as string | undefined,
-      ota_progress_pct: (message.ota_progress_pct ?? message.progress) as number | undefined,
-      ota_bytes: message.ota_bytes as number | undefined,
-      ota_bytes_total: message.ota_bytes_total as number | undefined,
-      elapsed_ms: message.elapsed_ms as number | undefined,
-      estimated_remaining_ms: message.estimated_remaining_ms as number | undefined,
-      download_duration_ms: message.download_duration_ms as number | undefined,
-      validation_duration_ms: message.validation_duration_ms as number | undefined,
-      reason: message.reason as string | undefined,
-      error_code: message.error_code as string | undefined,
-      error_message: message.error_message as string | undefined,
-      http_code: message.http_code as number | undefined,
-      expected_sha256: message.expected_sha256 as string | undefined,
-      computed_sha256: message.computed_sha256 as string | undefined,
-      uptime_s: (message.uptime_s ?? message.uptime) as number | undefined,
-      free_heap: message.free_heap as number | undefined,
-      battery: message.battery as number | undefined,
-      signal_strength: message.signal_strength as number | undefined,
-      wifi_rssi: message.wifi_rssi as number | undefined,
-      cert_days_remaining: message.cert_days_remaining as number | undefined,
-      cert_renewal_needed: message.cert_renewal_needed as boolean | undefined,
-      partition: message.partition as string | undefined,
-      boot_reason: message.boot_reason as string | undefined,
-      ota_state: message.ota_state as string | undefined,
-      checks_passed: message.checks_passed as number | undefined,
-      checks_total: message.checks_total as number | undefined,
-      attempt_number: message.attempt_number as number | undefined,
-      attempt_count: message.attempt_count as number | undefined,
-      firmware_size: (message.firmware_size ?? message.firmwareSize ?? message.sizeBytes) as number | undefined,
-      cooldown_remaining_s: message.cooldown_remaining_s as number | undefined,
-      sha256_match: message.sha256_match as boolean | undefined,
-      signature_valid: message.signature_valid as boolean | undefined,
-      time_sync_ok: message.time_sync_ok as boolean | undefined,
-      source_topic: 'telemetry'
+      fwVersion: (message.current_version || message.fw_version) as string | undefined,
+      fromVersion: message.from_version as string | undefined,
+      otaBytes: message.ota_bytes as number | undefined,
+      errorMessage: (message.error_message || message.reason) as string | undefined,
+      errorCode: message.error_code as string | undefined,
+      certDaysRemaining: message.cert_days_remaining as number | undefined,
+      certRenewalNeeded: message.cert_renewal_needed as boolean | undefined,
+      attemptNumber: (message.attempt_number ?? message.attempt_count) as number | undefined,
+      sha256Match: message.sha256_match as boolean | undefined,
+      signatureValid: message.signature_valid as boolean | undefined
     }).catch(() => undefined);
   }
 
