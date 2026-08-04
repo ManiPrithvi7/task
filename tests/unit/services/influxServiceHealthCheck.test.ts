@@ -8,6 +8,7 @@ jest.mock('@/utils/httpProbe', () => ({
 }));
 
 const mockConfig: InfluxDBConfig = {
+  dataDir: '/tmp/influx-test-data',
   url: 'http://localhost:8086',
   token: 'test-token',
   org: 'test-org',

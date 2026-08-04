@@ -11,12 +11,15 @@
  * Config via env: INFLUXDB_URL, INFLUXDB_TOKEN, INFLUXDB_ORG, INFLUXDB_BUCKET, INFLUXDB_COMPLIANCE_BUCKET
  */
 
-import { InfluxDB, WriteApi, QueryApi } from '@influxdata/influxdb-client';
+import * as fs from 'fs';
+import * as path from 'path';
+import { InfluxDB, WriteApi, QueryApi, Point } from '@influxdata/influxdb-client';
 import { logger } from '../utils/logger';
 import { InfluxDBConfig } from '../config';
 import { InfluxDiskQueue } from './influxDiskQueue';
 
 import { BucketTarget } from '../storage/influx/types';
+import type { InfluxWriteUsageCallback } from '../storage/influx/BaseInfluxRepo';
 import { IgMetricsRepo, type IgMetricsInput } from '../storage/influx/repositories/IgMetricsRepo';
 import { IgMilestoneRepo, type IgMilestoneInput } from '../storage/influx/repositories/IgMilestoneRepo';
 import { GmbMetricsRepo, type GmbMetricsInput } from '../storage/influx/repositories/GmbMetricsRepo';
@@ -96,6 +99,12 @@ export type {
 export { BucketTarget };
 export type { BucketTarget as BucketTargetType };
 
+const INFLUX_LOG_PREFIX = '[Influx]';
+const INFLUX_USAGE_CSV_NAME = 'influx_usage.csv';
+const INFLUX_USAGE_CSV_HEADER =
+  'timestamp,operation,command,key,query_or_write,status,duration_ms,error\n';
+const INFLUX_USAGE_VALUE_MAX_LEN = 2000;
+
 export class InfluxService {
   private client: InfluxDB;
   private metricsWriteApi: WriteApi;
@@ -104,6 +113,10 @@ export class InfluxService {
   private config: InfluxDBConfig;
   private metricsDiskQueue: InfluxDiskQueue | null = null;
   private complianceDiskQueue: InfluxDiskQueue | null = null;
+  private readonly usageCsvPath: string;
+  private usageCsvReady = false;
+  private usageLogQueue: string[] = [];
+  private usageLogWriting = false;
 
   igMetrics: IgMetricsRepo;
   igMilestone: IgMilestoneRepo;
@@ -122,8 +135,257 @@ export class InfluxService {
     return target === BucketTarget.COMPLIANCE ? this.config.complianceBucket : this.config.bucket;
   }
 
+  private truncateUsageValue(value: string): string {
+    if (value.length <= INFLUX_USAGE_VALUE_MAX_LEN) return value;
+    return `${value.slice(0, INFLUX_USAGE_VALUE_MAX_LEN)}…`;
+  }
+
+  private escapeCsvField(value: string): string {
+    if (/[",\n\r]/.test(value)) {
+      return `"${value.replace(/"/g, '""')}"`;
+    }
+    return value;
+  }
+
+  private ensureUsageCsvReady(): void {
+    if (this.usageCsvReady) return;
+
+    fs.mkdirSync(path.dirname(this.usageCsvPath), { recursive: true });
+    if (!fs.existsSync(this.usageCsvPath)) {
+      fs.writeFileSync(this.usageCsvPath, INFLUX_USAGE_CSV_HEADER, { encoding: 'utf8' });
+    }
+    this.usageCsvReady = true;
+  }
+
+  private buildUsageCsvLine(entry: {
+    timestamp: string;
+    operation: 'read' | 'write' | 'other';
+    command: string;
+    key: string;
+    queryOrWrite: string;
+    status: 'ok' | 'error';
+    durationMs: number;
+    error: string;
+  }): string {
+    return [
+      this.escapeCsvField(entry.timestamp),
+      this.escapeCsvField(entry.operation),
+      this.escapeCsvField(entry.command),
+      this.escapeCsvField(entry.key),
+      this.escapeCsvField(entry.queryOrWrite),
+      this.escapeCsvField(entry.status),
+      String(entry.durationMs),
+      this.escapeCsvField(entry.error)
+    ].join(',') + '\n';
+  }
+
+  private logInfluxUsageToCsv(entry: {
+    timestamp: string;
+    operation: 'read' | 'write' | 'other';
+    command: string;
+    key: string;
+    queryOrWrite: string;
+    status: 'ok' | 'error';
+    durationMs: number;
+    error: string;
+  }): void {
+    this.usageLogQueue.push(this.buildUsageCsvLine(entry));
+    void this.flushUsageLogQueue();
+  }
+
+  private async flushUsageLogQueue(): Promise<void> {
+    if (this.usageLogWriting || this.usageLogQueue.length === 0) return;
+
+    this.usageLogWriting = true;
+    try {
+      this.ensureUsageCsvReady();
+      while (this.usageLogQueue.length > 0) {
+        const batch = this.usageLogQueue.splice(0, 100).join('');
+        await fs.promises.appendFile(this.usageCsvPath, batch, { encoding: 'utf8' });
+      }
+    } catch (error) {
+      logger.warn(`${INFLUX_LOG_PREFIX} failed to write influx usage CSV`, {
+        path: this.usageCsvPath,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    } finally {
+      this.usageLogWriting = false;
+      if (this.usageLogQueue.length > 0) {
+        void this.flushUsageLogQueue();
+      }
+    }
+  }
+
+  private recordUsage(
+    operation: 'read' | 'write' | 'other',
+    command: string,
+    key: string,
+    queryOrWrite: string,
+    startMs: number,
+    status: 'ok' | 'error',
+    errorMessage = ''
+  ): void {
+    this.logInfluxUsageToCsv({
+      timestamp: new Date().toISOString(),
+      operation,
+      command,
+      key,
+      queryOrWrite: this.truncateUsageValue(queryOrWrite),
+      status,
+      durationMs: Math.round(performance.now() - startMs),
+      error: errorMessage
+    });
+  }
+
+  private extractBucketFromFlux(fluxQuery: string): string {
+    const match = fluxQuery.match(/from\s*\(\s*bucket:\s*"([^"]+)"/i);
+    return match?.[1] ?? '';
+  }
+
+  private formatWriteRecordsSummary(lines: string[]): string {
+    if (lines.length === 0) return '';
+    const first = this.truncateUsageValue(lines[0]);
+    return lines.length > 1 ? `${first} (+${lines.length - 1} lines)` : first;
+  }
+
+  private wrapWriteApi(writeApi: WriteApi, bucketName: string): WriteApi {
+    const service = this;
+    const originalWritePoint = writeApi.writePoint.bind(writeApi);
+    const originalWriteRecords = writeApi.writeRecords.bind(writeApi);
+    const originalFlush = writeApi.flush.bind(writeApi);
+
+    writeApi.writePoint = ((point: Point) => {
+      const startMs = performance.now();
+      const line = point.toLineProtocol() ?? '';
+      try {
+        originalWritePoint(point);
+        service.recordUsage('write', 'writePoint', bucketName, line, startMs, 'ok');
+      } catch (error) {
+        service.recordUsage(
+          'write',
+          'writePoint',
+          bucketName,
+          line,
+          startMs,
+          'error',
+          error instanceof Error ? error.message : String(error)
+        );
+        throw error;
+      }
+    }) as typeof writeApi.writePoint;
+
+    writeApi.writeRecords = ((lines: string[]) => {
+      const startMs = performance.now();
+      const summary = service.formatWriteRecordsSummary(lines);
+      try {
+        originalWriteRecords(lines);
+        service.recordUsage('write', 'writeRecords', bucketName, summary, startMs, 'ok');
+      } catch (error) {
+        service.recordUsage(
+          'write',
+          'writeRecords',
+          bucketName,
+          summary,
+          startMs,
+          'error',
+          error instanceof Error ? error.message : String(error)
+        );
+        throw error;
+      }
+    }) as typeof writeApi.writeRecords;
+
+    writeApi.flush = (() => {
+      const startMs = performance.now();
+      try {
+        const result = originalFlush();
+        if (result && typeof (result as Promise<unknown>).then === 'function') {
+          return (result as Promise<void>)
+            .then(() => {
+              service.recordUsage('write', 'flush', bucketName, '', startMs, 'ok');
+            })
+            .catch((error: unknown) => {
+              service.recordUsage(
+                'write',
+                'flush',
+                bucketName,
+                '',
+                startMs,
+                'error',
+                error instanceof Error ? error.message : String(error)
+              );
+              throw error;
+            });
+        }
+        service.recordUsage('write', 'flush', bucketName, '', startMs, 'ok');
+        return result;
+      } catch (error) {
+        service.recordUsage(
+          'write',
+          'flush',
+          bucketName,
+          '',
+          startMs,
+          'error',
+          error instanceof Error ? error.message : String(error)
+        );
+        throw error;
+      }
+    }) as typeof writeApi.flush;
+
+    return writeApi;
+  }
+
+  private createEnqueueUsageCallback(): InfluxWriteUsageCallback {
+    return ({ bucket, line }) => {
+      this.recordUsage(
+        'write',
+        'enqueue',
+        this.resolveBucket(bucket),
+        line,
+        performance.now(),
+        'ok'
+      );
+    };
+  }
+
+  private runTrackedFluxQuery(
+    fluxQuery: string,
+    handlers: {
+      next: (row: string[], tableMeta: import('@influxdata/influxdb-client').FluxTableMetaData) => void;
+    }
+  ): Promise<void> {
+    const startMs = performance.now();
+    const bucketKey = this.extractBucketFromFlux(fluxQuery) || 'unknown';
+
+    return new Promise<void>((resolve, reject) => {
+      this.queryApi.queryRows(fluxQuery, {
+        next: handlers.next,
+        error: (error) => {
+          this.recordUsage(
+            'read',
+            'query',
+            bucketKey,
+            fluxQuery,
+            startMs,
+            'error',
+            error instanceof Error ? error.message : String(error)
+          );
+          reject(error);
+        },
+        complete: () => {
+          this.recordUsage('read', 'query', bucketKey, fluxQuery, startMs, 'ok');
+          resolve();
+        }
+      });
+    });
+  }
+
   constructor(config: InfluxDBConfig) {
     this.config = config;
+    this.usageCsvPath = path.resolve(
+      config.dataDir || process.env.DATA_DIR || './data',
+      INFLUX_USAGE_CSV_NAME
+    );
 
     this.client = new InfluxDB({
       url: this.config.url,
@@ -144,8 +406,13 @@ export class InfluxService {
     });
     this.queryApi = this.client.getQueryApi(this.config.org);
 
+    this.wrapWriteApi(this.metricsWriteApi, this.config.bucket);
+    this.wrapWriteApi(this.complianceWriteApi, this.config.complianceBucket);
+
     this.metricsWriteApi.useDefaultTags({ service: 'mqtt-publisher-lite' });
     this.complianceWriteApi.useDefaultTags({ service: 'mqtt-publisher-lite' });
+
+    const onWriteUsage = this.createEnqueueUsageCallback();
 
     if (config.diskQueueEnabled) {
       const metricsQueuePath = `${config.diskQueuePath}.metrics`;
@@ -179,18 +446,18 @@ export class InfluxService {
       });
     }
 
-    this.igMetrics = new IgMetricsRepo(this.config, this.metricsWriteApi, this.metricsDiskQueue);
-    this.igMilestone = new IgMilestoneRepo(this.config, this.metricsWriteApi, this.metricsDiskQueue);
-    this.gmbMetrics = new GmbMetricsRepo(this.config, this.metricsWriteApi, this.metricsDiskQueue);
-    this.gmbMilestone = new GmbMilestoneRepo(this.config, this.metricsWriteApi, this.metricsDiskQueue);
-    this.mqttDelivery = new MqttDeliveryRepo(this.config, this.metricsWriteApi, this.metricsDiskQueue);
-    this.deviceActive = new DeviceActiveRepo(this.config, this.metricsWriteApi, this.metricsDiskQueue);
-    this.deviceStateLog = new DeviceStateLogRepo(this.config, this.complianceWriteApi, this.complianceDiskQueue);
-    this.otaEvents = new OtaEventsRepo(this.config, this.metricsWriteApi, this.metricsDiskQueue);
-    this.instagramAudit = new InstagramAuditRepo(this.config, this.metricsWriteApi, this.metricsDiskQueue);
-    this.webhookAudit = new WebhookAuditRepo(this.config, this.metricsWriteApi, this.metricsDiskQueue);
-    this.pkiAudit = new PkiAuditRepo(this.config, this.complianceWriteApi, this.complianceDiskQueue);
-    this.ctLog = new CtLogRepo(this.config, this.complianceWriteApi, this.complianceDiskQueue);
+    this.igMetrics = new IgMetricsRepo(this.config, this.metricsWriteApi, this.metricsDiskQueue, onWriteUsage);
+    this.igMilestone = new IgMilestoneRepo(this.config, this.metricsWriteApi, this.metricsDiskQueue, onWriteUsage);
+    this.gmbMetrics = new GmbMetricsRepo(this.config, this.metricsWriteApi, this.metricsDiskQueue, onWriteUsage);
+    this.gmbMilestone = new GmbMilestoneRepo(this.config, this.metricsWriteApi, this.metricsDiskQueue, onWriteUsage);
+    this.mqttDelivery = new MqttDeliveryRepo(this.config, this.metricsWriteApi, this.metricsDiskQueue, onWriteUsage);
+    this.deviceActive = new DeviceActiveRepo(this.config, this.metricsWriteApi, this.metricsDiskQueue, onWriteUsage);
+    this.deviceStateLog = new DeviceStateLogRepo(this.config, this.complianceWriteApi, this.complianceDiskQueue, onWriteUsage);
+    this.otaEvents = new OtaEventsRepo(this.config, this.metricsWriteApi, this.metricsDiskQueue, onWriteUsage);
+    this.instagramAudit = new InstagramAuditRepo(this.config, this.metricsWriteApi, this.metricsDiskQueue, onWriteUsage);
+    this.webhookAudit = new WebhookAuditRepo(this.config, this.metricsWriteApi, this.metricsDiskQueue, onWriteUsage);
+    this.pkiAudit = new PkiAuditRepo(this.config, this.complianceWriteApi, this.complianceDiskQueue, onWriteUsage);
+    this.ctLog = new CtLogRepo(this.config, this.complianceWriteApi, this.complianceDiskQueue, onWriteUsage);
   }
 
   private logInfluxBatchFlush(lines: string[], source: string): void {
@@ -306,13 +573,12 @@ export class InfluxService {
 
   async queryFlux<T = Record<string, unknown>>(fluxQuery: string): Promise<T[]> {
     const results: T[] = [];
-    return new Promise((resolve, reject) => {
-      this.queryApi.queryRows(fluxQuery, {
-        next(row, tableMeta) { results.push(tableMeta.toObject(row) as T); },
-        error(error) { reject(error); },
-        complete() { resolve(results); }
-      });
+    await this.runTrackedFluxQuery(fluxQuery, {
+      next(row, tableMeta) {
+        results.push(tableMeta.toObject(row) as T);
+      }
     });
+    return results;
   }
 
   async queryIgMetrics(
@@ -429,22 +695,19 @@ export class InfluxService {
           |> sort(columns: ["_time"], desc: true)
           |> limit(n: 1)
       `;
-      return new Promise((resolve, reject) => {
-        let result: { sequence: number; hash: string } | null = null;
-        this.queryApi.queryRows(fluxQuery, {
-          next(row, tableMeta) {
-            const obj = tableMeta.toObject(row);
-            if (obj.sequence !== undefined && obj.hash) {
-              result = {
-                sequence: typeof obj.sequence === 'number' ? obj.sequence : parseInt(String(obj.sequence), 10),
-                hash: String(obj.hash)
-              };
-            }
-          },
-          error(error) { reject(error); },
-          complete() { resolve(result); }
-        });
+      let result: { sequence: number; hash: string } | null = null;
+      await this.runTrackedFluxQuery(fluxQuery, {
+        next(row, tableMeta) {
+          const obj = tableMeta.toObject(row);
+          if (obj.sequence !== undefined && obj.hash) {
+            result = {
+              sequence: typeof obj.sequence === 'number' ? obj.sequence : parseInt(String(obj.sequence), 10),
+              hash: String(obj.hash)
+            };
+          }
+        }
       });
+      return result;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logger.error('Failed to query latest device state entry', { deviceId, error: errorMessage });
@@ -465,22 +728,19 @@ export class InfluxService {
           |> limit(n: 1)
       `;
       const results = new Map<string, { sequence: number; hash: string }>();
-      return new Promise((resolve, reject) => {
-        this.queryApi.queryRows(fluxQuery, {
-          next(row, tableMeta) {
-            const obj = tableMeta.toObject(row);
-            const deviceId = String(obj.device_id || '');
-            if (deviceId && obj.sequence !== undefined && obj.hash) {
-              results.set(deviceId, {
-                sequence: typeof obj.sequence === 'number' ? obj.sequence : parseInt(String(obj.sequence), 10),
-                hash: String(obj.hash)
-              });
-            }
-          },
-          error(error) { reject(error); },
-          complete() { resolve(results); }
-        });
+      await this.runTrackedFluxQuery(fluxQuery, {
+        next(row, tableMeta) {
+          const obj = tableMeta.toObject(row);
+          const deviceId = String(obj.device_id || '');
+          if (deviceId && obj.sequence !== undefined && obj.hash) {
+            results.set(deviceId, {
+              sequence: typeof obj.sequence === 'number' ? obj.sequence : parseInt(String(obj.sequence), 10),
+              hash: String(obj.hash)
+            });
+          }
+        }
       });
+      return results;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logger.error('Failed to query latest device state entries', { error: errorMessage });
@@ -564,22 +824,19 @@ export class InfluxService {
           |> sort(columns: ["_time"], desc: true)
           |> limit(n: 1)
       `;
-      return new Promise((resolve, reject) => {
-        let result: { sequence: number; hash: string } | null = null;
-        this.queryApi.queryRows(fluxQuery, {
-          next(row, tableMeta) {
-            const obj = tableMeta.toObject(row);
-            if (obj.sequence !== undefined && obj.hash) {
-              result = {
-                sequence: typeof obj.sequence === 'number' ? obj.sequence : parseInt(String(obj.sequence), 10),
-                hash: String(obj.hash)
-              };
-            }
-          },
-          error(error) { reject(error); },
-          complete() { resolve(result); }
-        });
+      let result: { sequence: number; hash: string } | null = null;
+      await this.runTrackedFluxQuery(fluxQuery, {
+        next(row, tableMeta) {
+          const obj = tableMeta.toObject(row);
+          if (obj.sequence !== undefined && obj.hash) {
+            result = {
+              sequence: typeof obj.sequence === 'number' ? obj.sequence : parseInt(String(obj.sequence), 10),
+              hash: String(obj.hash)
+            };
+          }
+        }
       });
+      return result;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logger.error('Failed to query latest audit entry from InfluxDB', { error: errorMessage });
@@ -605,29 +862,26 @@ export class InfluxService {
         sequence: number; hash: string; previousHash: string;
         event: string; timestamp: string; hashPreimage?: string;
       }> = [];
-      return new Promise((resolve, reject) => {
-        this.queryApi.queryRows(fluxQuery, {
-          next(row, tableMeta) {
-            const obj = tableMeta.toObject(row);
-            const entry: {
-              sequence: number; hash: string; previousHash: string;
-              event: string; timestamp: string; hashPreimage?: string;
-            } = {
-              sequence: typeof obj.sequence === 'number' ? obj.sequence : parseInt(String(obj.sequence), 10),
-              hash: String(obj.hash || ''),
-              previousHash: String(obj.previous_hash || ''),
-              event: String(obj.event || ''),
-              timestamp: String(obj._time || '')
-            };
-            if (obj.hash_preimage) {
-              entry.hashPreimage = String(obj.hash_preimage);
-            }
-            results.push(entry);
-          },
-          error(error) { reject(error); },
-          complete() { resolve(results); }
-        });
+      await this.runTrackedFluxQuery(fluxQuery, {
+        next(row, tableMeta) {
+          const obj = tableMeta.toObject(row);
+          const entry: {
+            sequence: number; hash: string; previousHash: string;
+            event: string; timestamp: string; hashPreimage?: string;
+          } = {
+            sequence: typeof obj.sequence === 'number' ? obj.sequence : parseInt(String(obj.sequence), 10),
+            hash: String(obj.hash || ''),
+            previousHash: String(obj.previous_hash || ''),
+            event: String(obj.event || ''),
+            timestamp: String(obj._time || '')
+          };
+          if (obj.hash_preimage) {
+            entry.hashPreimage = String(obj.hash_preimage);
+          }
+          results.push(entry);
+        }
       });
+      return results;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logger.error('Failed to query audit chain from InfluxDB', { error: errorMessage });
@@ -646,19 +900,16 @@ export class InfluxService {
           |> sort(columns: ["index"])
       `;
       const results: Array<{ index: number; leafHash: string }> = [];
-      return new Promise((resolve, reject) => {
-        this.queryApi.queryRows(fluxQuery, {
-          next(row, tableMeta) {
-            const obj = tableMeta.toObject(row);
-            results.push({
-              index: typeof obj.index === 'number' ? obj.index : parseInt(String(obj.index), 10),
-              leafHash: String(obj.leaf_hash || '')
-            });
-          },
-          error(error) { reject(error); },
-          complete() { resolve(results); }
-        });
+      await this.runTrackedFluxQuery(fluxQuery, {
+        next(row, tableMeta) {
+          const obj = tableMeta.toObject(row);
+          results.push({
+            index: typeof obj.index === 'number' ? obj.index : parseInt(String(obj.index), 10),
+            leafHash: String(obj.leaf_hash || '')
+          });
+        }
       });
+      return results;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logger.error('Failed to query OTA release log leaves', { error: errorMessage });
@@ -677,19 +928,16 @@ export class InfluxService {
           |> sort(columns: ["index"])
       `;
       const results: Array<{ index: number; leafHash: string }> = [];
-      return new Promise((resolve, reject) => {
-        this.queryApi.queryRows(fluxQuery, {
-          next(row, tableMeta) {
-            const obj = tableMeta.toObject(row);
-            results.push({
-              index: typeof obj.index === 'number' ? obj.index : parseInt(String(obj.index), 10),
-              leafHash: String(obj.leaf_hash || '')
-            });
-          },
-          error(error) { reject(error); },
-          complete() { resolve(results); }
-        });
+      await this.runTrackedFluxQuery(fluxQuery, {
+        next(row, tableMeta) {
+          const obj = tableMeta.toObject(row);
+          results.push({
+            index: typeof obj.index === 'number' ? obj.index : parseInt(String(obj.index), 10),
+            leafHash: String(obj.leaf_hash || '')
+          });
+        }
       });
+      return results;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logger.error('Failed to query CT log leaves', { error: errorMessage });

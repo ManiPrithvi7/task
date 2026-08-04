@@ -3,6 +3,7 @@ import { DeviceStateLogRepo } from '@/storage/influx/repositories/DeviceStateLog
 import type { InfluxDBConfig } from '@/config';
 
 const mockConfig = {
+  dataDir: '/tmp/influx-test-data',
   url: 'http://localhost:8086',
   token: 't',
   org: 'o',

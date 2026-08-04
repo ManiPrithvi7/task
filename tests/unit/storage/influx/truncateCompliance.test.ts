@@ -4,6 +4,7 @@ import { BucketTarget } from '@/storage/influx/types';
 import type { InfluxDBConfig } from '@/config';
 
 const mockConfig: InfluxDBConfig = {
+  dataDir: '/tmp/influx-test-data',
   url: 'http://localhost:8086',
   token: 't',
   org: 'o',

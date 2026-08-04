@@ -4,11 +4,18 @@ import { InfluxDBConfig } from '../../config';
 import { BucketTarget } from './types';
 import { sanitizeInfluxLineProtocol } from '../../utils/influxTimestamp';
 
+export type InfluxWriteUsageCallback = (entry: {
+  bucket: BucketTarget;
+  measurement: string;
+  line: string;
+}) => void;
+
 export abstract class BaseInfluxRepo<TInput> {
   constructor(
     protected readonly config: InfluxDBConfig,
     protected readonly writeApi: WriteApi,
     protected readonly diskQueue: InfluxDiskQueue | null,
+    protected readonly onWriteUsage?: InfluxWriteUsageCallback
   ) {}
 
   /** Never truncates compliance-bucket data. Metrics may be sliced to auditMaxFieldLength. */
@@ -25,6 +32,11 @@ export abstract class BaseInfluxRepo<TInput> {
       const raw = point.toLineProtocol();
       const line = raw ? sanitizeInfluxLineProtocol(raw) : null;
       if (!line) return;
+      this.onWriteUsage?.({
+        bucket: target,
+        measurement: line.split(/[,\s]/)[0] || 'unknown',
+        line
+      });
       await queue.enqueue(line);
       return;
     }

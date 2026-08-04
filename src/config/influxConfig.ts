@@ -2,6 +2,8 @@ import * as path from 'path';
 import { envInt, envString } from './envHelpers';
 
 export interface InfluxDBConfig {
+  /** Directory for influx_usage.csv (default: DATA_DIR or ./data) */
+  dataDir: string;
   url: string;
   token: string;
   org: string;
@@ -70,6 +72,7 @@ export function loadInfluxDbConfig(dataDir: string): InfluxDBConfig {
     Number.isFinite(influxAuditMaxFieldRaw) && influxAuditMaxFieldRaw > 0 ? influxAuditMaxFieldRaw : 4096;
 
   return {
+    dataDir: path.resolve(dataDir),
     url: influxUrl,
     token: influxToken,
     org: process.env.INFLUXDB_ORG?.trim() || 'statsmqtt',
