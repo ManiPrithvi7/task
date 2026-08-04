@@ -298,7 +298,6 @@ export class RedisService {
   }
 
   private wrapClientForUsageTracking(client: RedisClientType): void {
-    type CommandExecutor = (command: unknown, args: unknown[]) => Promise<unknown>;
     type MultiExecutor = (...multiArgs: unknown[]) => Promise<unknown>;
 
     const tracked = client as RedisClientType & Record<string, unknown> & {

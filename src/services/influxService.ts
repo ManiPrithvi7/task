@@ -249,7 +249,8 @@ export class InfluxService {
   }
 
   private wrapWriteApi(writeApi: WriteApi, bucketName: string): WriteApi {
-    const service = this;
+    const recordUsage = this.recordUsage.bind(this);
+    const formatWriteRecordsSummary = this.formatWriteRecordsSummary.bind(this);
     const originalWritePoint = writeApi.writePoint.bind(writeApi);
     const originalWriteRecords = writeApi.writeRecords.bind(writeApi);
     const originalFlush = writeApi.flush.bind(writeApi);
@@ -259,9 +260,9 @@ export class InfluxService {
       const line = point.toLineProtocol() ?? '';
       try {
         originalWritePoint(point);
-        service.recordUsage('write', 'writePoint', bucketName, line, startMs, 'ok');
+        recordUsage('write', 'writePoint', bucketName, line, startMs, 'ok');
       } catch (error) {
-        service.recordUsage(
+        recordUsage(
           'write',
           'writePoint',
           bucketName,
@@ -276,12 +277,12 @@ export class InfluxService {
 
     writeApi.writeRecords = ((lines: string[]) => {
       const startMs = performance.now();
-      const summary = service.formatWriteRecordsSummary(lines);
+      const summary = formatWriteRecordsSummary(lines);
       try {
         originalWriteRecords(lines);
-        service.recordUsage('write', 'writeRecords', bucketName, summary, startMs, 'ok');
+        recordUsage('write', 'writeRecords', bucketName, summary, startMs, 'ok');
       } catch (error) {
-        service.recordUsage(
+        recordUsage(
           'write',
           'writeRecords',
           bucketName,
@@ -301,10 +302,10 @@ export class InfluxService {
         if (result && typeof (result as Promise<unknown>).then === 'function') {
           return (result as Promise<void>)
             .then(() => {
-              service.recordUsage('write', 'flush', bucketName, '', startMs, 'ok');
+              recordUsage('write', 'flush', bucketName, '', startMs, 'ok');
             })
             .catch((error: unknown) => {
-              service.recordUsage(
+              recordUsage(
                 'write',
                 'flush',
                 bucketName,
@@ -316,10 +317,10 @@ export class InfluxService {
               throw error;
             });
         }
-        service.recordUsage('write', 'flush', bucketName, '', startMs, 'ok');
+        recordUsage('write', 'flush', bucketName, '', startMs, 'ok');
         return result;
       } catch (error) {
-        service.recordUsage(
+        recordUsage(
           'write',
           'flush',
           bucketName,
