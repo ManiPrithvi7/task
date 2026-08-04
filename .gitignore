@@ -11,5 +11,8 @@ graphify-out/
 session-*.md
 .env
 *.env
-data/redis_usage.csv
+# Local usage traces (runtime/debug exports — do not commit)
+influx_usage.csv
 data/influx_usage.csv
+redis_usage.csv
+data/redis_usage.csv
