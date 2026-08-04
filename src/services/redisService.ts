@@ -7,7 +7,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { createClient, RedisClientType } from 'redis';
+import redisCommands from '@redis/client/dist/lib/client/commands.js';
 import { logger } from '../utils/logger';
+
+const REDIS_COMMAND_DEFINITIONS = redisCommands;
 
 const REDIS_LOG_PREFIX = '[Redis]';
 const REDIS_USAGE_CSV_NAME = 'redis_usage.csv';
@@ -206,6 +209,156 @@ export class RedisService {
     });
   }
 
+  private incrementCommandCount(args: ReadonlyArray<string | Buffer>): void {
+    this.commandCount++;
+    if (args.length > 0) {
+      const cmd = String(args[0]).toUpperCase();
+      this.commandCountByType.set(cmd, (this.commandCountByType.get(cmd) || 0) + 1);
+    }
+  }
+
+  private attachUsageTrackingToResult(
+    result: unknown,
+    args: ReadonlyArray<string | Buffer>,
+    startMs: number
+  ): unknown {
+    if (
+      result !== null &&
+      typeof result === 'object' &&
+      'then' in result &&
+      typeof (result as Promise<unknown>).then === 'function'
+    ) {
+      return (result as Promise<unknown>)
+        .then((value) => {
+          this.recordSendCommandUsage(args, startMs, 'ok');
+          return value;
+        })
+        .catch((error: unknown) => {
+          this.recordSendCommandUsage(
+            args,
+            startMs,
+            'error',
+            error instanceof Error ? error.message : String(error)
+          );
+          throw error;
+        });
+    }
+
+    this.recordSendCommandUsage(args, startMs, 'ok');
+    return result;
+  }
+
+  private extractRedisArgsFromCommand(
+    command: unknown,
+    args: unknown[]
+  ): ReadonlyArray<string | Buffer> {
+    const cmd = command as {
+      transformArguments?: (...commandArgs: unknown[]) => Array<string | Buffer>;
+    };
+    if (typeof cmd?.transformArguments !== 'function') {
+      return ['UNKNOWN'];
+    }
+
+    try {
+      return cmd.transformArguments(...args);
+    } catch {
+      try {
+        return cmd.transformArguments(...args.slice(1));
+      } catch {
+        return ['UNKNOWN'];
+      }
+    }
+  }
+
+  /**
+   * node-redis v4 binds each command (get/set/hGetAll/…) to a closure over
+   * commandsExecutor at class load time, so patching instance.commandsExecutor
+   * does nothing. Wrap each command method on this client instead.
+   */
+  private trackRedisCommand(
+    redisArgs: ReadonlyArray<string | Buffer>,
+    run: () => Promise<unknown>
+  ): Promise<unknown> {
+    const startMs = performance.now();
+    this.incrementCommandCount(redisArgs);
+    return run()
+      .then((result) => {
+        this.recordSendCommandUsage(redisArgs, startMs, 'ok');
+        return result;
+      })
+      .catch((error: unknown) => {
+        this.recordSendCommandUsage(
+          redisArgs,
+          startMs,
+          'error',
+          error instanceof Error ? error.message : String(error)
+        );
+        throw error;
+      });
+  }
+
+  private wrapClientForUsageTracking(client: RedisClientType): void {
+    type CommandExecutor = (command: unknown, args: unknown[]) => Promise<unknown>;
+    type MultiExecutor = (...multiArgs: unknown[]) => Promise<unknown>;
+
+    const tracked = client as RedisClientType & Record<string, unknown> & {
+      multiExecutor: MultiExecutor;
+    };
+    const wrappedMethods = Symbol('redisUsageWrapped');
+
+    for (const [name, commandDef] of Object.entries(REDIS_COMMAND_DEFINITIONS)) {
+      const original = tracked[name];
+      if (typeof original !== 'function') continue;
+      if ((original as { [wrappedMethods]?: boolean })[wrappedMethods]) continue;
+
+      const bound = (original as (...args: unknown[]) => Promise<unknown>).bind(client);
+      const wrapped = (...args: unknown[]) =>
+        this.trackRedisCommand(this.extractRedisArgsFromCommand(commandDef, args), () => bound(...args));
+      (wrapped as { [wrappedMethods]?: boolean })[wrappedMethods] = true;
+      tracked[name] = wrapped;
+    }
+
+    const originalSendCommand = client.sendCommand.bind(client);
+    client.sendCommand = ((args, options) => {
+      const startMs = performance.now();
+      this.incrementCommandCount(args);
+      try {
+        return this.attachUsageTrackingToResult(originalSendCommand(args, options), args, startMs);
+      } catch (error) {
+        this.recordSendCommandUsage(
+          args,
+          startMs,
+          'error',
+          error instanceof Error ? error.message : String(error)
+        );
+        throw error;
+      }
+    }) as typeof client.sendCommand;
+
+    const originalMultiExecutor = tracked.multiExecutor.bind(client);
+    tracked.multiExecutor = (async (...multiArgs: unknown[]) => {
+      const commands = multiArgs[0] as Array<{ args: Array<string | Buffer> }>;
+      const trackedCommands = commands.map(({ args }) => {
+        this.incrementCommandCount(args);
+        return { args, startMs: performance.now() };
+      });
+
+      try {
+        const result = await originalMultiExecutor(...multiArgs);
+        for (const { args, startMs } of trackedCommands) {
+          this.recordSendCommandUsage(args, startMs, 'ok');
+        }
+        return result;
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        for (const { args, startMs } of trackedCommands) {
+          this.recordSendCommandUsage(args, startMs, 'error', errorMessage);
+        }
+        throw error;
+      }
+    }) as typeof tracked.multiExecutor;
+  }
+
   private async traceAsync<T>(
     fn: string,
     meta: Record<string, unknown> | undefined,
@@ -322,47 +475,8 @@ export class RedisService {
       // Setup event handlers
       this.setupEventHandlers();
 
-      // Wrap sendCommand to track request counts and persist usage to CSV
-      const originalSendCommand = this.client.sendCommand.bind(this.client);
-      this.client.sendCommand = ((args, options) => {
-        const startMs = performance.now();
-        this.commandCount++;
-        if (args.length > 0) {
-          const cmd = String(args[0]).toUpperCase();
-          this.commandCountByType.set(cmd, (this.commandCountByType.get(cmd) || 0) + 1);
-        }
-
-        try {
-          const result = originalSendCommand(args, options);
-          if (result && typeof (result as Promise<unknown>).then === 'function') {
-            return (result as Promise<unknown>)
-              .then((value) => {
-                this.recordSendCommandUsage(args, startMs, 'ok');
-                return value;
-              })
-              .catch((error: unknown) => {
-                this.recordSendCommandUsage(
-                  args,
-                  startMs,
-                  'error',
-                  error instanceof Error ? error.message : String(error)
-                );
-                throw error;
-              });
-          }
-
-          this.recordSendCommandUsage(args, startMs, 'ok');
-          return result;
-        } catch (error) {
-          this.recordSendCommandUsage(
-            args,
-            startMs,
-            'error',
-            error instanceof Error ? error.message : String(error)
-          );
-          throw error;
-        }
-      }) as typeof this.client.sendCommand;
+      // Hook command paths used by node-redis v4 (.get/.set/.multi/.evalSha, etc.)
+      this.wrapClientForUsageTracking(this.client);
 
       // Connect to Redis
       await this.client.connect();
