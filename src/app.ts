@@ -57,7 +57,7 @@ import {
   igPollMetricsInc,
   type InstagramFetchInvoker
 } from './services/instagramService';
-import { getIgDeviceRuntimeCache, writeDeviceHashOnConnect, markDeviceHashInactive } from './services/igDeviceRuntimeCache';
+import { getIgDeviceRuntimeCache, markDeviceHashInactive, migrateDeviceKeysToHash } from './services/igDeviceRuntimeCache';
 import { getRedisSyncService } from './services/redisSync';
 import { SessionService } from './services/sessionService';
 import { Device, type IDevice } from './models/Device';
@@ -215,11 +215,8 @@ export class StatsMqttLite {
         if (followers !== undefined) updates.ig_follower_count = String(followers);
         if (gmb !== undefined) updates.gmb_review_count = String(gmb);
         const key = REDIS_KEYS.deviceHash(deviceId);
-        const keyType = await client.type(key);
-        if (keyType === 'hash' || keyType === 'none') {
-          await client.hSet(key, updates);
-          await client.expire(key, 7 * 24 * 3600);
-        }
+        await client.hSet(key, updates);
+        await client.expire(key, 7 * 24 * 3600);
       } catch (err: unknown) {
         logger.debug('Redis: failed to remove device keys', {
           deviceId,
@@ -561,6 +558,8 @@ export class StatsMqttLite {
         keyPrefix: this.config.redis.keyPrefix,
         mode: 'cloud-persistent'
       });
+      const migrated = await migrateDeviceKeysToHash(this.redisService.getClient());
+      logger.info('[DEVICE_HASH_MIGRATION] Startup sweep complete', { migrated });
       getRedisSyncService().start(this.redisService.getClient());
     } catch (error: any) {
       logger.error('❌ Failed to connect to Redis', {

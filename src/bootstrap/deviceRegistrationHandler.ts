@@ -7,7 +7,8 @@ import { clearAllPublishHashesForDevice } from '../services/mqttChangeDetection'
 import { getLocalPromoRotationCache } from '../services/localCaches';
 import { cacheUserIntegrations } from '../services/userIntegrationCache';
 import { getDeviceStateLogService } from '../services/deviceStateLogService';
-import { REDIS_KEYS } from '../services/instagramService';
+import { REDIS_KEYS } from '../constants/redisKeys';
+import { writeDeviceHashOnConnect } from '../services/igDeviceRuntimeCache';
 import { parsePilotBootPayload, isPilotOtaStatusEvent, normalizeOtaEventKey } from '../utils/pilotOtaPayload';
 import { logger } from '../utils/logger';
 
@@ -137,36 +138,23 @@ export async function cacheActiveDevice(host: BootstrapHost, deviceId: string): 
 
     await host.activeDeviceCache.setActive(active);
 
-    logger.info('📋 [LIFECYCLE:CACHE] Active device record written (Mongo → file + Redis IG key)', {
+    logger.info('📋 [LIFECYCLE:CACHE] Active device record written (Mongo → file + Redis device hash)', {
       deviceId,
       userId: mongoUserId || '(none)',
       instagramFromSocial: Boolean(igFromSocial)
     });
 
-    const client = host.getRedisClientOrNull();
-    if (!client) return;
-
-    try {
-      const deviceMetaKey = `proof.mqtt:device:${deviceId}`;
-      if (igFromSocial) {
-        await client.set(
-          deviceMetaKey,
-          JSON.stringify({
-            instagramAccountId: igFromSocial.socialAccountId,
-            accessToken: igFromSocial.accessToken,
-            tokenExpiresAt: igFromSocial.tokenExp || undefined
-          }),
-          { EX: 604800 }
-        );
-      } else {
-        await client.del(deviceMetaKey);
-      }
-    } catch (err: unknown) {
-      logger.debug('Redis: failed to sync proof.mqtt:device meta', {
-        deviceId,
-        error: err instanceof Error ? err.message : String(err)
-      });
+    const hashFields: Record<string, string> = { status: 'active' };
+    if (mongoUserId) hashFields.userId = mongoUserId;
+    const registeredAt = (deviceDoc.provisionedAt ?? deviceDoc.createdAt)?.getTime?.();
+    if (registeredAt && !Number.isNaN(registeredAt)) {
+      hashFields.registered_at = String(registeredAt);
     }
+    if (igFromSocial) {
+      hashFields.ig_accountId = igFromSocial.socialAccountId;
+      hashFields.ig_accessToken = igFromSocial.accessToken;
+    }
+    await writeDeviceHashOnConnect(deviceId, hashFields);
   } catch (err: unknown) {
     logger.error('❌ [LIFECYCLE:CACHE] Failed to cache active device', {
       deviceId,
@@ -390,6 +378,7 @@ export async function handleDeviceLWT(
       multi.del(REDIS_KEYS.deviceFollowers(deviceId));
       multi.del(`instagram:pending:${deviceId}`);
       await multi.exec();
+      host.instagramPoller?.notifyPriorityQueueMemberRemoved(deviceId);
     }
   } catch (err: unknown) {
     logger.warn('Failed to cleanup Instagram polling keys on LWT', {

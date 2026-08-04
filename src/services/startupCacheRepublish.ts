@@ -10,6 +10,7 @@ import { getActiveDeviceCache, type ActiveDevice } from './deviceService';
 import { getRedisService } from './redisService';
 import { formatInstagramScreenMqttPayload } from './instagramService';
 import { readFollowerCountForRepublish, getIgDeviceRuntimeCache } from './igDeviceRuntimeCache';
+import { REDIS_KEYS } from '../constants/redisKeys';
 import { getUserIntegrations } from './userIntegrationCache';
 import { resolveGmbContextForDevice } from '../lib/socials/resolveDeviceGmb';
 import { publishGmbScreen } from '../webhooks/delivery/publishGmbScreen';
@@ -95,19 +96,21 @@ async function republishInstagramFromFollowersCache(
   if (await shouldSkipForStimulate(deviceId, 'instagram')) return false;
 
   // Hydrate runtime cache from device hash when possible
+  const runtime = getIgDeviceRuntimeCache();
   const redisSvc = getRedisService();
   if (redisSvc?.isRedisConnected()) {
     try {
-      const hash = await redisSvc.getClient().hGetAll(`proof.mqtt:device:${deviceId}`);
+      const hash = await redisSvc.getClient().hGetAll(REDIS_KEYS.deviceHash(deviceId));
       if (hash && Object.keys(hash).length > 0) {
-        getIgDeviceRuntimeCache().hydrateFromHashFields(deviceId, hash);
+        runtime.hydrateFromHashFields(deviceId, hash);
       }
     } catch {
       /* best-effort */
     }
   }
 
-  const followers = await readFollowerCountForRepublish(deviceId);
+  const localFollowers = runtime.getFollowers(deviceId);
+  const followers = localFollowers !== undefined ? localFollowers : await readFollowerCountForRepublish(deviceId);
   if (followers === null) return false;
 
   const { topic, payload } = formatInstagramScreenMqttPayload(

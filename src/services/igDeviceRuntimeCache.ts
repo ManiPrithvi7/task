@@ -236,20 +236,6 @@ class IgDeviceRuntimeCacheImpl {
           this.hydrateFromHashFields(deviceId, hash);
           return this.entry(deviceId);
         }
-        const raw = await client.get(key);
-        if (raw) {
-          try {
-            const parsed = JSON.parse(raw) as Record<string, unknown>;
-            const flat = flattenLegacyJson(parsed);
-            await client.del(key);
-            await client.hSet(key, flat);
-            await client.expire(key, DEVICE_HASH_TTL_SEC);
-            this.hydrateFromHashFields(deviceId, flat);
-            return this.entry(deviceId);
-          } catch {
-            /* fall through to Mongo */
-          }
-        }
       } catch (err: unknown) {
         logger.debug('[IG_RUNTIME_CACHE] L2 redis miss/error', {
           deviceId,
@@ -277,7 +263,7 @@ class IgDeviceRuntimeCacheImpl {
     return this.devices.get(deviceId) ?? null;
   }
 
-  /** ActiveDevice first, then Redis hash with legacy JSON string fallback. */
+  /** ActiveDevice first, then Redis hash. */
   async resolveMeta(deviceId: string): Promise<ResolvedDeviceMeta | null> {
     const local = await getActiveDeviceCache().getActive(deviceId);
     if (local?.instagramAccountId?.trim() && local.accessToken?.trim()) {
@@ -403,6 +389,36 @@ export function resetIgDeviceRuntimeCacheForTests(): void {
   instance = null;
 }
 
+/** One-time startup sweep: convert legacy STRING device keys to hash. */
+export async function migrateDeviceKeysToHash(redis: RedisClientType): Promise<number> {
+  let cursor = 0;
+  let migrated = 0;
+
+  do {
+    const reply = await redis.scan(cursor, { MATCH: 'proof.mqtt:device:*', COUNT: 100 });
+    cursor = Number(reply.cursor);
+    for (const key of reply.keys) {
+      const type = await redis.type(key);
+      if (type !== 'string') continue;
+      const raw = await redis.get(key);
+      if (!raw) continue;
+      try {
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        const flat = flattenLegacyJson(parsed);
+        if (Object.keys(flat).length === 0) continue;
+        await redis.del(key);
+        await redis.hSet(key, flat);
+        await redis.expire(key, DEVICE_HASH_TTL_SEC);
+        migrated++;
+      } catch {
+        /* skip malformed legacy keys */
+      }
+    }
+  } while (cursor !== 0);
+
+  return migrated;
+}
+
 /** Load GMB review count from canonical location key into runtime cache. */
 export async function hydrateGmbReviewCountFromRedis(
   deviceId: string,
@@ -424,7 +440,7 @@ export async function hydrateGmbReviewCountFromRedis(
   }
 }
 
-/** Write device hash on connect; replaces legacy JSON string key. */
+/** Write device hash on connect (hash-only; overwrites in place). */
 export async function writeDeviceHashOnConnect(
   deviceId: string,
   fields: Record<string, string>
@@ -437,10 +453,6 @@ export async function writeDeviceHashOnConnect(
   const key = REDIS_KEYS.deviceHash(deviceId);
   const client = redisSvc.getClient();
   try {
-    const keyType = await client.type(key);
-    if (keyType === 'string') {
-      await client.del(key);
-    }
     await client.hSet(key, fields);
     await client.expire(key, DEVICE_HASH_TTL_SEC);
     getIgDeviceRuntimeCache().hydrateFromHashFields(deviceId, fields);
@@ -462,11 +474,8 @@ export async function markDeviceHashInactive(deviceId: string): Promise<void> {
   const key = REDIS_KEYS.deviceHash(deviceId);
   try {
     const client = redisSvc.getClient();
-    const keyType = await client.type(key);
-    if (keyType === 'hash') {
-      await client.hSet(key, 'status', 'inactive');
-      await client.expire(key, DEVICE_HASH_TTL_SEC);
-    }
+    await client.hSet(key, 'status', 'inactive');
+    await client.expire(key, DEVICE_HASH_TTL_SEC);
   } catch (err: unknown) {
     logger.debug('[IG_RUNTIME_CACHE] markDeviceHashInactive failed', {
       deviceId,
@@ -476,7 +485,7 @@ export async function markDeviceHashInactive(deviceId: string): Promise<void> {
   getIgDeviceRuntimeCache().delete(deviceId);
 }
 
-/** Read follower count for startup republish — hash first, legacy string key fallback. */
+/** Read follower count for startup republish — local cache first, then hash field. */
 export async function readFollowerCountForRepublish(deviceId: string): Promise<number | null> {
   const runtime = getIgDeviceRuntimeCache();
   const local = runtime.getFollowers(deviceId);
@@ -486,21 +495,9 @@ export async function readFollowerCountForRepublish(deviceId: string): Promise<n
   if (!redisSvc?.isRedisConnected()) return null;
   const key = REDIS_KEYS.deviceHash(deviceId);
   try {
-    const client = redisSvc.getClient();
-    const keyType = await client.type(key);
-    if (keyType === 'hash') {
-      const raw = await client.hGet(key, 'ig_follower_count');
-      if (raw != null && raw !== '') {
-        const n = parseInt(raw, 10);
-        if (!Number.isNaN(n)) {
-          runtime.setFollowers(deviceId, n);
-          return n;
-        }
-      }
-    }
-    const legacy = await client.get(REDIS_KEYS.deviceFollowers(deviceId));
-    if (legacy !== null) {
-      const n = parseInt(legacy, 10);
+    const raw = await redisSvc.getClient().hGet(key, 'ig_follower_count');
+    if (raw != null && raw !== '') {
+      const n = parseInt(raw, 10);
       if (!Number.isNaN(n)) {
         runtime.setFollowers(deviceId, n);
         return n;
@@ -532,11 +529,8 @@ export async function syncScreenFieldImmediate(
   try {
     const key = REDIS_KEYS.deviceHash(deviceId);
     const client = redisSvc.getClient();
-    const type = await client.type(key);
-    if (type === 'hash' || type === 'none') {
-      await client.hSet(key, field, String(value));
-      await client.expire(key, DEVICE_HASH_TTL_SEC);
-    }
+    await client.hSet(key, field, String(value));
+    await client.expire(key, DEVICE_HASH_TTL_SEC);
   } catch (err: unknown) {
     logger.warn('[IG_RUNTIME_CACHE] immediate sync failed', {
       deviceId,

@@ -1209,6 +1209,7 @@ export class InstagramPoller {
   private backgroundTimer: NodeJS.Timeout | null = null;
   private running = false;
   private scriptsReady = false;
+  private localPriorityZsetSize = 0;
   private readonly circuitGate: CircuitGate;
   private readonly backoff: DeviceBackoff;
   private readonly budget: BudgetTracker;
@@ -1243,6 +1244,14 @@ export class InstagramPoller {
       throw err;
     }
 
+    try {
+      this.localPriorityZsetSize = await this.redisService
+        .getClient()
+        .zCard(REDIS_KEYS.priorityZset);
+    } catch {
+      this.localPriorityZsetSize = 0;
+    }
+
     logger.info('⏱️ [IG_POLLER] Starting dual schedulers', {
       priorityIntervalMs: this.config.priorityIntervalMs,
       backgroundIntervalMs: this.config.backgroundIntervalMs,
@@ -1271,6 +1280,11 @@ export class InstagramPoller {
     logger.info('🛑 [IG_POLLER] Stopped');
   }
 
+  /** Keep local ZSET size in sync when a device is removed (e.g. LWT disconnect). */
+  notifyPriorityQueueMemberRemoved(_deviceId?: string): void {
+    this.localPriorityZsetSize = Math.max(0, this.localPriorityZsetSize - 1);
+  }
+
   async markPriority(deviceId: string, ttlMs?: number): Promise<void> {
     const client = this.redisService.getClient();
     const ttl = ttlMs ?? this.config.priorityTtlMs;
@@ -1282,26 +1296,30 @@ export class InstagramPoller {
       expiry = Math.min(expiry, now + maxFuture);
     }
 
+    const prevRaw = await client.zScore(REDIS_KEYS.priorityZset, deviceId);
+    const wasMember = prevRaw !== null && prevRaw !== undefined;
+
     const refreshCap = this.config.priorityRefreshMaxDeltaMs;
-    if (refreshCap > 0) {
-      const prevRaw = await client.zScore(REDIS_KEYS.priorityZset, deviceId);
-      if (prevRaw !== null && prevRaw !== undefined) {
-        const prevMs = Number(prevRaw);
-        if (!Number.isNaN(prevMs)) {
-          expiry = Math.min(expiry, prevMs + refreshCap);
-        }
+    if (refreshCap > 0 && wasMember) {
+      const prevMs = Number(prevRaw);
+      if (!Number.isNaN(prevMs)) {
+        expiry = Math.min(expiry, prevMs + refreshCap);
       }
     }
 
     expiry = Math.max(expiry, now);
 
     await client.zAdd(REDIS_KEYS.priorityZset, [{ score: expiry, value: deviceId }]);
+    if (!wasMember) {
+      this.localPriorityZsetSize += 1;
+    }
 
     const maxMembers = this.config.priorityZsetMaxMembers;
     if (maxMembers > 0) {
       const card = await client.zCard(REDIS_KEYS.priorityZset);
       if (card > maxMembers) {
         await client.zRemRangeByRank(REDIS_KEYS.priorityZset, 0, card - maxMembers - 1);
+        this.localPriorityZsetSize = maxMembers;
         igPollMetricsInc('priorityZsetTrims');
       }
     }
@@ -1453,11 +1471,14 @@ export class InstagramPoller {
       }
 
       const redis = this.redisService.getClient();
+      if (this.localPriorityZsetSize === 0) return;
+
       let active = await this.safeRedisCall(
         'priorityReadPrune',
         () => evalAtomicPriorityReadAndPruneEvalSha(redis, Date.now()),
         [] as string[]
       );
+      this.localPriorityZsetSize = active.length;
       if (active.length === 0) return;
       // TEMP STIMULATE — remove after testing: skip stim devices (allowlist + lock)
       active = active.filter((id) => !isStimulateDevice(id));

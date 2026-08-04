@@ -6,10 +6,7 @@ import { readStimCache, writeStimCache } from './cache';
 import { calcResume, ceilingSequence } from './math';
 import { resolveCelebrationState } from '../src/services/screenEnvelope';
 import { getLocalStimLock } from '../src/services/localCaches';
-import {
-  getIgDeviceRuntimeCache,
-  syncScreenFieldImmediate
-} from '../src/services/igDeviceRuntimeCache';
+import { getIgDeviceRuntimeCache } from '../src/services/igDeviceRuntimeCache';
 
 export const STIM_GMB_LOCK_TTL_SEC = 3600;
 const STIM_GMB_LOCK_KEY_PREFIX = 'stim:gmb:';
@@ -31,7 +28,6 @@ async function updateGmbCache(deviceId: string, reviews: number): Promise<void> 
   const runtime = getIgDeviceRuntimeCache();
   runtime.setGmbReviewCount(deviceId, reviews);
   runtime.markDirty(deviceId, 'gmb_review_count');
-  void syncScreenFieldImmediate(deviceId, 'gmb_review_count', reviews);
 }
 
 export async function runGmbTick(

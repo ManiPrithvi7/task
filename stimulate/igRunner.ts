@@ -9,10 +9,7 @@ import { readStimCache, writeStimCache } from './cache';
 import { calcResume, ceilingSequence } from './math';
 import { instagramFollowerMetrics, resolveCelebrationState } from '../src/services/screenEnvelope';
 import { getLocalStimLock } from '../src/services/localCaches';
-import {
-  getIgDeviceRuntimeCache,
-  syncScreenFieldImmediate
-} from '../src/services/igDeviceRuntimeCache';
+import { getIgDeviceRuntimeCache } from '../src/services/igDeviceRuntimeCache';
 
 export const STIM_IG_LOCK_TTL_SEC = 3600;
 const STIM_IG_LOCK_KEY_PREFIX = 'stim:ig:';
@@ -49,7 +46,6 @@ async function updateFollowerCache(deviceId: string, followers: number): Promise
   const runtime = getIgDeviceRuntimeCache();
   runtime.setFollowers(deviceId, followers);
   runtime.markDirty(deviceId, 'ig_follower_count');
-  void syncScreenFieldImmediate(deviceId, 'ig_follower_count', followers);
 }
 
 /**

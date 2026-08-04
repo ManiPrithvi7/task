@@ -16,7 +16,9 @@ const BATCH_SYNC_FIELDS = new Set([
   'ota_deferred_at',
   'ota_status',
   'registered_at',
-  'status'
+  'status',
+  'ig_follower_count',
+  'gmb_review_count'
 ]);
 
 export class RedisSyncService {
@@ -97,6 +99,10 @@ function buildBatchUpdates(state: DeviceRuntimeState): Record<string, string> {
       updates.registered_at = String(state.registeredAt);
     } else if (field === 'status' && state.status !== undefined) {
       updates.status = state.status;
+    } else if (field === 'ig_follower_count' && state.igFollowerCount !== undefined) {
+      updates.ig_follower_count = String(state.igFollowerCount);
+    } else if (field === 'gmb_review_count' && state.gmbReviewCount !== undefined) {
+      updates.gmb_review_count = String(state.gmbReviewCount);
     }
   }
   return updates;

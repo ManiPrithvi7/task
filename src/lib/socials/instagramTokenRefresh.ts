@@ -16,25 +16,8 @@ async function updateDeviceTokenInRedis(deviceId: string, newToken: string, newE
   const key = REDIS_KEYS.deviceHash(deviceId);
   try {
     const client = redisSvc.getClient();
-    const keyType = await client.type(key);
-    if (keyType === 'hash' || keyType === 'none') {
-      await client.hSet(key, {
-        ig_accessToken: newToken,
-        tokenExpiresAt: newExp
-      });
-      await client.expire(key, 7 * 24 * 3600);
-      return;
-    }
-    const raw = await client.get(key);
-    const base =
-      raw && typeof raw === 'string' ? (JSON.parse(raw) as Record<string, unknown>) : {};
-    await client.del(key);
     await client.hSet(key, {
-      ...Object.fromEntries(
-        Object.entries(base).map(([k, v]) => [k, String(v ?? '')])
-      ),
       ig_accessToken: newToken,
-      accessToken: newToken,
       tokenExpiresAt: newExp
     });
     await client.expire(key, 7 * 24 * 3600);
