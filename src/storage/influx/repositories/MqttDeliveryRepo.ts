@@ -5,6 +5,7 @@ import { BucketTarget } from '../types';
 export interface MqttDeliveryInput {
   platform: 'instagram' | 'gmb';
   deviceId: string;
+  locationId?: string;
   success: boolean;
   payloadSizeBytes: number;
   correlationId?: string;
@@ -21,7 +22,11 @@ export class MqttDeliveryRepo extends BaseInfluxRepo<MqttDeliveryInput> {
       .booleanField('success', input.success)
       .intField('payload_size_bytes', Math.max(0, Math.round(input.payloadSizeBytes)));
 
-    if (input.correlationId) point.stringField('correlation_id', input.correlationId);
+    if (input.locationId) point.stringField('location_id', input.locationId);
+    if (input.correlationId) {
+      point.tag('correlation_id', input.correlationId);
+      point.stringField('correlation_id', input.correlationId);
+    }
     if (input.payloadSha256) point.stringField('payload_sha256', input.payloadSha256);
     if (!input.success && input.errorMessage) {
       point.stringField('error_message', this.truncate(input.errorMessage, BucketTarget.METRICS));

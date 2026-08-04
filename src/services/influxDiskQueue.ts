@@ -126,6 +126,37 @@ export class InfluxDiskQueue {
     return p;
   }
 
+  /** Append multiple lines in one serialized write (single fsync when syncOnAppend). */
+  enqueueBatch(lines: string[]): Promise<void> {
+    const trimmed = lines.map((l) => l.trim()).filter(Boolean);
+    if (trimmed.length === 0) return Promise.resolve();
+
+    const dir = path.dirname(this.opts.queuePath);
+    const payload = trimmed.map((line) => `${line}\n`).join('');
+    const run = async (): Promise<void> => {
+      await fs.mkdir(dir, { recursive: true });
+      if (this.opts.syncOnAppend) {
+        const handle = await fs.open(this.opts.queuePath, 'a');
+        try {
+          await handle.writeFile(payload, 'utf8');
+          await handle.sync();
+        } finally {
+          await handle.close();
+        }
+      } else {
+        await fs.appendFile(this.opts.queuePath, payload, 'utf8');
+      }
+    };
+
+    const p = this.chain.then(run);
+    this.chain = p.catch((err: unknown) => {
+      logger.error('[INFLUX_QUEUE] batch append failed', {
+        error: err instanceof Error ? err.message : String(err)
+      });
+    });
+    return p;
+  }
+
   async waitAppends(): Promise<void> {
     await this.chain.catch(() => {});
   }

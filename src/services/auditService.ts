@@ -171,13 +171,16 @@ export class AuditService {
     const timestamp = new Date();
     const previousHash = this.lastHash;
     const sequence = this.lastSequence + 1;
+    // Resolve before hash so tag (device_id) and hash_preimage agree for CA-level events.
+    const resolvedDeviceId = data.deviceId?.trim() ? data.deviceId.trim() : 'system';
 
-    // Build hash content: deterministic JSON of all audit fields + previousHash
+    // Build hash content: deterministic JSON of all audit fields + previousHash.
+    // Auditors must verify via sha256(hash_preimage) === hash (stored on each point).
     // Keep orderId/batchId in hash preimage for chain continuity (no longer stored as Influx tags).
     const hashPreimage = this.buildHashContent({
       timestamp: timestamp.toISOString(),
       event: data.event,
-      deviceId: data.deviceId || null,
+      deviceId: resolvedDeviceId,
       userId: data.userId || null,
       orderId: data.orderId || null,
       batchId: data.batchId || null,
@@ -212,7 +215,7 @@ export class AuditService {
       try {
         await influx.writeAuditEvent({
           event: data.event,
-          deviceId: data.deviceId || 'system',
+          deviceId: resolvedDeviceId,
           userId: data.userId,
           serialNumber: data.serialNumber,
           certificateFingerprint: data.certificateFingerprint,

@@ -333,6 +333,24 @@ describe('AuditService', () => {
       expect(service.getChainState().lastHash).toBe(entry!.hash);
     });
 
+    test('hash_preimage uses deviceId "system" when deviceId absent (matches Influx tag)', async () => {
+      influxMock.queryLatestAuditEntry.mockResolvedValue(null);
+      influxMock.writeAuditEvent.mockResolvedValue(undefined);
+      mockGetInfluxService.mockReturnValue(influxMock as never);
+
+      const service = createAuditService();
+      await service.initialize();
+
+      await service.logEvent({
+        event: AuditEventType.OTA_SIGNING_KEY_LOADED,
+      });
+
+      const payload = influxMock.writeAuditEvent.mock.calls[0][0];
+      expect(payload.deviceId).toBe('system');
+      expect(payload.hashPreimage).toContain('"deviceId":"system"');
+      expect(payload.hashPreimage).not.toContain('"deviceId":null');
+    });
+
     test('defaults deviceId to "system" in InfluxDB write when absent', async () => {
       influxMock.queryLatestAuditEntry.mockResolvedValue(null);
       influxMock.writeAuditEvent.mockResolvedValue(undefined);

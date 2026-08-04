@@ -276,7 +276,7 @@ export async function handleGmbWebhook(req: Request, res: Response, deps: Webhoo
           qrText: 'https://g.page/r/review'
         },
         deps.webhookConfig.mqttPublishEnabled,
-        { userId: ctx.userId, deviceId: device.clientId }
+        { userId: ctx.userId, deviceId: device.clientId, locationId: location }
       );
       lastTopic = result.topic;
       lastClientId = device.clientId;

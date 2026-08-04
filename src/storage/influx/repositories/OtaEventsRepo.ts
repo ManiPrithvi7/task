@@ -29,14 +29,21 @@ export class OtaEventsRepo extends BaseInfluxRepo<OtaEventsInput> {
     const point = new Point('device_ota_events')
       .tag('device_id', input.deviceId)
       .tag('event', input.event)
-      .tag('source', input.source);
+      .tag('source', input.source)
+      .stringField('source', input.source);
 
-    if (input.fwVersion) point.stringField('fw_version', input.fwVersion);
+    if (input.fwVersion) {
+      point.tag('fw_version', input.fwVersion);
+      point.stringField('fw_version', input.fwVersion);
+    }
     if (input.ipAddress) point.stringField('ip_address', input.ipAddress);
     if (input.errorMessage) {
       point.stringField('error_message', this.truncate(input.errorMessage, BucketTarget.METRICS));
     }
-    if (input.errorCode) point.stringField('error_code', input.errorCode);
+    if (input.errorCode) {
+      point.tag('error_code', input.errorCode);
+      point.stringField('error_code', input.errorCode);
+    }
     if (typeof input.otaBytes === 'number') point.intField('ota_bytes', Math.round(input.otaBytes));
     if (typeof input.certDaysRemaining === 'number') {
       point.intField('cert_days_remaining', Math.round(input.certDaysRemaining));
@@ -51,7 +58,10 @@ export class OtaEventsRepo extends BaseInfluxRepo<OtaEventsInput> {
     if (typeof input.attemptNumber === 'number') {
       point.intField('attempt_number', Math.round(input.attemptNumber));
     }
-    if (input.fromVersion) point.stringField('from_version', input.fromVersion);
+    if (input.fromVersion) {
+      point.tag('from_version', input.fromVersion);
+      point.stringField('from_version', input.fromVersion);
+    }
     if (input.payloadHash) point.stringField('payload_hash', input.payloadHash);
 
     point.timestamp(normalizeInfluxTimestamp(input.timestamp));

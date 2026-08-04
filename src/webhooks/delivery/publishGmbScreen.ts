@@ -15,6 +15,7 @@ export type GmbFastScreenInput = {
 export type GmbScreenAuditContext = {
   userId?: string;
   deviceId: string;
+  locationId?: string;
 };
 
 export type GmbScreenPublishResult = {
@@ -86,6 +87,7 @@ export async function publishGmbScreen(
         {
           platform: 'gmb',
           deviceId: audit.deviceId,
+          locationId: audit.locationId,
           success,
           payloadSizeBytes: Buffer.byteLength(payload, 'utf8'),
           payloadSha256: sha256Payload(payload),

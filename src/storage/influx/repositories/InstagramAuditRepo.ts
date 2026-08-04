@@ -15,11 +15,23 @@ export class InstagramAuditRepo extends BaseInfluxRepo<InstagramFetchAuditInflux
       .tag('trigger_type', input.triggerType)
       .intField('duration_ms', Math.max(0, Math.round(input.durationMs)));
 
-    if (input.correlationId) point.stringField('correlation_id', input.correlationId);
-    if (input.instagramAccountId) point.stringField('instagram_account_id', input.instagramAccountId);
-    if (input.apiEndpoint) point.stringField('api_endpoint', input.apiEndpoint);
+    // Dual-write tag+field during partner migration (v2.3.x → v2.5.0 tag removal).
+    if (input.correlationId) {
+      point.tag('correlation_id', input.correlationId);
+      point.stringField('correlation_id', input.correlationId);
+    }
+    if (input.instagramAccountId) {
+      point.tag('instagram_account_id', input.instagramAccountId);
+      point.stringField('instagram_account_id', input.instagramAccountId);
+    }
+    if (input.apiEndpoint) {
+      point.tag('api_endpoint', input.apiEndpoint);
+      point.stringField('api_endpoint', input.apiEndpoint);
+    }
     if (!input.success && input.errorCode !== undefined && input.errorCode !== null && String(input.errorCode) !== '') {
-      point.stringField('error_code', String(input.errorCode));
+      const code = String(input.errorCode);
+      point.tag('error_code', code);
+      point.stringField('error_code', code);
     }
 
     if (input.oldFollowers !== null && input.oldFollowers !== undefined && !Number.isNaN(input.oldFollowers)) {
@@ -63,7 +75,7 @@ export class InstagramAuditRepo extends BaseInfluxRepo<InstagramFetchAuditInflux
     }
   }
 
-  async writeProfileBaseline(input: ProfileBaselineInfluxInput): Promise<void> {
+  buildProfileBaselinePoint(input: ProfileBaselineInfluxInput): Point {
     const point = new Point('profile_baseline')
       .tag('device_id', input.deviceId)
       .tag('platform', input.platform)
@@ -76,7 +88,6 @@ export class InstagramAuditRepo extends BaseInfluxRepo<InstagramFetchAuditInflux
       if (typeof input.reviews === 'number') {
         point.intField('reviews', Math.round(input.reviews));
       } else if (typeof input.followers === 'number') {
-        // legacy callers may still pass review count as followers
         point.intField('reviews', Math.round(input.followers));
       }
       if (typeof input.rating === 'number') {
@@ -88,7 +99,11 @@ export class InstagramAuditRepo extends BaseInfluxRepo<InstagramFetchAuditInflux
     }
 
     point.timestamp(input.timestamp ?? new Date());
-    await this.submit(point, BucketTarget.METRICS, true);
+    return point;
+  }
+
+  async writeProfileBaseline(input: ProfileBaselineInfluxInput): Promise<void> {
+    await this.submit(this.buildProfileBaselinePoint(input), BucketTarget.METRICS, true);
   }
 
   async writeAttentionE2eLatency(

@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { AuthService } from '../services/authService';
 import { Device } from '../models/Device';
 import { getInfluxService } from '../services/influxService';
+import { cachedQuery } from '../services/influxQueryCache';
 
 export interface DashboardRoutesDeps {
   authService: AuthService;
@@ -90,18 +91,26 @@ export function createDashboardRoutes(deps: DashboardRoutesDeps): Router {
 
     try {
       const range = req.query.range || '-90d';
-      const [metrics, baseline, milestones] = await Promise.all([
-        influx.queryIgMetrics(deviceId, String(range)),
-        influx.queryProfileBaseline(deviceId, 'instagram'),
-        influx.queryIgMilestones(deviceId, String(range)),
-      ]);
+      const cacheKey = `ig:summary:${deviceId}:${range}`;
+      const result = await cachedQuery(
+        cacheKey,
+        async () => {
+          const [metrics, baseline, milestones] = await Promise.all([
+            influx.queryIgMetrics(deviceId, String(range)),
+            influx.queryProfileBaseline(deviceId, 'instagram'),
+            influx.queryIgMilestones(deviceId, String(range)),
+          ]);
+          return {
+            metrics: sanitizeForDashboard(metrics),
+            baseline,
+            milestones: sanitizeForDashboard(milestones),
+            velocity: sanitizeForDashboard(milestones),
+          };
+        },
+        { freshMs: 30_000, staleMs: 120_000 }
+      );
 
-      res.json({
-        metrics: sanitizeForDashboard(metrics),
-        baseline,
-        milestones: sanitizeForDashboard(milestones),
-        velocity: sanitizeForDashboard(milestones),
-      });
+      res.json(result);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Dashboard query failed', detail: msg });
@@ -147,20 +156,28 @@ export function createDashboardRoutes(deps: DashboardRoutesDeps): Router {
 
     try {
       const range = req.query.range || '-90d';
-      const [webhookAudits, gmbMetrics, baseline, milestones] = await Promise.all([
-        influx.queryGmbWebhookAudits(locationId, String(range)),
-        influx.queryGmbMetrics(locationId, String(range)),
-        influx.queryProfileBaseline(locationId, 'gmb'),
-        influx.queryGmbMilestones(locationId, String(range)),
-      ]);
+      const cacheKey = `gmb:summary:${locationId}:${range}`;
+      const result = await cachedQuery(
+        cacheKey,
+        async () => {
+          const [webhookAudits, gmbMetrics, baseline, milestones] = await Promise.all([
+            influx.queryGmbWebhookAudits(locationId, String(range)),
+            influx.queryGmbMetrics(locationId, String(range)),
+            influx.queryProfileBaseline(locationId, 'gmb'),
+            influx.queryGmbMilestones(locationId, String(range)),
+          ]);
+          return {
+            webhook_events: sanitizeForDashboard(webhookAudits),
+            review_snapshots: sanitizeForDashboard(gmbMetrics),
+            baseline,
+            milestones: sanitizeForDashboard(milestones),
+            velocity: sanitizeForDashboard(milestones),
+          };
+        },
+        { freshMs: 30_000, staleMs: 120_000 }
+      );
 
-      res.json({
-        webhook_events: sanitizeForDashboard(webhookAudits),
-        review_snapshots: sanitizeForDashboard(gmbMetrics),
-        baseline,
-        milestones: sanitizeForDashboard(milestones),
-        velocity: sanitizeForDashboard(milestones),
-      });
+      res.json(result);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Dashboard query failed', detail: msg });
@@ -302,7 +319,7 @@ export function createDashboardRoutes(deps: DashboardRoutesDeps): Router {
     try {
       const range = req.query.range || '-7d';
       const audits = await influx.queryGmbWebhookAudits(locationId, String(range));
-      const mqttDeliveries = await influx.queryMqttDelivery(locationId, 'gmb', String(range));
+      const mqttDeliveries = await influx.queryMqttDeliveryByLocation(locationId, 'gmb', String(range));
       res.json({
         webhook_audits: sanitizeForDashboard(audits),
         mqtt_deliveries: sanitizeForDashboard(mqttDeliveries),
@@ -359,19 +376,27 @@ export function createDashboardRoutes(deps: DashboardRoutesDeps): Router {
 
     try {
       const range = req.query.range || '-7d';
-      const [igAudit, igMqtt, gmbMqtt, e2e] = await Promise.all([
-        influx.queryInstagramAudit(deviceId, String(range)),
-        influx.queryMqttDelivery(deviceId, 'instagram', String(range)),
-        influx.queryMqttDelivery(deviceId, 'gmb', String(range)),
-        influx.queryInstagramAttentionE2e(deviceId, String(range)),
-      ]);
+      const cacheKey = `device:audit:${deviceId}:${range}`;
+      const result = await cachedQuery(
+        cacheKey,
+        async () => {
+          const [igAudit, igMqtt, gmbMqtt, e2e] = await Promise.all([
+            influx.queryInstagramAudit(deviceId, String(range)),
+            influx.queryMqttDelivery(deviceId, 'instagram', String(range)),
+            influx.queryMqttDelivery(deviceId, 'gmb', String(range)),
+            influx.queryInstagramAttentionE2e(deviceId, String(range)),
+          ]);
+          return {
+            instagram_fetch_audit: sanitizeForDashboard(igAudit),
+            mqtt_delivery_instagram: sanitizeForDashboard(igMqtt),
+            mqtt_delivery_gmb: sanitizeForDashboard(gmbMqtt),
+            attention_e2e: sanitizeForDashboard(e2e),
+          };
+        },
+        { freshMs: 15_000, staleMs: 60_000 }
+      );
 
-      res.json({
-        instagram_fetch_audit: sanitizeForDashboard(igAudit),
-        mqtt_delivery_instagram: sanitizeForDashboard(igMqtt),
-        mqtt_delivery_gmb: sanitizeForDashboard(gmbMqtt),
-        attention_e2e: sanitizeForDashboard(e2e),
-      });
+      res.json(result);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: 'Audit query failed', detail: msg });

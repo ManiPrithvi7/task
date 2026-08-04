@@ -43,6 +43,21 @@ describe('InfluxDiskQueue syncOnAppend', () => {
     expect(openSpy).toHaveBeenCalled();
     openSpy.mockRestore();
   });
+
+  it('enqueueBatch appends multiple lines in one write', async () => {
+    const q = new InfluxDiskQueue({
+      queuePath,
+      flushIntervalMs: 60_000,
+      batchMax: 10,
+      maxLinesPerFile: 1000,
+      syncOnAppend: false
+    });
+    await q.enqueueBatch(['m,device_id=a v=1', 'm,device_id=b v=2']);
+    await q.waitAppends();
+    const raw = await fs.readFile(queuePath, 'utf8');
+    expect(raw).toContain('m,device_id=a v=1');
+    expect(raw).toContain('m,device_id=b v=2');
+  });
 });
 
 describe('InfluxDiskQueue poison-pill handling', () => {

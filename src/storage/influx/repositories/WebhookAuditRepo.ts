@@ -18,7 +18,10 @@ export class WebhookAuditRepo extends BaseInfluxRepo<GmbWebhookAuditInfluxInput>
       .intField('payload_size_bytes', input.payloadSizeBytes)
       .stringField('payload_sha256', input.payloadSha256);
 
-    if (input.webhookId) point.stringField('webhook_id', input.webhookId);
+    if (input.webhookId) {
+      point.tag('webhook_id', input.webhookId);
+      point.stringField('webhook_id', input.webhookId);
+    }
     if (input.processedAt) point.stringField('processed_at', input.processedAt);
     if (typeof input.processingMs === 'number') {
       point.intField('processing_ms', Math.round(input.processingMs));

@@ -708,70 +708,85 @@ export async function applyInstagramServerlessDeviceOutcome(
   const influx = getInfluxService();
   if (influx) {
     try {
-      await influx.writeInstagramFetchAudit(
-        {
-          deviceId,
-          userId,
-          success: row.success,
-          triggerType: trigger,
-          correlationId: cid,
-          instagramAccountId: igAccount || undefined,
-          oldFollowers,
-          newFollowers,
-          durationMs: apiMs,
-          httpStatus: row.http_status,
-          retryAfterSeconds: row.retry_after_seconds,
-          cacheHit: row.cache_hit,
-          apiEndpoint: row.api_endpoint,
-          primaryResponseSha256: row.primary_response_sha256,
-          detailsResponseSha256: row.details_response_sha256,
-          errorMessage: row.success ? undefined : (row.error || 'unknown'),
-          errorCode: row.success ? undefined : row.error_code,
-          timestamp: auditTs
-        },
-        { flush: false }
-      );
+      const auditInput = {
+        deviceId,
+        userId,
+        success: row.success,
+        triggerType: trigger,
+        correlationId: cid,
+        instagramAccountId: igAccount || undefined,
+        oldFollowers,
+        newFollowers,
+        durationMs: apiMs,
+        httpStatus: row.http_status,
+        retryAfterSeconds: row.retry_after_seconds,
+        cacheHit: row.cache_hit,
+        apiEndpoint: row.api_endpoint,
+        primaryResponseSha256: row.primary_response_sha256,
+        detailsResponseSha256: row.details_response_sha256,
+        errorMessage: row.success ? undefined : (row.error || 'unknown'),
+        errorCode: row.success ? undefined : row.error_code,
+        timestamp: auditTs
+      };
 
+      let igMetricsInput;
       if (row.success && row.followers_count != null) {
-        await influx.writeIgMetrics({
+        igMetricsInput = {
           deviceId,
           igId: igAccount || 'unknown',
           trigger,
           followersCount: row.followers_count,
           timestamp: auditTs,
-        }, { flush: false });
-
-        if (oldFollowers === null) {
-          await influx.writeProfileBaseline({
-            deviceId,
-            platform: 'instagram',
-            followers: row.followers_count,
-            connectedAt: auditTs,
-            timestamp: auditTs
-          }, { flush: false });
-        }
+        };
       }
+
+      let baselineInput;
+      if (row.success && row.followers_count != null && oldFollowers === null) {
+        baselineInput = {
+          deviceId,
+          platform: 'instagram' as const,
+          followers: row.followers_count,
+          connectedAt: auditTs,
+          timestamp: auditTs
+        };
+      }
+
+      const milestoneInputs: Array<{
+        deviceId: string;
+        igId: string;
+        followersCount: number;
+        velocity: number;
+        createdAt: string;
+        timestamp: Date;
+      }> = [];
 
       if (row.success && newFollowers !== null && oldFollowers !== null && igAccount) {
         const runtime = getIgDeviceRuntimeCache();
         const lastTs = runtime.getLastFollowerCountTimestamp(deviceId);
         const velocity = computeVelocityPerDay(oldFollowers, newFollowers, lastTs ?? null, auditTs.getTime());
-        for (const milestone of getCrossedMilestones(oldFollowers, newFollowers)) {
-          await influx.writeIgMilestone({
+        for (const _milestone of getCrossedMilestones(oldFollowers, newFollowers)) {
+          milestoneInputs.push({
             deviceId,
             igId: igAccount,
             followersCount: newFollowers,
             velocity,
             createdAt: auditTs.toISOString(),
             timestamp: auditTs,
-          }, { flush: false });
+          });
         }
         runtime.setFollowers(deviceId, newFollowers, auditTs.getTime());
       }
 
-      if (e2eMs !== undefined && cid) {
-        await influx.writeInstagramAttentionE2eLatency(deviceId, trigger, e2eMs, auditTs, { flush: false });
-      }
+      await influx.writeInstagramOutcomeBatch({
+        audit: auditInput,
+        igMetrics: igMetricsInput,
+        baseline: baselineInput,
+        milestones: milestoneInputs.length ? milestoneInputs : undefined,
+        e2e:
+          e2eMs !== undefined && cid
+            ? { deviceId, triggerType: trigger, latencyMs: e2eMs, timestamp: auditTs }
+            : undefined,
+      });
     } catch (err: unknown) {
       logger.error('[IG_SERVERLESS] Influx write failed', {
         deviceId,

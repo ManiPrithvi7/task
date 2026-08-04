@@ -17,11 +17,7 @@ const mockRuntime = {
 };
 
 const mockInflux = {
-  writeInstagramFetchAudit: jest.fn().mockResolvedValue(undefined),
-  writeIgMetrics: jest.fn().mockResolvedValue(undefined),
-  writeProfileBaseline: jest.fn().mockResolvedValue(undefined),
-  writeIgMilestone: jest.fn().mockResolvedValue(undefined),
-  writeInstagramAttentionE2eLatency: jest.fn().mockResolvedValue(undefined),
+  writeInstagramOutcomeBatch: jest.fn().mockResolvedValue(undefined),
   writeMqttDelivery: jest.fn().mockResolvedValue(undefined),
   flushWrites: jest.fn().mockResolvedValue(undefined)
 };
@@ -88,14 +84,12 @@ describe('instagramService outcome applicator', () => {
     const mqtt = makeMqtt();
     await applyInstagramServerlessDeviceOutcome(successRow(), mqtt, 'proof', 'scheduled');
 
-    expect(mockInflux.writeInstagramFetchAudit).toHaveBeenCalledWith(
-      expect.objectContaining({ deviceId: 'd1', success: true, oldFollowers: null, newFollowers: 500 }),
-      { flush: false }
-    );
-    expect(mockInflux.writeIgMetrics).toHaveBeenCalled();
-    expect(mockInflux.writeProfileBaseline).toHaveBeenCalledWith(
-      expect.objectContaining({ deviceId: 'd1', followers: 500, platform: 'instagram' }),
-      { flush: false }
+    expect(mockInflux.writeInstagramOutcomeBatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        audit: expect.objectContaining({ deviceId: 'd1', success: true, oldFollowers: null, newFollowers: 500 }),
+        igMetrics: expect.objectContaining({ deviceId: 'd1', followersCount: 500 }),
+        baseline: expect.objectContaining({ deviceId: 'd1', followers: 500, platform: 'instagram' }),
+      })
     );
     expect(mockInflux.flushWrites).toHaveBeenCalled();
     expect(mqtt.publish).toHaveBeenCalledWith(
@@ -109,11 +103,14 @@ describe('instagramService outcome applicator', () => {
     const mqtt = makeMqtt();
     await applyInstagramServerlessDeviceOutcome(successRow(), mqtt, 'proof', 'scheduled');
 
-    expect(mockInflux.writeIgMilestone).toHaveBeenCalledTimes(4);
-    expect(mockInflux.writeIgMilestone).toHaveBeenCalledWith(
-      expect.objectContaining({ deviceId: 'd1', followersCount: 500, velocity: expect.any(Number) }),
-      { flush: false }
+    expect(mockInflux.writeInstagramOutcomeBatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        milestones: expect.arrayContaining([
+          expect.objectContaining({ deviceId: 'd1', followersCount: 500, velocity: expect.any(Number) }),
+        ]),
+      })
     );
+    expect(mockInflux.writeInstagramOutcomeBatch.mock.calls[0][0].milestones).toHaveLength(4);
     expect(mockRuntime.setFollowers).toHaveBeenCalledWith('d1', 500, expect.any(Number));
   });
 
@@ -121,8 +118,10 @@ describe('instagramService outcome applicator', () => {
     registerAttentionCorrelationStart('corr-1');
     const mqtt = makeMqtt();
     await applyInstagramServerlessDeviceOutcome(successRow(), mqtt, 'proof', 'attention', 'corr-1');
-    expect(mockInflux.writeInstagramAttentionE2eLatency).toHaveBeenCalledWith(
-      'd1', 'attention', expect.any(Number), expect.any(Date), { flush: false }
+    expect(mockInflux.writeInstagramOutcomeBatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        e2e: expect.objectContaining({ deviceId: 'd1', triggerType: 'attention', latencyMs: expect.any(Number) }),
+      })
     );
   });
 
@@ -134,11 +133,13 @@ describe('instagramService outcome applicator', () => {
       'proof',
       'scheduled'
     );
-    expect(mockInflux.writeInstagramFetchAudit).toHaveBeenCalledWith(
-      expect.objectContaining({ success: false, errorMessage: 'graph api down', errorCode: undefined }),
-      { flush: false }
+    expect(mockInflux.writeInstagramOutcomeBatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        audit: expect.objectContaining({ success: false, errorMessage: 'graph api down', errorCode: undefined }),
+        igMetrics: undefined,
+        baseline: undefined,
+      })
     );
-    expect(mockInflux.writeIgMetrics).not.toHaveBeenCalled();
     expect(mqtt.publish).not.toHaveBeenCalled();
     expect(logger.warn).toHaveBeenCalledWith(
       '[IG_SCREEN] Skipping MQTT for failed fetch',

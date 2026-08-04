@@ -30,7 +30,8 @@ export class PkiAuditRepo extends BaseInfluxRepo<PkiAuditInput> {
     if (input.hash) point.stringField('hash', input.hash);
     if (input.previousHash) point.stringField('previous_hash', input.previousHash);
     if (input.hashPreimage) point.stringField('hash_preimage', input.hashPreimage);
-    // Compliance bucket: details never truncated
+    // Compliance bucket: details never truncated.
+    // Third-party auditors: verify sha256(hash_preimage) === hash (do not recompute from tags).
     if (input.details) {
       point.stringField('details', JSON.stringify(input.details));
     }

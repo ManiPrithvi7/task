@@ -26,6 +26,10 @@ export abstract class BaseInfluxRepo<TInput> {
     return value.slice(0, Math.max(0, max - 3)) + '...';
   }
 
+  /**
+   * Enqueue a point to the disk WAL or write directly when the queue is disabled.
+   * @param flushImmediately Ignored when disk queue is enabled (always async enqueue).
+   */
   protected async submit(point: Point, target: BucketTarget, flushImmediately: boolean): Promise<void> {
     const queue = this.diskQueue;
     if (queue) {
@@ -42,6 +46,31 @@ export abstract class BaseInfluxRepo<TInput> {
     }
     this.writeApi.writePoint(point);
     if (flushImmediately) await this.writeApi.flush();
+  }
+
+  /** Batch enqueue — single fsync on compliance path when syncOnAppend is enabled. */
+  async submitBatch(points: Point[], target: BucketTarget): Promise<void> {
+    if (points.length === 0) return;
+    const diskQueue = this.diskQueue;
+    if (diskQueue) {
+      const lines = points
+        .map((p) => p.toLineProtocol())
+        .filter((line): line is string => Boolean(line))
+        .map((line) => sanitizeInfluxLineProtocol(line));
+      if (lines.length === 0) return;
+      for (const line of lines) {
+        this.onWriteUsage?.({
+          bucket: target,
+          measurement: line.split(/[,\s]/)[0] || 'unknown',
+          line
+        });
+      }
+      await diskQueue.enqueueBatch(lines);
+      return;
+    }
+    for (const point of points) {
+      this.writeApi.writePoint(point);
+    }
   }
 
   abstract buildPoint(input: TInput): Point;

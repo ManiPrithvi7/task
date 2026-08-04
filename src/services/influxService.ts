@@ -17,6 +17,7 @@ import { InfluxDB, WriteApi, QueryApi, Point } from '@influxdata/influxdb-client
 import { logger } from '../utils/logger';
 import { InfluxDBConfig } from '../config';
 import { InfluxDiskQueue } from './influxDiskQueue';
+import { invalidateCache } from './influxQueryCache';
 
 import { BucketTarget } from '../storage/influx/types';
 import type { InfluxWriteUsageCallback } from '../storage/influx/BaseInfluxRepo';
@@ -353,31 +354,57 @@ export class InfluxService {
     fluxQuery: string,
     handlers: {
       next: (row: string[], tableMeta: import('@influxdata/influxdb-client').FluxTableMetaData) => void;
-    }
+    },
+    options?: { signal?: AbortSignal; timeoutMs?: number }
   ): Promise<void> {
     const startMs = performance.now();
     const bucketKey = this.extractBucketFromFlux(fluxQuery) || 'unknown';
+    const timeoutMs = options?.timeoutMs ?? 30_000;
+    const ownsController = !options?.signal;
+    const controller = options?.signal ? undefined : new AbortController();
+    const signal = options?.signal ?? controller!.signal;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    if (ownsController && controller) {
+      timer = setTimeout(() => controller.abort(), timeoutMs);
+    }
 
     return new Promise<void>((resolve, reject) => {
-      this.queryApi.queryRows(fluxQuery, {
-        next: handlers.next,
-        error: (error) => {
-          this.recordUsage(
-            'read',
-            'query',
-            bucketKey,
-            fluxQuery,
-            startMs,
-            'error',
-            error instanceof Error ? error.message : String(error)
-          );
-          reject(error);
+      this.queryApi.queryRows(
+        fluxQuery,
+        {
+          next: (row, tableMeta) => {
+            if (signal.aborted) return;
+            handlers.next(row, tableMeta);
+          },
+          error: (error) => {
+            if (timer) clearTimeout(timer);
+            this.recordUsage(
+              'read',
+              'query',
+              bucketKey,
+              fluxQuery,
+              startMs,
+              'error',
+              error instanceof Error ? error.message : String(error)
+            );
+            if (signal.aborted) {
+              reject(new Error(`Flux query timed out after ${timeoutMs}ms`));
+              return;
+            }
+            reject(error);
+          },
+          complete: () => {
+            if (timer) clearTimeout(timer);
+            if (signal.aborted) {
+              reject(new Error(`Flux query timed out after ${timeoutMs}ms`));
+              return;
+            }
+            this.recordUsage('read', 'query', bucketKey, fluxQuery, startMs, 'ok');
+            resolve();
+          }
         },
-        complete: () => {
-          this.recordUsage('read', 'query', bucketKey, fluxQuery, startMs, 'ok');
-          resolve();
-        }
-      });
+        { signal }
+      );
     });
   }
 
@@ -482,10 +509,50 @@ export class InfluxService {
 
   async writeGmbMilestone(input: GmbMilestoneInput, opts?: { flush?: boolean }): Promise<void> {
     await this.gmbMilestone.write(input);
+    if (input.locationId) {
+      invalidateCache(`gmb:summary:${input.locationId}`);
+    }
   }
 
   async writeMqttDelivery(input: MqttDeliveryInput, opts?: { flush?: boolean }): Promise<void> {
     await this.mqttDelivery.write(input);
+  }
+
+  /**
+   * Batch-write Instagram serverless outcome points (single disk-queue append).
+   */
+  async writeInstagramOutcomeBatch(inputs: {
+    audit?: InstagramFetchAuditInfluxInput;
+    igMetrics?: IgMetricsInput;
+    baseline?: ProfileBaselineInfluxInput;
+    milestones?: IgMilestoneInput[];
+    e2e?: { deviceId: string; triggerType: string; latencyMs: number; timestamp?: Date };
+  }): Promise<void> {
+    const points: Point[] = [];
+    if (inputs.audit) points.push(this.instagramAudit.buildPoint(inputs.audit));
+    if (inputs.igMetrics) points.push(this.igMetrics.buildPoint(inputs.igMetrics));
+    if (inputs.baseline) points.push(this.instagramAudit.buildProfileBaselinePoint(inputs.baseline));
+    if (inputs.milestones?.length) {
+      for (const m of inputs.milestones) {
+        points.push(this.igMilestone.buildPoint(m));
+      }
+    }
+    if (inputs.e2e) {
+      const { deviceId, triggerType, latencyMs, timestamp } = inputs.e2e;
+      points.push(
+        new Point('instagram_attention_e2e')
+          .tag('device_id', deviceId)
+          .tag('trigger', triggerType)
+          .intField('latency_ms', Math.round(latencyMs))
+          .timestamp(timestamp ?? new Date())
+      );
+    }
+    if (points.length === 0) return;
+    await this.instagramAudit.submitBatch(points, BucketTarget.METRICS);
+    if (inputs.audit?.deviceId) {
+      invalidateCache(`ig:summary:${inputs.audit.deviceId}`);
+      invalidateCache(`device:audit:${inputs.audit.deviceId}`);
+    }
   }
 
   async writeDeviceActive(input: DeviceActiveInput): Promise<void> {
@@ -521,6 +588,9 @@ export class InfluxService {
     opts?: { flush?: boolean }
   ): Promise<void> {
     await this.webhookAudit.writeGmbWebhookAudit(input);
+    if (input.locationId) {
+      invalidateCache(`gmb:summary:${input.locationId}`);
+    }
   }
 
   async writeInstagramAttentionE2eLatency(
@@ -572,13 +642,20 @@ export class InfluxService {
 
   // ── Queries ────────────────────────────────────────────────────────
 
-  async queryFlux<T = Record<string, unknown>>(fluxQuery: string): Promise<T[]> {
+  async queryFlux<T = Record<string, unknown>>(
+    fluxQuery: string,
+    options?: { signal?: AbortSignal; timeoutMs?: number }
+  ): Promise<T[]> {
     const results: T[] = [];
-    await this.runTrackedFluxQuery(fluxQuery, {
-      next(row, tableMeta) {
-        results.push(tableMeta.toObject(row) as T);
-      }
-    });
+    await this.runTrackedFluxQuery(
+      fluxQuery,
+      {
+        next(row, tableMeta) {
+          results.push(tableMeta.toObject(row) as T);
+        }
+      },
+      options
+    );
     return results;
   }
 
@@ -663,6 +740,27 @@ export class InfluxService {
         |> filter(fn: (r) => r.platform == "${platform}")
         |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
         |> sort(columns: ["_time"], desc: true)
+        |> limit(n: 100)
+    `);
+  }
+
+  async queryMqttDeliveryByLocation(
+    locationId: string,
+    platform: string,
+    startTime: string,
+    endTime?: string
+  ): Promise<Record<string, unknown>[]> {
+    const end = endTime || new Date().toISOString();
+    return this.queryFlux(`
+      from(bucket: "${this.config.bucket}")
+        |> range(start: ${startTime}, stop: ${end})
+        |> filter(fn: (r) => r._measurement == "mqtt_delivery")
+        |> filter(fn: (r) => r.platform == "${platform}")
+        |> filter(fn: (r) => r._field == "location_id")
+        |> filter(fn: (r) => r._value == "${locationId}")
+        |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+        |> sort(columns: ["_time"], desc: true)
+        |> limit(n: 100)
     `);
   }
 
@@ -762,6 +860,7 @@ export class InfluxService {
         |> filter(fn: (r) => r.device_id == "${deviceId}")
         |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
         |> sort(columns: ["_time"], desc: true)
+        |> limit(n: 100)
     `);
   }
 
@@ -795,6 +894,7 @@ export class InfluxService {
         |> filter(fn: (r) => r.location_id == "${locationId}")
         |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
         |> sort(columns: ["_time"], desc: true)
+        |> limit(n: 100)
     `);
   }
 
@@ -811,6 +911,7 @@ export class InfluxService {
         |> filter(fn: (r) => r.device_id == "${deviceId}")
         |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
         |> sort(columns: ["_time"], desc: true)
+        |> limit(n: 100)
     `);
   }
 

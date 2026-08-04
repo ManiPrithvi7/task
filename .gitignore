@@ -11,3 +11,5 @@ graphify-out/
 session-*.md
 .env
 *.env
+data/redis_usage.csv
+data/influx_usage.csv

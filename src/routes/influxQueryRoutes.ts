@@ -2,6 +2,21 @@ import { Router, Request, Response } from 'express';
 import { AuthService } from '../services/authService';
 import { getInfluxService } from '../services/influxService';
 import { sanitizeFluxQuery, MAX_RESULTS, MAX_EXECUTION_MS } from '../middleware/querySanitizer';
+import { logger } from '../utils/logger';
+
+/** Legacy measurements — log proxy access before removal. */
+const LEGACY_MEASUREMENTS = new Set([
+  'device_metrics',
+  'system_metrics',
+  'social_metrics',
+  'rate_limit_events',
+  'instagram_circuit_event',
+  'velocity_weekly',
+  'gmb_velocity_weekly',
+  'webhook_mqtt_delivery',
+  'instagram_mqtt_delivery',
+  'milestone_crossed',
+]);
 
 export interface InfluxQueryRoutesDeps {
   authService: AuthService;
@@ -121,6 +136,15 @@ export function createInfluxQueryRoutes(deps: InfluxQueryRoutesDeps): Router {
       return;
     }
 
+    const measurementMatch = flux.match(/r\._measurement\s*==\s*"([^"]+)"/);
+    if (measurementMatch && LEGACY_MEASUREMENTS.has(measurementMatch[1])) {
+      logger.warn('Legacy Influx measurement queried via proxy', {
+        measurement: measurementMatch[1],
+        scope,
+        ip: req.ip,
+      });
+    }
+
     const influx = getInfluxService();
     if (!influx) {
       res.status(503).json({ error: 'InfluxDB unavailable', code: 'INFLUXDB_UNAVAILABLE' });
@@ -134,7 +158,10 @@ export function createInfluxQueryRoutes(deps: InfluxQueryRoutesDeps): Router {
 
       const fluxWithLimit = flux.includes('limit(') ? flux : `${flux.trim()}\n  |> limit(n: ${MAX_RESULTS})`;
 
-      const results = await influx.queryFlux(fluxWithLimit);
+      const results = await influx.queryFlux(fluxWithLimit, {
+        signal: controller.signal,
+        timeoutMs: MAX_EXECUTION_MS,
+      });
       clearTimeout(timeout);
 
       const executionTimeMs = Date.now() - startTime;
