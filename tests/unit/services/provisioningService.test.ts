@@ -9,14 +9,6 @@
  *   #2 allowMissingInStore grants validity without consumed check
  */
 
-jest.mock('@/utils/logger', () => ({
-  logger: {
-    debug: jest.fn(),
-    info: jest.fn(),
-    warn: jest.fn(),
-    error: jest.fn(),
-  },
-}));
 
 const mockTokenStore = {
   getTokenByDevice: jest.fn(),

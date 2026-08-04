@@ -1,19 +1,6 @@
 import { hasOciEnvCredentials, createOciAuthProvider } from '@/services/ociAuthProvider';
 import { common } from 'oci-sdk';
-
-const mockProviderCtor = jest.fn();
-const mockRegionFromId = jest.fn((id: string) => ({ regionId: id }));
-
-jest.mock('oci-sdk', () => ({
-  common: {
-    SimpleAuthenticationDetailsProvider: class {
-      constructor(...args: unknown[]) {
-        mockProviderCtor(...args);
-      }
-    },
-    Region: { fromRegionId: (id: string) => mockRegionFromId(id) }
-  }
-}));
+import { mockOciProviderCtor, mockOciRegionFromId } from '../../helpers/moduleMocks';
 
 const OCI_ENV_KEYS = [
   'OCI_API_PRIVATE_KEY',
@@ -111,7 +98,7 @@ describe('ociAuthProvider', () => {
         }
       } as never;
       const provider = createOciAuthProvider(oci);
-      expect(mockProviderCtor).toHaveBeenCalledWith(
+      expect(mockOciProviderCtor).toHaveBeenCalledWith(
         'ocid1.tenancy.1',
         'ocid1.user.1',
         'fp',
@@ -119,7 +106,7 @@ describe('ociAuthProvider', () => {
         null,
         { regionId: 'eu-frankfurt-1' }
       );
-      expect(mockRegionFromId).toHaveBeenCalledWith('eu-frankfurt-1');
+      expect(mockOciRegionFromId).toHaveBeenCalledWith('eu-frankfurt-1');
       expect(provider).toBeDefined();
     });
 

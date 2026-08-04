@@ -2,35 +2,6 @@ import { InfluxDB } from '@influxdata/influxdb-client';
 import { InfluxService, BucketTarget } from '@/services/influxService';
 import type { InfluxDBConfig } from '@/config';
 
-jest.mock('@influxdata/influxdb-client', () => {
-  const mockWriteApi = {
-    writePoint: jest.fn(),
-    writeRecords: jest.fn(),
-    flush: jest.fn().mockResolvedValue(undefined),
-    close: jest.fn().mockResolvedValue(undefined),
-    useDefaultTags: jest.fn(),
-  };
-  return {
-    InfluxDB: jest.fn().mockImplementation(() => ({
-      getWriteApi: jest.fn().mockReturnValue(mockWriteApi),
-      getQueryApi: jest.fn().mockReturnValue({
-        queryRows: jest.fn(),
-      }),
-    })),
-    Point: jest.fn().mockImplementation(() => ({
-      tag: jest.fn().mockReturnThis(),
-      stringField: jest.fn().mockReturnThis(),
-      intField: jest.fn().mockReturnThis(),
-      floatField: jest.fn().mockReturnThis(),
-      booleanField: jest.fn().mockReturnThis(),
-      timestamp: jest.fn().mockReturnThis(),
-      toLineProtocol: jest.fn().mockReturnValue('m,tag=a v=1'),
-    })),
-    WriteApi: jest.fn(),
-    QueryApi: jest.fn(),
-  };
-});
-
 describe('InfluxService bucket routing', () => {
   const mockConfig: InfluxDBConfig = {
     url: 'http://localhost:8086',

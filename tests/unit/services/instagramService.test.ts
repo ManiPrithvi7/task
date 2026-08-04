@@ -26,15 +26,6 @@ const mockInflux = {
   flushWrites: jest.fn().mockResolvedValue(undefined)
 };
 
-jest.mock('mongoose', () => {
-  const fake = {
-    Types: { ObjectId: jest.fn((id: string) => id) },
-    model: jest.fn(() => ({})),
-    Schema: jest.fn(() => ({ index: jest.fn() }))
-  };
-  return { __esModule: true, default: fake, ...fake };
-});
-
 jest.mock('@/models/Social', () => ({
   Social: { findOne: jest.fn(), updateOne: jest.fn() },
   Provider: { GOOGLE_BUSINESS: 'GOOGLE_BUSINESS' }
@@ -64,10 +55,6 @@ jest.mock('@/services/redisService', () => ({
 jest.mock('@/utils/stimulateAllowlist', () => ({
   isStimulateDevice: jest.fn(() => false),
   shouldSkipForStimulate: jest.fn(() => false)
-}));
-
-jest.mock('@/utils/logger', () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }
 }));
 
 function makeMqtt() {

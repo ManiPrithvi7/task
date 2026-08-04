@@ -1,4 +1,5 @@
 import { OAuth2Client } from 'google-auth-library';
+import mongoose from 'mongoose';
 
 const mockSetCredentials = jest.fn();
 const mockRefreshAccessToken = jest.fn();
@@ -11,15 +12,6 @@ jest.mock('google-auth-library', () => ({
   }))
 }));
 
-jest.mock('mongoose', () => {
-  const fake = {
-    Types: { ObjectId: jest.fn((id: string) => id) },
-    model: jest.fn(() => ({})),
-    Schema: jest.fn(() => ({ index: jest.fn() }))
-  };
-  return { __esModule: true, default: fake, ...fake };
-});
-
 const mockFindOne = jest.fn();
 const mockUpdateOne = jest.fn();
 jest.mock('@/models/Social', () => ({
@@ -30,10 +22,6 @@ jest.mock('@/models/Social', () => ({
   Provider: { GOOGLE_BUSINESS: 'GOOGLE_BUSINESS' }
 }));
 
-jest.mock('@/utils/logger', () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }
-}));
-
 import {
   createGoogleBusinessOAuth2Client,
   getValidOAuth2Client
@@ -41,6 +29,7 @@ import {
 import { logger } from '@/utils/logger';
 
 const OAuth2ClientMock = OAuth2Client as unknown as jest.Mock;
+const TEST_USER_ID = '507f1f77bcf86cd799439011';
 
 function webhookConfig(overrides: Record<string, unknown> = {}) {
   return {
@@ -95,27 +84,32 @@ describe('googleBusinessOAuth', () => {
 
   describe('getValidOAuth2Client', () => {
     it('returns null when no oauth client configured', async () => {
-      const result = await getValidOAuth2Client('u1', webhookConfig({ googleBusinessClientId: undefined }));
+      const result = await getValidOAuth2Client(TEST_USER_ID, webhookConfig({ googleBusinessClientId: undefined }));
       expect(result).toBeNull();
       expect(mockFindOne).not.toHaveBeenCalled();
     });
 
     it('returns null when social doc not found', async () => {
       mockFindOne.mockResolvedValue(null);
-      const result = await getValidOAuth2Client('u1', webhookConfig());
+      const result = await getValidOAuth2Client(TEST_USER_ID, webhookConfig());
       expect(result).toBeNull();
-      expect(mockFindOne).toHaveBeenCalledWith(expect.objectContaining({ userId: 'u1', provider: 'GOOGLE_BUSINESS' }));
+      expect(mockFindOne).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: new mongoose.Types.ObjectId(TEST_USER_ID),
+          provider: 'GOOGLE_BUSINESS',
+        })
+      );
     });
 
     it('returns null when refreshToken missing', async () => {
       mockFindOne.mockResolvedValue(socialDoc({ refreshToken: '' }));
-      expect(await getValidOAuth2Client('u1', webhookConfig())).toBeNull();
+      expect(await getValidOAuth2Client(TEST_USER_ID, webhookConfig())).toBeNull();
       expect(mockRefreshAccessToken).not.toHaveBeenCalled();
     });
 
     it('returns cached token without refreshing when not expired', async () => {
       mockFindOne.mockResolvedValue(socialDoc());
-      const client = await getValidOAuth2Client('u1', webhookConfig());
+      const client = await getValidOAuth2Client(TEST_USER_ID, webhookConfig());
       expect(client).not.toBeNull();
       expect(mockRefreshAccessToken).not.toHaveBeenCalled();
       expect(mockSetCredentials).toHaveBeenCalledWith({ access_token: 'old-token', refresh_token: 'refresh-token' });
@@ -123,7 +117,7 @@ describe('googleBusinessOAuth', () => {
 
     it('refreshes expired token, persists updateOne, returns client with new token', async () => {
       mockFindOne.mockResolvedValue(socialDoc({ tokenCreatedAt: new Date(Date.now() - 4000 * 1000) }));
-      const client = await getValidOAuth2Client('u1', webhookConfig());
+      const client = await getValidOAuth2Client(TEST_USER_ID, webhookConfig());
       expect(mockRefreshAccessToken).toHaveBeenCalled();
       expect(mockUpdateOne).toHaveBeenCalledWith(
         { _id: 's1' },
@@ -136,14 +130,14 @@ describe('googleBusinessOAuth', () => {
     it('returns null when refresh yields no access_token', async () => {
       mockFindOne.mockResolvedValue(socialDoc({ tokenCreatedAt: new Date(Date.now() - 4000 * 1000) }));
       mockRefreshAccessToken.mockResolvedValue({ credentials: {} });
-      expect(await getValidOAuth2Client('u1', webhookConfig())).toBeNull();
+      expect(await getValidOAuth2Client(TEST_USER_ID, webhookConfig())).toBeNull();
       expect(mockUpdateOne).not.toHaveBeenCalled();
     });
 
     it('returns null and warns on invalid_grant (message)', async () => {
       mockFindOne.mockResolvedValue(socialDoc({ tokenCreatedAt: new Date(Date.now() - 4000 * 1000) }));
       mockRefreshAccessToken.mockRejectedValue(new Error('Error: invalid_grant'));
-      expect(await getValidOAuth2Client('u1', webhookConfig())).toBeNull();
+      expect(await getValidOAuth2Client(TEST_USER_ID, webhookConfig())).toBeNull();
       expect(logger.warn).toHaveBeenCalledWith('[GMB_OAUTH] invalid_grant — reconnect Google Business in app');
       expect(logger.error).not.toHaveBeenCalled();
     });
@@ -151,14 +145,14 @@ describe('googleBusinessOAuth', () => {
     it('returns null and warns on invalid_grant (response data)', async () => {
       mockFindOne.mockResolvedValue(socialDoc({ tokenCreatedAt: new Date(Date.now() - 4000 * 1000) }));
       mockRefreshAccessToken.mockRejectedValue({ response: { data: { error: 'invalid_grant' } } });
-      expect(await getValidOAuth2Client('u1', webhookConfig())).toBeNull();
+      expect(await getValidOAuth2Client(TEST_USER_ID, webhookConfig())).toBeNull();
       expect(logger.warn).toHaveBeenCalled();
     });
 
     it('returns null and logs error on other refresh failures', async () => {
       mockFindOne.mockResolvedValue(socialDoc({ tokenCreatedAt: new Date(Date.now() - 4000 * 1000) }));
       mockRefreshAccessToken.mockRejectedValue(new Error('network down'));
-      expect(await getValidOAuth2Client('u1', webhookConfig())).toBeNull();
+      expect(await getValidOAuth2Client(TEST_USER_ID, webhookConfig())).toBeNull();
       expect(logger.error).toHaveBeenCalledWith('[GMB_OAUTH] refresh failed', expect.anything());
       expect(logger.warn).not.toHaveBeenCalled();
     });

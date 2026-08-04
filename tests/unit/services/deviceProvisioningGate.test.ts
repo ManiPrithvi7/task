@@ -22,14 +22,6 @@ jest.mock('@/utils/certValidator', () => ({
   validateKeyUsageAndEKU: (...args: unknown[]) => mockValidateKeyUsageAndEKU(...args),
 }));
 
-jest.mock('@/utils/logger', () => ({
-  logger: {
-    info: jest.fn(),
-    warn: jest.fn(),
-    error: jest.fn(),
-    debug: jest.fn(),
-  },
-}));
 
 import { ensureDeviceProvisioned } from '@/services/deviceProvisioningGate';
 import { CertLookupUnavailableError, type CAService } from '@/services/caService';

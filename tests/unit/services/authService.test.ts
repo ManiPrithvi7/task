@@ -9,14 +9,6 @@
  *   P2: Outer catch-all + constructor warning
  */
 
-jest.mock('@/utils/logger', () => ({
-  logger: {
-    debug: jest.fn(),
-    info: jest.fn(),
-    warn: jest.fn(),
-    error: jest.fn(),
-  },
-}));
 
 import * as jwt from 'jsonwebtoken';
 import { AuthService } from '@/services/authService';

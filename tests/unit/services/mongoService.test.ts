@@ -30,17 +30,13 @@ jest.mock('mongoose', () => {
   const fake = {
     connect: jest.fn().mockResolvedValue(undefined),
     disconnect: jest.fn().mockResolvedValue(undefined),
-    connection: mockConnection
+    connection: mockConnection,
   };
   return { __esModule: true, default: fake, ...fake };
 });
 
 jest.mock('@/config/mongoConnection', () => ({
   mongoDriverTimeouts: jest.fn(() => ({ serverSelectionTimeoutMS: 30000, connectTimeoutMS: 20000 }))
-}));
-
-jest.mock('@/utils/logger', () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }
 }));
 
 const mongooseMock = mongoose as unknown as {

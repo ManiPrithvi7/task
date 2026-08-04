@@ -12,27 +12,15 @@
  *   #3: double-init guard preserves in-memory chain head
  */
 
-const mockMkdirSync = jest.fn();
-const mockAppendFileSync = jest.fn();
+import { mockAppendFileSync, mockFsModule, mockMkdirSync } from '../../helpers/moduleMocks';
+
 const mockGetInfluxService = jest.fn();
 
 jest.mock('@/services/influxService', () => ({
   getInfluxService: (...args: unknown[]) => mockGetInfluxService(...args),
 }));
 
-jest.mock('fs', () => ({
-  mkdirSync: (...args: unknown[]) => mockMkdirSync(...args),
-  appendFileSync: (...args: unknown[]) => mockAppendFileSync(...args),
-}));
-
-jest.mock('@/utils/logger', () => ({
-  logger: {
-    info: jest.fn(),
-    warn: jest.fn(),
-    error: jest.fn(),
-    debug: jest.fn(),
-  },
-}));
+jest.mock('fs', () => mockFsModule());
 
 import * as crypto from 'crypto';
 import * as path from 'path';

@@ -11,14 +11,6 @@ jest.mock('@/services/influxService', () => ({
   getInfluxService: (...args: unknown[]) => mockGetInfluxService(...args),
 }));
 
-jest.mock('@/utils/logger', () => ({
-  logger: {
-    info: jest.fn(),
-    warn: jest.fn(),
-    error: jest.fn(),
-    debug: jest.fn(),
-  },
-}));
 
 import * as crypto from 'crypto';
 import {

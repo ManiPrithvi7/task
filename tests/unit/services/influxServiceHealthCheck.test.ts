@@ -7,29 +7,6 @@ jest.mock('@/utils/httpProbe', () => ({
   httpGet: (...args: unknown[]) => mockHttpGet(...args)
 }));
 
-jest.mock('@influxdata/influxdb-client', () => {
-  const mockWriteApi = {
-    writePoint: jest.fn(),
-    writeRecords: jest.fn(),
-    flush: jest.fn().mockResolvedValue(undefined),
-    close: jest.fn().mockResolvedValue(undefined),
-    useDefaultTags: jest.fn(),
-  };
-  return {
-    InfluxDB: jest.fn().mockImplementation(() => ({
-      getWriteApi: jest.fn().mockReturnValue(mockWriteApi),
-      getQueryApi: jest.fn().mockReturnValue({ queryRows: jest.fn() }),
-    })),
-    Point: jest.fn(),
-    WriteApi: jest.fn(),
-    QueryApi: jest.fn(),
-  };
-});
-
-jest.mock('@/utils/logger', () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }
-}));
-
 const mockConfig: InfluxDBConfig = {
   url: 'http://localhost:8086',
   token: 'test-token',

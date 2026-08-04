@@ -1,9 +1,6 @@
 import { WebhookLatencyTracker } from '@/services/webhookMetrics';
 import { logger } from '@/utils/logger';
 
-jest.mock('@/utils/logger', () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }
-}));
 
 describe('WebhookLatencyTracker', () => {
   afterEach(() => {

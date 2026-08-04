@@ -28,14 +28,6 @@ jest.mock('@/models/Device', () => {
   };
 });
 
-jest.mock('@/utils/logger', () => ({
-  logger: {
-    info: jest.fn(),
-    warn: jest.fn(),
-    error: jest.fn(),
-    debug: jest.fn(),
-  },
-}));
 
 import { Device, DeviceStatus } from '@/models/Device';
 import { ActiveDeviceCache, DeviceService, type DeviceData } from '@/services/deviceService';

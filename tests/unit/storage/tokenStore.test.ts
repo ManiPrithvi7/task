@@ -5,14 +5,6 @@
  * + in-memory fallback behavior used when Redis is disconnected.
  */
 
-jest.mock('@/utils/logger', () => ({
-  logger: {
-    debug: jest.fn(),
-    info: jest.fn(),
-    warn: jest.fn(),
-    error: jest.fn(),
-  },
-}));
 
 jest.mock('@/services/redisService', () => ({
   getRedisService: jest.fn(),

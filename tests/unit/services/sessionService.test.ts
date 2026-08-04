@@ -1,9 +1,6 @@
 import { SessionService } from '@/services/sessionService';
 import { logger } from '@/utils/logger';
 
-jest.mock('@/utils/logger', () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }
-}));
 
 describe('SessionService', () => {
   beforeEach(() => {
