@@ -542,6 +542,7 @@ export class StatsMqttLite {
       url: this.config.redis.url,
       db: this.config.redis.db,
       keyPrefix: this.config.redis.keyPrefix,
+      dataDir: this.config.storage.dataDir,
     });
 
     // Check if Redis is configured before attempting connection

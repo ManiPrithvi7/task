@@ -4,16 +4,45 @@
  * Uses official 'redis' package (node-redis)
  */
 
+import * as fs from 'fs';
+import * as path from 'path';
 import { createClient, RedisClientType } from 'redis';
 import { logger } from '../utils/logger';
 
 const REDIS_LOG_PREFIX = '[Redis]';
+const REDIS_USAGE_CSV_NAME = 'redis_usage.csv';
+const REDIS_USAGE_CSV_HEADER =
+  'timestamp,operation,command,key,query_or_write,status,duration_ms,error\n';
+const REDIS_USAGE_VALUE_MAX_LEN = 2000;
+
+const REDIS_READ_COMMANDS = new Set([
+  'GET', 'MGET', 'HGET', 'HGETALL', 'HMGET', 'HLEN', 'HEXISTS', 'HKEYS', 'HVALS', 'HSTRLEN',
+  'LINDEX', 'LLEN', 'LPOS', 'LRANGE', 'LCS', 'SMEMBERS', 'SISMEMBER', 'SMISMEMBER', 'SCARD',
+  'SRANDMEMBER', 'ZRANGE', 'ZRANGEBYSCORE', 'ZREVRANGE', 'ZREVRANGEBYSCORE', 'ZRANK', 'ZREVRANK',
+  'ZSCORE', 'ZMSCORE', 'ZCARD', 'ZCOUNT', 'ZLEXCOUNT', 'EXISTS', 'TTL', 'PTTL', 'TYPE', 'STRLEN',
+  'GETBIT', 'BITCOUNT', 'BITPOS', 'GEOPOS', 'GEODIST', 'GEOHASH', 'XREAD', 'XLEN', 'XRANGE',
+  'XREVRANGE', 'XPENDING', 'SCAN', 'HSCAN', 'SSCAN', 'ZSCAN', 'PING', 'INFO', 'DBSIZE', 'KEYS',
+  'XINFO', 'GEORADIUS', 'GEORADIUSBYMEMBER', 'GEOSEARCH', 'GEOSEARCHSTORE'
+]);
+
+const REDIS_WRITE_COMMANDS = new Set([
+  'SET', 'SETEX', 'SETNX', 'SETXX', 'MSET', 'MSETNX', 'GETSET', 'GETDEL', 'GETEX', 'HSET', 'HSETNX',
+  'HMSET', 'HDEL', 'HINCRBY', 'HINCRBYFLOAT', 'LPUSH', 'LPUSHX', 'RPUSH', 'RPUSHX', 'LPOP', 'RPOP',
+  'LREM', 'LSET', 'LTRIM', 'BLMOVE', 'LMOVE', 'SADD', 'SREM', 'SPOP', 'SMOVE', 'SUNIONSTORE',
+  'SINTERSTORE', 'SDIFFSTORE', 'ZADD', 'ZREM', 'ZINCRBY', 'ZPOPMIN', 'ZPOPMAX', 'BZPOPMIN', 'BZPOPMAX',
+  'DEL', 'UNLINK', 'EXPIRE', 'EXPIREAT', 'PEXPIRE', 'PEXPIREAT', 'PERSIST', 'INCR', 'INCRBY',
+  'INCRBYFLOAT', 'DECR', 'DECRBY', 'APPEND', 'SETBIT', 'BITOP', 'GEOADD', 'XADD', 'XDEL', 'XTRIM',
+  'XCLAIM', 'XGROUP', 'XACK', 'EVAL', 'EVALSHA', 'SCRIPT', 'FLUSHDB', 'FLUSHALL', 'RENAME', 'RENAMENX',
+  'COPY', 'MIGRATE', 'RESTORE', 'PUBLISH', 'SPUBLISH'
+]);
 
 export interface RedisConfig {
   /** Preferred: single URL (Upstash). Example: rediss://default:...@host:6379 */
   url?: string;
   db?: number;
   keyPrefix?: string;
+  /** Directory for redis_usage.csv (default: DATA_DIR or ./data) */
+  dataDir?: string;
 }
 
 export class RedisService {
@@ -25,8 +54,16 @@ export class RedisService {
   private commandCountByType: Map<string, number> = new Map();
   /** Process/service observation window start (for command stats). */
   private readonly startedAtIso: string = new Date().toISOString();
+  private readonly usageCsvPath: string;
+  private usageCsvReady = false;
+  private usageLogQueue: string[] = [];
+  private usageLogWriting = false;
 
   constructor(config: RedisConfig) {
+    this.usageCsvPath = path.resolve(
+      config.dataDir || process.env.DATA_DIR || './data',
+      REDIS_USAGE_CSV_NAME
+    );
     this.config = config;
     logger.debug(`${REDIS_LOG_PREFIX} constructor`, {
       configured: !!(config.url && config.url.trim().length > 0),
@@ -42,6 +79,131 @@ export class RedisService {
     meta?: Record<string, unknown>
   ): void {
     logger.debug(`${REDIS_LOG_PREFIX} ${fn} ${phase}`, meta);
+  }
+
+  private classifyRedisOperation(command: string): 'read' | 'write' | 'other' {
+    if (REDIS_READ_COMMANDS.has(command)) return 'read';
+    if (REDIS_WRITE_COMMANDS.has(command)) return 'write';
+    return 'other';
+  }
+
+  private truncateUsageValue(value: string): string {
+    if (value.length <= REDIS_USAGE_VALUE_MAX_LEN) return value;
+    return `${value.slice(0, REDIS_USAGE_VALUE_MAX_LEN)}…`;
+  }
+
+  private escapeCsvField(value: string): string {
+    if (/[",\n\r]/.test(value)) {
+      return `"${value.replace(/"/g, '""')}"`;
+    }
+    return value;
+  }
+
+  private buildUsageQueryOrWrite(command: string, args: string[], operation: 'read' | 'write' | 'other'): string {
+    if (args.length <= 1) return args.join(' ');
+
+    if (operation === 'write') {
+      return this.truncateUsageValue(args.slice(2).join(' ') || args.slice(1).join(' '));
+    }
+
+    if (operation === 'read') {
+      return this.truncateUsageValue(args.slice(1).join(' '));
+    }
+
+    return this.truncateUsageValue(args.join(' '));
+  }
+
+  private ensureUsageCsvReady(): void {
+    if (this.usageCsvReady) return;
+
+    fs.mkdirSync(path.dirname(this.usageCsvPath), { recursive: true });
+    if (!fs.existsSync(this.usageCsvPath)) {
+      fs.writeFileSync(this.usageCsvPath, REDIS_USAGE_CSV_HEADER, { encoding: 'utf8' });
+    }
+    this.usageCsvReady = true;
+  }
+
+  private buildUsageCsvLine(entry: {
+    timestamp: string;
+    operation: 'read' | 'write' | 'other';
+    command: string;
+    key: string;
+    queryOrWrite: string;
+    status: 'ok' | 'error';
+    durationMs: number;
+    error: string;
+  }): string {
+    return [
+      this.escapeCsvField(entry.timestamp),
+      this.escapeCsvField(entry.operation),
+      this.escapeCsvField(entry.command),
+      this.escapeCsvField(entry.key),
+      this.escapeCsvField(entry.queryOrWrite),
+      this.escapeCsvField(entry.status),
+      String(entry.durationMs),
+      this.escapeCsvField(entry.error)
+    ].join(',') + '\n';
+  }
+
+  /** Append one Redis command observation to data/redis_usage.csv. */
+  private logRedisUsageToCsv(entry: {
+    timestamp: string;
+    operation: 'read' | 'write' | 'other';
+    command: string;
+    key: string;
+    queryOrWrite: string;
+    status: 'ok' | 'error';
+    durationMs: number;
+    error: string;
+  }): void {
+    this.usageLogQueue.push(this.buildUsageCsvLine(entry));
+    void this.flushUsageLogQueue();
+  }
+
+  private async flushUsageLogQueue(): Promise<void> {
+    if (this.usageLogWriting || this.usageLogQueue.length === 0) return;
+
+    this.usageLogWriting = true;
+    try {
+      this.ensureUsageCsvReady();
+      while (this.usageLogQueue.length > 0) {
+        const batch = this.usageLogQueue.splice(0, 100).join('');
+        await fs.promises.appendFile(this.usageCsvPath, batch, { encoding: 'utf8' });
+      }
+    } catch (error) {
+      logger.warn(`${REDIS_LOG_PREFIX} failed to write redis usage CSV`, {
+        path: this.usageCsvPath,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    } finally {
+      this.usageLogWriting = false;
+      if (this.usageLogQueue.length > 0) {
+        void this.flushUsageLogQueue();
+      }
+    }
+  }
+
+  private recordSendCommandUsage(
+    args: ReadonlyArray<string | Buffer>,
+    startMs: number,
+    status: 'ok' | 'error',
+    errorMessage = ''
+  ): void {
+    const stringArgs = args.map(String);
+    const command = stringArgs.length > 0 ? stringArgs[0].toUpperCase() : 'UNKNOWN';
+    const operation = this.classifyRedisOperation(command);
+    const key = stringArgs.length > 1 ? stringArgs[1] : '';
+
+    this.logRedisUsageToCsv({
+      timestamp: new Date().toISOString(),
+      operation,
+      command,
+      key,
+      queryOrWrite: this.buildUsageQueryOrWrite(command, stringArgs, operation),
+      status,
+      durationMs: Math.round(performance.now() - startMs),
+      error: errorMessage
+    });
   }
 
   private async traceAsync<T>(
@@ -160,15 +322,46 @@ export class RedisService {
       // Setup event handlers
       this.setupEventHandlers();
 
-      // Wrap sendCommand to track request counts
+      // Wrap sendCommand to track request counts and persist usage to CSV
       const originalSendCommand = this.client.sendCommand.bind(this.client);
       this.client.sendCommand = ((args, options) => {
+        const startMs = performance.now();
         this.commandCount++;
         if (args.length > 0) {
           const cmd = String(args[0]).toUpperCase();
           this.commandCountByType.set(cmd, (this.commandCountByType.get(cmd) || 0) + 1);
         }
-        return originalSendCommand(args, options);
+
+        try {
+          const result = originalSendCommand(args, options);
+          if (result && typeof (result as Promise<unknown>).then === 'function') {
+            return (result as Promise<unknown>)
+              .then((value) => {
+                this.recordSendCommandUsage(args, startMs, 'ok');
+                return value;
+              })
+              .catch((error: unknown) => {
+                this.recordSendCommandUsage(
+                  args,
+                  startMs,
+                  'error',
+                  error instanceof Error ? error.message : String(error)
+                );
+                throw error;
+              });
+          }
+
+          this.recordSendCommandUsage(args, startMs, 'ok');
+          return result;
+        } catch (error) {
+          this.recordSendCommandUsage(
+            args,
+            startMs,
+            'error',
+            error instanceof Error ? error.message : String(error)
+          );
+          throw error;
+        }
       }) as typeof this.client.sendCommand;
 
       // Connect to Redis
