@@ -369,42 +369,50 @@ export class InfluxService {
     }
 
     return new Promise<void>((resolve, reject) => {
-      this.queryApi.queryRows(
-        fluxQuery,
-        {
-          next: (row, tableMeta) => {
-            if (signal.aborted) return;
-            handlers.next(row, tableMeta);
-          },
-          error: (error) => {
-            if (timer) clearTimeout(timer);
-            this.recordUsage(
-              'read',
-              'query',
-              bucketKey,
-              fluxQuery,
-              startMs,
-              'error',
-              error instanceof Error ? error.message : String(error)
-            );
-            if (signal.aborted) {
-              reject(new Error(`Flux query timed out after ${timeoutMs}ms`));
-              return;
-            }
-            reject(error);
-          },
-          complete: () => {
-            if (timer) clearTimeout(timer);
-            if (signal.aborted) {
-              reject(new Error(`Flux query timed out after ${timeoutMs}ms`));
-              return;
-            }
-            this.recordUsage('read', 'query', bucketKey, fluxQuery, startMs, 'ok');
-            resolve();
-          }
+      const onAbort = () => {
+        if (timer) clearTimeout(timer);
+        reject(new Error(`Flux query timed out after ${timeoutMs}ms`));
+      };
+      if (signal.aborted) {
+        onAbort();
+        return;
+      }
+      signal.addEventListener('abort', onAbort, { once: true });
+
+      this.queryApi.queryRows(fluxQuery, {
+        next: (row, tableMeta) => {
+          if (signal.aborted) return;
+          handlers.next(row, tableMeta);
         },
-        { signal }
-      );
+        error: (error) => {
+          signal.removeEventListener('abort', onAbort);
+          if (timer) clearTimeout(timer);
+          this.recordUsage(
+            'read',
+            'query',
+            bucketKey,
+            fluxQuery,
+            startMs,
+            'error',
+            error instanceof Error ? error.message : String(error)
+          );
+          if (signal.aborted) {
+            reject(new Error(`Flux query timed out after ${timeoutMs}ms`));
+            return;
+          }
+          reject(error);
+        },
+        complete: () => {
+          signal.removeEventListener('abort', onAbort);
+          if (timer) clearTimeout(timer);
+          if (signal.aborted) {
+            reject(new Error(`Flux query timed out after ${timeoutMs}ms`));
+            return;
+          }
+          this.recordUsage('read', 'query', bucketKey, fluxQuery, startMs, 'ok');
+          resolve();
+        }
+      });
     });
   }
 

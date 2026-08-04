@@ -56,7 +56,8 @@ export abstract class BaseInfluxRepo<TInput> {
       const lines = points
         .map((p) => p.toLineProtocol())
         .filter((line): line is string => Boolean(line))
-        .map((line) => sanitizeInfluxLineProtocol(line));
+        .map((line) => sanitizeInfluxLineProtocol(line))
+        .filter((line): line is string => line !== null);
       if (lines.length === 0) return;
       for (const line of lines) {
         this.onWriteUsage?.({

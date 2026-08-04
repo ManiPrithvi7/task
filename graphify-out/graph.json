@@ -5916,7 +5916,7 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "models_firmwarerelease_ifirmwarerelease",
-      "community": 83,
+      "community": 2,
       "norm_label": "ifirmwarerelease"
     },
     {
@@ -10143,7 +10143,7 @@
       "label": ".constructor()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L411",
+      "source_location": "L419",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_constructor",
       "community": 3,
@@ -10153,7 +10153,7 @@
       "label": ".logInfluxBatchFlush()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L491",
+      "source_location": "L499",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_loginfluxbatchflush",
       "community": 3,
@@ -10163,7 +10163,7 @@
       "label": ".writeIgMetrics()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L498",
+      "source_location": "L506",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_writeigmetrics",
       "community": 111,
@@ -10173,7 +10173,7 @@
       "label": ".writeIgMilestone()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L502",
+      "source_location": "L510",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_writeigmilestone",
       "community": 111,
@@ -10183,7 +10183,7 @@
       "label": ".writeGmbMetrics()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L506",
+      "source_location": "L514",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_writegmbmetrics",
       "community": 3,
@@ -10193,7 +10193,7 @@
       "label": ".writeGmbMilestone()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L510",
+      "source_location": "L518",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_writegmbmilestone",
       "community": 111,
@@ -10203,7 +10203,7 @@
       "label": ".writeMqttDelivery()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L517",
+      "source_location": "L525",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_writemqttdelivery",
       "community": 3,
@@ -10213,7 +10213,7 @@
       "label": ".writeInstagramOutcomeBatch()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L524",
+      "source_location": "L532",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_writeinstagramoutcomebatch",
       "community": 111,
@@ -10223,7 +10223,7 @@
       "label": ".writeDeviceActive()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L558",
+      "source_location": "L566",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_writedeviceactive",
       "community": 3,
@@ -10233,7 +10233,7 @@
       "label": ".writeDeviceStateLog()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L562",
+      "source_location": "L570",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_writedevicestatelog",
       "community": 3,
@@ -10243,7 +10243,7 @@
       "label": ".writeOtaEvent()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L566",
+      "source_location": "L574",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_writeotaevent",
       "community": 3,
@@ -10253,7 +10253,7 @@
       "label": ".writeInstagramFetchAudit()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L572",
+      "source_location": "L580",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_writeinstagramfetchaudit",
       "community": 3,
@@ -10263,7 +10263,7 @@
       "label": ".writeProfileBaseline()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L579",
+      "source_location": "L587",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_writeprofilebaseline",
       "community": 3,
@@ -10273,7 +10273,7 @@
       "label": ".writeGmbWebhookAudit()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L586",
+      "source_location": "L594",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_writegmbwebhookaudit",
       "community": 111,
@@ -10283,7 +10283,7 @@
       "label": ".writeInstagramAttentionE2eLatency()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L596",
+      "source_location": "L604",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_writeinstagramattentione2elatency",
       "community": 3,
@@ -10293,7 +10293,7 @@
       "label": ".writeAuditEvent()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L608",
+      "source_location": "L616",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_writeauditevent",
       "community": 3,
@@ -10303,7 +10303,7 @@
       "label": ".writeTransparencyEntry()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L623",
+      "source_location": "L631",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_writetransparencyentry",
       "community": 3,
@@ -10313,7 +10313,7 @@
       "label": ".writeOtaReleaseEntry()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L627",
+      "source_location": "L635",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_writeotareleaseentry",
       "community": 3,
@@ -10323,7 +10323,7 @@
       "label": ".flushWrites()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L633",
+      "source_location": "L641",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_flushwrites",
       "community": 3,
@@ -10333,7 +10333,7 @@
       "label": ".queryFlux()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L645",
+      "source_location": "L653",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_queryflux",
       "community": 3,
@@ -10343,7 +10343,7 @@
       "label": ".queryIgMetrics()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L662",
+      "source_location": "L670",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_queryigmetrics",
       "community": 3,
@@ -10353,7 +10353,7 @@
       "label": ".queryIgMilestones()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L678",
+      "source_location": "L686",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_queryigmilestones",
       "community": 3,
@@ -10363,7 +10363,7 @@
       "label": ".queryGmbMetrics()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L695",
+      "source_location": "L703",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_querygmbmetrics",
       "community": 3,
@@ -10373,7 +10373,7 @@
       "label": ".queryGmbMilestones()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L711",
+      "source_location": "L719",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_querygmbmilestones",
       "community": 3,
@@ -10383,7 +10383,7 @@
       "label": ".queryMqttDelivery()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L728",
+      "source_location": "L736",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_querymqttdelivery",
       "community": 3,
@@ -10393,7 +10393,7 @@
       "label": ".queryMqttDeliveryByLocation()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L747",
+      "source_location": "L755",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_querymqttdeliverybylocation",
       "community": 3,
@@ -10403,7 +10403,7 @@
       "label": ".queryDeviceActive()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L767",
+      "source_location": "L775",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_querydeviceactive",
       "community": 3,
@@ -10413,7 +10413,7 @@
       "label": ".queryLatestDeviceStateEntry()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L783",
+      "source_location": "L791",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_querylatestdevicestateentry",
       "community": 3,
@@ -10423,7 +10423,7 @@
       "label": ".queryLatestDeviceStateEntries()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L817",
+      "source_location": "L825",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_querylatestdevicestateentries",
       "community": 3,
@@ -10433,7 +10433,7 @@
       "label": ".queryInstagramAudit()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L850",
+      "source_location": "L858",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_queryinstagramaudit",
       "community": 3,
@@ -10443,7 +10443,7 @@
       "label": ".queryProfileBaseline()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L867",
+      "source_location": "L875",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_queryprofilebaseline",
       "community": 3,
@@ -10453,7 +10453,7 @@
       "label": ".queryGmbWebhookAudits()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L884",
+      "source_location": "L892",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_querygmbwebhookaudits",
       "community": 3,
@@ -10463,7 +10463,7 @@
       "label": ".queryInstagramAttentionE2e()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L901",
+      "source_location": "L909",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_queryinstagramattentione2e",
       "community": 3,
@@ -10473,7 +10473,7 @@
       "label": ".queryLatestAuditEntry()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L918",
+      "source_location": "L926",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_querylatestauditentry",
       "community": 3,
@@ -10483,7 +10483,7 @@
       "label": ".queryAuditChain()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L949",
+      "source_location": "L957",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_queryauditchain",
       "community": 3,
@@ -10493,7 +10493,7 @@
       "label": ".queryOtaReleaseLeaves()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L994",
+      "source_location": "L1002",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_queryotareleaseleaves",
       "community": 3,
@@ -10503,7 +10503,7 @@
       "label": ".queryTransparencyLeaves()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L1022",
+      "source_location": "L1030",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_querytransparencyleaves",
       "community": 3,
@@ -10513,7 +10513,7 @@
       "label": ".healthCheck()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L1052",
+      "source_location": "L1060",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_healthcheck",
       "community": 116,
@@ -10523,7 +10523,7 @@
       "label": ".close()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L1202",
+      "source_location": "L1210",
       "_origin": "ast",
       "id": "services_influxservice_influxservice_close",
       "community": 73,
@@ -10533,7 +10533,7 @@
       "label": "createInfluxService()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L1243",
+      "source_location": "L1251",
       "_origin": "ast",
       "id": "services_influxservice_createinfluxservice",
       "community": 73,
@@ -10543,7 +10543,7 @@
       "label": "getInfluxService()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L1248",
+      "source_location": "L1256",
       "_origin": "ast",
       "id": "services_influxservice_getinfluxservice",
       "community": 101,
@@ -10553,7 +10553,7 @@
       "label": "setInfluxService()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L1252",
+      "source_location": "L1260",
       "_origin": "ast",
       "id": "services_influxservice_setinfluxservice",
       "community": 6,
@@ -10563,7 +10563,7 @@
       "label": "resetInfluxService()",
       "file_type": "code",
       "source_file": "src/services/influxService.ts",
-      "source_location": "L1256",
+      "source_location": "L1264",
       "_origin": "ast",
       "id": "services_influxservice_resetinfluxservice",
       "community": 73,
@@ -12786,7 +12786,7 @@
       "source_location": "L364",
       "_origin": "ast",
       "id": "services_otaservice_otaredisstate_clearpendingfleet",
-      "community": 2,
+      "community": 85,
       "norm_label": ".clearpendingfleet()"
     },
     {
@@ -13146,7 +13146,7 @@
       "source_location": "L831",
       "_origin": "ast",
       "id": "services_otaservice_otaservice",
-      "community": 83,
+      "community": 2,
       "norm_label": "otaservice"
     },
     {
@@ -13166,7 +13166,7 @@
       "source_location": "L840",
       "_origin": "ast",
       "id": "services_otaservice_otaservice_resolveupdate",
-      "community": 83,
+      "community": 2,
       "norm_label": ".resolveupdate()"
     },
     {
@@ -13206,7 +13206,7 @@
       "source_location": "L1258",
       "_origin": "ast",
       "id": "services_otaservice_otaservice_abortrollout",
-      "community": 2,
+      "community": 85,
       "norm_label": ".abortrollout()"
     },
     {
@@ -13216,7 +13216,7 @@
       "source_location": "L1294",
       "_origin": "ast",
       "id": "services_otaservice_otaservice_haltrollout",
-      "community": 2,
+      "community": 85,
       "norm_label": ".haltrollout()"
     },
     {
@@ -13226,7 +13226,7 @@
       "source_location": "L1300",
       "_origin": "ast",
       "id": "services_otaservice_otaservice_retrydeprecatedrelease",
-      "community": 83,
+      "community": 2,
       "norm_label": ".retrydeprecatedrelease()"
     },
     {
@@ -13236,7 +13236,7 @@
       "source_location": "L1335",
       "_origin": "ast",
       "id": "services_otaservice_otaservice_markdeprecatedretryable",
-      "community": 83,
+      "community": 2,
       "norm_label": ".markdeprecatedretryable()"
     },
     {
@@ -13266,7 +13266,7 @@
       "source_location": "L1457",
       "_origin": "ast",
       "id": "services_otaservice_otaservice_getactivereleaseforadmin",
-      "community": 83,
+      "community": 2,
       "norm_label": ".getactivereleaseforadmin()"
     },
     {
@@ -13276,7 +13276,7 @@
       "source_location": "L1471",
       "_origin": "ast",
       "id": "services_otaservice_otaservice_deliverpendingtodevice",
-      "community": 83,
+      "community": 2,
       "norm_label": ".deliverpendingtodevice()"
     },
     {
@@ -13286,7 +13286,7 @@
       "source_location": "L1532",
       "_origin": "ast",
       "id": "services_otaservice_otaservice_getlateststableoffer",
-      "community": 83,
+      "community": 2,
       "norm_label": ".getlateststableoffer()"
     },
     {
@@ -13296,7 +13296,7 @@
       "source_location": "L1547",
       "_origin": "ast",
       "id": "services_otaservice_otaservice_getlateststableofferungated",
-      "community": 83,
+      "community": 2,
       "norm_label": ".getlateststableofferungated()"
     },
     {
@@ -13306,7 +13306,7 @@
       "source_location": "L1556",
       "_origin": "ast",
       "id": "services_otaservice_otaservice_listrollouteligibledeviceids",
-      "community": 83,
+      "community": 2,
       "norm_label": ".listrollouteligibledeviceids()"
     },
     {
@@ -13316,7 +13316,7 @@
       "source_location": "L1575",
       "_origin": "ast",
       "id": "services_otaservice_otaservice_synclocalotafleetactivedevices",
-      "community": 83,
+      "community": 2,
       "norm_label": ".synclocalotafleetactivedevices()"
     },
     {
@@ -13336,7 +13336,7 @@
       "source_location": "L1641",
       "_origin": "ast",
       "id": "services_otaservice_otaservice_recordstageattempt",
-      "community": 83,
+      "community": 2,
       "norm_label": ".recordstageattempt()"
     },
     {
@@ -13356,7 +13356,7 @@
       "source_location": "L1657",
       "_origin": "ast",
       "id": "services_otaservice_otaservice_isdeviceeligible",
-      "community": 83,
+      "community": 2,
       "norm_label": ".isdeviceeligible()"
     },
     {
@@ -13366,7 +13366,7 @@
       "source_location": "L1673",
       "_origin": "ast",
       "id": "services_otaservice_otaservice_matcheshardware",
-      "community": 83,
+      "community": 2,
       "norm_label": ".matcheshardware()"
     },
     {
@@ -13376,7 +13376,7 @@
       "source_location": "L1691",
       "_origin": "ast",
       "id": "services_otaservice_otaservice_matchesrollout",
-      "community": 83,
+      "community": 2,
       "norm_label": ".matchesrollout()"
     },
     {
@@ -13386,7 +13386,7 @@
       "source_location": "L1727",
       "_origin": "ast",
       "id": "services_otaservice_otaservice_buildoffer",
-      "community": 83,
+      "community": 2,
       "norm_label": ".buildoffer()"
     },
     {
@@ -13396,7 +13396,7 @@
       "source_location": "L1758",
       "_origin": "ast",
       "id": "services_otaservice_otaservice_getstablerelease",
-      "community": 83,
+      "community": 2,
       "norm_label": ".getstablerelease()"
     },
     {
@@ -13466,7 +13466,7 @@
       "source_location": "L1935",
       "_origin": "ast",
       "id": "services_otaservice_otaservice_updatefirmwareversion",
-      "community": 83,
+      "community": 2,
       "norm_label": ".updatefirmwareversion()"
     },
     {
@@ -17856,7 +17856,7 @@
       "source_location": "L29",
       "_origin": "ast",
       "id": "utils_semver_isversiongreater",
-      "community": 83,
+      "community": 2,
       "norm_label": "isversiongreater()"
     },
     {
@@ -25476,7 +25476,7 @@
       "source_location": "L167",
       "_origin": "ast",
       "id": "docs_post_pilot_roadmap_investment_summary",
-      "community": 195,
+      "community": 23,
       "norm_label": "investment summary"
     },
     {
@@ -25486,7 +25486,7 @@
       "source_location": "L169",
       "_origin": "ast",
       "id": "docs_post_pilot_roadmap_pilot_v1",
-      "community": 195,
+      "community": 23,
       "norm_label": "pilot v1"
     },
     {
@@ -25496,7 +25496,7 @@
       "source_location": "L174",
       "_origin": "ast",
       "id": "docs_post_pilot_roadmap_post_pilot_weeks_2_4_174",
-      "community": 195,
+      "community": 23,
       "norm_label": "post-pilot (weeks 2-4)"
     },
     {
@@ -25506,7 +25506,7 @@
       "source_location": "L179",
       "_origin": "ast",
       "id": "docs_post_pilot_roadmap_key_decisions",
-      "community": 195,
+      "community": 23,
       "norm_label": "key decisions"
     },
     {
@@ -48789,9 +48789,9 @@
       "source_file": "src/routes/dashboardRoutes.ts",
       "source_location": "L5",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "routes_dashboardroutes",
-      "target": "services_influxquerycache",
-      "confidence_score": 1.0
+      "target": "services_influxquerycache"
     },
     {
       "relation": "imports",
@@ -48800,9 +48800,9 @@
       "source_file": "src/routes/dashboardRoutes.ts",
       "source_location": "L5",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "routes_dashboardroutes",
-      "target": "services_influxquerycache_cachedquery",
-      "confidence_score": 1.0
+      "target": "services_influxquerycache_cachedquery"
     },
     {
       "relation": "imports_from",
@@ -48863,9 +48863,9 @@
       "source_file": "src/routes/influxQueryRoutes.ts",
       "source_location": "L8",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "routes_influxqueryroutes",
-      "target": "routes_influxqueryroutes_legacy_measurements",
-      "confidence_score": 1.0
+      "target": "routes_influxqueryroutes_legacy_measurements"
     },
     {
       "relation": "contains",
@@ -48938,9 +48938,9 @@
       "source_file": "src/routes/influxQueryRoutes.ts",
       "source_location": "L5",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "routes_influxqueryroutes",
-      "target": "utils_logger",
-      "confidence_score": 1.0
+      "target": "utils_logger"
     },
     {
       "relation": "imports",
@@ -48949,9 +48949,9 @@
       "source_file": "src/routes/influxQueryRoutes.ts",
       "source_location": "L5",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "routes_influxqueryroutes",
-      "target": "utils_logger_logger",
-      "confidence_score": 1.0
+      "target": "utils_logger_logger"
     },
     {
       "relation": "references",
@@ -59136,9 +59136,9 @@
       "source_file": "src/services/influxDiskQueue.ts",
       "source_location": "L130",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_influxdiskqueue_influxdiskqueue",
-      "target": "services_influxdiskqueue_influxdiskqueue_enqueuebatch",
-      "confidence_score": 1.0
+      "target": "services_influxdiskqueue_influxdiskqueue_enqueuebatch"
     },
     {
       "relation": "method",
@@ -59454,9 +59454,9 @@
       "source_file": "src/services/influxQueryCache.ts",
       "source_location": "L6",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_influxquerycache",
-      "target": "services_influxquerycache_cache",
-      "confidence_score": 1.0
+      "target": "services_influxquerycache_cache"
     },
     {
       "relation": "contains",
@@ -59464,9 +59464,9 @@
       "source_file": "src/services/influxQueryCache.ts",
       "source_location": "L11",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_influxquerycache",
-      "target": "services_influxquerycache_cachedquery",
-      "confidence_score": 1.0
+      "target": "services_influxquerycache_cachedquery"
     },
     {
       "relation": "contains",
@@ -59474,9 +59474,9 @@
       "source_file": "src/services/influxQueryCache.ts",
       "source_location": "L1",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_influxquerycache",
-      "target": "services_influxquerycache_cacheentry",
-      "confidence_score": 1.0
+      "target": "services_influxquerycache_cacheentry"
     },
     {
       "relation": "contains",
@@ -59484,9 +59484,9 @@
       "source_file": "src/services/influxQueryCache.ts",
       "source_location": "L46",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_influxquerycache",
-      "target": "services_influxquerycache_clearinfluxquerycache",
-      "confidence_score": 1.0
+      "target": "services_influxquerycache_clearinfluxquerycache"
     },
     {
       "relation": "contains",
@@ -59494,9 +59494,9 @@
       "source_file": "src/services/influxQueryCache.ts",
       "source_location": "L40",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_influxquerycache",
-      "target": "services_influxquerycache_invalidatecache",
-      "confidence_score": 1.0
+      "target": "services_influxquerycache_invalidatecache"
     },
     {
       "relation": "imports_from",
@@ -59505,9 +59505,9 @@
       "source_file": "src/services/influxService.ts",
       "source_location": "L20",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_influxservice",
-      "target": "services_influxquerycache",
-      "confidence_score": 1.0
+      "target": "services_influxquerycache"
     },
     {
       "relation": "imports",
@@ -59516,9 +59516,9 @@
       "source_file": "src/services/influxService.ts",
       "source_location": "L20",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_influxservice",
-      "target": "services_influxquerycache_invalidatecache",
-      "confidence_score": 1.0
+      "target": "services_influxquerycache_invalidatecache"
     },
     {
       "relation": "calls",
@@ -60223,9 +60223,9 @@
       "source_file": "src/storage/influx/repositories/InstagramAuditRepo.ts",
       "source_location": "L78",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "repositories_instagramauditrepo_instagramauditrepo_buildprofilebaselinepoint",
-      "target": "services_influxservice_profilebaselineinfluxinput",
-      "confidence_score": 1.0
+      "target": "services_influxservice_profilebaselineinfluxinput"
     },
     {
       "relation": "references",
@@ -60690,9 +60690,9 @@
       "source_file": "src/services/influxService.ts",
       "source_location": "L747",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_influxservice_influxservice",
-      "target": "services_influxservice_influxservice_querymqttdeliverybylocation",
-      "confidence_score": 1.0
+      "target": "services_influxservice_influxservice_querymqttdeliverybylocation"
     },
     {
       "relation": "method",
@@ -60880,9 +60880,9 @@
       "source_file": "src/services/influxService.ts",
       "source_location": "L524",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_influxservice_influxservice",
-      "target": "services_influxservice_influxservice_writeinstagramoutcomebatch",
-      "confidence_score": 1.0
+      "target": "services_influxservice_influxservice_writeinstagramoutcomebatch"
     },
     {
       "relation": "method",
@@ -61315,9 +61315,9 @@
       "source_file": "src/services/influxService.ts",
       "source_location": "L524",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_influxservice_influxservice_writeinstagramoutcomebatch",
-      "target": "repositories_igmetricsrepo_igmetricsinput",
-      "confidence_score": 1.0
+      "target": "repositories_igmetricsrepo_igmetricsinput"
     },
     {
       "relation": "references",
@@ -61326,9 +61326,9 @@
       "source_file": "src/services/influxService.ts",
       "source_location": "L524",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_influxservice_influxservice_writeinstagramoutcomebatch",
-      "target": "repositories_igmilestonerepo_igmilestoneinput",
-      "confidence_score": 1.0
+      "target": "repositories_igmilestonerepo_igmilestoneinput"
     },
     {
       "relation": "references",
@@ -61491,9 +61491,9 @@
       "source_file": "src/services/influxService.ts",
       "source_location": "L754",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_influxservice_influxservice_querymqttdeliverybylocation",
-      "target": "services_influxservice_influxservice_queryflux",
-      "confidence_score": 1.0
+      "target": "services_influxservice_influxservice_queryflux"
     },
     {
       "relation": "calls",
@@ -74594,9 +74594,9 @@
       "source_file": "src/storage/influx/BaseInfluxRepo.ts",
       "source_location": "L52",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "influx_baseinfluxrepo_baseinfluxrepo",
-      "target": "influx_baseinfluxrepo_baseinfluxrepo_submitbatch",
-      "confidence_score": 1.0
+      "target": "influx_baseinfluxrepo_baseinfluxrepo_submitbatch"
     },
     {
       "relation": "method",
@@ -74912,9 +74912,9 @@
       "source_file": "src/storage/influx/BaseInfluxRepo.ts",
       "source_location": "L52",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "influx_baseinfluxrepo_baseinfluxrepo_submitbatch",
-      "target": "influx_types_buckettarget",
-      "confidence_score": 1.0
+      "target": "influx_types_buckettarget"
     },
     {
       "relation": "imports_from",
@@ -75561,9 +75561,9 @@
       "source_file": "src/storage/influx/repositories/InstagramAuditRepo.ts",
       "source_location": "L78",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "repositories_instagramauditrepo_instagramauditrepo",
-      "target": "repositories_instagramauditrepo_instagramauditrepo_buildprofilebaselinepoint",
-      "confidence_score": 1.0
+      "target": "repositories_instagramauditrepo_instagramauditrepo_buildprofilebaselinepoint"
     },
     {
       "relation": "method",
@@ -75613,9 +75613,9 @@
       "source_file": "src/storage/influx/repositories/InstagramAuditRepo.ts",
       "source_location": "L106",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "repositories_instagramauditrepo_instagramauditrepo_writeprofilebaseline",
-      "target": "repositories_instagramauditrepo_instagramauditrepo_buildprofilebaselinepoint",
-      "confidence_score": 1.0
+      "target": "repositories_instagramauditrepo_instagramauditrepo_buildprofilebaselinepoint"
     },
     {
       "relation": "imports_from",
@@ -88926,9 +88926,9 @@
       "source_file": "docs/influx-flux-partner-migration.md",
       "source_location": "L1",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "docs_influx_flux_partner_migration",
-      "target": "docs_influx_flux_partner_migration_influxdb_flux_partner_migration_guide",
-      "confidence_score": 1.0
+      "target": "docs_influx_flux_partner_migration_influxdb_flux_partner_migration_guide"
     },
     {
       "relation": "contains",
@@ -88936,9 +88936,9 @@
       "source_file": "docs/influx-flux-partner-migration.md",
       "source_location": "L3",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "docs_influx_flux_partner_migration_influxdb_flux_partner_migration_guide",
-      "target": "docs_influx_flux_partner_migration_correlation_id_tag_field_dual_write_window",
-      "confidence_score": 1.0
+      "target": "docs_influx_flux_partner_migration_correlation_id_tag_field_dual_write_window"
     },
     {
       "relation": "contains",
@@ -88946,9 +88946,9 @@
       "source_file": "docs/influx-flux-partner-migration.md",
       "source_location": "L29",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "docs_influx_flux_partner_migration_influxdb_flux_partner_migration_guide",
-      "target": "docs_influx_flux_partner_migration_pki_audit_verification",
-      "confidence_score": 1.0
+      "target": "docs_influx_flux_partner_migration_pki_audit_verification"
     },
     {
       "relation": "contains",
@@ -90632,5 +90632,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "d8775a68285162c51ce43d26bd83852e53f65997"
+  "built_at_commit": "b105cbef6a9ada6fd8581509fa994411e2971bbc"
 }

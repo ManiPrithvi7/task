@@ -1,16 +1,16 @@
 # Graph Report - proofmqtt  (2026-08-04)
 
 ## Corpus Check
-- 372 files · ~192,405 words
+- 372 files · ~192,441 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 2894 nodes · 5819 edges · 209 communities (168 shown, 41 thin omitted)
+- 2894 nodes · 5819 edges · 207 communities (166 shown, 41 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 6 edges (avg confidence: 0.75)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `d8775a68`
+- Built from commit: `b105cbef`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -98,7 +98,6 @@
 - [[_COMMUNITY_Community 80|Community 80]]
 - [[_COMMUNITY_Community 81|Community 81]]
 - [[_COMMUNITY_Community 82|Community 82]]
-- [[_COMMUNITY_Community 83|Community 83]]
 - [[_COMMUNITY_Community 84|Community 84]]
 - [[_COMMUNITY_Community 85|Community 85]]
 - [[_COMMUNITY_Community 86|Community 86]]
@@ -223,7 +222,6 @@
 - [[_COMMUNITY_express-rate-limit|express-rate-limit]]
 - [[_COMMUNITY_google-auth-library|google-auth-library]]
 - [[_COMMUNITY_helmet|helmet]]
-- [[_COMMUNITY_@influxdatainfluxdb-client|@influxdata/influxdb-client]]
 - [[_COMMUNITY_jsonwebtoken|jsonwebtoken]]
 - [[_COMMUNITY_mongoose|mongoose]]
 - [[_COMMUNITY_Community 199|Community 199]]
@@ -262,7 +260,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (209 total, 41 thin omitted)
+## Communities (207 total, 41 thin omitted)
 
 ### Community 0 - "Community 0"
 Cohesion: 0.06
@@ -273,8 +271,8 @@ Cohesion: 0.14
 Nodes (14): Device, DeviceSchema, DeviceStatus, ResolvedDeviceTarget, createLifecycleRoutes(), LifecycleDeps, reissueLimiter, buildLifecycleRoutesApp() (+6 more)
 
 ### Community 2 - "Community 2"
-Cohesion: 0.09
-Nodes (5): getLocalOtaFleetTracker(), getOtaReleaseLog(), OtaRedisState, isValidRolloutStep(), mapPool()
+Cohesion: 0.08
+Nodes (8): IFirmwareRelease, getLocalOtaFleetTracker(), getOtaReleaseLog(), OtaRedisState, OtaService, isValidRolloutStep(), mapPool(), isVersionGreater()
 
 ### Community 4 - "Community 4"
 Cohesion: 0.05
@@ -349,8 +347,8 @@ Cohesion: 0.09
 Nodes (21): compilerOptions, allowSyntheticDefaultImports, baseUrl, declaration, declarationMap, esModuleInterop, forceConsistentCasingInFileNames, lib (+13 more)
 
 ### Community 23 - "Community 23"
-Cohesion: 0.11
-Nodes (18): Close-out Checklist, Current (2026-07-02), Executive Summary, GA Preparation, GA Readiness (Post-Pilot), Guidance: Pilot v1 Launch Checklist, High Risk, Low Risk (+10 more)
+Cohesion: 0.09
+Nodes (22): Close-out Checklist, Current (2026-07-02), Executive Summary, GA Preparation, GA Readiness (Post-Pilot), Guidance: Pilot v1 Launch Checklist, High Risk, Investment Summary (+14 more)
 
 ### Community 24 - "Community 24"
 Cohesion: 0.11
@@ -564,16 +562,12 @@ Nodes (6): InfluxDBConfig, mockConfig, DeviceStateLogRepo, ENV_KEYS, mockConfig,
 Cohesion: 0.29
 Nodes (3): Handler, ReuseHTTPServer, SimpleHTTPRequestHandler
 
-### Community 83 - "Community 83"
-Cohesion: 0.23
-Nodes (3): IFirmwareRelease, OtaService, isVersionGreater()
-
 ### Community 84 - "Community 84"
 Cohesion: 0.26
 Nodes (11): BufferedMqttMessage, flushMessageBuffer(), handleCritical(), handleNonCritical(), isLifecycleTopic(), isMessageTooOld(), MqttIngressHandlers, parseJsonPayload() (+3 more)
 
 ### Community 85 - "Community 85"
-Cohesion: 0.21
+Cohesion: 0.17
 Nodes (14): canAdvanceStage(), classifyOtaReason(), deviceHashBucket(), nextRolloutPercentage(), normalizeOtaReasonCode(), OTA_ROLLOUT_STEPS, OtaReasonKind, OtaRolloutStep (+6 more)
 
 ### Community 86 - "Community 86"
@@ -912,10 +906,6 @@ Nodes (3): correlation_id: tag → field (dual-write window), InfluxDB Flux Part
 Cohesion: 0.11
 Nodes (14): LEGACY_MEASUREMENTS, requireAdmin(), requireAuth(), AuthTokenPayload, AuthTokenVerificationResult, ProvisioningConfig, ProvisioningTokenPayload, mockTokenStore (+6 more)
 
-### Community 195 - "@influxdata/influxdb-client"
-Cohesion: 0.50
-Nodes (4): Investment Summary, Key Decisions, Pilot v1, Post-Pilot (Weeks 2-4)
-
 ### Community 234 - "🔍 Server Implementation Details"
 Cohesion: 0.40
 Nodes (5): CSR Parsing, CSR Signature Verification, Device ID Validation, Public Key Extraction, 🔍 Server Implementation Details
@@ -941,4 +931,4 @@ _Questions this graph is uniquely positioned to answer:_
 - **Should `Community 1` be split into smaller, more focused modules?**
   _Cohesion score 0.14285714285714285 - nodes in this community are weakly interconnected._
 - **Should `Community 2` be split into smaller, more focused modules?**
-  _Cohesion score 0.08780487804878048 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.07832080200501253 - nodes in this community are weakly interconnected._
