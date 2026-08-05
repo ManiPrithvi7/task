@@ -22,6 +22,7 @@ Environment variables read by `loadConfig()` / enforced by `validateConfig()`. R
 | `TEST_OTA` | **Blocked in prod** | off | Dev/CI only (`assertTestOtaAllowed`) |
 | `OTA_REGISTRATION_DEFER_CONCURRENCY` | No | `10` | Registration storm throttle |
 | `DEFERRED_WORK_REARM` | No | on (`false` disables) | Rollback for deferred drain re-arm |
+| `DEFERRED_WORK_HANDLER_TIMEOUT_MS` | No | `30000` | Bound on deferred work handler; timeout counts failed |
 | `INSTAGRAM_SERVERLESS_URL` | No | off | Poller uses direct Graph if unset |
 | `IG_POLL_*` | No | see `instagramPollingConfig.ts` | Dual Redis schedulers |
 | `STIMULATE_DEVICE` | No | off | In-process IG/GMB ramp (pilot) |

@@ -410,6 +410,10 @@ export class StatsMqttLite {
       { otaRegistrationConcurrency: resolveOtaRegistrationDeferConcurrency() }
     );
 
+    // A concurrent call while a drain is in flight is a no-op: the in-flight
+    // drain owns the re-arm. Logging/re-arming here would loop unboundedly.
+    if (!result.drained) return;
+
     logger.info('[DEFERRED_WORK] Drain complete', {
       pending: result.pendingBefore,
       processed: result.processed,

@@ -21,10 +21,13 @@ export type DeferredDrainResult = {
   requeued: number;
   pendingAfter: number;
   rearmed: boolean;
+  /** False when the call returned early because another drain is in flight. */
+  drained: boolean;
 };
 
 const STALE_MS = 30_000;
 const DEFAULT_OTA_REGISTRATION_CONCURRENCY = 10;
+const DEFAULT_HANDLER_TIMEOUT_MS = 30_000;
 /** Initial attempt + one retry after failure. */
 const MAX_ATTEMPTS = 2;
 
@@ -33,6 +36,13 @@ export function resolveOtaRegistrationDeferConcurrency(): number {
   if (!raw?.trim()) return DEFAULT_OTA_REGISTRATION_CONCURRENCY;
   const n = Number.parseInt(raw.trim(), 10);
   return Number.isFinite(n) && n > 0 ? n : DEFAULT_OTA_REGISTRATION_CONCURRENCY;
+}
+
+export function resolveDeferredWorkHandlerTimeoutMs(): number {
+  const raw = process.env.DEFERRED_WORK_HANDLER_TIMEOUT_MS;
+  if (!raw?.trim()) return DEFAULT_HANDLER_TIMEOUT_MS;
+  const n = Number.parseInt(raw.trim(), 10);
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_HANDLER_TIMEOUT_MS;
 }
 
 /** Rollback: set DEFERRED_WORK_REARM=false to disable post-drain re-arm. Default on. */
@@ -88,9 +98,11 @@ export class DeferredDeviceWorkQueue {
 
   async processAll(
     handler: (item: DeferredWorkItem) => Promise<void>,
-    options?: { otaRegistrationConcurrency?: number }
+    options?: { otaRegistrationConcurrency?: number; handlerTimeoutMs?: number }
   ): Promise<DeferredDrainResult> {
     if (this.processing) {
+      // The in-flight drain owns the re-arm via rearmRequested; reporting
+      // rearmed here would let callers re-invoke in an unbounded tight loop.
       this.rearmRequested = true;
       return {
         pendingBefore: this.queue.length,
@@ -99,7 +111,8 @@ export class DeferredDeviceWorkQueue {
         failed: 0,
         requeued: 0,
         pendingAfter: this.queue.length,
-        rearmed: true
+        rearmed: false,
+        drained: false
       };
     }
 
@@ -131,10 +144,25 @@ export class DeferredDeviceWorkQueue {
         1,
         options?.otaRegistrationConcurrency ?? resolveOtaRegistrationDeferConcurrency()
       );
+      // Bound handler time so a hung dependency cannot wedge processing=true
+      // (which previously starved the queue and spammed no-op drain logs).
+      const handlerTimeoutMs = Math.max(
+        1,
+        options?.handlerTimeoutMs ?? resolveDeferredWorkHandlerTimeoutMs()
+      );
 
       const runOne = async (item: DeferredWorkItem): Promise<void> => {
+        let timer: ReturnType<typeof setTimeout> | undefined;
         try {
-          await handler(item);
+          await Promise.race([
+            handler(item),
+            new Promise<never>((_resolve, reject) => {
+              timer = setTimeout(
+                () => reject(new Error('DEFERRED_WORK_HANDLER_TIMEOUT')),
+                handlerTimeoutMs
+              );
+            })
+          ]);
           processed++;
         } catch {
           failed++;
@@ -157,6 +185,8 @@ export class DeferredDeviceWorkQueue {
             }
             this.rearmRequested = true;
           }
+        } finally {
+          if (timer !== undefined) clearTimeout(timer);
         }
       };
 
@@ -188,7 +218,8 @@ export class DeferredDeviceWorkQueue {
       failed,
       requeued,
       pendingAfter,
-      rearmed
+      rearmed,
+      drained: true
     };
   }
 }

@@ -1,6 +1,7 @@
 import {
   DeferredDeviceWorkQueue,
   isDeferredWorkRearmEnabled,
+  resolveDeferredWorkHandlerTimeoutMs,
   resolveOtaRegistrationDeferConcurrency
 } from '@/services/deferredDeviceWork';
 
@@ -36,7 +37,7 @@ describe('DeferredDeviceWorkQueue', () => {
     expect(result.skippedStale).toBe(1);
   });
 
-  it('single-flight marks rearmed when concurrent processAll', async () => {
+  it('single-flight: concurrent processAll neither drains nor re-arms', async () => {
     const q = new DeferredDeviceWorkQueue();
     q.enqueueConnectRefresh('DEVICE-1');
 
@@ -49,10 +50,14 @@ describe('DeferredDeviceWorkQueue', () => {
 
     const second = await q.processAll(async () => undefined);
     expect(second.processed).toBe(0);
-    expect(second.rearmed).toBe(true);
+    expect(second.drained).toBe(false);
+    expect(second.rearmed).toBe(false);
 
     resolveFirst();
-    await first;
+    // The concurrent call flags the in-flight drain, which owns the re-arm.
+    const firstResult = await first;
+    expect(firstResult.drained).toBe(true);
+    expect(firstResult.rearmed).toBe(true);
   });
 
   it('enqueue during drain leaves work for second drain', async () => {
@@ -158,8 +163,27 @@ describe('DeferredDeviceWorkQueue', () => {
       failed: 0,
       requeued: 0,
       pendingAfter: 0,
-      rearmed: false
+      rearmed: false,
+      drained: true
     });
+  });
+
+  it('times out a hung handler, counts failed, then drops on second hang', async () => {
+    const q = new DeferredDeviceWorkQueue();
+    q.enqueueConnectRefresh('DEVICE-HANG');
+    const neverResolves = () => new Promise<void>(() => undefined);
+
+    const first = await q.processAll(neverResolves, { handlerTimeoutMs: 10 });
+    expect(first.drained).toBe(true);
+    expect(first.failed).toBe(1);
+    expect(first.requeued).toBe(1);
+    expect(q.pendingCount()).toBe(1);
+
+    const second = await q.processAll(neverResolves, { handlerTimeoutMs: 10 });
+    expect(second.failed).toBe(1);
+    expect(second.requeued).toBe(0);
+    expect(second.pendingAfter).toBe(0);
+    expect(q.pendingCount()).toBe(0);
   });
 
   it('mixed stale+fresh: processes fresh, counts stale', async () => {
@@ -273,6 +297,25 @@ describe('resolveOtaRegistrationDeferConcurrency', () => {
     expect(resolveOtaRegistrationDeferConcurrency()).toBe(10);
     process.env.OTA_REGISTRATION_DEFER_CONCURRENCY = '0';
     expect(resolveOtaRegistrationDeferConcurrency()).toBe(10);
+  });
+});
+
+describe('resolveDeferredWorkHandlerTimeoutMs', () => {
+  const prev = process.env.DEFERRED_WORK_HANDLER_TIMEOUT_MS;
+  afterEach(() => {
+    if (prev === undefined) delete process.env.DEFERRED_WORK_HANDLER_TIMEOUT_MS;
+    else process.env.DEFERRED_WORK_HANDLER_TIMEOUT_MS = prev;
+  });
+
+  it('defaults to 30000; parses positive int; falls back for invalid', () => {
+    delete process.env.DEFERRED_WORK_HANDLER_TIMEOUT_MS;
+    expect(resolveDeferredWorkHandlerTimeoutMs()).toBe(30_000);
+    process.env.DEFERRED_WORK_HANDLER_TIMEOUT_MS = '5000';
+    expect(resolveDeferredWorkHandlerTimeoutMs()).toBe(5000);
+    process.env.DEFERRED_WORK_HANDLER_TIMEOUT_MS = 'abc';
+    expect(resolveDeferredWorkHandlerTimeoutMs()).toBe(30_000);
+    process.env.DEFERRED_WORK_HANDLER_TIMEOUT_MS = '0';
+    expect(resolveDeferredWorkHandlerTimeoutMs()).toBe(30_000);
   });
 });
 

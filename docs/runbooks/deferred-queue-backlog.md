@@ -19,7 +19,9 @@
 
 - Stale TTL 30s accepted; re-enqueue refreshes `enqueuedAt`
 - Failures retry once then drop
+- Handler bounded by `DEFERRED_WORK_HANDLER_TIMEOUT_MS` (default 30s); a hung handler counts failed and retries once
 - Coordinator-not-ready throws (counts failed / retry), not silent success
+- Concurrent `processAll` while a drain is in flight is a no-op (no log, no re-arm); the in-flight drain owns the re-arm
 - In-memory queue: lost on restart / not shared across instances (pilot limit)
 
 ## Rollback

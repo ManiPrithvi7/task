@@ -25,7 +25,7 @@
     "semantic_hash": ""
   },
   "scripts/attention-roadmap-smoke.ts": {
-    "mtime": 1785826872.3486326,
+    "mtime": 1785924679.284367,
     "ast_hash": "2eb2296fc87aa85d860afa9f3f27026f",
     "semantic_hash": ""
   },
@@ -155,8 +155,8 @@
     "semantic_hash": ""
   },
   "src/app.ts": {
-    "mtime": 1785835115.360372,
-    "ast_hash": "744c85603837c5cbd2eccf7a519b9da2",
+    "mtime": 1785925548.7141361,
+    "ast_hash": "dfa16ecaa6e4585f9f8c25ae52e2a5a4",
     "semantic_hash": ""
   },
   "src/config/connectionsConfig.ts": {
@@ -170,7 +170,7 @@
     "semantic_hash": ""
   },
   "src/config/index.ts": {
-    "mtime": 1785828471.1214113,
+    "mtime": 1785924679.282367,
     "ast_hash": "49a5d7b111a9b767e972b4f62dfc5d17",
     "semantic_hash": ""
   },
@@ -400,8 +400,8 @@
     "semantic_hash": ""
   },
   "src/services/deferredDeviceWork.ts": {
-    "mtime": 1785828471.122407,
-    "ast_hash": "82ad5ffaa1506b72d2c13fb97b335bfd",
+    "mtime": 1785925524.1135745,
+    "ast_hash": "02de7a243146b6e26a93a42558fb8c6c",
     "semantic_hash": ""
   },
   "src/services/deviceService.ts": {
@@ -485,7 +485,7 @@
     "semantic_hash": ""
   },
   "src/services/otaService.ts": {
-    "mtime": 1785827152.9321098,
+    "mtime": 1785924679.282367,
     "ast_hash": "fabf98e0c376c685a086457cbc909260",
     "semantic_hash": ""
   },
@@ -550,7 +550,7 @@
     "semantic_hash": ""
   },
   "src/storage/tokenStore.ts": {
-    "mtime": 1785826872.3465984,
+    "mtime": 1785924679.283367,
     "ast_hash": "074aed3bd9a3165ba38ecf8010f82703",
     "semantic_hash": ""
   },
@@ -730,8 +730,8 @@
     "semantic_hash": ""
   },
   "tests/unit/services/deferredDeviceWork.test.ts": {
-    "mtime": 1785828471.1237714,
-    "ast_hash": "2f050fe97988ff515f292af5c47e68e8",
+    "mtime": 1785925662.3455234,
+    "ast_hash": "2906ce929426db8ada2b7c42028cc3f5",
     "semantic_hash": ""
   },
   "tests/unit/services/metrics/helpers.test.ts": {
@@ -800,7 +800,7 @@
     "semantic_hash": ""
   },
   "OTA_E2E_TEST.md": {
-    "mtime": 1785826872.3479304,
+    "mtime": 1785924679.284367,
     "ast_hash": "b9aee5dba9ac48004eb1228ea2d4b0db",
     "semantic_hash": ""
   },
@@ -935,7 +935,7 @@
     "semantic_hash": ""
   },
   "src/services/brandCanvasService.ts": {
-    "mtime": 1785828471.122229,
+    "mtime": 1785924679.282367,
     "ast_hash": "0bb65dcf8063ebe09a7be4db23d30c67",
     "semantic_hash": ""
   },
@@ -1420,7 +1420,7 @@
     "semantic_hash": ""
   },
   "src/constants/redisKeys.ts": {
-    "mtime": 1785828471.121626,
+    "mtime": 1785924679.283367,
     "ast_hash": "48e4831de40f9bea8a0c459669952c03",
     "semantic_hash": ""
   },
@@ -1430,7 +1430,7 @@
     "semantic_hash": ""
   },
   "src/services/igPollCoordination.ts": {
-    "mtime": 1785826872.3486326,
+    "mtime": 1785924679.284367,
     "ast_hash": "3a22f1d6fc7547b103fd9aaa88aa1fc8",
     "semantic_hash": ""
   },
@@ -1695,8 +1695,8 @@
     "semantic_hash": ""
   },
   "docs/CONFIG_MATRIX.md": {
-    "mtime": 1785828471.1011024,
-    "ast_hash": "b39605725e65c6f02f09e22313f03d97",
+    "mtime": 1785925952.8446295,
+    "ast_hash": "69301ed6d2a9304ffc83c742925b7fae",
     "semantic_hash": ""
   },
   "docs/PRODUCTION_HARDENING_PHASE0.md": {
@@ -1720,8 +1720,8 @@
     "semantic_hash": ""
   },
   "docs/runbooks/deferred-queue-backlog.md": {
-    "mtime": 1785828471.1015053,
-    "ast_hash": "93c945e1c9ccba0cf4b90f0eaeb2aa12",
+    "mtime": 1785925915.3407547,
+    "ast_hash": "d38136fa87c337f651e5520f90908d14",
     "semantic_hash": ""
   },
   "docs/runbooks/ota-webhook-reject.md": {

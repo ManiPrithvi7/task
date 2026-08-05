@@ -82,6 +82,7 @@
   "80": "Community 80",
   "81": "Community 81",
   "82": "Community 82",
+  "83": "Community 83",
   "84": "Community 84",
   "85": "Community 85",
   "86": "Community 86",
@@ -193,6 +194,7 @@
   "192": "express-rate-limit",
   "193": "google-auth-library",
   "194": "helmet",
+  "195": "Community 195",
   "196": "jsonwebtoken",
   "197": "mongoose",
   "198": "node-forge",
@@ -205,5 +207,8 @@
   "205": "Community 205",
   "206": "index.ts",
   "207": "E2E HTTP flow tests",
+  "208": "Community 208",
+  "209": "Community 209",
+  "210": "Community 210",
   "234": "🔍 Server Implementation Details"
 }
