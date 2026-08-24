@@ -9,8 +9,10 @@ Two stacks — one per cert type:
 | Rotate Root CA (disruptive) | `npm run pki -- rotate` |
 | Print app `.env` base64 | `npm run pki -- print-app-env` |
 | Broker server cert | `./scripts/pki/generate-broker-cert.sh` |
-| Deploy broker to Railway | `./scripts/pki/print-railway-broker-env.sh` |
-| Verify broker TLS | `./scripts/pki/verify-broker-tls.sh --compare-both` (8883 + proxy 12359) |
+| Print broker base64 (Railway/OCI) | `./scripts/pki/print-railway-broker-env.sh` |
+| Deploy broker to OCI (Proof-v3) | `./scripts/pki/deploy-oci-broker-certs.sh` |
+| Sync app `.env` MQTT_TLS_* | `./scripts/pki/sync-app-env.sh` |
+| Verify broker TLS | `./scripts/pki/verify-broker-tls.sh --host broker.withproof.io` |
 
 ## Layout
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Verify MQTT broker TLS: openssl s_client against host:port with CA from file or .env.
 #
-# Production: broker.withproof.io:8883 (custom domain on Railway TCP service).
+# Production: broker.withproof.io:8883 (OCI Proof-v3 @ 129.154.36.219).
 # Legacy proxy: switchback.proxy.rlwy.net:12359 → internal :8883.
 #
 # Usage:

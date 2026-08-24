@@ -15,8 +15,8 @@
     "semantic_hash": ""
   },
   "package.json": {
-    "mtime": 1785830237.3387277,
-    "ast_hash": "52ee0ae81583bb3f0a6c5cc5908bbe98",
+    "mtime": 1787554388.398497,
+    "ast_hash": "e058746289b3c4d221db929fbfc7b606",
     "semantic_hash": ""
   },
   "railway.json": {
@@ -25,7 +25,7 @@
     "semantic_hash": ""
   },
   "scripts/attention-roadmap-smoke.ts": {
-    "mtime": 1785924679.284367,
+    "mtime": 1787551293.6354752,
     "ast_hash": "2eb2296fc87aa85d860afa9f3f27026f",
     "semantic_hash": ""
   },
@@ -120,8 +120,8 @@
     "semantic_hash": ""
   },
   "scripts/pki/verify-broker-tls.sh": {
-    "mtime": 1780463380.5626314,
-    "ast_hash": "9bb310264fb6e74ac18efc2d167abb09",
+    "mtime": 1787554389.843997,
+    "ast_hash": "6c56922f2ea1293a4441967365456fda",
     "semantic_hash": ""
   },
   "scripts/run-connection-tests.sh": {
@@ -170,7 +170,7 @@
     "semantic_hash": ""
   },
   "src/config/index.ts": {
-    "mtime": 1785924679.282367,
+    "mtime": 1787551293.6314747,
     "ast_hash": "49a5d7b111a9b767e972b4f62dfc5d17",
     "semantic_hash": ""
   },
@@ -485,7 +485,7 @@
     "semantic_hash": ""
   },
   "src/services/otaService.ts": {
-    "mtime": 1785924679.282367,
+    "mtime": 1787551293.6324747,
     "ast_hash": "fabf98e0c376c685a086457cbc909260",
     "semantic_hash": ""
   },
@@ -550,7 +550,7 @@
     "semantic_hash": ""
   },
   "src/storage/tokenStore.ts": {
-    "mtime": 1785924679.283367,
+    "mtime": 1787551293.634475,
     "ast_hash": "074aed3bd9a3165ba38ecf8010f82703",
     "semantic_hash": ""
   },
@@ -800,7 +800,7 @@
     "semantic_hash": ""
   },
   "OTA_E2E_TEST.md": {
-    "mtime": 1785924679.284367,
+    "mtime": 1787551293.6354752,
     "ast_hash": "b9aee5dba9ac48004eb1228ea2d4b0db",
     "semantic_hash": ""
   },
@@ -875,8 +875,8 @@
     "semantic_hash": ""
   },
   "scripts/pki/README.md": {
-    "mtime": 1780463380.5624993,
-    "ast_hash": "fa1f9b07e32bb5615d6777bebba7bb5e",
+    "mtime": 1787554389.7839928,
+    "ast_hash": "00eff226ef07832476506d0171e4be9b",
     "semantic_hash": ""
   },
   "tests/unit/routes/recoveryRoutes.test.ts": {
@@ -935,7 +935,7 @@
     "semantic_hash": ""
   },
   "src/services/brandCanvasService.ts": {
-    "mtime": 1785924679.282367,
+    "mtime": 1787551293.634475,
     "ast_hash": "0bb65dcf8063ebe09a7be4db23d30c67",
     "semantic_hash": ""
   },
@@ -1420,7 +1420,7 @@
     "semantic_hash": ""
   },
   "src/constants/redisKeys.ts": {
-    "mtime": 1785924679.283367,
+    "mtime": 1787551293.6354752,
     "ast_hash": "48e4831de40f9bea8a0c459669952c03",
     "semantic_hash": ""
   },
@@ -1430,7 +1430,7 @@
     "semantic_hash": ""
   },
   "src/services/igPollCoordination.ts": {
-    "mtime": 1785924679.284367,
+    "mtime": 1787551293.6354752,
     "ast_hash": "3a22f1d6fc7547b103fd9aaa88aa1fc8",
     "semantic_hash": ""
   },
@@ -1872,6 +1872,26 @@
   "docs/influx-flux-partner-migration.md": {
     "mtime": 1785841183.946884,
     "ast_hash": "a289b91d4a2fac3d56182abd2aade425",
+    "semantic_hash": ""
+  },
+  "scripts/pki/deploy-oci-broker-certs.sh": {
+    "mtime": 1787554538.7533216,
+    "ast_hash": "13e5fd7c5c2ab8b73a1fd91715df5f26",
+    "semantic_hash": ""
+  },
+  "scripts/pki/sync-app-env.sh": {
+    "mtime": 1787554371.647666,
+    "ast_hash": "702c20152bce5d23e3f91dc908b07fab",
+    "semantic_hash": ""
+  },
+  "broker config fix.md": {
+    "mtime": 1787553395.050075,
+    "ast_hash": "0a8bfd5fd200a3793e10da557af5bd83",
+    "semantic_hash": ""
+  },
+  "docs/DEAD_CODE_CLEANUP_PLAN.md": {
+    "mtime": 1786348386.4230845,
+    "ast_hash": "0e213b33f3781b8fedd1e8e66f2f9d37",
     "semantic_hash": ""
   }
 }

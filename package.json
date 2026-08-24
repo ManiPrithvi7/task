@@ -17,6 +17,12 @@
     "check": "bun run lint && bun run typecheck && bun run build && bun run test:unit",
     "check:full": "bun run check && bun run test:e2e",
     "validate-env": "bun scripts/validate-env.ts",
+    "pki": "bun scripts/pki/pki.ts",
+    "pki:broker": "bash scripts/pki/generate-broker-cert.sh",
+    "pki:print-broker": "bash scripts/pki/print-railway-broker-env.sh",
+    "pki:deploy-broker": "bash scripts/pki/deploy-oci-broker-certs.sh",
+    "pki:sync-env": "bash scripts/pki/sync-app-env.sh",
+    "pki:verify": "bash scripts/pki/verify-broker-tls.sh --host broker.withproof.io",
     "typecheck": "tsc --noEmit",
     "prepare": "husky"
   },
