@@ -86,7 +86,13 @@ describe('influx config validation', () => {
   });
 
   it('throws when REDIS_URL missing in production', () => {
-    process.env = { ...process.env, ...baseEnv(), NODE_ENV: 'production' };
+    process.env = {
+      ...process.env,
+      ...baseEnv(),
+      NODE_ENV: 'production',
+      // Isolate Redis check from OTA prod gates inherited via process.env
+      OTA_ENABLED: 'false'
+    };
     cleanEnv();
     delete process.env.REDIS_URL;
     delete process.env.TEST_OTA;
@@ -101,7 +107,8 @@ describe('influx config validation', () => {
       ...baseEnv(),
       NODE_ENV: 'production',
       REDIS_URL: 'rediss://default:token@example.upstash.io:6379',
-      AUTH_SECRET: 'test-auth-secret'
+      AUTH_SECRET: 'test-auth-secret',
+      OTA_ENABLED: 'false'
     };
     cleanEnv();
     delete process.env.JWT_SECRET;
