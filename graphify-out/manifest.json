@@ -25,7 +25,7 @@
     "semantic_hash": ""
   },
   "scripts/attention-roadmap-smoke.ts": {
-    "mtime": 1787568082.435928,
+    "mtime": 1787634430.7271397,
     "ast_hash": "2eb2296fc87aa85d860afa9f3f27026f",
     "semantic_hash": ""
   },
@@ -170,7 +170,7 @@
     "semantic_hash": ""
   },
   "src/config/index.ts": {
-    "mtime": 1787568082.4306724,
+    "mtime": 1787634430.7171378,
     "ast_hash": "49a5d7b111a9b767e972b4f62dfc5d17",
     "semantic_hash": ""
   },
@@ -300,8 +300,8 @@
     "semantic_hash": ""
   },
   "src/models/Social.ts": {
-    "mtime": 1784611133.149909,
-    "ast_hash": "a4c91bd5b77b43e57b135f322561a748",
+    "mtime": 1787651108.3265696,
+    "ast_hash": "9ae7987210672209715bec17aa4d259e",
     "semantic_hash": ""
   },
   "src/models/SquareProfile.ts": {
@@ -435,13 +435,13 @@
     "semantic_hash": ""
   },
   "src/services/influxService.ts": {
-    "mtime": 1785842513.5210438,
-    "ast_hash": "ea4e06f07611d5ec1cc90186b0369100",
+    "mtime": 1787651109.0266032,
+    "ast_hash": "f0e2cffed111fa1a3b6d9f27a5473e81",
     "semantic_hash": ""
   },
   "src/services/instagramService.ts": {
-    "mtime": 1785841301.7578902,
-    "ast_hash": "368c7b94d89e669062a89a0f95364993",
+    "mtime": 1787651164.0626822,
+    "ast_hash": "3fe1d08c27a2bcf6f55e960dbc07386f",
     "semantic_hash": ""
   },
   "src/services/metrics/dailyMetricsLua.ts": {
@@ -485,13 +485,13 @@
     "semantic_hash": ""
   },
   "src/services/otaService.ts": {
-    "mtime": 1787568082.4326725,
+    "mtime": 1787634430.722139,
     "ast_hash": "fabf98e0c376c685a086457cbc909260",
     "semantic_hash": ""
   },
   "src/services/promotionService.ts": {
-    "mtime": 1785474540.5211864,
-    "ast_hash": "0bb7675efe20d192805f0cd4c1b26123",
+    "mtime": 1787651164.384262,
+    "ast_hash": "8ad5582e769d5fb1ecc251e90cf80d63",
     "semantic_hash": ""
   },
   "src/services/provisioningService.ts": {
@@ -510,8 +510,8 @@
     "semantic_hash": ""
   },
   "src/services/screenEnvelope.ts": {
-    "mtime": 1784624956.1391015,
-    "ast_hash": "62b72f1f3ef694eef8df818b3297e7a8",
+    "mtime": 1787650976.313845,
+    "ast_hash": "46d956f299e9788f4844cdace315c307",
     "semantic_hash": ""
   },
   "src/services/sessionService.ts": {
@@ -550,7 +550,7 @@
     "semantic_hash": ""
   },
   "src/storage/tokenStore.ts": {
-    "mtime": 1787568082.4336727,
+    "mtime": 1787634430.723139,
     "ast_hash": "074aed3bd9a3165ba38ecf8010f82703",
     "semantic_hash": ""
   },
@@ -800,7 +800,7 @@
     "semantic_hash": ""
   },
   "OTA_E2E_TEST.md": {
-    "mtime": 1787568082.435928,
+    "mtime": 1787634430.7271397,
     "ast_hash": "b9aee5dba9ac48004eb1228ea2d4b0db",
     "semantic_hash": ""
   },
@@ -935,7 +935,7 @@
     "semantic_hash": ""
   },
   "src/services/brandCanvasService.ts": {
-    "mtime": 1787568082.4326725,
+    "mtime": 1787634430.723139,
     "ast_hash": "0bb65dcf8063ebe09a7be4db23d30c67",
     "semantic_hash": ""
   },
@@ -1230,13 +1230,13 @@
     "semantic_hash": ""
   },
   "tests/unit/services/screenEnvelope.test.ts": {
-    "mtime": 1784625157.9454925,
-    "ast_hash": "d775003f264d57b33748a6525ce7c2c1",
+    "mtime": 1787650978.5553508,
+    "ast_hash": "d0247344fcab073b30c74d8bb15ac200",
     "semantic_hash": ""
   },
   "tests/unit/stimulate/igPayload.test.ts": {
-    "mtime": 1784625184.1757925,
-    "ast_hash": "f265cd07bd8044512d8cf5926d7ab59e",
+    "mtime": 1787651362.3417943,
+    "ast_hash": "6f0d7bf8922f19cf2b2f62b8fdfc0f02",
     "semantic_hash": ""
   },
   "src/middleware/querySanitizer.ts": {
@@ -1255,8 +1255,8 @@
     "semantic_hash": ""
   },
   "src/routes/integrationRoutes.ts": {
-    "mtime": 1785827152.931246,
-    "ast_hash": "c11ba24fadf74f0f706f56de4e88a943",
+    "mtime": 1787651189.7044795,
+    "ast_hash": "203dc88a256d464a3b7386242c977a5c",
     "semantic_hash": ""
   },
   "src/storage/influx/BaseInfluxRepo.ts": {
@@ -1420,7 +1420,7 @@
     "semantic_hash": ""
   },
   "src/constants/redisKeys.ts": {
-    "mtime": 1787568082.435928,
+    "mtime": 1787634430.7271397,
     "ast_hash": "48e4831de40f9bea8a0c459669952c03",
     "semantic_hash": ""
   },
@@ -1430,7 +1430,7 @@
     "semantic_hash": ""
   },
   "src/services/igPollCoordination.ts": {
-    "mtime": 1787568082.435928,
+    "mtime": 1787634430.7271397,
     "ast_hash": "3a22f1d6fc7547b103fd9aaa88aa1fc8",
     "semantic_hash": ""
   },
@@ -1550,8 +1550,8 @@
     "semantic_hash": ""
   },
   "src/bootstrap/httpRouteRegistry.ts": {
-    "mtime": 1785828471.1211216,
-    "ast_hash": "a2ee3dc1a3804c8bf8734bfb6604fab2",
+    "mtime": 1787651164.7272787,
+    "ast_hash": "5d2e4e9c571ad74882a46d1a6dcdd0d8",
     "semantic_hash": ""
   },
   "src/bootstrap/otaRegistrationCoordinator.ts": {
@@ -1565,8 +1565,8 @@
     "semantic_hash": ""
   },
   "src/bootstrap/serviceInitializer.ts": {
-    "mtime": 1785828471.1212595,
-    "ast_hash": "0307dc4ff41192fb4b05d064e9e25a4f",
+    "mtime": 1787651189.4094653,
+    "ast_hash": "ba349c2b450168084e12746795bd98c0",
     "semantic_hash": ""
   },
   "src/config/influxConfig.ts": {
@@ -1575,8 +1575,8 @@
     "semantic_hash": ""
   },
   "src/config/instagramPollingConfig.ts": {
-    "mtime": 1785828471.1214678,
-    "ast_hash": "da2c9a1695b6794c418f211cabcdbbf7",
+    "mtime": 1787651110.095137,
+    "ast_hash": "fefe389eb2641aee701c4f19e2b71796",
     "semantic_hash": ""
   },
   "src/config/mqttConfig.ts": {
@@ -1695,8 +1695,8 @@
     "semantic_hash": ""
   },
   "docs/CONFIG_MATRIX.md": {
-    "mtime": 1785925952.8446295,
-    "ast_hash": "69301ed6d2a9304ffc83c742925b7fae",
+    "mtime": 1787651222.3960521,
+    "ast_hash": "e94f7556f030953aa693158564106246",
     "semantic_hash": ""
   },
   "docs/PRODUCTION_HARDENING_PHASE0.md": {
@@ -1830,8 +1830,8 @@
     "semantic_hash": ""
   },
   "tests/unit/services/instagramService.test.ts": {
-    "mtime": 1785841371.7311003,
-    "ast_hash": "4f1dc2da38e2c57ff20d4620c1b13b98",
+    "mtime": 1787651275.2533855,
+    "ast_hash": "1f4fc9d27e5afb74c43663c42a6346d3",
     "semantic_hash": ""
   },
   "tests/unit/services/mongoService.test.ts": {
@@ -1887,6 +1887,51 @@
   "docs/DEAD_CODE_CLEANUP_PLAN.md": {
     "mtime": 1786348386.4230845,
     "ast_hash": "0e213b33f3781b8fedd1e8e66f2f9d37",
+    "semantic_hash": ""
+  },
+  "src/routes/instagramMetricsRoutes.ts": {
+    "mtime": 1787651093.916878,
+    "ast_hash": "896193a9f2f76e3e8750b0dc75b3292e",
+    "semantic_hash": ""
+  },
+  "src/services/igAccountFetchCoordinator.ts": {
+    "mtime": 1787651050.652803,
+    "ast_hash": "8c10dc2fdf3085b79d9c3c3ba85fd7e2",
+    "semantic_hash": ""
+  },
+  "src/services/igIntegrationLifecycle.ts": {
+    "mtime": 1787651055.073015,
+    "ast_hash": "65e0b2a6d275e096fbf818160f10637b",
+    "semantic_hash": ""
+  },
+  "src/services/instagramMetricsReadService.ts": {
+    "mtime": 1787651088.3336833,
+    "ast_hash": "abedb0f4796bd3b15146c2237bde64f2",
+    "semantic_hash": ""
+  },
+  "src/services/webappFollowerWebhook.ts": {
+    "mtime": 1787651052.4893148,
+    "ast_hash": "69baf4fa473a73fa7e3be7d584ac4547",
+    "semantic_hash": ""
+  },
+  "tests/unit/routes/instagramMetricsRoutes.test.ts": {
+    "mtime": 1787651350.474222,
+    "ast_hash": "73668e46a86dc4e7ab1c8e3b0a8c5682",
+    "semantic_hash": ""
+  },
+  "tests/unit/services/igAccountFetchCoordinator.test.ts": {
+    "mtime": 1787651227.2872875,
+    "ast_hash": "51ce565fd9ef2b692a4bdd0b84235d6c",
+    "semantic_hash": ""
+  },
+  "tests/unit/services/webappFollowerWebhook.test.ts": {
+    "mtime": 1787651350.5002232,
+    "ast_hash": "ebd20c7a42dafda93d0ab0f12c2ba05a",
+    "semantic_hash": ""
+  },
+  "docs/IG_METRICS_CONTRACT.md": {
+    "mtime": 1787651210.3944745,
+    "ast_hash": "09bdbb4ea4cd987db1f234fd89aa08a5",
     "semantic_hash": ""
   }
 }

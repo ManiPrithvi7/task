@@ -7,6 +7,8 @@ import {
   type NormalizedDeviceFetchResult
 } from '@/services/instagramService';
 import { logger } from '@/utils/logger';
+import { Social } from '@/models/Social';
+import { notifyWebappFollowerUpdate } from '@/services/webappFollowerWebhook';
 
 const mockRuntime = {
   getFollowers: jest.fn(),
@@ -23,8 +25,8 @@ const mockInflux = {
 };
 
 jest.mock('@/models/Social', () => ({
-  Social: { findOne: jest.fn(), updateOne: jest.fn() },
-  Provider: { GOOGLE_BUSINESS: 'GOOGLE_BUSINESS' }
+  Social: { findOne: jest.fn(), updateOne: jest.fn().mockResolvedValue(undefined) },
+  Provider: { INSTAGRAM: 'INSTAGRAM', GOOGLE_BUSINESS: 'GOOGLE_BUSINESS' }
 }));
 
 jest.mock('@/models/Device', () => ({
@@ -51,6 +53,24 @@ jest.mock('@/services/redisService', () => ({
 jest.mock('@/utils/stimulateAllowlist', () => ({
   isStimulateDevice: jest.fn(() => false),
   shouldSkipForStimulate: jest.fn(() => false)
+}));
+
+jest.mock('@/services/webappFollowerWebhook', () => ({
+  notifyWebappFollowerUpdate: jest.fn().mockResolvedValue(undefined)
+}));
+
+jest.mock('@/services/igAccountFetchCoordinator', () => ({
+  getIgAccountFetchCoordinator: () => ({
+    decideFetch: jest.fn().mockReturnValue({ action: 'fetch' }),
+    recordFetch: jest.fn(),
+    setBackoff: jest.fn(),
+    purge: jest.fn(),
+    getCached: jest.fn()
+  })
+}));
+
+jest.mock('@/services/userIntegrationCache', () => ({
+  getUserIntegrations: jest.fn().mockResolvedValue({ instagram: { accountId: 'ig-1' } })
 }));
 
 function makeMqtt() {
@@ -110,8 +130,12 @@ describe('instagramService outcome applicator', () => {
         ]),
       })
     );
-    expect(mockInflux.writeInstagramOutcomeBatch.mock.calls[0][0].milestones).toHaveLength(4);
+    expect(mockInflux.writeInstagramOutcomeBatch.mock.calls[0][0].milestones).toHaveLength(1);
     expect(mockRuntime.setFollowers).toHaveBeenCalledWith('d1', 500, expect.any(Number));
+    expect(Social.updateOne).toHaveBeenCalled();
+    expect(notifyWebappFollowerUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ followerCount: 500, previousCount: 400 })
+    );
   });
 
   it('success with correlationId: registers e2e latency write', async () => {

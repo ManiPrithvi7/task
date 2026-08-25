@@ -44,7 +44,7 @@ export function loadInstagramServerlessConfig(): InstagramServerlessConfig {
 export function loadInstagramPollingConfig(): InstagramPollingConfig {
   const instagramPolling: InstagramPollingConfig = {
     priorityIntervalMs: parseInt(process.env.IG_POLL_PRIORITY_INTERVAL_MS || '15000', 10),
-    backgroundIntervalMs: parseInt(process.env.IG_POLL_BACKGROUND_INTERVAL_MS || '90000', 10),
+    backgroundIntervalMs: parseInt(process.env.IG_POLL_BACKGROUND_INTERVAL_MS || '60000', 10),
     priorityTtlMs: parseInt(process.env.IG_POLL_PRIORITY_TTL_MS || '120000', 10),
     batchSize: envInt('IG_POLL_BATCH_SIZE', 50, ['BATCH_SIZE']),
     backoffThreshold: parseInt(process.env.IG_POLL_BACKOFF_THRESHOLD || '6', 10),

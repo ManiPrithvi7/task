@@ -683,6 +683,35 @@ export class InfluxService {
     `);
   }
 
+  async queryIgMetricsByIgId(
+    igId: string,
+    startTime: string,
+    endTime?: string
+  ): Promise<Record<string, unknown>[]> {
+    const end = endTime || new Date().toISOString();
+    return this.queryFlux(`
+      from(bucket: "${this.config.bucket}")
+        |> range(start: ${startTime}, stop: ${end})
+        |> filter(fn: (r) => r._measurement == "ig_metrics")
+        |> filter(fn: (r) => r.ig_id == "${igId}")
+        |> filter(fn: (r) => r._field == "followers_count")
+        |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+        |> sort(columns: ["_time"])
+    `);
+  }
+
+  async queryLatestIgMetricByIgId(igId: string): Promise<Record<string, unknown>[]> {
+    return this.queryFlux(`
+      from(bucket: "${this.config.bucket}")
+        |> range(start: -7d)
+        |> filter(fn: (r) => r._measurement == "ig_metrics")
+        |> filter(fn: (r) => r.ig_id == "${igId}")
+        |> filter(fn: (r) => r._field == "followers_count")
+        |> last()
+        |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+    `);
+  }
+
   async queryIgMilestones(
     deviceId: string,
     startTime?: string,

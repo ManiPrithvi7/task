@@ -12,6 +12,7 @@ import {
   InstagramPoller,
   type InstagramFetchInvoker
 } from '../services/instagramService';
+import { registerIgIntegrationLifecycle } from '../services/igIntegrationLifecycle';
 import { createInfluxService, resetInfluxService } from '../services/influxService';
 import { createAuditService } from '../services/auditService';
 import { createTransparencyLog } from '../services/transparencyLog';
@@ -164,6 +165,10 @@ async function initializeInstagramPoller(host: BootstrapHost): Promise<void> {
   });
 
   await host.instagramPoller.start();
+  registerIgIntegrationLifecycle({
+    instagramPoller: host.instagramPoller,
+    instagramPriorityTtlMs: igPoll.priorityTtlMs
+  });
   logger.info('✅ Instagram poller initialized (dual schedulers enabled)');
 }
 

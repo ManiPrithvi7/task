@@ -24,7 +24,10 @@ Environment variables read by `loadConfig()` / enforced by `validateConfig()`. R
 | `DEFERRED_WORK_REARM` | No | on (`false` disables) | Rollback for deferred drain re-arm |
 | `DEFERRED_WORK_HANDLER_TIMEOUT_MS` | No | `30000` | Bound on deferred work handler; timeout counts failed |
 | `INSTAGRAM_SERVERLESS_URL` | No | off | Poller uses direct Graph if unset |
-| `IG_POLL_*` | No | see `instagramPollingConfig.ts` | Dual Redis schedulers |
+| `IG_POLL_*` | No | see `instagramPollingConfig.ts` | Dual Redis schedulers; background default 60s |
+| `WEBAPP_WEBHOOK_URL` | No | off | Push follower deltas to web app dashboard |
+| `WEBHOOK_SECRET` | When webhook URL set | — | Must match web app `WEBHOOK_SECRET` |
+| `IG_ACCOUNT_*_CAP_PER_HR` | No | 60 / 30 / 200 | Per-account Meta rate limits |
 | `STIMULATE_DEVICE` | No | off | In-process IG/GMB ramp (pilot) |
 | `GMB_*` / webhook vars | When GMB webhooks on | see `webhookConfig.ts` | Pub/Sub push verification |
 | `GMB_PUBSUB_SKIP_AUTH_VERIFY` | **Blocked in prod** | off | Fail-fast at `validateWebhookConfig` |

@@ -26,25 +26,25 @@ describe('buildStimIgPayload matches production IG schema', () => {
     expect(stim.celebration).toBe('false');
     expect(stim.muted).toBe('true');
     expect(stim.payload).toEqual(prod.payload);
-    expect(stim.payload.achievement).toBe(5);
+    expect(stim.payload.achievement).toBe(50);
     expect(stim.payload).not.toHaveProperty('nextGoal');
     expect(stim.payload).not.toHaveProperty('celebration_type');
   });
 
-  it('mini celebration every 5 keeps muted true', () => {
-    const stim = JSON.parse(buildStimIgPayload('DEVICE-15', 10, 'proof.mqtt').payload);
+  it('mini celebration every 50 keeps muted true', () => {
+    const stim = JSON.parse(buildStimIgPayload('DEVICE-15', 50, 'proof.mqtt').payload);
     expect(stim.muted).toBe('true');
     expect(stim.celebration).toBe('true');
     expect(stim.payload.celebration_type).toBe('mini');
-    expect(stim.payload.achievement).toBe(10);
-    expect(stim.payload.followers).toBe(10);
+    expect(stim.payload.achievement).toBe(50);
+    expect(stim.payload.followers).toBe(50);
     expect(stim.payload.progress).toBe(100);
   });
 
-  it('mega celebration every 25', () => {
-    const stim = JSON.parse(buildStimIgPayload('DEVICE-15', 25, 'proof.mqtt').payload);
+  it('mega celebration every 100', () => {
+    const stim = JSON.parse(buildStimIgPayload('DEVICE-15', 100, 'proof.mqtt').payload);
     expect(stim.celebration).toBe('true');
     expect(stim.payload.celebration_type).toBe('mega');
-    expect(stim.payload.achievement).toBe(25);
+    expect(stim.payload.achievement).toBe(100);
   });
 });

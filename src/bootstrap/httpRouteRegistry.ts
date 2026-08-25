@@ -11,6 +11,7 @@ import { createOtaAdminRoutes } from '../routes/otaAdminRoutes';
 import { createWebhookRoutes, type OtaReleaseWebhookDeps } from '../routes/webhookRoutes';
 import { createDashboardRoutes } from '../routes/dashboardRoutes';
 import { createIntegrationRoutes } from '../routes/integrationRoutes';
+import { createInstagramMetricsRoutes } from '../routes/instagramMetricsRoutes';
 import { createInfluxQueryRoutes } from '../routes/influxQueryRoutes';
 import { createRecoverySessionService } from '../services/recoverySessionService';
 import { logger } from '../utils/logger';
@@ -153,6 +154,10 @@ export async function initializeHttpServer(host: BootstrapHost): Promise<void> {
         const integrationRoutes = createIntegrationRoutes({ authService: host.authService });
         host.httpServer.getApp().use('/api/v1', integrationRoutes);
         logger.info('✅ Integration routes registered at /api/v1/integrations/*');
+
+        const instagramMetricsRoutes = createInstagramMetricsRoutes({ authService: host.authService });
+        host.httpServer.getApp().use('/api/v1', instagramMetricsRoutes);
+        logger.info('✅ Instagram metrics routes registered at /api/v1/instagram/metrics/*');
 
         const influxQueryRoutes = createInfluxQueryRoutes({ authService: host.authService });
         host.httpServer.getApp().use('/api/v1', influxQueryRoutes);

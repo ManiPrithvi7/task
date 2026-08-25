@@ -47,6 +47,10 @@ import {
   getIgDeviceRuntimeCache,
   syncScreenFieldImmediate
 } from './igDeviceRuntimeCache';
+import { getIgAccountFetchCoordinator } from './igAccountFetchCoordinator';
+import { notifyWebappFollowerUpdate } from './webappFollowerWebhook';
+import { Social, Provider } from '../models/Social';
+import { getUserIntegrations } from './userIntegrationCache';
 
 export { REDIS_KEYS };
 
@@ -338,9 +342,36 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 export async function fetchInstagramMetrics(
   deviceId: string,
   account: InstagramAccountInfo,
-  retryCount = 0
+  opts?: { trigger?: InstagramFetchTrigger; retryCount?: number }
 ): Promise<InstagramFetchResult> {
   const startTime = Date.now();
+  const trigger = opts?.trigger ?? 'scheduled';
+  const retryCount = opts?.retryCount ?? 0;
+  const coordinator = getIgAccountFetchCoordinator();
+  const decision = coordinator.decideFetch(account.instagramAccountId, trigger);
+
+  if (decision.action === 'cache_hit') {
+    return {
+      success: true,
+      metrics: {
+        followers_count: decision.followersCount,
+        ...(decision.username ? { username: decision.username } : {}),
+        followers_delta_24h: 0,
+        impressions_day: 0,
+        impressions_week: 0,
+        reach_day: 0,
+        reach_week: 0,
+        profile_views: 0,
+        media_count: 0,
+        engagement_rate: 0
+      },
+      apiResponseTimeMs: Date.now() - startTime,
+      instagramAccountId: account.instagramAccountId,
+      userId: account.userId || undefined,
+      cacheHit: true,
+      apiEndpoint: IG_PROFILE_API_ENDPOINT
+    };
+  }
 
   try {
     logger.info('📸 [INSTAGRAM] Fetching metrics', {
@@ -388,6 +419,11 @@ export async function fetchInstagramMetrics(
 
     logger.info('✅ [INSTAGRAM] Metrics fetched successfully', { deviceId, followers: metrics.followers_count, apiResponseTimeMs });
 
+    coordinator.recordFetch(account.instagramAccountId, trigger, {
+      followersCount: metrics.followers_count,
+      username: metrics.username
+    });
+
     return {
       success: true,
       metrics,
@@ -413,6 +449,7 @@ export async function fetchInstagramMetrics(
 
     if (err.httpStatus === 429) {
       const retryAfterSeconds = typeof err.retryAfterSeconds === 'number' ? err.retryAfterSeconds : 60;
+      coordinator.setBackoff(account.instagramAccountId, retryAfterSeconds);
       logger.warn('⛔ [INSTAGRAM] HTTP 429 — opening circuit upstream', { deviceId, retryAfterSeconds, apiResponseTimeMs });
       return {
         success: false,
@@ -429,6 +466,14 @@ export async function fetchInstagramMetrics(
       };
     }
 
+    if (err.httpStatus === 401) {
+      coordinator.setBackoff(account.instagramAccountId, 300);
+      void Social.updateOne(
+        { socialAccountId: account.instagramAccountId, provider: Provider.INSTAGRAM },
+        { $set: { needsReauth: true } }
+      ).catch(() => undefined);
+    }
+
     const errorCode = err.code;
     const errorMsg = err.message || 'Unknown error';
 
@@ -436,7 +481,7 @@ export async function fetchInstagramMetrics(
       const delay = Math.pow(2, retryCount) * 1000;
       logger.warn('⏳ [INSTAGRAM] Rate limited by API, retrying', { deviceId, retryCount, delay, errorCode });
       await sleep(delay);
-      return fetchInstagramMetrics(deviceId, account, retryCount + 1);
+      return fetchInstagramMetrics(deviceId, account, { trigger, retryCount: retryCount + 1 });
     }
 
     logger.error('❌ [INSTAGRAM] Failed to fetch metrics', { deviceId, errorMsg, errorCode, retryCount, apiResponseTimeMs });
@@ -793,6 +838,31 @@ export async function applyInstagramServerlessDeviceOutcome(
         trigger,
         correlationId: cid,
         error: err instanceof Error ? err.message : String(err)
+      });
+    }
+  }
+
+  if (row.success && newFollowers !== null && igAccount) {
+    try {
+      await Social.updateOne(
+        { socialAccountId: igAccount, provider: Provider.INSTAGRAM },
+        { $set: { followerCount: newFollowers, lastSyncedAt: auditTs, needsReauth: false } }
+      );
+    } catch (err: unknown) {
+      logger.warn('[IG_SERVERLESS] Mongo follower sync failed', {
+        deviceId,
+        igAccount,
+        error: err instanceof Error ? err.message : String(err)
+      });
+    }
+
+    if (oldFollowers !== null && newFollowers !== oldFollowers && userId !== 'unknown') {
+      void notifyWebappFollowerUpdate({
+        userId,
+        instagramAccountId: igAccount,
+        followerCount: newFollowers,
+        previousCount: oldFollowers,
+        syncedAt: auditTs
       });
     }
   }
@@ -1164,7 +1234,7 @@ export class InstagramDirectFetchInvoker implements InstagramFetchInvoker {
         accessToken: meta.accessToken,
         instagramAccountId: meta.instagramAccountId,
         userId: meta.userId || ''
-      });
+      }, { trigger: opts.trigger });
 
       const row = toNormalizedRow(deviceId, result);
       await applyInstagramServerlessDeviceOutcome(row, this.mqttClient, topicRoot, opts.trigger, cid);
@@ -1574,7 +1644,21 @@ export class InstagramPoller {
         [] as string[]
       );
       const prioritySet = new Set(priorityActive);
-      const devicesRaw = allDeviceIds.filter((id) => !prioritySet.has(id));
+      let devicesRaw = allDeviceIds.filter((id) => !prioritySet.has(id));
+
+      const integrationsByUser = new Map<string, boolean>();
+      const withInstagram: string[] = [];
+      for (const deviceId of devicesRaw) {
+        const active = allActive.find((d) => d.deviceId === deviceId);
+        const uid = active?.userId;
+        if (!uid) continue;
+        if (!integrationsByUser.has(uid)) {
+          const integrations = await getUserIntegrations(uid);
+          integrationsByUser.set(uid, Boolean(integrations?.instagram));
+        }
+        if (integrationsByUser.get(uid)) withInstagram.push(deviceId);
+      }
+      devicesRaw = withInstagram;
 
       const filtered = this.filterOutPowerSave(devicesRaw);
       const devices = await this.takeBackgroundWindow(filtered);

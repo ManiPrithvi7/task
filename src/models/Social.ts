@@ -32,6 +32,7 @@ export interface ISocial extends Document {
   tokenCreatedAt?: Date;
   baselineCaptured?: boolean;
   baselineCapturedAt?: Date;
+  needsReauth?: boolean;
   updatedAt?: Date;
   createdAt?: Date;
 }
@@ -102,6 +103,10 @@ const SocialSchema = new Schema<ISocial>({
   baselineCapturedAt: {
     type: Date,
     default: null
+  },
+  needsReauth: {
+    type: Boolean,
+    default: false
   }
 }, {
   timestamps: true, // Automatically adds createdAt and updatedAt

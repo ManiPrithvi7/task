@@ -7,20 +7,20 @@ import {
   resolveCelebrationState
 } from '../../../src/services/screenEnvelope';
 
-describe('instagramFollowerMetrics (every 5)', () => {
-  it('points nextGoal at 5 for counts in 0–4', () => {
-    expect(instagramFollowerMetrics(0).nextGoal).toBe(5);
-    expect(instagramFollowerMetrics(2).nextGoal).toBe(5);
-    expect(instagramFollowerMetrics(4).remainingGoal).toBe(1);
+describe('instagramFollowerMetrics (every 50)', () => {
+  it('points nextGoal at 50 for counts in 0–49', () => {
+    expect(instagramFollowerMetrics(0).nextGoal).toBe(50);
+    expect(instagramFollowerMetrics(2).nextGoal).toBe(50);
+    expect(instagramFollowerMetrics(49).remainingGoal).toBe(1);
   });
 
   it('on exact milestone, nextGoal advances to the next slab', () => {
-    expect(instagramFollowerMetrics(5)).toEqual({
-      nextGoal: 10,
-      remainingGoal: 5,
+    expect(instagramFollowerMetrics(50)).toEqual({
+      nextGoal: 100,
+      remainingGoal: 50,
       progress: 0
     });
-    expect(instagramFollowerMetrics(10).nextGoal).toBe(15);
+    expect(instagramFollowerMetrics(100).nextGoal).toBe(150);
   });
 });
 
@@ -37,18 +37,18 @@ describe('gmbReviewMetrics (every 5)', () => {
 });
 
 describe('resolveCelebrationState', () => {
-  it('IG mini every 5, mega every 25 (mega wins)', () => {
-    expect(resolveCelebrationState('instagram', 5)).toEqual({
+  it('IG mini every 50, mega every 100 (mega wins)', () => {
+    expect(resolveCelebrationState('instagram', 50)).toEqual({
       celebration: 'true',
       celebrationType: 'mini'
     });
-    expect(resolveCelebrationState('instagram', 10)).toEqual({
-      celebration: 'true',
-      celebrationType: 'mini'
-    });
-    expect(resolveCelebrationState('instagram', 25)).toEqual({
+    expect(resolveCelebrationState('instagram', 100)).toEqual({
       celebration: 'true',
       celebrationType: 'mega'
+    });
+    expect(resolveCelebrationState('instagram', 150)).toEqual({
+      celebration: 'true',
+      celebrationType: 'mini'
     });
     expect(resolveCelebrationState('instagram', 9847)).toEqual({ celebration: 'false' });
   });
@@ -78,31 +78,31 @@ describe('buildInstagramScreenPayload', () => {
       followers: 9847,
       achievement: 9850,
       remainingGoal: 3,
-      progress: 40,
+      progress: 94,
       qrText: 'https://www.instagram.com/'
     });
     expect(payload).not.toHaveProperty('celebration_type');
   });
 
-  it('mini celebration at +5 boundary', () => {
-    const { payload, envelopeOpts } = buildInstagramScreenPayload({ followers: 10 });
+  it('mini celebration at +50 boundary', () => {
+    const { payload, envelopeOpts } = buildInstagramScreenPayload({ followers: 50 });
     expect(envelopeOpts.celebration).toBe('true');
     expect(payload.celebration_type).toBe('mini');
     expect(payload).toMatchObject({
-      followers: 10,
-      achievement: 10,
+      followers: 50,
+      achievement: 50,
       remainingGoal: 0,
       progress: 100
     });
   });
 
-  it('mega celebration at every 25', () => {
-    const { payload, envelopeOpts } = buildInstagramScreenPayload({ followers: 25 });
+  it('mega celebration at every 100', () => {
+    const { payload, envelopeOpts } = buildInstagramScreenPayload({ followers: 100 });
     expect(envelopeOpts.celebration).toBe('true');
     expect(payload.celebration_type).toBe('mega');
     expect(payload).toMatchObject({
-      followers: 25,
-      achievement: 25,
+      followers: 100,
+      achievement: 100,
       remainingGoal: 0,
       progress: 100
     });
@@ -147,8 +147,8 @@ describe('buildGmbScreenPayload', () => {
 });
 
 describe('getInstagramMegaCrossedMilestones', () => {
-  it('returns every 25 crossed between old and new', () => {
-    expect(getInstagramMegaCrossedMilestones(95, 205)).toEqual([100, 125, 150, 175, 200]);
+  it('returns every 100 crossed between old and new', () => {
+    expect(getInstagramMegaCrossedMilestones(95, 305)).toEqual([100, 200, 300]);
     expect(getInstagramMegaCrossedMilestones(100, 100)).toEqual([]);
   });
 });

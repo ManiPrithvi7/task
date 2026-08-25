@@ -23,6 +23,7 @@ import {
   getLocalPromoRotationCache
 } from './localCaches';
 import { logger } from '../utils/logger';
+import { onInstagramConnected, onInstagramDisconnected } from './igIntegrationLifecycle';
 
 export type ConnectionValidateEvent =
   | 'social.connected'
@@ -297,6 +298,9 @@ export async function handleConnectionValidateEvent(
       await invalidatePromotionCache(userId);
       await invalidateCanvasCache(userId);
       await resetRotationForUser(userId);
+      if (opts?.provider === Provider.INSTAGRAM || !opts?.provider) {
+        await onInstagramConnected(userId);
+      }
       if (fanout) {
         devicesNotified = await fanoutPromotionToUserDevices(userId, deps, { force: true });
       }
@@ -308,6 +312,9 @@ export async function handleConnectionValidateEvent(
       } else {
         await invalidateUserIntegrations(userId);
         integrationsCached = (await cacheUserIntegrations(userId)) !== null;
+      }
+      if (opts?.provider === Provider.INSTAGRAM || !opts?.provider) {
+        await onInstagramDisconnected(userId);
       }
       await invalidatePromotionCache(userId);
       await invalidateCanvasCache(userId);

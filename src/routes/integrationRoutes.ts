@@ -184,10 +184,23 @@ export function createIntegrationRoutes(deps: IntegrationRoutesDeps): Router {
 
       await Social.updateOne(
         { _id: social._id },
-        { $set: { baselineCaptured: true, baselineCapturedAt: now } },
+        {
+          $set: {
+            baselineCaptured: true,
+            baselineCapturedAt: now,
+            followerCount: baseline.followers,
+            lastSyncedAt: now
+          }
+        }
       );
 
-      res.status(201).json({ success: true, baseline: { ...baseline, connectedAt: now.toISOString() } });
+      res.status(201).json({
+        success: true,
+        baseline: { ...baseline, connectedAt: now.toISOString() },
+        ...(social.provider === Provider.INSTAGRAM
+          ? { followerCount: baseline.followers, lastSyncedAt: now.toISOString() }
+          : {})
+      });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       logger.error('[INTEGRATIONS_CONNECT] Failed', { userId: auth.userId, error: msg });
