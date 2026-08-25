@@ -56,10 +56,10 @@ describe('runIgTick synthetic ramp', () => {
     expect(mockPublish).not.toHaveBeenCalled();
   });
 
-  it('synthetic ramp hits mini celebration at 5', async () => {
-    for (let i = 0; i < 2; i++) {
-      await runIgTick(deviceId, 'proof.mqtt', mqttClient, 1, 500, redis);
-    }
+  it('synthetic ramp hits mini celebration at 50', async () => {
+    clearStimCache('instagram', deviceId);
+    const { writeStimCache } = await import('../../../stimulate/cache');
+    writeStimCache('instagram', deviceId, { lastPublished: 49, status: 'active' });
     mockPublish.mockClear();
 
     await runIgTick(deviceId, 'proof.mqtt', mqttClient, 1, 500, redis);
@@ -68,7 +68,7 @@ describe('runIgTick synthetic ramp', () => {
     const envelope = JSON.parse(call.payload);
     expect(envelope.celebration).toBe('true');
     expect(envelope.payload.celebration_type).toBe('mini');
-    expect(envelope.payload.followers).toBe(5);
+    expect(envelope.payload.followers).toBe(50);
     expect(envelope.payload.progress).toBe(100);
   });
 });

@@ -69,16 +69,16 @@ describe('gmbCelebration (mini/5, mega/25)', () => {
   });
 });
 
-describe('igCelebration (mini/5, mega/25)', () => {
+describe('igCelebration (mini/50, mega/100)', () => {
   it('celebration at mini and mega boundaries', () => {
-    expect(igCelebration(5)).toBe('true');
-    expect(igCelebration(10)).toBe('true');
-    expect(igCelebration(25)).toBe('true');
+    expect(igCelebration(50)).toBe('true');
+    expect(igCelebration(100)).toBe('true');
+    expect(igCelebration(150)).toBe('true');
   });
 
   it('no celebration off-slab or at 0', () => {
     expect(igCelebration(0)).toBe('false');
-    expect(igCelebration(24)).toBe('false');
-    expect(igCelebration(26)).toBe('false');
+    expect(igCelebration(49)).toBe('false');
+    expect(igCelebration(75)).toBe('false');
   });
 });

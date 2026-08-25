@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { Social, Provider, type ISocial } from '../models/Social';
+import { Social, Provider } from '../models/Social';
 import { getInfluxService } from './influxService';
 import { getIgAccountFetchCoordinator } from './igAccountFetchCoordinator';
 import { fetchInstagramProfileMetrics } from '../lib/socials/instagramMetrics';
@@ -21,15 +21,27 @@ export type MetricsHistoryResponse = {
 
 const STALE_MS = 60_000;
 
+type InstagramSocialLean = {
+  _id: mongoose.Types.ObjectId;
+  userId: mongoose.Types.ObjectId;
+  socialAccountId: string;
+  accessToken: string;
+  tokenExp: string;
+  tokenCreatedAt?: Date;
+  followerCount?: number;
+  lastSyncedAt?: Date;
+  needsReauth?: boolean;
+};
+
 async function resolveSocial(opts: {
   userId?: string;
   socialId?: string;
-}): Promise<ISocial | null> {
+}): Promise<InstagramSocialLean | null> {
   if (opts.socialId && mongoose.Types.ObjectId.isValid(opts.socialId)) {
     return Social.findOne({
       _id: new mongoose.Types.ObjectId(opts.socialId),
       provider: Provider.INSTAGRAM
-    }).lean();
+    }).lean<InstagramSocialLean>();
   }
   if (opts.userId && mongoose.Types.ObjectId.isValid(opts.userId)) {
     return Social.findOne({
@@ -37,7 +49,7 @@ async function resolveSocial(opts: {
       provider: Provider.INSTAGRAM
     })
       .sort({ updatedAt: -1 })
-      .lean();
+      .lean<InstagramSocialLean>();
   }
   return null;
 }
@@ -55,7 +67,7 @@ async function latestInfluxCount(igId: string): Promise<{ count: number; at: str
   return { count, at: t };
 }
 
-async function refreshAccountIfAllowed(social: ISocial): Promise<MetricsCurrentResponse | null> {
+async function refreshAccountIfAllowed(social: InstagramSocialLean): Promise<MetricsCurrentResponse | null> {
   const igId = social.socialAccountId;
   const userId = String(social.userId);
   const coordinator = getIgAccountFetchCoordinator();
