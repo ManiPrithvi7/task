@@ -29,6 +29,10 @@ Environment variables read by `loadConfig()` / enforced by `validateConfig()`. R
 | `GMB_*` / webhook vars | When GMB webhooks on | see `webhookConfig.ts` | Pub/Sub push verification |
 | `GMB_PUBSUB_SKIP_AUTH_VERIFY` | **Blocked in prod** | off | Fail-fast at `validateWebhookConfig` |
 | `ENABLE_METRICS_COLLECTION` | Must not be `false` | `true` | Disabling throws at validate |
+| `LOYALTY_SPIN_SECRET` | **Yes (staging/prod)** | empty (dev only) | `X-Loyalty-Key` on `POST /loyalty/spin` |
+| `LOYALTY_TTL_MS` | No | `5000` | MQTT command + reveal duration |
+| `LOYALTY_SESSION_TTL_MS` | No | `45000` | Join without spin expiry |
+| `LOYALTY_PREVIEW_ORIGIN_PATTERN` | No | empty | Regex for Vercel preview Origins (not `*.vercel.app`) |
 
 ## CI validate-env
 
@@ -47,6 +51,7 @@ bun scripts/validate-env.ts --production
 | Instagram poller | Redis connected + scripts | Skipped if Redis down |
 | OTA | `OTA_ENABLED=true` | OCI + routes + rollout scheduler |
 | GMB webhooks | `webhookConfig` validation | Mounted on HTTP server |
+| Loyalty spin | always on; secret required in staging/prod | `/loyalty/*` + WSS `/loyalty/realtime` |
 | Stimulate | `STIMULATE_DEVICE` | TEMP ramp service on `/active` |
 | TEST OTA fan-out | `TEST_OTA=true` (non-prod) | Ungated proof:1.0.1 offers |
 | Deferred drain re-arm | `DEFERRED_WORK_REARM` | Second drain after enqueue-during-flight |

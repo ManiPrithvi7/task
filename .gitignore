@@ -11,6 +11,7 @@ graphify-out/
 session-*.md
 .env
 *.env
+strix_runs/
 # Local usage traces (runtime/debug exports — do not commit)
 influx_usage.csv
 data/influx_usage.csv

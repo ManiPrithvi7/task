@@ -26,6 +26,7 @@ import type {
 import type { FirmwareStorageService } from '../services/firmwareStorageService';
 import type { RolloutSchedulerHandle } from '../jobs/rolloutScheduler';
 import type { MqttIngressRouterState } from '../services/mqttIngressRouter';
+import type { LoyaltyService } from '../services/loyaltyService';
 
 /** Mutable host surface shared by bootstrap modules (StatsMqttLite implements via delegation). */
 export interface BootstrapHost {
@@ -58,6 +59,7 @@ export interface BootstrapHost {
   otaEventHandler?: OtaEventHandler;
   otaRolloutScheduler?: RolloutSchedulerHandle;
   mqttIngressState: MqttIngressRouterState;
+  loyaltyService?: LoyaltyService;
   isServicesReady: boolean;
   isIngressReady: boolean;
   keepAliveTimer: ReturnType<typeof setInterval> | null;

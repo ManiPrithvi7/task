@@ -9,6 +9,12 @@ export type { IUser } from './User';
 export { Device, DeviceStatus } from './Device';
 export type { IDevice } from './Device';
 
+export { LoyaltySession, LoyaltySessionStatus } from './LoyaltySession';
+export type { ILoyaltySession } from './LoyaltySession';
+
+export { LoyaltySpin, LoyaltySpinStatus } from './LoyaltySpin';
+export type { ILoyaltySpin, ILoyaltySpinResult } from './LoyaltySpin';
+
 export { Social, Provider } from './Social';
 export type { ISocial } from './Social';
 

@@ -23,6 +23,7 @@ describe('swagger', () => {
     expect(paths['/api/v1/integrations/connect']).toBeDefined();
     expect(paths['/api/v1/dashboard/device/{deviceId}/baseline']).toBeDefined();
     expect(paths['/api/v1/dashboard/instagram/{deviceId}/summary']).toBeDefined();
+    expect(paths['/loyalty/join']).toBeDefined();
   });
 
   it('documents at least 15 paths', () => {

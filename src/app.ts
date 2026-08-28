@@ -86,6 +86,7 @@ import {
   type MqttTlsConnectMaterial
 } from './utils/mqttTlsOptions';
 import { ensureDeviceProvisioned as checkDeviceProvisioned } from './services/deviceProvisioningGate';
+import { LoyaltyService } from './services/loyaltyService';
 
 export class StatsMqttLite {
   private config: AppConfig;
@@ -136,6 +137,7 @@ export class StatsMqttLite {
 
   // Active device cache (Redis-backed)
   private activeDeviceCache!: ActiveDeviceCache;
+  private loyaltyService?: LoyaltyService;
 
   private isIngressReady = false;
   private isServicesReady = false;
@@ -280,6 +282,7 @@ export class StatsMqttLite {
       await this.initializeMqttClient();
       await this.subscribeLifecycleTopics();
       await this.subscribeToTopics();
+      await this.subscribeLoyaltyAck();
 
       this.isIngressReady = true;
       this.startupTime = Date.now();
@@ -888,6 +891,13 @@ export class StatsMqttLite {
     
     await this.mqttClient.connect();
 
+    this.loyaltyService = new LoyaltyService({
+      mqtt: this.mqttClient,
+      config: this.config.loyalty,
+      topicRoot: this.config.mqtt.topicRoot
+    });
+    this.loyaltyService.start();
+
     this.mqttClient.on('brokerConnect', ({ reconnect }: { reconnect: boolean }) => {
       if (reconnect && this.isIngressReady) {
         logger.info('MQTT reconnected — re-subscribing to topics');
@@ -898,6 +908,11 @@ export class StatsMqttLite {
         });
         void this.subscribeToTopics().catch((err: unknown) => {
           logger.error('MQTT topic re-subscribe failed', {
+            error: err instanceof Error ? err.message : String(err)
+          });
+        });
+        void this.subscribeLoyaltyAck().catch((err: unknown) => {
+          logger.error('MQTT loyalty ack re-subscribe failed', {
             error: err instanceof Error ? err.message : String(err)
           });
         });
@@ -940,6 +955,27 @@ export class StatsMqttLite {
 
     this.nonLifecycleTopicsSubscribed = true;
     logger.info('Subscribed to non-lifecycle proof.mqtt topics', { count: topics.length, root });
+  }
+
+  private async subscribeLoyaltyAck(): Promise<void> {
+    const topic = `${this.config.mqtt.topicRoot}/+/ack`;
+    await this.mqttClient.subscribe(topic, (receivedTopic, payload) => {
+      void this.onLoyaltyAck(receivedTopic, payload);
+    });
+    logger.info('Subscribed to loyalty ack topic', { topic });
+  }
+
+  private async onLoyaltyAck(topic: string, payload: Buffer): Promise<void> {
+    if (!this.loyaltyService) return;
+    try {
+      const message = JSON.parse(payload.toString());
+      await this.loyaltyService.handleAck(topic, message);
+    } catch (err: unknown) {
+      logger.warn('loyalty ack parse/handle failed', {
+        topic,
+        error: err instanceof Error ? err.message : String(err)
+      });
+    }
   }
 
   private async ensureDeviceProvisioned(deviceId: string): Promise<boolean> {
@@ -985,6 +1021,11 @@ export class StatsMqttLite {
       // Stop stats publisher
       if (this.statsPublisher) {
         await this.statsPublisher.stop();
+      }
+
+      if (this.loyaltyService) {
+        this.loyaltyService.stop();
+        this.loyaltyService = undefined;
       }
 
       // Close HTTP server

@@ -20,7 +20,8 @@ describe('production misconfig matrix', () => {
     PUBLIC_APP_URL: 'https://example.com',
     TEST_OTA: 'false',
     GMB_PUBSUB_SKIP_AUTH_VERIFY: 'false',
-    ENABLE_METRICS_COLLECTION: 'true'
+    ENABLE_METRICS_COLLECTION: 'true',
+    LOYALTY_SPIN_SECRET: 'prod-loyalty-spin-secret-at-least-16'
   });
 
   afterEach(() => {
@@ -80,5 +81,12 @@ describe('production misconfig matrix', () => {
     process.env = { ...process.env, ...baseProd(), GMB_PUBSUB_SKIP_AUTH_VERIFY: 'true' };
     const wh = loadWebhookConfig();
     expect(() => validateWebhookConfig(wh, 'production')).toThrow(/GMB_PUBSUB_SKIP_AUTH_VERIFY/);
+  });
+
+  it('fails when LOYALTY_SPIN_SECRET missing in production', () => {
+    process.env = { ...process.env, ...baseProd() };
+    delete process.env.LOYALTY_SPIN_SECRET;
+    const config = loadConfig();
+    expect(() => validateConfig(config)).toThrow(/LOYALTY_SPIN_SECRET/);
   });
 });

@@ -25,6 +25,8 @@
  *     description: Flux query proxy (sanitized; metrics or compliance scope)
  *   - name: Integrations
  *     description: Social integration connect and baseline capture
+ *   - name: Loyalty
+ *     description: Loyalty spin sessions, MQTT command, browser WebSocket
  *   - name: Deprecated
  *     description: Removed or superseded endpoints
  *
@@ -45,6 +47,11 @@
  *       in: header
  *       name: x-api-key
  *       description: Connections validate API key (CONNECTIONS_VALIDATE_API_KEY)
+ *     LoyaltyKey:
+ *       type: apiKey
+ *       in: header
+ *       name: X-Loyalty-Key
+ *       description: Shared secret for POST /loyalty/spin (LOYALTY_SPIN_SECRET)
  *     MtlsClientCert:
  *       type: apiKey
  *       in: header

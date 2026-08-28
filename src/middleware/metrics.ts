@@ -1,8 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
 import client from 'prom-client';
 
-const register = new client.Registry();
-client.collectDefaultMetrics({ register });
+export const metricsRegister = new client.Registry();
+client.collectDefaultMetrics({ register: metricsRegister });
+const register = metricsRegister;
 
 const httpRequestsTotal = new client.Counter({
   name: 'http_requests_total',

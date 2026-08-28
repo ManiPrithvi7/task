@@ -12,6 +12,7 @@ import { SessionService } from '../services/sessionService';
 import { DeviceService } from '../services/deviceService';
 import { MqttClientManager } from './mqttClient';
 import { getRedisService } from '../services/redisService';
+import { isAllowedLoyaltyOrigin } from '../utils/loyaltyOrigin';
 
 export interface HttpConfig {
   port: number;
@@ -55,12 +56,27 @@ export class HttpServer {
       .split(',')
       .map((origin) => origin.trim())
       .filter(Boolean);
-    this.app.use(
-      cors({
-        origin: allowedOrigins.length > 0 ? allowedOrigins : false,
-        credentials: true
-      })
-    );
+    const globalCors = cors({
+      origin: allowedOrigins.length > 0 ? allowedOrigins : false,
+      credentials: true
+    });
+    const loyaltyCors = cors({
+      origin: (origin, cb) => {
+        if (!origin) {
+          cb(null, true);
+          return;
+        }
+        cb(null, isAllowedLoyaltyOrigin(origin));
+      },
+      credentials: false
+    });
+    this.app.use((req: Request, res: Response, next: NextFunction) => {
+      if (req.path.startsWith('/loyalty') || req.originalUrl.startsWith('/loyalty')) {
+        loyaltyCors(req, res, next);
+        return;
+      }
+      globalCors(req, res, next);
+    });
     this.app.use(helmet({
       contentSecurityPolicy: false
     }));
@@ -275,7 +291,13 @@ export class HttpServer {
           webhooks: {
             gmb: 'POST /api/webhooks/google-business-reviews'
           },
-          note: 'User management is handled by Next.js web app'
+          note: 'User management is handled by Next.js web app',
+          loyalty: {
+            join: 'POST /loyalty/join',
+            spin: 'POST /loyalty/spin',
+            getSpin: 'GET /loyalty/spin/:spinId',
+            realtime: 'WSS /loyalty/realtime'
+          }
         }
       });
     });

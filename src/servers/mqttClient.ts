@@ -9,6 +9,11 @@ import {
   type MqttTlsConnectMaterial
 } from '../utils/mqttTlsOptions';
 
+/** Same rule as OTA/screens: prepend MQTT_TOPIC_PREFIX only when set (prod default is empty). */
+export function resolveMqttFullTopic(topicPrefix: string | undefined, topic: string): string {
+  return topicPrefix ? `${topicPrefix}/${topic}` : topic;
+}
+
 export interface MqttConfig {
   broker: string;
   port: number;
@@ -346,9 +351,7 @@ export class MqttClientManager extends EventEmitter {
         return;
       }
 
-      const fullTopic = this.config.topicPrefix
-        ? `${this.config.topicPrefix}/${message.topic}`
-        : message.topic;
+      const fullTopic = resolveMqttFullTopic(this.config.topicPrefix, message.topic);
 
       const publishTime = Date.now();
       const payloadString = message.payload;
@@ -412,9 +415,7 @@ export class MqttClientManager extends EventEmitter {
         return;
       }
 
-      const fullTopic = this.config.topicPrefix
-        ? `${this.config.topicPrefix}/${topic}`
-        : topic;
+      const fullTopic = resolveMqttFullTopic(this.config.topicPrefix, topic);
 
       this.client.subscribe(fullTopic, { qos: 1 }, (error) => {
         if (error) {
@@ -439,9 +440,7 @@ export class MqttClientManager extends EventEmitter {
         return;
       }
 
-      const fullTopic = this.config.topicPrefix
-        ? `${this.config.topicPrefix}/${topic}`
-        : topic;
+      const fullTopic = resolveMqttFullTopic(this.config.topicPrefix, topic);
 
       this.client.unsubscribe(fullTopic, (error) => {
         if (error) {

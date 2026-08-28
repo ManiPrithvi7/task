@@ -14,6 +14,8 @@ import { createIntegrationRoutes } from '../routes/integrationRoutes';
 import { createInfluxQueryRoutes } from '../routes/influxQueryRoutes';
 import { createRecoverySessionService } from '../services/recoverySessionService';
 import { logger } from '../utils/logger';
+import { createLoyaltyRoutes } from '../routes/loyaltyRoutes';
+import { attachLoyaltyWs } from '../servers/loyaltyWs';
 
 export async function initializeHttpServer(host: BootstrapHost): Promise<void> {
   logger.info('🌐 Initializing HTTP server...');
@@ -167,6 +169,22 @@ export async function initializeHttpServer(host: BootstrapHost): Promise<void> {
     logger.info('⏭️ Dashboard/integration/query routes skipped — InfluxDB unavailable');
   }
 
+  if (host.loyaltyService) {
+    host.httpServer.getApp().use(
+      '/loyalty',
+      createLoyaltyRoutes({
+        service: host.loyaltyService,
+        loyalty: host.config.loyalty,
+        env: host.config.app.env
+      })
+    );
+    logger.info('✅ Loyalty routes registered at /loyalty');
+  }
+
   await host.httpServer.start();
+  if (host.loyaltyService) {
+    attachLoyaltyWs(host.httpServer.getServer(), host.loyaltyService);
+    logger.info('✅ Loyalty WebSocket attached at /loyalty/realtime');
+  }
   logger.info('✅ HTTP server initialized');
 }

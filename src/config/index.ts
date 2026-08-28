@@ -26,6 +26,7 @@ import {
   setMqttTlsClientPem,
   type MqttConfig
 } from './mqttConfig';
+import { loadLoyaltyConfig, loyaltySecretRequired, type LoyaltyConfig } from './loyaltyConfig';
 import {
   DEFAULT_PROVISIONING_CA_STORAGE_PATH,
   getProvisioningRootCaCertFromEnv,
@@ -153,6 +154,8 @@ export interface OtaConfig {
   mqttPushConcurrency: number;
 }
 
+export { loadLoyaltyConfig, loyaltySecretRequired, type LoyaltyConfig } from './loyaltyConfig';
+
 export {
   normalizeMqttPemFromEnv,
   setMqttTlsClientPem,
@@ -186,6 +189,7 @@ export interface AppConfig {
    */
   instagramServerless?: InstagramServerlessConfig;
   ota?: OtaConfig;
+  loyalty: LoyaltyConfig;
 }
 
 function normalizePemFromEnv(raw: string): string {
@@ -304,7 +308,8 @@ export function loadConfig(): AppConfig {
     webhooks: loadWebhookConfig(),
     instagramServerless,
     influxdb,
-    instagramPolling
+    instagramPolling,
+    loyalty: loadLoyaltyConfig()
   };
 
   const topicRoot = config.mqtt.topicRoot;
@@ -527,6 +532,12 @@ export function validateConfig(config: AppConfig): void {
   }
 
   validateWebhookConfig(config.webhooks, config.app.env);
+
+  if (loyaltySecretRequired(config.app.env) && !config.loyalty.spinSecret) {
+    throw new Error(
+      'LOYALTY_SPIN_SECRET is required in staging/production (X-Loyalty-Key on POST /loyalty/spin).'
+    );
+  }
 
   logger.info('Configuration validated successfully');
 }
