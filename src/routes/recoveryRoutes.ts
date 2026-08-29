@@ -146,7 +146,7 @@ export function createRecoveryRoutes(deps: RecoveryRoutesDeps): Router {
       }
 
       const deviceId = device.clientId;
-      if (device.userId && String(device.userId) !== userAuth.userId) {
+      if (device.businessId && String(device.businessId) !== userAuth.userId) {
         res.status(403).json({
           success: false,
           error: 'Device does not belong to authenticated user',

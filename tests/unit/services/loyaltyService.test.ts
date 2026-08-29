@@ -127,22 +127,70 @@ describe('LoyaltyService', () => {
     });
   });
 
-  it('spin returns 409 LOYALTY_SESSION_NOT_READY when WS is not mapped', async () => {
-    const { service } = makeService();
+  it('publishes spin/start on MQTT when session is CREATED and WS is not connected', async () => {
+    const { service, publish } = makeService();
+    const session = {
+      sessionId: 'ls_1',
+      deviceId: 'DEVICE-17',
+      status: 'CREATED',
+      expiresAt: new Date(Date.now() + 60_000)
+    };
+    (LoyaltySession.findOne as jest.Mock).mockResolvedValue(session);
+    const created = spinDoc();
+    (LoyaltySpin.create as jest.Mock).mockResolvedValue(created);
+    (LoyaltySession.findOneAndUpdate as jest.Mock).mockResolvedValue({
+      ...session,
+      status: 'SPINNING'
+    });
+
+    const body = await service.spin({
+      sessionId: 'ls_1',
+      idempotencyKey: 'k',
+      spinId: 'spin_1',
+      result: { digits: [7, 7, 7], value: '777', reward: 'Free Item' }
+    });
+
+    expect(publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        topic: 'proof.mqtt/DEVICE-17/loyalty',
+        qos: 2
+      })
+    );
+    const payload = JSON.parse(publish.mock.calls[0][0].payload);
+    expect(payload.type).toBe('spin/start');
+    expect(payload.result).toEqual({ digits: [7, 7, 7], value: '777', reward: 'Free Item' });
+    expect(body.status).toBe('command_published');
+    expect(created.status).toBe('COMMAND_PUBLISHED');
+  });
+
+  it('retries MQTT when idempotency hits an unpublished CREATED spin', async () => {
+    const { service, publish } = makeService();
+    const existing = spinDoc({
+      status: 'CREATED',
+      issuedAt: new Date(),
+      expiresAt: new Date(Date.now() + 10_000)
+    });
+    (LoyaltySpin.findOne as jest.Mock).mockResolvedValue(existing);
     (LoyaltySession.findOne as jest.Mock).mockResolvedValue({
       sessionId: 'ls_1',
       deviceId: 'DEVICE-17',
-      status: 'READY',
+      status: 'CREATED',
       expiresAt: new Date(Date.now() + 60_000)
     });
-    await expect(
-      service.spin({
-        sessionId: 'ls_1',
-        idempotencyKey: 'k',
-        spinId: 'spin_1',
-        result: { digits: [1, 2, 3], value: '123', reward: 'X' }
-      })
-    ).rejects.toMatchObject({ status: 409, code: 'LOYALTY_SESSION_NOT_READY' });
+    (LoyaltySession.findOneAndUpdate as jest.Mock).mockResolvedValue({ status: 'SPINNING' });
+
+    const body = await service.spin({
+      sessionId: 'ls_1',
+      idempotencyKey: 'key-1',
+      spinId: 'spin_1',
+      result: { digits: [7, 7, 7], value: '777', reward: 'Free Item' }
+    });
+
+    expect(LoyaltySpin.create).not.toHaveBeenCalled();
+    expect(publish).toHaveBeenCalledWith(
+      expect.objectContaining({ topic: 'proof.mqtt/DEVICE-17/loyalty', qos: 2 })
+    );
+    expect(body.status).toBe('command_published');
   });
 
   it('rejects invalid result and does not invent digits', async () => {
@@ -201,7 +249,7 @@ describe('LoyaltyService', () => {
   it('returns existing spin on idempotencyKey hit without publishing MQTT', async () => {
     const { service, publish } = makeService();
     (LoyaltySpin.findOne as jest.Mock).mockResolvedValue(
-      spinDoc({ status: 'COMMAND_PUBLISHED' })
+      spinDoc({ status: 'COMMAND_PUBLISHED', commandPublishedAt: new Date() })
     );
     const body = await service.spin({
       sessionId: 'ls_1',
@@ -212,6 +260,70 @@ describe('LoyaltyService', () => {
     expect(body.spinId).toBe('spin_1');
     expect(body.result).toEqual({ digits: [7, 7, 7], value: '777', reward: 'Free Item' });
     expect(publish).not.toHaveBeenCalled();
+  });
+
+  it('publishes when an existing row has command_published status but no commandPublishedAt', async () => {
+    const { service, publish } = makeService();
+    const existing = spinDoc({
+      status: 'command_published',
+      issuedAt: new Date(),
+      expiresAt: new Date(Date.now() + 10_000)
+    });
+    (LoyaltySpin.findOne as jest.Mock).mockResolvedValue(existing);
+    (LoyaltySession.findOne as jest.Mock).mockResolvedValue({
+      sessionId: 'ls_1',
+      deviceId: 'DEVICE-17',
+      status: 'CREATED',
+      expiresAt: new Date(Date.now() + 60_000)
+    });
+    (LoyaltySession.findOneAndUpdate as jest.Mock).mockResolvedValue({ status: 'SPINNING' });
+
+    const body = await service.spin({
+      sessionId: 'ls_1',
+      idempotencyKey: 'key-1',
+      spinId: 'spin_1',
+      result: { digits: [7, 7, 7], value: '777', reward: 'Free Item' }
+    });
+
+    expect(publish).toHaveBeenCalledWith(
+      expect.objectContaining({ topic: 'proof.mqtt/DEVICE-17/loyalty', qos: 2 })
+    );
+    expect(body.status).toBe('command_published');
+  });
+
+  it('fills result and ttlMs on a sparse existing row so save succeeds after MQTT', async () => {
+    const { service, publish } = makeService();
+    const existing = spinDoc({
+      status: 'created',
+      result: undefined,
+      ttlMs: undefined,
+      issuedAt: undefined,
+      expiresAt: undefined
+    });
+    (LoyaltySpin.findOne as jest.Mock).mockResolvedValue(existing);
+    (LoyaltySession.findOne as jest.Mock).mockResolvedValue({
+      sessionId: 'ls_1',
+      deviceId: 'DEVICE-17',
+      status: 'CREATED',
+      expiresAt: new Date(Date.now() + 60_000)
+    });
+    (LoyaltySession.findOneAndUpdate as jest.Mock).mockResolvedValue({ status: 'SPINNING' });
+
+    const posted = { digits: [7, 7, 7], value: '777', reward: 'Free Item' };
+    const body = await service.spin({
+      sessionId: 'ls_1',
+      idempotencyKey: 'key-1',
+      spinId: 'spin_1',
+      result: posted
+    });
+
+    expect(publish).toHaveBeenCalled();
+    const payload = JSON.parse(publish.mock.calls[0][0].payload);
+    expect(payload.result).toEqual(posted);
+    expect(existing.result).toEqual(posted);
+    expect(existing.ttlMs).toBe(5000);
+    expect(LoyaltySpin.findOneAndUpdate).toHaveBeenCalled();
+    expect(body.status).toBe('command_published');
   });
 
   it('maps spinId duplicate with different payload to SPIN_ID_CONFLICT', async () => {
@@ -262,12 +374,19 @@ describe('LoyaltyService', () => {
     const created = spinDoc({
       status: 'COMMAND_PUBLISHED',
       commandPublishedAt: new Date(),
-      ackReceivedAt: undefined
+      ackReceivedAt: undefined,
+      result: undefined,
+      ttlMs: undefined
     });
     (LoyaltySpin.findOne as jest.Mock).mockResolvedValue(created);
     (LoyaltySession.findOne as jest.Mock).mockResolvedValue({
       sessionId: 'ls_1',
       status: 'SPINNING'
+    });
+    (LoyaltySpin.findOneAndUpdate as jest.Mock).mockResolvedValue({
+      spinId: 'spin_1',
+      status: 'ACK_RECEIVED',
+      ackReceivedAt: new Date()
     });
 
     await service.handleAck('proof.mqtt/DEVICE-17/ack', {
@@ -300,6 +419,36 @@ describe('LoyaltyService', () => {
     );
     const after = await service.getSpin('spin_1');
     expect(after.result).toEqual({ digits: [7, 7, 7], value: '777', reward: 'Free Item' });
+  });
+
+  it('handleAck accepts lowercase created status and pushes loyalty.spin.started', async () => {
+    const { service } = makeService();
+    const send = jest.fn();
+    service.activeConnections.set('DEVICE-17', {
+      sessionId: 'ls_1',
+      socket: { send, close: jest.fn(), readyState: 1 },
+      expiresAt: new Date(Date.now() + 60_000)
+    });
+    const created = spinDoc({ status: 'created', ttlMs: 5000 });
+    (LoyaltySpin.findOne as jest.Mock).mockResolvedValue(created);
+    (LoyaltySession.findOne as jest.Mock).mockResolvedValue({
+      sessionId: 'ls_1',
+      status: 'SPINNING'
+    });
+    (LoyaltySpin.findOneAndUpdate as jest.Mock).mockResolvedValue({
+      spinId: 'spin_1',
+      status: 'ACK_RECEIVED'
+    });
+
+    await service.handleAck('proof.mqtt/DEVICE-17/ack', {
+      type: 'spin/ack',
+      spinId: 'spin_1',
+      startedAt: new Date().toISOString(),
+      ttlMs: 5000
+    });
+
+    expect(JSON.parse(send.mock.calls[0][0]).event).toBe('loyalty.spin.started');
+    expect(LoyaltySpin.findOneAndUpdate).toHaveBeenCalled();
   });
 
   it('ack timeout marks FAILED and emits loyalty.spin.failed', async () => {
@@ -349,13 +498,17 @@ describe('LoyaltyService', () => {
     const created = spinDoc({ status: 'COMMAND_PUBLISHED', commandPublishedAt: new Date() });
     (LoyaltySpin.findOne as jest.Mock).mockResolvedValue(created);
     (LoyaltySession.findOne as jest.Mock).mockResolvedValue({ sessionId: 'ls_1', status: 'SPINNING' });
+    (LoyaltySpin.findOneAndUpdate as jest.Mock).mockResolvedValue({
+      spinId: 'spin_1',
+      status: 'ACK_RECEIVED'
+    });
     await service.handleAck('proof.mqtt/DEVICE-17/ack', {
       type: 'spin/ack',
       spinId: 'spin_1',
       startedAt: new Date().toISOString(),
       ttlMs: 5000
     });
-    expect(created.status).toBe('ACK_RECEIVED');
+    expect(LoyaltySpin.findOneAndUpdate).toHaveBeenCalled();
   });
 
   it('parses ack deviceId from MQTT_TOPIC_ROOT and ignores the old device/ prefix', () => {

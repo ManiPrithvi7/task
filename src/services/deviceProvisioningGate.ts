@@ -37,9 +37,7 @@ export async function ensureDeviceProvisioned(
 
   let cert;
   try {
-    cert = await caService.findActiveCertificateByDeviceId(deviceId, {
-      slots: ['primary', 'staging']
-    });
+    cert = await caService.findActiveCertificateByDeviceId(deviceId);
   } catch (err: unknown) {
     if (err instanceof CertLookupUnavailableError) {
       logger.error('Registration deferred: certificate lookup unavailable', { deviceId });
@@ -60,8 +58,6 @@ export async function ensureDeviceProvisioned(
     }
     return false;
   }
-
-  const certSlot = cert.slot ?? 'primary';
 
   let expectedCN: string;
   try {
@@ -111,8 +107,7 @@ export async function ensureDeviceProvisioned(
               missingExtensions: kuResult.errors.filter((e) => e.includes('missing')),
               hasDigitalSignature: kuResult.hasDigitalSignature,
               hasClientAuth: kuResult.hasClientAuth,
-              hasProhibitedKeyCertSign: kuResult.hasProhibitedKeyCertSign,
-              slot: certSlot
+              hasProhibitedKeyCertSign: kuResult.hasProhibitedKeyCertSign
             }
           })
           .catch(() => undefined);
@@ -138,12 +133,11 @@ export async function ensureDeviceProvisioned(
               deviceId,
               certificateFingerprint: cert.fingerprint,
               details: {
-                reason: 'CHAIN_INVALID',
-                failurePoint: chainResult.errors[0] ?? 'unknown',
-                errors: chainResult.errors,
-                chainSubjects: chainResult.chainSubjects,
-                slot: certSlot
-              }
+              reason: 'CHAIN_INVALID',
+              failurePoint: chainResult.errors[0] ?? 'unknown',
+              errors: chainResult.errors,
+              chainSubjects: chainResult.chainSubjects
+            }
             })
             .catch(() => undefined);
         }
@@ -162,7 +156,7 @@ export async function ensureDeviceProvisioned(
             event: AuditEventType.CHAIN_VALIDATION_FAILED,
             deviceId,
             certificateFingerprint: cert.fingerprint,
-            details: { reason: 'CHAIN_VALIDATION_ERROR', failurePoint: msg, slot: certSlot }
+            details: { reason: 'CHAIN_VALIDATION_ERROR', failurePoint: msg }
           })
           .catch(() => undefined);
       }
@@ -178,7 +172,6 @@ export async function ensureDeviceProvisioned(
         deviceId,
         certificateFingerprint: cert.fingerprint,
         details: {
-          slot: certSlot,
           cn: cert.cn,
           expiresAt: cert.expires_at?.toISOString?.() ?? String(cert.expires_at)
         }

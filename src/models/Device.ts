@@ -1,6 +1,9 @@
 /**
  * Device Model - Mongoose schema for Device collection
  * Matches Prisma schema from Next.js web app
+ *
+ * OTA runtime state lives in the server-owned DeviceOtaState model
+ * (collection device_ota_states), keyed by deviceId.
  */
 
 import mongoose, { Document, Schema } from 'mongoose';
@@ -16,17 +19,9 @@ export enum DeviceStatus {
   RECOVERY = 'RECOVERY'
 }
 
-export enum DeviceOtaState {
-  IDLE = 'idle',
-  NOTIFIED = 'notified',
-  DOWNLOADING = 'downloading',
-  VALIDATING = 'validating',
-  ROLLBACK_REPORTED = 'rollback_reported'
-}
-
 export interface IDevice extends Document {
   _id: mongoose.Types.ObjectId;
-  userId?: mongoose.Types.ObjectId;
+  businessId?: mongoose.Types.ObjectId;
   
   // Core fields (shared with MQTT server)
   macID: string;
@@ -51,15 +46,6 @@ export interface IDevice extends Document {
   
   // Error tracking
   errorMessage?: string;
-
-  // OTA tracking (otaState is telemetry-only — not used for eligibility)
-  firmwareVersion?: string;
-  firmwareReportedAt?: Date;
-  otaLastCheckAt?: Date;
-  otaState?: DeviceOtaState;
-  otaTargetVersion?: string;
-  otaBlockedVersions?: string[];
-  otaRollbackFailures?: Map<string, number>;
   
   // Timestamps
   createdAt?: Date;
@@ -67,9 +53,9 @@ export interface IDevice extends Document {
 }
 
 const DeviceSchema = new Schema<IDevice>({
-  userId: {
+  businessId: {
     type: Schema.Types.ObjectId,
-    ref: 'User',
+    ref: 'Business',
     required: false
   },
   
@@ -142,22 +128,6 @@ const DeviceSchema = new Schema<IDevice>({
   errorMessage: {
     type: String,
     required: false
-  },
-
-  firmwareVersion: { type: String, required: false },
-  firmwareReportedAt: { type: Date, required: false },
-  otaLastCheckAt: { type: Date, required: false },
-  otaState: {
-    type: String,
-    enum: Object.values(DeviceOtaState),
-    required: false
-  },
-  otaTargetVersion: { type: String, required: false },
-  otaBlockedVersions: [{ type: String }],
-  otaRollbackFailures: {
-    type: Map,
-    of: Number,
-    default: undefined
   }
 }, {
   timestamps: true, // Automatically adds createdAt and updatedAt
@@ -166,7 +136,7 @@ const DeviceSchema = new Schema<IDevice>({
 
 // Indexes (matching Prisma schema)
 // Note: macID and clientId already have unique: true (auto-indexed)
-DeviceSchema.index({ userId: 1 });
+DeviceSchema.index({ businessId: 1 });
 DeviceSchema.index({ status: 1 });
 
 export const Device = mongoose.model<IDevice>('Device', DeviceSchema);

@@ -185,9 +185,17 @@ export class LoyaltyService {
 
   sendJson(deviceId: string, payload: Record<string, unknown>): void {
     const conn = this.activeConnections.get(deviceId);
-    if (!conn || conn.socket.readyState !== 1) return;
+    if (!conn || conn.socket.readyState !== 1) {
+      logger.info('loyalty WS skip (no live browser socket)', {
+        deviceId,
+        event: payload.event,
+        sessionId: conn?.sessionId
+      });
+      return;
+    }
     try {
       conn.socket.send(JSON.stringify(payload));
+      logger.info('loyalty WS sent', { deviceId, event: payload.event, sessionId: conn.sessionId });
     } catch (err: unknown) {
       logger.warn('loyalty WS send failed', {
         deviceId,
@@ -307,9 +315,14 @@ export class LoyaltyService {
       throw new LoyaltyHttpError(400, 'INVALID_REQUEST', 'sessionId, idempotencyKey, and spinId are required');
     }
 
-    const existingByKey = await LoyaltySpin.findOne({ sessionId, idempotencyKey });
-    if (existingByKey) {
-      return spinPublic(existingByKey, true);
+    let spin = await LoyaltySpin.findOne({ sessionId, idempotencyKey });
+    if (spin && !this.spinNeedsMqtt(spin)) {
+      logger.info('loyalty spin idempotent skip (already published)', {
+        spinId: spin.spinId,
+        status: spin.status,
+        deviceId: spin.deviceId
+      });
+      return spinPublic(spin, true);
     }
 
     const session = await LoyaltySession.findOne({ sessionId });
@@ -319,79 +332,161 @@ export class LoyaltyService {
     if (session.expiresAt.getTime() <= this.now().getTime()) {
       throw new LoyaltyHttpError(410, 'SESSION_EXPIRED', 'Session expired');
     }
-    if (session.status !== LoyaltySessionStatus.READY) {
+    const sessionOpen =
+      session.status === LoyaltySessionStatus.CREATED ||
+      session.status === LoyaltySessionStatus.READY ||
+      session.status === LoyaltySessionStatus.SPINNING;
+    if (!sessionOpen) {
+      throw new LoyaltyHttpError(410, 'SESSION_EXPIRED', 'Session expired');
+    }
+
+    if (!spin) {
       if (session.status === LoyaltySessionStatus.SPINNING) {
         throw new LoyaltyHttpError(409, 'SPIN_IN_PROGRESS', 'A spin is already in progress');
       }
-      throw new LoyaltyHttpError(409, 'LOYALTY_SESSION_NOT_READY', 'WebSocket is not connected for this session');
-    }
-
-    const mapped = this.activeConnections.get(session.deviceId);
-    if (!mapped || mapped.sessionId !== sessionId) {
-      throw new LoyaltyHttpError(409, 'LOYALTY_SESSION_NOT_READY', 'WebSocket is not connected for this session');
-    }
-
-    const inflight = await LoyaltySpin.findOne({
-      deviceId: session.deviceId,
-      status: { $in: [...LOYALTY_IN_FLIGHT_SPIN_STATUSES] }
-    });
-    if (inflight) {
-      throw new LoyaltyHttpError(409, 'SPIN_IN_PROGRESS', 'A spin is already in progress for this device');
-    }
-
-    const issuedAt = this.now();
-    const commandExpiresAt = new Date(issuedAt.getTime() + this.config.commandTtlMs);
-    let spin: ILoyaltySpin;
-
-    try {
-      spin = await LoyaltySpin.create({
-        spinId,
-        sessionId,
+      const inflight = await LoyaltySpin.findOne({
         deviceId: session.deviceId,
-        result,
-        status: LoyaltySpinStatus.CREATED,
-        idempotencyKey,
-        ttlMs: this.config.ttlMs,
-        issuedAt,
-        expiresAt: commandExpiresAt
+        status: { $in: [...LOYALTY_IN_FLIGHT_SPIN_STATUSES] }
       });
-    } catch (err: unknown) {
-      if (isDuplicateKeyError(err, 'idempotencyKey') || isDuplicateKeyError(err, 'sessionId')) {
-        const dup = await LoyaltySpin.findOne({ sessionId, idempotencyKey });
-        if (dup) return spinPublic(dup, true);
-      }
-      if (isDuplicateKeyError(err, 'spinId')) {
-        const dup = await LoyaltySpin.findOne({ spinId });
-        if (
-          dup &&
-          dup.sessionId === sessionId &&
-          dup.idempotencyKey === idempotencyKey &&
-          resultsEqual(dup.result, result)
-        ) {
-          return spinPublic(dup, true);
-        }
-        throw new LoyaltyHttpError(409, 'SPIN_ID_CONFLICT', 'spinId already used with different payload');
-      }
-      if (isDuplicateKeyError(err, 'deviceId')) {
+      if (inflight) {
         throw new LoyaltyHttpError(409, 'SPIN_IN_PROGRESS', 'A spin is already in progress for this device');
       }
-      throw err;
+
+      const issuedAt = this.now();
+      const commandExpiresAt = new Date(issuedAt.getTime() + this.config.commandTtlMs);
+      try {
+        spin = await LoyaltySpin.create({
+          spinId,
+          sessionId,
+          deviceId: session.deviceId,
+          result,
+          status: LoyaltySpinStatus.CREATED,
+          idempotencyKey,
+          ttlMs: this.config.ttlMs,
+          issuedAt,
+          expiresAt: commandExpiresAt
+        });
+      } catch (err: unknown) {
+        if (isDuplicateKeyError(err, 'idempotencyKey') || isDuplicateKeyError(err, 'sessionId')) {
+          const dup = await LoyaltySpin.findOne({ sessionId, idempotencyKey });
+          if (dup && !this.spinNeedsMqtt(dup)) return spinPublic(dup, true);
+          if (dup) spin = dup;
+        }
+        if (!spin && isDuplicateKeyError(err, 'spinId')) {
+          const dup = await LoyaltySpin.findOne({ spinId });
+          if (
+            dup &&
+            dup.sessionId === sessionId &&
+            dup.idempotencyKey === idempotencyKey &&
+            resultsEqual(dup.result, result)
+          ) {
+            if (!this.spinNeedsMqtt(dup)) return spinPublic(dup, true);
+            spin = dup;
+          } else {
+            throw new LoyaltyHttpError(409, 'SPIN_ID_CONFLICT', 'spinId already used with different payload');
+          }
+        }
+        if (!spin && isDuplicateKeyError(err, 'deviceId')) {
+          throw new LoyaltyHttpError(409, 'SPIN_IN_PROGRESS', 'A spin is already in progress for this device');
+        }
+        if (!spin) throw err;
+      }
     }
 
+    if (!spin) {
+      throw new LoyaltyHttpError(500, 'SPIN_CREATE_FAILED', 'Spin could not be created');
+    }
+
+    this.fillSpinCommandFields(spin, result);
+    const issuedAt = spin.issuedAt ?? this.now();
+    const commandExpiresAt =
+      spin.expiresAt ?? new Date(issuedAt.getTime() + this.config.commandTtlMs);
+
     const transitioned = await LoyaltySession.findOneAndUpdate(
-      { sessionId, status: LoyaltySessionStatus.READY },
+      {
+        sessionId,
+        status: {
+          $in: [
+            LoyaltySessionStatus.CREATED,
+            LoyaltySessionStatus.READY,
+            LoyaltySessionStatus.SPINNING
+          ]
+        }
+      },
       { $set: { status: LoyaltySessionStatus.SPINNING } },
       { new: true }
     );
     if (!transitioned) {
       spin.status = LoyaltySpinStatus.FAILED;
       spin.failCode = 'SPIN_IN_PROGRESS';
-      spin.failMessage = 'Session was not READY';
+      spin.failMessage = 'Session is no longer active';
       await spin.save();
       incLoyaltySpinFailure('session_not_ready');
       throw new LoyaltyHttpError(409, 'SPIN_IN_PROGRESS', 'A spin is already in progress');
     }
 
+    await this.publishSpinStart(spin, session.deviceId, issuedAt, commandExpiresAt);
+
+    const publishedAt = this.now();
+    const persisted = await LoyaltySpin.findOneAndUpdate(
+      {
+        spinId: spin.spinId,
+        status: {
+          $nin: [
+            LoyaltySpinStatus.ACK_RECEIVED,
+            LoyaltySpinStatus.REVEALED,
+            LoyaltySpinStatus.COMPLETED,
+            LoyaltySpinStatus.FAILED
+          ]
+        }
+      },
+      {
+        $set: {
+          status: LoyaltySpinStatus.COMMAND_PUBLISHED,
+          commandPublishedAt: publishedAt,
+          result: spin.result,
+          ttlMs: spin.ttlMs,
+          issuedAt: spin.issuedAt,
+          expiresAt: spin.expiresAt
+        }
+      },
+      { new: true }
+    );
+    if (persisted) {
+      spin.status = persisted.status;
+      spin.commandPublishedAt = persisted.commandPublishedAt;
+    }
+
+    return spinPublic(spin, true);
+  }
+
+  /** Prisma/shared-collection rows often lack Node required paths (`result`, `ttlMs`). */
+  private fillSpinCommandFields(spin: ILoyaltySpin, result: ILoyaltySpinResult): void {
+    const hasDigits = Array.isArray(spin.result?.digits) && spin.result.digits.length === 3;
+    if (!hasDigits) spin.result = result;
+    if (spin.ttlMs == null) spin.ttlMs = this.config.ttlMs;
+    if (!spin.issuedAt) spin.issuedAt = this.now();
+    if (!spin.expiresAt) {
+      spin.expiresAt = new Date(spin.issuedAt.getTime() + this.config.commandTtlMs);
+    }
+  }
+
+  private spinNeedsMqtt(spin: ILoyaltySpin): boolean {
+    if (spin.commandPublishedAt) return false;
+    const status = String(spin.status || '').toUpperCase();
+    if (status === 'FAILED' || status === 'COMPLETED' || status === 'ACK_RECEIVED' || status === 'REVEALED') {
+      return false;
+    }
+    return true;
+  }
+
+  private async publishSpinStart(
+    spin: ILoyaltySpin,
+    deviceId: string,
+    issuedAt: Date,
+    commandExpiresAt: Date
+  ): Promise<void> {
+    const topic = `${this.topicRoot}/${deviceId}/loyalty`;
     const mqttPayload = {
       type: 'spin/start',
       spinId: spin.spinId,
@@ -408,7 +503,7 @@ export class LoyaltyService {
         throw new Error('MQTT client not connected');
       }
       await this.mqtt.publish({
-        topic: `${this.topicRoot}/${session.deviceId}/loyalty`,
+        topic,
         payload: JSON.stringify(mqttPayload),
         qos: 2,
         retain: false
@@ -416,18 +511,19 @@ export class LoyaltyService {
     } catch (err: unknown) {
       logger.error('loyalty MQTT publish failed', {
         spinId: spin.spinId,
-        deviceId: session.deviceId,
+        deviceId,
+        topic,
         error: err instanceof Error ? err.message : String(err)
       });
       await this.failSpin(spin, 'MQTT_PUBLISH_FAILED', 'Failed to publish spin command', true);
       throw new LoyaltyHttpError(503, 'MQTT_PUBLISH_FAILED', 'Failed to publish spin command');
     }
 
-    spin.status = LoyaltySpinStatus.COMMAND_PUBLISHED;
-    spin.commandPublishedAt = this.now();
-    await spin.save();
-
-    return spinPublic(spin, true);
+    logger.info('loyalty MQTT spin/start published', {
+      spinId: spin.spinId,
+      deviceId,
+      topic
+    });
   }
 
   async getSpin(spinId: string): Promise<Record<string, unknown>> {
@@ -457,10 +553,9 @@ export class LoyaltyService {
       logger.info('loyalty ack for unknown spin', { deviceId, spinId: msg.spinId });
       return;
     }
-    if (
-      spin.status !== LoyaltySpinStatus.COMMAND_PUBLISHED &&
-      spin.status !== LoyaltySpinStatus.CREATED
-    ) {
+    const status = String(spin.status || '').toUpperCase();
+    if (status !== 'COMMAND_PUBLISHED' && status !== 'CREATED') {
+      logger.info('loyalty ack ignored (status)', { deviceId, spinId: msg.spinId, status: spin.status });
       return;
     }
 
@@ -488,24 +583,44 @@ export class LoyaltyService {
       }
     }
 
-    const ttlMs = typeof msg.ttlMs === 'number' && msg.ttlMs > 0 ? msg.ttlMs : spin.ttlMs;
+    const ttlMs =
+      typeof msg.ttlMs === 'number' && msg.ttlMs > 0
+        ? msg.ttlMs
+        : spin.ttlMs ?? this.config.ttlMs;
     const revealAt = new Date(ackReceivedAt.getTime() + ttlMs);
 
     if (spin.commandPublishedAt) {
       observeLoyaltyAckLatencyMs(ackReceivedAt.getTime() - spin.commandPublishedAt.getTime());
     }
 
-    spin.status = LoyaltySpinStatus.ACK_RECEIVED;
-    spin.ackReceivedAt = ackReceivedAt;
-    spin.startedAt = startedAt;
-    spin.ttlMs = ttlMs;
-    spin.revealAt = revealAt;
-    await spin.save();
+    const updated = await LoyaltySpin.findOneAndUpdate(
+      { spinId: msg.spinId, deviceId },
+      {
+        $set: {
+          status: LoyaltySpinStatus.ACK_RECEIVED,
+          ackReceivedAt,
+          startedAt,
+          ttlMs,
+          revealAt
+        }
+      },
+      { new: true, runValidators: false }
+    );
+    if (!updated) {
+      logger.warn('loyalty ack update missed spin row', { deviceId, spinId: msg.spinId });
+      return;
+    }
+
+    logger.info('loyalty device ack recorded', {
+      deviceId,
+      spinId: msg.spinId,
+      revealAt: toIso(revealAt)
+    });
 
     const serverNow = this.now();
     this.sendJson(deviceId, {
       event: 'loyalty.spin.started',
-      spinId: spin.spinId,
+      spinId: updated.spinId,
       startedAt: toIso(startedAt),
       ttlMs,
       revealAt: toIso(revealAt),
@@ -607,7 +722,7 @@ export class LoyaltyService {
     const wsOk = mapped && mapped.sessionId === spin.sessionId;
     await LoyaltySession.findOneAndUpdate(
       { sessionId: spin.sessionId, status: LoyaltySessionStatus.SPINNING },
-      { $set: { status: wsOk ? LoyaltySessionStatus.READY : LoyaltySessionStatus.EXPIRED } }
+      { $set: { status: wsOk ? LoyaltySessionStatus.READY : LoyaltySessionStatus.CREATED } }
     );
     if (!wsOk) {
       this.activeConnections.delete(spin.deviceId);

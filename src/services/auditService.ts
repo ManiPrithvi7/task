@@ -73,7 +73,7 @@ export enum AuditEventType {
 export interface AuditLogData {
   event: AuditEventType;
   deviceId?: string;
-  userId?: string;
+  businessId?: string;
   orderId?: string;
   batchId?: string;
   serialNumber?: string;
@@ -87,7 +87,7 @@ export interface AuditEntry {
   timestamp: Date;
   event: AuditEventType;
   deviceId?: string;
-  userId?: string;
+  businessId?: string;
   orderId?: string;
   batchId?: string;
   serialNumber?: string;
@@ -181,7 +181,7 @@ export class AuditService {
       timestamp: timestamp.toISOString(),
       event: data.event,
       deviceId: resolvedDeviceId,
-      userId: data.userId || null,
+      businessId: data.businessId || null,
       orderId: data.orderId || null,
       batchId: data.batchId || null,
       serialNumber: data.serialNumber || null,
@@ -199,7 +199,7 @@ export class AuditService {
       timestamp,
       event: data.event,
       deviceId: data.deviceId,
-      userId: data.userId,
+      businessId: data.businessId,
       orderId: data.orderId,
       batchId: data.batchId,
       serialNumber: data.serialNumber,
@@ -216,7 +216,7 @@ export class AuditService {
         await influx.writeAuditEvent({
           event: data.event,
           deviceId: resolvedDeviceId,
-          userId: data.userId,
+          businessId: data.businessId,
           serialNumber: data.serialNumber,
           certificateFingerprint: data.certificateFingerprint,
           sequence,

@@ -1,6 +1,7 @@
 import type { RedisClientType } from 'redis';
 import { REDIS_KEYS } from '../constants/redisKeys';
 import { Device } from '../models/Device';
+import { DeviceOtaState } from '../models/DeviceOtaState';
 import { Social, Provider } from '../models/Social';
 import { getActiveDeviceCache } from './deviceService';
 import { getRedisService } from './redisService';
@@ -8,7 +9,7 @@ import { getLocalOtaFleetTracker } from './igPollCoordination';
 import { logger } from '../utils/logger';
 
 export interface DeviceRuntimeState {
-  userId?: string;
+  businessId?: string;
   registeredAt?: number;
   igAccountId?: string;
   igAccessToken?: string;
@@ -39,7 +40,7 @@ export interface DeviceRuntimeState {
 export interface ResolvedDeviceMeta {
   instagramAccountId: string;
   accessToken: string;
-  userId?: string;
+  businessId?: string;
 }
 
 const DEVICE_HASH_TTL_SEC = 7 * 24 * 3600;
@@ -65,8 +66,8 @@ class IgDeviceRuntimeCacheImpl {
     return this.devices.has(deviceId);
   }
 
-  getByUserId(userId: string): DeviceRuntimeState[] {
-    return [...this.devices.values()].filter((d) => d.userId === userId);
+  getByBusinessId(businessId: string): DeviceRuntimeState[] {
+    return [...this.devices.values()].filter((d) => d.businessId === businessId);
   }
 
   getByGmbProfileId(gmbProfileId: string): string[] {
@@ -163,7 +164,9 @@ class IgDeviceRuntimeCacheImpl {
     const e = this.entry(deviceId);
     const prevGmb = e.gmbProfileId;
 
-    if (fields.userId !== undefined) e.userId = fields.userId || undefined;
+    // Dual-read: new hashes use business_id; legacy hashes (7-day TTL) may still carry userId/user_id
+    const businessIdField = fields.business_id ?? fields.businessId ?? fields.userId ?? fields.user_id;
+    if (businessIdField !== undefined) e.businessId = businessIdField || undefined;
     if (fields.registered_at !== undefined) {
       const n = parseInt(fields.registered_at, 10);
       if (!Number.isNaN(n)) e.registeredAt = n;
@@ -201,7 +204,7 @@ class IgDeviceRuntimeCacheImpl {
 
   runtimeDataToHash(state: DeviceRuntimeState): Record<string, string> {
     const out: Record<string, string> = {};
-    if (state.userId !== undefined) out.userId = state.userId;
+    if (state.businessId !== undefined) out.business_id = state.businessId;
     if (state.registeredAt !== undefined) out.registered_at = String(state.registeredAt);
     if (state.igAccountId !== undefined) out.ig_accountId = state.igAccountId;
     if (state.igAccessToken !== undefined) out.ig_accessToken = state.igAccessToken;
@@ -222,7 +225,7 @@ class IgDeviceRuntimeCacheImpl {
   /** L1 local → L2 Redis hash → L3 Mongo → backfill Redis. */
   async resolveWithCache(deviceId: string): Promise<DeviceRuntimeState | null> {
     const local = this.devices.get(deviceId);
-    if (local && (local.igAccountId || local.userId || local.otaStatus)) {
+    if (local && (local.igAccountId || local.businessId || local.otaStatus)) {
       return local;
     }
 
@@ -270,7 +273,7 @@ class IgDeviceRuntimeCacheImpl {
       return {
         instagramAccountId: local.instagramAccountId.trim(),
         accessToken: local.accessToken.trim(),
-        userId: local.userId?.trim() || undefined
+        businessId: local.businessId?.trim() || undefined
       };
     }
 
@@ -279,7 +282,7 @@ class IgDeviceRuntimeCacheImpl {
       return {
         instagramAccountId: cached.igAccountId.trim(),
         accessToken: cached.igAccessToken.trim(),
-        userId: cached.userId
+        businessId: cached.businessId
       };
     }
 
@@ -288,7 +291,7 @@ class IgDeviceRuntimeCacheImpl {
       return {
         instagramAccountId: resolved.igAccountId.trim(),
         accessToken: resolved.igAccessToken.trim(),
-        userId: resolved.userId
+        businessId: resolved.businessId
       };
     }
 
@@ -299,8 +302,10 @@ class IgDeviceRuntimeCacheImpl {
 function flattenLegacyJson(o: Record<string, unknown>): Record<string, string> {
   const out: Record<string, string> = {};
   const map: Record<string, string> = {
-    userId: 'userId',
-    user_id: 'userId',
+    business_id: 'business_id',
+    businessId: 'business_id',
+    userId: 'business_id',
+    user_id: 'business_id',
     instagramAccountId: 'ig_accountId',
     accessToken: 'ig_accessToken',
     ig_accountId: 'ig_accountId',
@@ -320,29 +325,30 @@ async function queryMongoDeviceState(
   try {
     const device = await Device.findOne({ clientId: deviceId })
       .select({
-        userId: 1,
+        businessId: 1,
         status: 1,
-        firmwareVersion: 1,
-        otaTargetVersion: 1,
-        otaState: 1,
         provisionedAt: 1,
         createdAt: 1
       })
       .lean();
     if (!device) return null;
 
-    const userId = device.userId ? String(device.userId) : undefined;
+    const otaState = await DeviceOtaState.findOne({ deviceId })
+      .select({ firmwareVersion: 1, otaTargetVersion: 1 })
+      .lean();
+
+    const businessId = device.businessId ? String(device.businessId) : undefined;
     const result: Partial<Omit<DeviceRuntimeState, 'dirtyFields'>> = {
-      userId,
+      businessId,
       status: device.status === 'ACTIVE' ? 'active' : 'inactive',
-      otaCurrentVersion: device.firmwareVersion,
-      otaTargetVersion: device.otaTargetVersion,
+      otaCurrentVersion: otaState?.firmwareVersion,
+      otaTargetVersion: otaState?.otaTargetVersion,
       registeredAt: (device.provisionedAt ?? device.createdAt)?.getTime?.() ?? Date.now()
     };
 
-    if (device.userId) {
+    if (device.businessId) {
       const ig = await Social.findOne({
-        userId: device.userId,
+        businessId: device.businessId,
         provider: Provider.INSTAGRAM
       })
         .sort({ updatedAt: -1 })
@@ -354,7 +360,7 @@ async function queryMongoDeviceState(
       }
 
       const gmb = await Social.findOne({
-        userId: device.userId,
+        businessId: device.businessId,
         provider: Provider.GOOGLE_BUSINESS
       })
         .select({ accessToken: 1, socialAccountId: 1 })

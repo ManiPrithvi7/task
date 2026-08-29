@@ -586,7 +586,7 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
 
       if (!deviceDoc) {
         deviceDoc = new Device({
-          userId: userIdObjectId,
+          businessId: userIdObjectId,
           macID: validatedDeviceId,
           clientId: validatedDeviceId,
           status: DeviceStatus.PROVISIONING,
@@ -600,7 +600,7 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
           userId: validatedUserId
         });
       } else {
-        const existingUserId = deviceDoc.userId?.toString();
+        const existingUserId = deviceDoc.businessId?.toString();
         if (existingUserId && existingUserId !== userIdObjectId.toString()) {
           logger.warn('sign-csr: device belongs to a different user', {
             deviceId: validatedDeviceId,
@@ -617,7 +617,7 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
 
         const needsAssociation = !existingUserId;
         if (needsAssociation) {
-          deviceDoc.userId = userIdObjectId;
+          deviceDoc.businessId = userIdObjectId;
           if (!deviceDoc.allocatedAt) deviceDoc.allocatedAt = new Date();
         }
         // Ensure a provisioning-appropriate state once we start CSR signing
@@ -976,7 +976,7 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
       // Try auth token first (recommended path)
       const authVerification = await authService.verifyAuthToken(tokenCandidate);
       if (authVerification.valid && authVerification.userId) {
-        if (String(certificateDoc.user_id) !== String(authVerification.userId)) {
+        if (String(certificateDoc.business_id) !== String(authVerification.userId)) {
           res.status(403).json({
             success: false,
             error: 'Certificate does not belong to the authenticated user',
@@ -1012,8 +1012,8 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
           return;
         }
 
-        // Additional binding: token user must match cert user (defense in depth).
-        if (tokenValidation.userId && String(certificateDoc.user_id) !== String(tokenValidation.userId)) {
+        // Additional binding: token user must match cert business (defense in depth).
+        if (tokenValidation.userId && String(certificateDoc.business_id) !== String(tokenValidation.userId)) {
           res.status(403).json({
             success: false,
             error: 'Certificate does not belong to the token user',
@@ -1195,7 +1195,7 @@ export function createProvisioningRoutes(dependencies: ProvisioningDependencies)
       }
 
       // Ownership check (defense in depth; device association should already enforce this).
-      if (String(certificateDoc.user_id) !== String(userId)) {
+      if (String(certificateDoc.business_id) !== String(userId)) {
         res.status(403).json({
           success: false,
           error: 'Certificate does not belong to the authenticated user',

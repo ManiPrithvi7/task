@@ -43,7 +43,7 @@ export async function loadInstagramTokenContextForUser(
   if (!mongoose.Types.ObjectId.isValid(userId)) return null;
   try {
     const ig = await Social.findOne({
-      userId: new mongoose.Types.ObjectId(userId),
+      businessId: new mongoose.Types.ObjectId(userId),
       provider: Provider.INSTAGRAM
     })
       .sort({ updatedAt: -1 })
@@ -112,13 +112,12 @@ export async function ensureFreshInstagramAccessToken(opts: {
   if (opts.userId && mongoose.Types.ObjectId.isValid(opts.userId)) {
     try {
       await Social.updateOne(
-        { userId: new mongoose.Types.ObjectId(opts.userId), provider: Provider.INSTAGRAM },
+        { businessId: new mongoose.Types.ObjectId(opts.userId), provider: Provider.INSTAGRAM },
         {
           $set: {
             accessToken: newToken,
             tokenExp: newExp,
-            tokenCreatedAt: now,
-            lastSyncedAt: now
+            tokenCreatedAt: now
           }
         }
       );

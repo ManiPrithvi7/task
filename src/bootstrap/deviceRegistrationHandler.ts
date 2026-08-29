@@ -98,7 +98,7 @@ export async function cacheActiveDevice(host: BootstrapHost, deviceId: string): 
       logger.warn('📋 [LIFECYCLE:CACHE] Device not found in MongoDB — caching defaults only', { deviceId });
       await host.activeDeviceCache.setActive({
         deviceId,
-        userId: '',
+        businessId: '',
         lastSeen: Date.now()
       });
       return;
@@ -106,11 +106,11 @@ export async function cacheActiveDevice(host: BootstrapHost, deviceId: string): 
 
     logger.info('📋 [LIFECYCLE:CACHE] Step 2/2 — Social (Instagram) for device', {
       deviceId,
-      userId: deviceDoc.userId?.toString() || 'none',
+      businessId: deviceDoc.businessId?.toString() || 'none',
       deviceStatus: deviceDoc.status
     });
 
-    const mongoUserId = deviceDoc.userId?.toString() || '';
+    const mongoUserId = deviceDoc.businessId?.toString() || '';
     const hasLinkedMongoUser = Boolean(mongoUserId && mongoose.Types.ObjectId.isValid(mongoUserId));
 
     if (!hasLinkedMongoUser) {
@@ -129,7 +129,7 @@ export async function cacheActiveDevice(host: BootstrapHost, deviceId: string): 
 
     const active: ActiveDevice = {
       deviceId,
-      userId: mongoUserId,
+      businessId: mongoUserId,
       lastSeen: Date.now(),
       ...(igFromSocial
         ? { instagramAccountId: igFromSocial.socialAccountId, accessToken: igFromSocial.accessToken }
@@ -145,7 +145,7 @@ export async function cacheActiveDevice(host: BootstrapHost, deviceId: string): 
     });
 
     const hashFields: Record<string, string> = { status: 'active' };
-    if (mongoUserId) hashFields.userId = mongoUserId;
+    if (mongoUserId) hashFields.business_id = mongoUserId;
     const registeredAt = (deviceDoc.provisionedAt ?? deviceDoc.createdAt)?.getTime?.();
     if (registeredAt && !Number.isNaN(registeredAt)) {
       hashFields.registered_at = String(registeredAt);
@@ -254,7 +254,7 @@ export async function handleDeviceRegistration(
   await cacheActiveDevice(host, deviceId);
   await host.redisMarkDeviceActive(deviceId);
 
-  const mongoUserId = (await Device.findOne({ clientId: deviceId }).select({ userId: 1 }).lean())?.userId
+  const mongoBusinessId = (await Device.findOne({ clientId: deviceId }).select({ businessId: 1 }).lean())?.businessId
     ?.toString();
   const ip = pilotBoot.ipAddress;
   void getDeviceStateLogService()
@@ -263,15 +263,15 @@ export async function handleDeviceRegistration(
       event: 'active',
       fwVersion: typeof fwVersion === 'string' ? fwVersion : undefined,
       ipHash: ip ? crypto.createHash('sha256').update(ip).digest('hex') : undefined,
-      userIdAtTime: mongoUserId,
+      businessIdAtTime: mongoBusinessId,
       reason: 'registration'
     })
     .catch(() => undefined);
-  if (mongoUserId) {
-    void cacheUserIntegrations(mongoUserId).catch((err: unknown) => {
+  if (mongoBusinessId) {
+    void cacheUserIntegrations(mongoBusinessId).catch((err: unknown) => {
       logger.warn('[LIFECYCLE:REGISTER] Integration cache warm failed', {
         deviceId,
-        userId: mongoUserId,
+        businessId: mongoBusinessId,
         error: err instanceof Error ? err.message : String(err)
       });
     });

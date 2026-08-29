@@ -79,14 +79,14 @@ async function refreshAccessTokenIfNeeded(
 }
 
 export async function getValidOAuth2Client(
-  userId: string,
+  businessId: string,
   webhookConfig: WebhookConfig
 ): Promise<OAuth2Client | null> {
   const oauth2Client = createGoogleBusinessOAuth2Client(webhookConfig);
   if (!oauth2Client) return null;
 
   const social = await Social.findOne({
-    userId: new mongoose.Types.ObjectId(userId),
+    businessId: new mongoose.Types.ObjectId(businessId),
     provider: Provider.GOOGLE_BUSINESS
   }).lean();
 

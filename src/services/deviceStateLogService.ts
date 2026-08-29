@@ -10,7 +10,7 @@ export interface DeviceStateTransitionInput {
   fwVersion?: string;
   fwTrack?: string;
   ipHash?: string;
-  userIdAtTime?: string;
+  businessIdAtTime?: string;
   reason: string;
   timestamp?: Date;
 }
@@ -80,7 +80,7 @@ export class DeviceStateLogService {
       ipHash: input.ipHash || null,
       previousHash,
       timestamp: timestamp.toISOString(),
-      userIdAtTime: input.userIdAtTime || null
+      businessIdAtTime: input.businessIdAtTime || null
     };
     const sortedKeys = Object.keys(hashContent).sort();
     const hashPreimage = JSON.stringify(hashContent, sortedKeys);
@@ -96,7 +96,7 @@ export class DeviceStateLogService {
       fwVersion: input.fwVersion,
       fwTrack: input.fwTrack,
       ipHash: input.ipHash,
-      userIdAtTime: input.userIdAtTime,
+      businessIdAtTime: input.businessIdAtTime,
       timestamp
     });
 
@@ -107,7 +107,7 @@ export class DeviceStateLogService {
       fwTrack: input.fwTrack,
       ipHash: input.ipHash,
       reason: input.reason,
-      userIdAtTime: input.userIdAtTime,
+      businessIdAtTime: input.businessIdAtTime,
       timestamp
     });
 

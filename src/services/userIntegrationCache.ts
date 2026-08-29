@@ -55,7 +55,7 @@ function ttlMs(): number {
 
 /** Prefer fresher tokens from device runtime cache when present. */
 function enrichTokensFromRuntime(userId: string, cache: UserIntegrationCache): UserIntegrationCache {
-  const devices = getIgDeviceRuntimeCache().getByUserId(userId);
+  const devices = getIgDeviceRuntimeCache().getByBusinessId(userId);
   for (const d of devices) {
     if (cache.instagram && d.igAccessToken?.trim()) {
       cache.instagram.accessToken = d.igAccessToken.trim();
@@ -96,7 +96,7 @@ export async function cacheUserIntegrations(userId: string): Promise<UserIntegra
 
   try {
     const userOid = new mongoose.Types.ObjectId(userId);
-    const socials = await Social.find({ userId: userOid }).lean();
+    const socials = await Social.find({ businessId: userOid }).lean();
     const cache: UserIntegrationCache = {
       userId,
       updatedAt: new Date().toISOString()
@@ -126,10 +126,6 @@ export async function cacheUserIntegrations(userId: string): Promise<UserIntegra
           };
           break;
         }
-
-        case Provider.SHOPIFY:
-        case Provider.SQUARE:
-          break;
 
         default:
           break;
@@ -194,9 +190,6 @@ export async function applySocialDisconnected(
     case Provider.GOOGLE_BUSINESS:
       delete existing.gmb;
       break;
-        case Provider.SHOPIFY:
-        case Provider.SQUARE:
-          break;
     default:
       break;
   }

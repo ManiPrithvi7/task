@@ -41,9 +41,7 @@ function makeCsrPem(cn: string, keyBits = 2048): string {
 }
 
 function mockFindOneResolved(doc: unknown) {
-  (DeviceCertificate.findOne as jest.Mock).mockReturnValue({
-    sort: jest.fn().mockResolvedValue(doc)
-  });
+  (DeviceCertificate.findOne as jest.Mock).mockResolvedValue(doc);
 }
 
 describe('CAService.formatExpectedCN', () => {
@@ -123,6 +121,21 @@ describe('CAService.signCSR', () => {
     expect(doc.fingerprint).toBeTruthy();
   });
 
+  it('encodes a non-negative serial when the first random byte has the high bit set', async () => {
+    const highBit16 = String.fromCharCode(0x80, ...Array.from({ length: 15 }, (_, i) => i + 1));
+    const spy = jest.spyOn(forge.random, 'getBytesSync').mockReturnValue(highBit16);
+    try {
+      const deviceId = 'device-serial-1';
+      const cn = ca.formatExpectedCN(deviceId);
+      const doc = await ca.signCSR(makeCsrPem(cn, 2048), deviceId, '507f1f77bcf86cd799439011');
+      const issued = forge.pki.certificateFromPem(doc.certificate);
+      const serialBytes = forge.util.hexToBytes(issued.serialNumber);
+      expect(serialBytes.charCodeAt(0) & 0x80).toBe(0);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('rejects RSA key smaller than minimum bits', async () => {
     const deviceId = 'device-small-key';
     const cn = ca.formatExpectedCN(deviceId);
@@ -150,7 +163,7 @@ describe('CAService.signCSR DB paths', () => {
   let tmpDir: string;
   let ca: CAService;
   let readyStateDesc: PropertyDescriptor | undefined;
-  const userId = '507f1f77bcf86cd799439011';
+  const businessId = '507f1f77bcf86cd799439011';
   const prevAllow = process.env.ALLOW_ONBOARDING_WITH_ACTIVE_CERT;
 
   beforeEach(async () => {
@@ -191,105 +204,52 @@ describe('CAService.signCSR DB paths', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('rejects when active primary exists and replace not allowed', async () => {
-    const deviceId = 'device-has-primary';
+  it('rejects when active cert exists and replace not allowed', async () => {
+    const deviceId = 'device-has-cert';
     const existingId = new mongoose.Types.ObjectId();
-    mockFindOneResolved({ _id: existingId, device_id: deviceId, slot: 'primary' });
+    mockFindOneResolved({ _id: existingId, device_id: deviceId });
 
     const cn = ca.formatExpectedCN(deviceId);
-    await expect(ca.signCSR(makeCsrPem(cn), deviceId, userId, { allowReplacePrimary: false })).rejects.toMatchObject({
+    await expect(ca.signCSR(makeCsrPem(cn), deviceId, businessId, { allowReplace: false })).rejects.toMatchObject({
       name: 'DeviceAlreadyHasCertificateError',
       certificateId: existingId.toString()
     });
     expect(DeviceCertificate.findOneAndUpdate).not.toHaveBeenCalled();
   });
 
-  it('upserts when allowReplacePrimary is true', async () => {
+  it('upserts the single device cert when allowReplace is true', async () => {
     const deviceId = 'device-replace-ok';
     mockFindOneResolved(null);
     const stored = {
       _id: new mongoose.Types.ObjectId(),
       device_id: deviceId,
-      slot: 'primary',
       certificate: 'pem'
     };
     (DeviceCertificate.findOneAndUpdate as jest.Mock).mockResolvedValue(stored);
 
     const cn = ca.formatExpectedCN(deviceId);
-    const doc = await ca.signCSR(makeCsrPem(cn), deviceId, userId, { allowReplacePrimary: true });
+    const doc = await ca.signCSR(makeCsrPem(cn), deviceId, businessId, { allowReplace: true });
     expect(doc).toBe(stored);
     expect(DeviceCertificate.findOneAndUpdate).toHaveBeenCalledWith(
-      { device_id: deviceId, slot: 'primary' },
-      expect.objectContaining({ $set: expect.objectContaining({ cn, slot: 'primary' }) }),
-      { upsert: true, new: true, setDefaultsOnInsert: true }
-    );
-  });
-
-  it('staging slot skips replace-primary guard', async () => {
-    const deviceId = 'device-staging';
-    mockFindOneResolved({ _id: new mongoose.Types.ObjectId(), slot: 'primary' });
-    const stored = { _id: new mongoose.Types.ObjectId(), device_id: deviceId, slot: 'staging' };
-    (DeviceCertificate.findOneAndUpdate as jest.Mock).mockResolvedValue(stored);
-
-    const cn = ca.formatExpectedCN(deviceId);
-    const doc = await ca.signCSR(makeCsrPem(cn), deviceId, userId, { slot: 'staging' });
-    expect(doc).toBe(stored);
-    expect(DeviceCertificate.findOneAndUpdate).toHaveBeenCalledWith(
-      { device_id: deviceId, slot: 'staging' },
-      expect.any(Object),
-      { upsert: true, new: true, setDefaultsOnInsert: true }
-    );
-  });
-
-  it('falls back to device_id-only update on legacy E11000', async () => {
-    const deviceId = 'device-e11000';
-    mockFindOneResolved(null);
-    const stored = { _id: new mongoose.Types.ObjectId(), device_id: deviceId, slot: 'primary' };
-    (DeviceCertificate.findOneAndUpdate as jest.Mock)
-      .mockRejectedValueOnce(
-        new Error('E11000 duplicate key error collection: device_certificates index: device_id_1 dup key: { device_id: "x" }')
-      )
-      .mockResolvedValueOnce(stored);
-
-    const cn = ca.formatExpectedCN(deviceId);
-    const doc = await ca.signCSR(makeCsrPem(cn), deviceId, userId, { allowReplacePrimary: true });
-    expect(doc).toBe(stored);
-    expect(DeviceCertificate.findOneAndUpdate).toHaveBeenNthCalledWith(
-      1,
-      { device_id: deviceId, slot: 'primary' },
-      expect.any(Object),
-      { upsert: true, new: true, setDefaultsOnInsert: true }
-    );
-    expect(DeviceCertificate.findOneAndUpdate).toHaveBeenNthCalledWith(
-      2,
       { device_id: deviceId },
-      expect.any(Object),
-      { upsert: false, new: true }
+      expect.objectContaining({
+        $set: expect.objectContaining({
+          cn,
+          business_id: new mongoose.Types.ObjectId(businessId)
+        })
+      }),
+      { upsert: true, new: true, setDefaultsOnInsert: true }
     );
   });
 
-  it('rethrows original E11000 when fallback update returns null', async () => {
-    const deviceId = 'device-e11000-null';
-    mockFindOneResolved(null);
-    const err = new Error(
-      'E11000 duplicate key error collection: device_certificates index: device_certificates_device_id_key'
-    );
-    (DeviceCertificate.findOneAndUpdate as jest.Mock)
-      .mockRejectedValueOnce(err)
-      .mockResolvedValueOnce(null);
-
-    const cn = ca.formatExpectedCN(deviceId);
-    await expect(ca.signCSR(makeCsrPem(cn), deviceId, userId, { allowReplacePrimary: true })).rejects.toBe(err);
-  });
-
-  it('rethrows non-device_id E11000 without fallback', async () => {
+  it('rethrows persistence errors from the cert upsert', async () => {
     const deviceId = 'device-e11000-fp';
     mockFindOneResolved(null);
     const err = new Error('E11000 duplicate key index: fingerprint_1');
     (DeviceCertificate.findOneAndUpdate as jest.Mock).mockRejectedValueOnce(err);
 
     const cn = ca.formatExpectedCN(deviceId);
-    await expect(ca.signCSR(makeCsrPem(cn), deviceId, userId, { allowReplacePrimary: true })).rejects.toBe(err);
+    await expect(ca.signCSR(makeCsrPem(cn), deviceId, businessId, { allowReplace: true })).rejects.toBe(err);
     expect(DeviceCertificate.findOneAndUpdate).toHaveBeenCalledTimes(1);
   });
 });

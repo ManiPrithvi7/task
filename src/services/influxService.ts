@@ -616,7 +616,7 @@ export class InfluxService {
   async writeAuditEvent(data: {
     event: string;
     deviceId: string;
-    userId?: string;
+    businessId?: string;
     serialNumber?: string;
     certificateFingerprint?: string;
     sequence?: number;

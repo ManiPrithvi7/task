@@ -166,12 +166,12 @@ export async function syncGmbLocationForDevice(
   webhookConfig: WebhookConfig,
   opts?: { knownLocationId?: string }
 ): Promise<DeviceGmbContext | null> {
-  const deviceDoc = await Device.findOne({ clientId: deviceId }).select({ userId: 1 }).lean();
-  if (!deviceDoc?.userId) return null;
+  const deviceDoc = await Device.findOne({ clientId: deviceId }).select({ businessId: 1 }).lean();
+  if (!deviceDoc?.businessId) return null;
 
-  const userId = String(deviceDoc.userId);
+  const businessId = String(deviceDoc.businessId);
   const social = await Social.findOne({
-    userId: deviceDoc.userId,
+    businessId: deviceDoc.businessId,
     provider: Provider.GOOGLE_BUSINESS
   }).lean();
   if (!social) return null;
@@ -179,11 +179,11 @@ export async function syncGmbLocationForDevice(
   const profile = await GoogleBusinessProfile.findOne({ socialId: social._id }).lean();
   if (!profile) return null;
 
-  const auth = await getGmbApiAuth(userId, social, webhookConfig);
+  const auth = await getGmbApiAuth(businessId, social, webhookConfig);
   if (!auth) {
     logger.warn('[GMB_SYNC] No GBP auth — cannot fetch initial GMB snapshot', {
       deviceId,
-      userId,
+      businessId,
       hasAccessToken: Boolean(social.accessToken?.trim()),
       hasOAuthAppCreds: Boolean(
         webhookConfig.googleBusinessClientId && webhookConfig.googleBusinessClientSecret
@@ -202,7 +202,7 @@ export async function syncGmbLocationForDevice(
     }
     logger.warn('[GMB_SYNC] No accessible GBP locations for account', {
       deviceId,
-      userId,
+      businessId,
       accountId: profile.accountId,
       accountType,
       knownLocationId: opts?.knownLocationId ?? null,
@@ -216,7 +216,7 @@ export async function syncGmbLocationForDevice(
   if (!summary) {
     logger.warn('[GMB_SYNC] fetchGmbLocationSummary returned null', {
       deviceId,
-      userId,
+      businessId,
       locationResourceName: picked.resourceName
     });
     return null;
@@ -243,13 +243,13 @@ export async function syncGmbLocationForDevice(
 
   logger.info('[GMB_SYNC] Location synced from GBP API on connect', {
     deviceId,
-    userId,
+    businessId,
     locationId: picked.resourceName,
     verifiedReviewCount: summary.totalReviewCount,
     averageRating: summary.averageRating
   });
   return {
-    userId,
+    businessId,
     deviceId,
     verifiedReviewCount: locationDoc?.totalReviewCount ?? summary.totalReviewCount,
     averageRating: locationDoc?.averageRating ?? summary.averageRating,

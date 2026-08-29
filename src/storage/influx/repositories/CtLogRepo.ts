@@ -13,7 +13,7 @@ export interface TransparencyEntryInput {
   serialNumber: string;
   cn: string;
   deviceId: string;
-  userIdAtTime?: string;
+  businessIdAtTime?: string;
   issuedAt: Date;
 }
 
@@ -43,7 +43,7 @@ export class CtLogRepo extends BaseInfluxRepo<TransparencyEntryInput> {
       .stringField('cn', input.cn);
 
     if (input.leafPreimage) point.stringField('leaf_preimage', input.leafPreimage);
-    if (input.userIdAtTime) point.stringField('user_id_at_time', input.userIdAtTime);
+    if (input.businessIdAtTime) point.stringField('business_id_at_time', input.businessIdAtTime);
 
     point.timestamp(input.issuedAt);
     return point;

@@ -229,7 +229,7 @@ describe('AuditService', () => {
         timestamp: entry!.timestamp.toISOString(),
         event: data.event,
         deviceId: data.deviceId || null,
-        userId: data.userId || null,
+        businessId: data.businessId || null,
         orderId: data.orderId || null,
         batchId: data.batchId || null,
         serialNumber: data.serialNumber || null,
@@ -248,7 +248,7 @@ describe('AuditService', () => {
         timestamp: '2024-01-01T00:00:00.000Z',
         event: 'X',
         deviceId: 'd',
-        userId: null,
+        businessId: null,
         orderId: null,
         batchId: null,
         serialNumber: null,
@@ -263,7 +263,7 @@ describe('AuditService', () => {
         serialNumber: null,
         batchId: null,
         orderId: null,
-        userId: null,
+        businessId: null,
         deviceId: 'd',
         event: 'X',
         timestamp: '2024-01-01T00:00:00.000Z',
@@ -303,7 +303,7 @@ describe('AuditService', () => {
       const data: AuditLogData = {
         event: AuditEventType.CERTIFICATE_ISSUED,
         deviceId: 'dev-001',
-        userId: 'user-1',
+        businessId: 'user-1',
         serialNumber: 'SN-123',
         certificateFingerprint: 'fp-abc',
         details: { reason: 'test' },
@@ -316,7 +316,7 @@ describe('AuditService', () => {
       expect(payload).toMatchObject({
         event: 'CERTIFICATE_ISSUED',
         deviceId: 'dev-001',
-        userId: 'user-1',
+        businessId: 'user-1',
         serialNumber: 'SN-123',
         certificateFingerprint: 'fp-abc',
         sequence: 1,
@@ -467,7 +467,7 @@ describe('AuditService', () => {
       });
 
       expect(entry!.deviceId).toBeUndefined();
-      expect(entry!.userId).toBeUndefined();
+      expect(entry!.businessId).toBeUndefined();
       expect(entry!.orderId).toBeUndefined();
       expect(entry!.batchId).toBeUndefined();
       expect(entry!.serialNumber).toBeUndefined();
@@ -624,7 +624,7 @@ describe('AuditService', () => {
         timestamp: '2024-01-01T00:00:00.000Z',
         event: 'CERTIFICATE_ISSUED',
         deviceId: null,
-        userId: null,
+        businessId: null,
         orderId: null,
         batchId: null,
         serialNumber: null,
@@ -638,7 +638,7 @@ describe('AuditService', () => {
         timestamp: '2024-01-01T00:00:01.000Z',
         event: 'CERTIFICATE_REVOKED',
         deviceId: null,
-        userId: null,
+        businessId: null,
         orderId: null,
         batchId: null,
         serialNumber: null,
@@ -827,7 +827,7 @@ describe('AuditService', () => {
         timestamp: '2024-01-01T00:00:00.000Z',
         event: 'TEST',
         deviceId: null,
-        userId: null,
+        businessId: null,
         orderId: null,
         batchId: null,
         serialNumber: null,

@@ -1,4 +1,7 @@
 import express from 'express';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import request from 'supertest';
 import { createOtaRoutes } from '@/routes/otaRoutes';
 
@@ -57,10 +60,18 @@ describe('otaRoutes', () => {
   });
 
   it('serves proof:1.0.1 download without mTLS', async () => {
-    const res = await request(buildApp()).get('/api/v1/ota/download/proof%3A1.0.1');
-    expect(res.status).toBe(200);
-    expect(res.headers['content-type']).toMatch(/octet-stream/);
-    expect(res.headers['x-firmware-version']).toBe('proof:1.0.1');
-    expect(Number(res.headers['content-length'])).toBeGreaterThan(0);
+    const fixture = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'ota-fw-')), 'fixture.ino.bin');
+    fs.writeFileSync(fixture, Buffer.alloc(1024, 1));
+    process.env.TEST_OTA_FIRMWARE_PATH = fixture;
+    try {
+      const res = await request(buildApp()).get('/api/v1/ota/download/proof%3A1.0.1');
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toMatch(/octet-stream/);
+      expect(res.headers['x-firmware-version']).toBe('proof:1.0.1');
+      expect(Number(res.headers['content-length'])).toBeGreaterThan(0);
+    } finally {
+      delete process.env.TEST_OTA_FIRMWARE_PATH;
+      fs.rmSync(path.dirname(fixture), { recursive: true, force: true });
+    }
   });
 });

@@ -1,3 +1,6 @@
+# MongoDB dumps — may contain OAuth tokens and PII; keep local only
+backups/
+
 # Private key material — NEVER commit. Use env/base64 injection.
 *.key
 *.crt

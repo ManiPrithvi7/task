@@ -12,13 +12,10 @@ export enum DeviceCertificateStatus {
   expired = 'expired'
 }
 
-export type DeviceCertificateSlot = 'primary' | 'staging';
-
 export interface IDeviceCertificate extends Document {
   _id: mongoose.Types.ObjectId;
   device_id: string;
-  slot: DeviceCertificateSlot;
-  user_id: mongoose.Types.ObjectId;
+  business_id: mongoose.Types.ObjectId;
   certificate: string;
   private_key: string; // Optional at issuance (device keeps key during CSR flow); may be empty
   ca_certificate: string;
@@ -37,17 +34,11 @@ const DeviceCertificateSchema = new Schema<IDeviceCertificate>({
   device_id: {
     type: String,
     required: true,
-    index: true
+    unique: true // Prisma: device_id String @unique — one cert per device, rotation overwrites in place
   },
-  slot: {
-    type: String,
-    enum: ['primary', 'staging'],
-    required: true,
-    default: 'primary'
-  },
-  user_id: {
+  business_id: {
     type: Schema.Types.ObjectId,
-    ref: 'User',
+    ref: 'Business',
     required: true
   },
   certificate: {
@@ -100,14 +91,12 @@ const DeviceCertificateSchema = new Schema<IDeviceCertificate>({
 });
 
 // Indexes (matching Prisma schema)
-// Note: fingerprint already has unique: true in schema definition
-DeviceCertificateSchema.index({ user_id: 1 });
+// Note: device_id and fingerprint already have unique: true in schema definition
+DeviceCertificateSchema.index({ business_id: 1 });
 DeviceCertificateSchema.index({ cn: 1 });
 DeviceCertificateSchema.index({ status: 1 });
 DeviceCertificateSchema.index({ expires_at: 1 });
 DeviceCertificateSchema.index({ created_at: 1 });
-DeviceCertificateSchema.index({ device_id: 1, slot: 1, status: 1 }, { name: 'device_id_slot_status' });
-DeviceCertificateSchema.index({ device_id: 1, slot: 1, expires_at: 1 }, { name: 'device_id_slot_expires_at' });
 
 // Pre-save middleware to update status based on expiration
 DeviceCertificateSchema.pre('save', function(next) {

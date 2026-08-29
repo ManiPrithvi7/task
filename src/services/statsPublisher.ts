@@ -10,11 +10,7 @@ import {
   buildScreenEnvelope,
   gmbReviewMetrics
 } from './screenEnvelope';
-import { publishForce, publishIfChanged } from './mqttChangeDetection';
-import {
-  buildBrandCanvasPayload,
-  getCachedBrandCanvasAd
-} from './brandCanvasService';
+import { publishIfChanged } from './mqttChangeDetection';
 import { getUserIntegrations } from './userIntegrationCache';
 
 const SAMPLE_GMB_REVIEWS = [
@@ -88,7 +84,7 @@ export class StatsPublisher {
 
     this.isRunning = true;
     const root = this.mqttClient.getTopicRoot();
-    logger.info('📈 Starting screen publisher (Instagram, GMB, Promotion)', {
+    logger.info('📈 Starting screen publisher (Instagram, GMB)', {
       interval: `${this.publishInterval / 1000}s`,
       topicRoot: root
     });
@@ -132,7 +128,7 @@ export class StatsPublisher {
         source: 'redis',
         devices: activeDevices.map(d => ({
           id: d.deviceId,
-          userId: d.userId || '(none)',
+          businessId: d.businessId || '(none)',
           lastSeen: new Date(d.lastSeen).toISOString()
         }))
       });
@@ -147,7 +143,7 @@ export class StatsPublisher {
           // test-gmb: dev/QA mock only. Skip when user has GMB connected (real data via connect pull + webhooks).
           const publishTestGmb =
             process.env.STATS_PUBLISHER_TEST_GMB === 'true' ||
-            !(device.userId && (await getUserIntegrations(device.userId))?.gmb);
+            !(device.businessId && (await getUserIntegrations(device.businessId))?.gmb);
           if (publishTestGmb) {
             try {
               await this.publishTestGmb(device.deviceId, root);
@@ -158,9 +154,9 @@ export class StatsPublisher {
               });
             }
           } else {
-            logger.info('[PUBLISH_CYCLE] Skipping test-gmb — user has GMB integration', {
+            logger.info('[PUBLISH_CYCLE] Skipping test-gmb — business has GMB integration', {
               deviceId: device.deviceId,
-              userId: device.userId
+              businessId: device.businessId
             });
           }
 
@@ -192,7 +188,6 @@ export class StatsPublisher {
           if (process.env.STATS_PUBLISHER_MOCK_GMB === 'true') {
             await this.publishGmb(device.deviceId, root);
           }
-          await this.publishPromotionForDevice(device.deviceId, root);
         } catch (err: unknown) {
           logger.error('Failed to publish screens for device', {
             deviceId: device.deviceId,
@@ -286,135 +281,6 @@ export class StatsPublisher {
       retain: false
     });
     logger.debug('Published test-gmb screen', { deviceId, reviews, milestone: nextGoal });
-  }
-
-  /**
-   * Brand Canvas / Promotion screen — reads running Ad from Mongo (cached in Redis).
-   * Used by the 60s publish cycle and connect-refresh coordinator (same hash dedupe path).
-   */
-  async publishPromotionForDevice(
-    deviceId: string,
-    root: string,
-    opts?: { force?: boolean }
-  ): Promise<void> {
-    const cache = getActiveDeviceCache();
-    const device = await cache.getActive(deviceId);
-    if (!device) {
-      logger.warn('[PROMOTION] Device not in active cache — skip', { deviceId, force: opts?.force === true });
-      return;
-    }
-
-    const { userId } = device;
-
-    try {
-      const force = opts?.force === true;
-
-      if (!userId) {
-        await this.publishDefaultCanvas(deviceId, root, force);
-        return;
-      }
-
-      const ad = await getCachedBrandCanvasAd(userId);
-      if (!ad) {
-        logger.info('[PROMOTION] No running brand canvas — default canvas', { deviceId, userId });
-        await this.publishDefaultCanvas(deviceId, root, force);
-        return;
-      }
-
-      const adId = String((ad as { _id: unknown })._id);
-      const screenPayload = buildBrandCanvasPayload(ad);
-      const envelope = buildScreenEnvelope('promotion', screenPayload);
-
-      const result = await this.publishPromotionEnvelope(deviceId, root, envelope, adId, force);
-
-      if (result.published) {
-        logger.info('[PROMOTION] Published brand canvas', {
-          deviceId,
-          userId,
-          adId,
-          adName: (ad as { name?: string }).name,
-          topic: `${root}/${deviceId}/promotion`,
-          creativeUrl: screenPayload.creativeUrl
-        });
-      } else {
-        logger.info('[PROMOTION] Skipped unchanged payload', {
-          deviceId,
-          adId,
-          reason: result.reason
-        });
-      }
-    } catch (err: unknown) {
-      logger.error('Failed to publish promotion screen', {
-        deviceId,
-        error: err instanceof Error ? err.message : String(err)
-      });
-      try {
-        await this.publishDefaultCanvas(deviceId, root, opts?.force === true);
-      } catch (_) {
-        /* swallow nested error */
-      }
-    }
-  }
-
-  /** Default canvas — no userId, no running brand canvas, or error fallback */
-  private async publishDefaultCanvas(deviceId: string, root: string, force = false): Promise<void> {
-    const envelope = buildScreenEnvelope('promotion', {
-      platform: 'brand_canvas',
-      Offer: '20%',
-      message: 'Cold Brew',
-      qrText: 'https://promo.link/coldbrew'
-    });
-
-    const result = await this.publishPromotionEnvelope(deviceId, root, envelope, undefined, force);
-    const topic = `${root}/${deviceId}/promotion`;
-    if (result.published) {
-      logger.info('🎨 [DEFAULT:PUBLISHED] Empty default canvas sent', { deviceId, topic });
-    } else {
-      logger.info('[PROMOTION] Default canvas not published', {
-        deviceId,
-        topic,
-        reason: result.reason
-      });
-    }
-  }
-
-  /** Shared MQTT publish + payload-hash dedupe for promotion (cycle + connect pull). */
-  private async publishPromotionEnvelope(
-    deviceId: string,
-    root: string,
-    envelope: ReturnType<typeof buildScreenEnvelope>,
-    contentId?: string,
-    force = false
-  ): Promise<{ published: boolean; reason: 'changed' | 'unchanged' | 'no_redis' }> {
-    const topic = `${root}/${deviceId}/promotion`;
-    const hashInput = contentId
-      ? { ...(envelope.payload as Record<string, unknown>), contentId }
-      : envelope.payload;
-    const payload = JSON.stringify(envelope);
-
-    if (force) {
-      await publishForce({
-        deviceId,
-        topic,
-        hashInput,
-        payload,
-        mqttClient: this.mqttClient,
-        qos: 1,
-        retain: false,
-        source: 'promotion_connect_force'
-      });
-      return { published: true, reason: 'changed' };
-    }
-
-    return publishIfChanged({
-      deviceId,
-      topic,
-      hashInput,
-      payload: JSON.stringify(envelope),
-      mqttClient: this.mqttClient,
-      qos: 1,
-      retain: false
-    });
   }
 
   /** `.../gmb`: canonical v6 payload rotation including mini/mega celebration envelopes. */

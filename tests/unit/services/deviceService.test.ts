@@ -28,6 +28,12 @@ jest.mock('@/models/Device', () => {
   };
 });
 
+jest.mock('@/models/DeviceOtaState', () => ({
+  DeviceOtaState: {
+    updateOne: jest.fn().mockResolvedValue({ acknowledged: true }),
+  },
+}));
+
 
 import { Device, DeviceStatus } from '@/models/Device';
 import { ActiveDeviceCache, DeviceService, type DeviceData } from '@/services/deviceService';
@@ -56,7 +62,7 @@ describe('ActiveDeviceCache', () => {
   it('persists set → get → getAll → count → updateLastSeen → remove → flush roundtrip', async () => {
     const device = {
       deviceId: 'dev-1',
-      userId: '507f1f77bcf86cd799439011',
+      businessId: '507f1f77bcf86cd799439011',
       lastSeen: 1_700_000_000_000,
       instagramAccountId: 'ig-123',
       accessToken: 'token-abc',
@@ -144,7 +150,7 @@ describe('DeviceService.registerDevice', () => {
         clientId: 'client-abc',
         status: DeviceStatus.ACTIVE,
         tokenUsed: false,
-        userId: undefined,
+        businessId: undefined,
         crt: undefined,
         ca_certificate: undefined,
       })

@@ -23,8 +23,7 @@ function buildLifecycleRoutesApp(overrides?: Partial<LifecycleDeps>) {
     caService: {
       signCSR: jest.fn(),
       getRootCACertificate: jest.fn().mockReturnValue('ca-pem'),
-      revokeAllDeviceCertificates: jest.fn().mockResolvedValue(undefined),
-      promoteStagingToPrimary: jest.fn()
+      revokeAllDeviceCertificates: jest.fn().mockResolvedValue(undefined)
     } as unknown as LifecycleDeps['caService'],
     recoverySessionService: {
       isAvailable: jest.fn().mockReturnValue(true),
@@ -95,7 +94,7 @@ describe('lifecycleRoutes', () => {
   it('returns 400 when recovery session verification fails', async () => {
     mockFindOne.mockResolvedValue({
       clientId: 'device-1',
-      userId: '507f1f77bcf86cd799439011'
+      businessId: '507f1f77bcf86cd799439011'
     });
 
     const { app, deps } = buildLifecycleRoutesApp();

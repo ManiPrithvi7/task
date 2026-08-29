@@ -7,7 +7,7 @@ export interface PkiAuditInput {
   event: string;
   /** Required — CA-level events use "system". */
   deviceId: string;
-  userId?: string;
+  businessId?: string;
   serialNumber?: string;
   certificateFingerprint?: string;
   sequence?: number;
@@ -23,7 +23,7 @@ export class PkiAuditRepo extends BaseInfluxRepo<PkiAuditInput> {
       .tag('event', input.event)
       .tag('device_id', input.deviceId || 'system');
 
-    if (input.userId) point.stringField('user_id_at_time', input.userId);
+    if (input.businessId) point.stringField('business_id_at_time', input.businessId);
     if (input.serialNumber) point.stringField('serial_number', input.serialNumber);
     if (input.certificateFingerprint) point.stringField('cert_fingerprint', input.certificateFingerprint);
     if (typeof input.sequence === 'number') point.intField('sequence', input.sequence);

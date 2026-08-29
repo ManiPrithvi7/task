@@ -62,7 +62,6 @@ import { getRedisSyncService } from './services/redisSync';
 import { SessionService } from './services/sessionService';
 import { Device, type IDevice } from './models/Device';
 import { DeviceCertificate, DeviceCertificateStatus } from './models/DeviceCertificate';
-import { User } from './models/User';
 import { Social, Provider as SocialProvider } from './models/Social';
 import { createFirmwareStorageService } from './services/firmwareStorageService';
 import {
@@ -237,7 +236,7 @@ export class StatsMqttLite {
     try {
       const uid = new mongoose.Types.ObjectId(userIdStr);
       const ig = await Social.findOne({
-        userId: uid,
+        businessId: uid,
         provider: SocialProvider.INSTAGRAM
       }).sort({ updatedAt: -1 });
       if (!ig) return null;

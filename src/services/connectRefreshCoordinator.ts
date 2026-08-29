@@ -1,17 +1,13 @@
 import type { MqttClientManager } from '../servers/mqttClient';
 import type { InstagramPoller } from './instagramService';
-import type { StatsPublisher } from './statsPublisher';
 import type { GmbConnectPull } from './gmbConnectPull';
 import type { RedisService } from './redisService';
 import { logger } from '../utils/logger';
 import { clearAllPublishHashesForDevice } from './mqttChangeDetection';
 import { getUserIntegrations, cacheUserIntegrations } from './userIntegrationCache';
 import { getActiveDeviceCache } from './deviceService';
-import { getLocalConnectDebounce } from './localCaches';
 // TEMP STIMULATE — remove after testing
 import { shouldSkipForStimulate } from '../utils/stimulateAllowlist';
-
-const CONNECT_REFRESH_DEBOUNCE_SEC = 30;
 
 export type ConnectRefreshCoordinatorDeps = {
   mqttClient: MqttClientManager;
@@ -19,26 +15,24 @@ export type ConnectRefreshCoordinatorDeps = {
   instagramPoller: InstagramPoller | null;
   instagramPriorityTtlMs: number;
   gmbConnectPull: GmbConnectPull;
-  statsPublisher: StatsPublisher;
 };
 
 export class ConnectRefreshCoordinator {
   constructor(private readonly deps: ConnectRefreshCoordinatorDeps) {}
 
   async refresh(deviceId: string): Promise<void> {
-    const promotionDebounced = await this.isDebounced(deviceId);
     const root = this.deps.mqttClient.getTopicRoot();
-    const { mqttClient, instagramPoller, gmbConnectPull, statsPublisher } = this.deps;
+    const { mqttClient, instagramPoller, gmbConnectPull } = this.deps;
 
     const device = await getActiveDeviceCache().getActive(deviceId);
-    if (!device?.userId) {
-      logger.debug('[CONNECT_REFRESH] No userId on active device', { deviceId });
+    if (!device?.businessId) {
+      logger.debug('[CONNECT_REFRESH] No businessId on active device', { deviceId });
       return;
     }
 
-    let integrations = await getUserIntegrations(device.userId);
+    let integrations = await getUserIntegrations(device.businessId);
     if (!integrations) {
-      integrations = await cacheUserIntegrations(device.userId);
+      integrations = await cacheUserIntegrations(device.businessId);
     }
 
     const mqttReady = await mqttClient.waitUntilConnected({ timeoutMs: 12_000 });
@@ -46,25 +40,13 @@ export class ConnectRefreshCoordinator {
       logger.warn('[CONNECT_REFRESH] MQTT not ready — screen publishes may retry inline', { deviceId });
     }
 
-    const clearedHashes = promotionDebounced
-      ? 0
-      : await clearAllPublishHashesForDevice(deviceId);
+    await clearAllPublishHashesForDevice(deviceId);
 
     if (!integrations) {
       logger.warn('[CONNECT_REFRESH] No integrations cached or found', {
         deviceId,
-        userId: device.userId
+        businessId: device.businessId
       });
-      if (!promotionDebounced) {
-        try {
-          await statsPublisher.publishPromotionForDevice(deviceId, root, { force: true });
-        } catch (err: unknown) {
-          logger.warn('[CONNECT_REFRESH] Promotion publish failed', {
-            deviceId,
-            error: err instanceof Error ? err.message : String(err)
-          });
-        }
-      }
       return;
     }
 
@@ -86,27 +68,7 @@ export class ConnectRefreshCoordinator {
       }
     }
 
-    if (promotionDebounced) {
-      logger.info('[CONNECT_REFRESH] Screen pulls only (promotion debounced)', {
-        deviceId,
-        hasGmb: Boolean(integrations.gmb),
-        hasInstagram: Boolean(integrations.instagram)
-      });
-    }
     const screenPulls = await Promise.allSettled(tasks);
-
-    if (!promotionDebounced) {
-      try {
-        await statsPublisher.publishPromotionForDevice(deviceId, root, { force: true });
-        logger.info('[CONNECT_REFRESH] Promotion published (connect force)', { deviceId, clearedHashes });
-      } catch (err: unknown) {
-        logger.warn('[CONNECT_REFRESH] Promotion publish failed', {
-          deviceId,
-          clearedHashes,
-          error: err instanceof Error ? err.message : String(err)
-        });
-      }
-    }
 
     const failed = screenPulls.filter((r) => r.status === 'rejected');
     if (failed.length > 0) {
@@ -131,8 +93,4 @@ export class ConnectRefreshCoordinator {
     }
   }
 
-  private async isDebounced(deviceId: string): Promise<boolean> {
-    // shouldRefresh=true means debounce window elapsed (allow full refresh).
-    return !getLocalConnectDebounce().shouldRefresh(deviceId, CONNECT_REFRESH_DEBOUNCE_SEC * 1000);
-  }
 }

@@ -25,10 +25,6 @@ jest.mock('@/webhooks/gmb/gmbReviewResolve', () => ({
   mapReviewPayloadToStorage: jest.fn((p: { reviewId: string }) => p)
 }));
 
-jest.mock('@/models/GoogleBusinessReview', () => ({
-  GoogleBusinessReview: { findOneAndUpdate: jest.fn().mockResolvedValue({}) }
-}));
-
 jest.mock('@/models/GoogleBusinessLocation', () => ({
   GoogleBusinessLocation: {
     findById: jest.fn().mockReturnValue({
@@ -49,7 +45,7 @@ describe('gmbEnrichmentWorker audit context', () => {
     scheduleGmbEnrichment(
       { account: 'a', location: 'l', review: 'r1', eventType: 'NEW_REVIEW' },
       {
-        userId: '507f1f77bcf86cd799439012',
+        businessId: '507f1f77bcf86cd799439012',
         locationObjectId: '507f1f77bcf86cd799439013',
         account: 'a',
         location: 'l',
@@ -68,7 +64,7 @@ describe('gmbEnrichmentWorker audit context', () => {
       'dev1',
       expect.objectContaining({ reviewId: 'r1' }),
       true,
-      { userId: '507f1f77bcf86cd799439012', deviceId: 'dev1' }
+      { deviceId: 'dev1' }
     );
   });
 });

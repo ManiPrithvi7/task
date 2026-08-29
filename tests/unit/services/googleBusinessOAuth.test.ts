@@ -95,7 +95,7 @@ describe('googleBusinessOAuth', () => {
       expect(result).toBeNull();
       expect(mockFindOne).toHaveBeenCalledWith(
         expect.objectContaining({
-          userId: new mongoose.Types.ObjectId(TEST_USER_ID),
+          businessId: new mongoose.Types.ObjectId(TEST_USER_ID),
           provider: 'GOOGLE_BUSINESS',
         })
       );

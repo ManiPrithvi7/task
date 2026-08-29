@@ -5,7 +5,6 @@ import { StatsPublisher } from '../services/statsPublisher';
 import { ConnectRefreshCoordinator } from '../services/connectRefreshCoordinator';
 import { GmbConnectPull } from '../services/gmbConnectPull';
 import { StimulateService } from '../services/stimulateService';
-import { createConnectionsRoutes } from '../routes/connectionsRoutes';
 import {
   InstagramServerlessBridge,
   InstagramDirectFetchInvoker,
@@ -69,9 +68,10 @@ async function initializeInfluxDB(host: BootstrapHost): Promise<void> {
     if (!healthy) {
       await resetInfluxService();
       host.influxService = undefined;
-      throw new Error(
-        'InfluxDB unreachable or misconfigured. Verify INFLUXDB_URL, INFLUXDB_TOKEN, INFLUXDB_ORG, INFLUXDB_BUCKET, INFLUXDB_COMPLIANCE_BUCKET.'
+      logger.warn(
+        'InfluxDB unreachable or misconfigured — continuing without it so the HTTP API still starts. Verify INFLUXDB_URL, INFLUXDB_TOKEN, INFLUXDB_ORG, INFLUXDB_BUCKET, INFLUXDB_COMPLIANCE_BUCKET.'
       );
+      return;
     }
 
     logger.info('📈 InfluxDB connected', {
@@ -85,7 +85,10 @@ async function initializeInfluxDB(host: BootstrapHost): Promise<void> {
   } catch (err: unknown) {
     await resetInfluxService();
     host.influxService = undefined;
-    throw err;
+    // Telemetry must never block the HTTP API (provisioning depends on it).
+    logger.warn('InfluxDB initialization failed — continuing without it so the HTTP API still starts', {
+      error: err instanceof Error ? err.message : String(err)
+    });
   }
 }
 
@@ -180,16 +183,7 @@ async function initializeStatsPublisher(host: BootstrapHost): Promise<void> {
 
   await host.statsPublisher.start();
 
-  if (host.httpServer) {
-    const routeDeps = {
-      statsPublisher: host.statsPublisher,
-      topicRoot: host.config.mqtt.topicRoot
-    };
-    host.httpServer.getApp().use('/api/v1', createConnectionsRoutes(routeDeps));
-    logger.info('✅ Connections routes registered at POST /api/v1/connections/validate');
-  }
-
-  logger.info('✅ Stats publisher initialized - publishing every 60s to /instagram, /gmb, /promotion');
+  logger.info('✅ Stats publisher initialized - publishing every 60s to /instagram, /gmb');
 }
 
 function initializeConnectRefreshCoordinator(host: BootstrapHost): void {
@@ -203,8 +197,7 @@ function initializeConnectRefreshCoordinator(host: BootstrapHost): void {
     redisService: host.redisService ?? null,
     instagramPoller: host.instagramPoller ?? null,
     instagramPriorityTtlMs: host.config.instagramPolling?.priorityTtlMs ?? 300_000,
-    gmbConnectPull,
-    statsPublisher: host.statsPublisher!
+    gmbConnectPull
   });
   logger.info('✅ Connect refresh coordinator initialized (/active → debounced screen pull)');
 }

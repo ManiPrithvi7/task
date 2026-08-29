@@ -12,7 +12,7 @@ export interface DeviceStateLogInput {
   fwVersion?: string;
   fwTrack?: string;
   ipHash?: string;
-  userIdAtTime?: string;
+  businessIdAtTime?: string;
   timestamp?: Date;
 }
 
@@ -29,7 +29,7 @@ export class DeviceStateLogRepo extends BaseInfluxRepo<DeviceStateLogInput> {
     if (input.fwVersion) point.stringField('fw_version', input.fwVersion);
     if (input.fwTrack) point.stringField('fw_track', input.fwTrack);
     if (input.ipHash) point.stringField('ip_hash', input.ipHash);
-    if (input.userIdAtTime) point.stringField('user_id_at_time', input.userIdAtTime);
+    if (input.businessIdAtTime) point.stringField('business_id_at_time', input.businessIdAtTime);
 
     point.timestamp(input.timestamp ?? new Date());
     return point;

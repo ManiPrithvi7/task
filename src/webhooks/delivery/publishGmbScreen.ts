@@ -13,7 +13,6 @@ export type GmbFastScreenInput = {
 };
 
 export type GmbScreenAuditContext = {
-  userId?: string;
   deviceId: string;
   locationId?: string;
 };

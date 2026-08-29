@@ -47,7 +47,6 @@ function matchingCert(overrides: Record<string, unknown> = {}) {
   return {
     cn: 'PROOF_device-1',
     fingerprint: 'abc123',
-    slot: 'primary',
     expires_at: new Date('2026-01-01T00:00:00.000Z'),
     ...overrides,
   };
@@ -192,11 +191,11 @@ describe('ensureDeviceProvisioned', () => {
       });
     });
 
-    it('logs DEVICE_AUTH_SUCCESS with slot, cn, and ISO expiresAt', async () => {
+    it('logs DEVICE_AUTH_SUCCESS with cn and ISO expiresAt', async () => {
       const expiresAt = new Date('2026-06-15T12:00:00.000Z');
       const caService = makeCaService({
         findActiveCertificateByDeviceId: jest.fn().mockResolvedValue(
-          matchingCert({ expires_at: expiresAt, slot: 'staging' })
+          matchingCert({ expires_at: expiresAt })
         ),
         formatExpectedCN: jest.fn().mockReturnValue('PROOF_device-1'),
       });
@@ -212,29 +211,10 @@ describe('ensureDeviceProvisioned', () => {
         deviceId: 'device-1',
         certificateFingerprint: 'abc123',
         details: {
-          slot: 'staging',
           cn: 'PROOF_device-1',
           expiresAt: expiresAt.toISOString(),
         },
       });
-    });
-
-    it('defaults certSlot to primary in success audit when slot is undefined', async () => {
-      const caService = makeCaService({
-        findActiveCertificateByDeviceId: jest.fn().mockResolvedValue(
-          matchingCert({ slot: undefined })
-        ),
-        formatExpectedCN: jest.fn().mockReturnValue('PROOF_device-1'),
-      });
-
-      await ensureDeviceProvisioned('device-1', { provisioning: baseProvisioning, caService });
-
-      expect(mockLogEvent).toHaveBeenCalledWith(
-        expect.objectContaining({
-          event: 'DEVICE_AUTH_SUCCESS',
-          details: expect.objectContaining({ slot: 'primary' }),
-        })
-      );
     });
 
     it('swallows audit logEvent rejection without failing the gate', async () => {
@@ -296,7 +276,6 @@ describe('ensureDeviceProvisioned', () => {
           hasDigitalSignature: false,
           hasClientAuth: false,
           hasProhibitedKeyCertSign: false,
-          slot: 'primary',
         },
       });
     });
@@ -384,7 +363,6 @@ describe('ensureDeviceProvisioned', () => {
           failurePoint: 'root not trusted',
           errors: ['root not trusted', 'expired intermediate'],
           chainSubjects: ['device', 'intermediate'],
-          slot: 'primary',
         },
       });
     });
@@ -429,7 +407,6 @@ describe('ensureDeviceProvisioned', () => {
         details: {
           reason: 'CHAIN_VALIDATION_ERROR',
           failurePoint: 'parse failure',
-          slot: 'primary',
         },
       });
     });

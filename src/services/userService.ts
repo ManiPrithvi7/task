@@ -4,13 +4,13 @@
  */
 
 import { MongoService } from './mongoService';
-import { Device, User, IUser, IDevice } from '../models';
+import { Device, Business, IBusiness, IDevice } from '../models';
 import { logger } from '../utils/logger';
 import mongoose from 'mongoose';
 
 export interface UserVerificationResult {
   found: boolean;
-  user?: IUser;
+  user?: IBusiness;
   error?: string;
 }
 
@@ -130,40 +130,40 @@ export class UserService {
       logger.debug('Verifying user exists', {
         userId: userId.toString(),
         dbName: connectionName,
-        collection: 'User', // Prisma uses capitalized collection name
+        collection: 'Business', // Prisma uses capitalized collection name
         host: connectionHost
       });
 
       // Test query to verify collection access
       try {
-        const testCount = await User.countDocuments({});
-        logger.debug('User collection accessible', {
+        const testCount = await Business.countDocuments({});
+        logger.debug('Business collection accessible', {
           totalUsers: testCount,
           dbName: connectionName,
-          collection: 'User'
+          collection: 'Business'
         });
       } catch (testError) {
-        logger.error('Failed to access User collection', {
+        logger.error('Failed to access Business collection', {
           error: testError instanceof Error ? testError.message : 'Unknown error',
           dbName: connectionName,
-          collection: 'User'
+          collection: 'Business'
         });
       }
 
-      // Query user using Mongoose model
-      const user = await User.findById(userId);
+      // Query business using Mongoose model (JWT sub = Business._id)
+      const user = await Business.findById(userId);
 
       if (!user) {
-        logger.warn('User not found in database', {
+        logger.warn('Business not found in database', {
           userId: userId.toString(),
           dbName: connectionName,
-          collection: 'User',
+          collection: 'Business',
           host: connectionHost
         });
-        
-        // Additional diagnostic: Try to find user by email or other field
+
+        // Additional diagnostic: Try to find business by email or other field
         try {
-          const allUsers = await User.find({}).limit(5).select('_id email name');
+          const allUsers = await Business.find({}).limit(5).select('_id email name');
           logger.debug('Sample users in database', {
             sampleCount: allUsers.length,
             sampleUsers: allUsers.map(u => ({
@@ -294,8 +294,8 @@ export class UserService {
         };
       }
 
-      // Verify device belongs to the user
-      const deviceUserId = device.userId?.toString();
+      // Verify device belongs to the business
+      const deviceUserId = device.businessId?.toString();
       const requestedUserId = userId.toString();
 
       if (!deviceUserId || deviceUserId !== requestedUserId) {

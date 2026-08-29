@@ -25,7 +25,7 @@ export class GmbConnectPull {
     let ctx = await resolveGmbContextForDevice(deviceId);
     if (!ctx) {
       const active = await getActiveDeviceCache().getActive(deviceId);
-      const integrations = active?.userId ? await getUserIntegrations(active.userId) : null;
+      const integrations = active?.businessId ? await getUserIntegrations(active.businessId) : null;
       ctx = await syncGmbLocationForDevice(deviceId, this.webhookConfig, {
         knownLocationId: integrations?.gmb?.locationId
       });
@@ -52,7 +52,7 @@ export class GmbConnectPull {
         rating,
       },
       this.mqttPublishEnabled,
-      { userId: ctx.userId, deviceId }
+      { deviceId }
     );
     logger.debug('[GMB_CONNECT] Published GMB snapshot from Mongo', {
       deviceId,

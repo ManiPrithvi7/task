@@ -16,12 +16,32 @@ jest.mock('@/models/Device', () => ({
     OFFLINE: 'OFFLINE',
     RECOVERY: 'RECOVERY',
     ERROR: 'ERROR'
-  },
-  DeviceOtaState: {
-    IDLE: 'idle',
-    ROLLBACK_REPORTED: 'rollback_reported'
   }
 }));
+
+jest.mock('@/models/DeviceOtaState', () => {
+  const DeviceOtaStateModel = jest.fn().mockImplementation((doc: Record<string, unknown>) => ({
+    ...doc,
+    save: jest.fn().mockResolvedValue(undefined)
+  })) as jest.Mock & {
+    findOne: jest.Mock;
+    find: jest.Mock;
+    updateOne: jest.Mock;
+  };
+  DeviceOtaStateModel.findOne = jest.fn();
+  DeviceOtaStateModel.find = jest.fn();
+  DeviceOtaStateModel.updateOne = jest.fn().mockResolvedValue({});
+  return {
+    DeviceOtaState: DeviceOtaStateModel,
+    DeviceOtaStatus: {
+      IDLE: 'idle',
+      NOTIFIED: 'notified',
+      DOWNLOADING: 'downloading',
+      VALIDATING: 'validating',
+      ROLLBACK_REPORTED: 'rollback_reported'
+    }
+  };
+});
 
 jest.mock('@/models/FirmwareRelease', () => ({
   FirmwareRelease: {
@@ -77,6 +97,7 @@ jest.mock('@/services/auditService', () => ({
 }));
 
 import { Device } from '@/models/Device';
+import { DeviceOtaState } from '@/models/DeviceOtaState';
 import { FirmwareRelease } from '@/models/FirmwareRelease';
 import { OciStorageError } from '@/services/ociStorageErrors';
 import {
@@ -154,8 +175,12 @@ describe('OtaService.resolveUpdate', () => {
     (Device.findOne as jest.Mock).mockResolvedValue({
       clientId: 'dev-1',
       status: DeviceStatus.ACTIVE,
-      otaBlockedVersions: ['4.3.1'],
       save: jest.fn()
+    });
+    (DeviceOtaState.findOne as jest.Mock).mockReturnValue({
+      select: () => ({
+        lean: () => Promise.resolve({ deviceId: 'dev-1', otaBlockedVersions: ['4.3.1'] })
+      })
     });
     (FirmwareRelease.find as jest.Mock).mockReturnValue({
       sort: () => ({
@@ -186,6 +211,10 @@ describe('OtaService.recordRollbackFailure', () => {
     const failures = new Map<string, number>([['4.3.1', 2]]);
     (Device.findOne as jest.Mock).mockResolvedValue({
       clientId: 'dev-1',
+      save: jest.fn().mockResolvedValue(undefined)
+    });
+    (DeviceOtaState.findOne as jest.Mock).mockResolvedValue({
+      deviceId: 'dev-1',
       otaRollbackFailures: failures,
       otaBlockedVersions: [],
       save
@@ -225,6 +254,9 @@ describe('OtaService.ingestRelease', () => {
     jest.clearAllMocks();
     mockStorage.headObject.mockReset();
     mockStorage.verifySha256.mockReset();
+    (DeviceOtaState.find as jest.Mock).mockReturnValue({
+      select: () => ({ lean: () => Promise.resolve([]) })
+    });
     (FirmwareRelease.findOne as jest.Mock).mockImplementation((query: Record<string, unknown>) => {
       if (query?.status === 'deprecated') return Promise.resolve(null);
       return Promise.resolve(null);
@@ -526,6 +558,9 @@ describe('OtaService.advanceRollout', () => {
     (Device.find as jest.Mock).mockReturnValue({
       select: jest.fn().mockResolvedValue([])
     });
+    (DeviceOtaState.find as jest.Mock).mockReturnValue({
+      select: () => ({ lean: () => Promise.resolve([]) })
+    });
   });
 
   it('returns RELEASE_NOT_FOUND when version is absent', async () => {
@@ -642,8 +677,12 @@ describe('OtaService.resolveUpdate buildOffer', () => {
     (Device.findOne as jest.Mock).mockResolvedValue({
       clientId: 'dev-1',
       status: DeviceStatus.ACTIVE,
-      otaBlockedVersions: [],
       save: jest.fn()
+    });
+    (DeviceOtaState.findOne as jest.Mock).mockReturnValue({
+      select: () => ({
+        lean: () => Promise.resolve({ deviceId: 'dev-1', otaBlockedVersions: [] })
+      })
     });
     (FirmwareRelease.find as jest.Mock).mockReturnValue({
       sort: () => ({
@@ -798,11 +837,16 @@ describe('OtaService.recordOtaFailure', () => {
     const save = jest.fn();
     const device = {
       clientId: 'dev-1',
+      save: jest.fn().mockResolvedValue(undefined)
+    };
+    const otaState = {
+      deviceId: 'dev-1',
       otaRollbackFailures: new Map<string, number>(),
       otaBlockedVersions: [] as string[],
       save
     };
     (Device.findOne as jest.Mock).mockResolvedValue(device);
+    (DeviceOtaState.findOne as jest.Mock).mockResolvedValue(otaState);
     (FirmwareRelease.updateOne as jest.Mock).mockResolvedValue({});
     (FirmwareRelease.findOne as jest.Mock).mockResolvedValue({
       version: '2.3.0',
@@ -816,7 +860,7 @@ describe('OtaService.recordOtaFailure', () => {
     const result = await svc.recordOtaFailure('dev-1', '2.3.0', 'health_check_failed');
     expect(result.blocked).toBe(true);
     expect(result.failures).toBe(1);
-    expect(device.otaBlockedVersions).toContain('2.3.0');
+    expect(otaState.otaBlockedVersions).toContain('2.3.0');
     expect(mockLogEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         event: 'OTA_DEVICE_BLOCKED',
@@ -834,11 +878,16 @@ describe('OtaService.recordOtaFailure', () => {
     const failures = new Map<string, number>([['2.3.0', 2]]);
     const device = {
       clientId: 'dev-1',
+      save: jest.fn().mockResolvedValue(undefined)
+    } as { clientId: string; save: jest.Mock; errorMessage?: string };
+    const otaState = {
+      deviceId: 'dev-1',
       otaRollbackFailures: failures,
       otaBlockedVersions: [] as string[],
       save
     };
     (Device.findOne as jest.Mock).mockResolvedValue(device);
+    (DeviceOtaState.findOne as jest.Mock).mockResolvedValue(otaState);
     (FirmwareRelease.updateOne as jest.Mock).mockResolvedValue({});
     (FirmwareRelease.findOne as jest.Mock).mockResolvedValue({
       version: '2.3.0',
@@ -863,11 +912,16 @@ describe('OtaService.recordOtaFailure', () => {
     const save = jest.fn();
     const device = {
       clientId: 'dev-1',
+      save: jest.fn().mockResolvedValue(undefined)
+    };
+    const otaState = {
+      deviceId: 'dev-1',
       otaRollbackFailures: new Map<string, number>(),
       otaBlockedVersions: [] as string[],
       save
     };
     (Device.findOne as jest.Mock).mockResolvedValue(device);
+    (DeviceOtaState.findOne as jest.Mock).mockResolvedValue(otaState);
     (FirmwareRelease.updateOne as jest.Mock).mockResolvedValue({});
     (FirmwareRelease.findOne as jest.Mock).mockResolvedValue({
       version: '2.3.0',
@@ -887,6 +941,10 @@ describe('OtaService.recordOtaFailure', () => {
     const save = jest.fn();
     const device = {
       clientId: 'dev-1',
+      save: jest.fn().mockResolvedValue(undefined)
+    };
+    const otaState = {
+      deviceId: 'dev-1',
       otaRollbackFailures: new Map<string, number>(),
       otaBlockedVersions: [] as string[],
       save
@@ -902,6 +960,7 @@ describe('OtaService.recordOtaFailure', () => {
       save: jest.fn().mockResolvedValue(undefined)
     };
     (Device.findOne as jest.Mock).mockResolvedValue(device);
+    (DeviceOtaState.findOne as jest.Mock).mockResolvedValue(otaState);
     (FirmwareRelease.updateOne as jest.Mock).mockImplementation((_query, update) => {
       if (update?.$inc?.stageFailedCount) {
         release.stageFailedCount += update.$inc.stageFailedCount;

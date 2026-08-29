@@ -1,6 +1,6 @@
 import type { AppConfig } from '../config';
 import { buildOtaProxyDownloadUrl, resolveOtaPublicBaseUrl } from '../config/otaDefaults';
-import { Device } from '../models/Device';
+import { DeviceOtaState } from '../models/DeviceOtaState';
 import type { DeferredDeviceWorkQueue } from '../services/deferredDeviceWork';
 import type { OtaCommandPublisher, OtaService } from '../services/otaService';
 import { getActiveDeviceCache } from '../services/deviceService';
@@ -136,9 +136,11 @@ export async function deliverOtaOnRegistration(
     typeof appVersion === 'string' && appVersion.trim() ? appVersion.trim() : undefined;
 
   if (!currentVersion || currentVersion === '1.0.0') {
-    const device = await Device.findOne({ clientId: deviceId }).select({ firmwareVersion: 1 });
-    if (device?.firmwareVersion?.trim()) {
-      currentVersion = device.firmwareVersion.trim();
+    const otaState = await DeviceOtaState.findOne({ deviceId })
+      .select({ firmwareVersion: 1 })
+      .lean();
+    if (otaState?.firmwareVersion?.trim()) {
+      currentVersion = otaState.firmwareVersion.trim();
     }
   }
 

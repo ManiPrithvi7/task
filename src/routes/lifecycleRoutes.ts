@@ -79,8 +79,8 @@ export function createLifecycleRoutes(deps: LifecycleDeps): Router {
    * /api/v1/certificates/renewAuth:
    *   post:
    *     tags: [Lifecycle]
-   *     summary: Renew certificate (staging slot)
-   *     description: Requires mTLS with active primary certificate. Signs CSR into staging slot.
+   *     summary: Renew certificate
+   *     description: Requires mTLS with active certificate. Signs CSR and replaces the current certificate in place.
    *     security:
    *       - MtlsClientCert: []
    *     requestBody:
@@ -108,7 +108,7 @@ export function createLifecycleRoutes(deps: LifecycleDeps): Router {
    */
   router.post(
     '/certificates/renewAuth',
-    requireMtlsDeviceCert({ allowedSlots: ['primary'] }),
+    requireMtlsDeviceCert(),
     async (req: Request, res: Response) => {
       try {
         const deviceId = req.deviceId;
@@ -119,27 +119,26 @@ export function createLifecycleRoutes(deps: LifecycleDeps): Router {
 
         const csrPem = decodeCsrToPem((req.body as any)?.csr ?? (req.body as any)?.CSR);
 
-        // Bind renewal to the same userId as the current primary certificate.
-        const primary = await DeviceCertificate.findOne({
+        // Bind renewal to the same business as the current active certificate.
+        const current = await DeviceCertificate.findOne({
           device_id: deviceId,
-          slot: 'primary',
           status: DeviceCertificateStatus.active
         });
-        if (!primary) {
+        if (!current) {
           res.status(403).json({
             success: false,
-            error: 'No active primary certificate found for device',
+            error: 'No active certificate found for device',
             code: 'PRIMARY_CERT_NOT_FOUND',
             device_id: deviceId
           });
           return;
         }
 
-        const certDoc = await caService.signCSR(csrPem, deviceId, String(primary.user_id), { slot: 'staging' });
+        // Single-slot: the new certificate overwrites the current one in place.
+        const certDoc = await caService.signCSR(csrPem, deviceId, String(current.business_id), { allowReplace: true });
         res.status(200).json({
           success: true,
           device_id: deviceId,
-          slot: (certDoc as any).slot || 'staging',
           certificate: (certDoc as any).certificate,
           ca_certificate: caService.getRootCACertificate(),
           expires_at:
@@ -162,52 +161,29 @@ export function createLifecycleRoutes(deps: LifecycleDeps): Router {
    * /api/v1/certificates/confirm:
    *   post:
    *     tags: [Lifecycle]
-   *     summary: Promote staging certificate to primary
-   *     description: Requires mTLS with staging certificate. Revokes old primary.
+   *     summary: Confirm certificate renewal (legacy no-op)
+   *     description: Single-slot model — renewAuth already replaced the certificate. Kept for older firmware renew flows.
    *     security:
    *       - MtlsClientCert: []
    *     responses:
    *       200:
-   *         description: Certificate promoted
+   *         description: Certificate active
    *       401:
    *         $ref: '#/components/responses/Unauthorized'
-   *       409:
-   *         description: No staging certificate to promote
    */
   router.post(
     '/certificates/confirm',
-    requireMtlsDeviceCert({ allowedSlots: ['staging'] }),
+    requireMtlsDeviceCert(),
     async (req: Request, res: Response) => {
-      try {
-        const deviceId = req.deviceId;
-        if (!deviceId) {
-          res.status(401).json({ success: false, error: 'mTLS required', code: 'MTLS_REQUIRED' });
-          return;
-        }
-
-        const result = await caService.promoteStagingToPrimary(deviceId);
-        if (!result.promoted) {
-          res.status(409).json({
-            success: false,
-            error: 'No active staging certificate found to promote',
-            code: 'NO_STAGING_CERT',
-            device_id: deviceId,
-            timestamp: new Date().toISOString()
-          });
-          return;
-        }
-
-        res.status(200).json({
-          success: true,
-          device_id: deviceId,
-          status: 'promoted',
-          timestamp: new Date().toISOString()
-        });
-      } catch (err: any) {
-        const msg = err instanceof Error ? err.message : String(err);
-        logger.error('confirm failed', { error: msg });
-        res.status(500).json({ success: false, error: 'Internal server error', code: 'CONFIRM_FAILED', timestamp: new Date().toISOString() });
-      }
+      // Legacy staging→primary promotion is gone: renewAuth already replaced the
+      // cert in place, so a device reaching this endpoint with a valid mTLS cert
+      // is already active. No-op shim keeps older firmware renew flows green.
+      res.status(200).json({
+        success: true,
+        device_id: req.deviceId,
+        status: 'active',
+        timestamp: new Date().toISOString()
+      });
     }
   );
 
@@ -303,7 +279,7 @@ export function createLifecycleRoutes(deps: LifecycleDeps): Router {
       const deviceId = device.clientId;
       logger.info('recovery reissue resolved device', { requestedDeviceId, deviceId });
 
-      if (!device.userId) {
+      if (!device.businessId) {
         res.status(400).json({
           success: false,
           error: 'Device has no owner; cannot issue certificate',
@@ -313,7 +289,7 @@ export function createLifecycleRoutes(deps: LifecycleDeps): Router {
         return;
       }
 
-      const userId = String(device.userId);
+      const businessId = String(device.businessId);
 
       const v = await recoverySessionService.verifySession(deviceId, recoveryToken);
       if (!v.ok) {
@@ -338,7 +314,7 @@ export function createLifecycleRoutes(deps: LifecycleDeps): Router {
 
       try {
         await caService.revokeAllDeviceCertificates(deviceId);
-        const certDoc = await caService.signCSR(csrPem, deviceId, userId, { slot: 'primary', allowReplacePrimary: true });
+        const certDoc = await caService.signCSR(csrPem, deviceId, businessId, { allowReplace: true });
 
         await recoverySessionService.consumeSession(deviceId);
 
@@ -352,7 +328,6 @@ export function createLifecycleRoutes(deps: LifecycleDeps): Router {
         res.status(200).json({
           success: true,
           device_id: deviceId,
-          slot: (certDoc as any).slot || 'primary',
           certificate: (certDoc as any).certificate,
           ca_certificate: caService.getRootCACertificate(),
           expires_at:

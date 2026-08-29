@@ -7,7 +7,7 @@ import { GoogleBusinessLocation } from '../../models/GoogleBusinessLocation';
 import { GoogleBusinessProfile } from '../../models/GoogleBusinessProfile';
 
 export type GmbSocialContext = {
-  userId: string;
+  businessId: string;
   socialId: string;
   locationObjectId: string;
   verifiedReviewCount: number;
@@ -25,7 +25,7 @@ export async function resolveGmbSocialContext(
     provider: Provider.GOOGLE_BUSINESS
   }).lean();
 
-  if (!social?.userId) return null;
+  if (!social?.businessId) return null;
 
   const profiles = await GoogleBusinessProfile.find({ socialId: social._id }).select({ _id: 1 }).lean();
   const profileIds = profiles.map((p) => p._id);
@@ -46,7 +46,7 @@ export async function resolveGmbSocialContext(
   if (!locationRecord) return null;
 
   return {
-    userId: String(social.userId),
+    businessId: String(social.businessId),
     socialId: String(social._id),
     locationObjectId: String(locationRecord._id),
     verifiedReviewCount: locationRecord.totalReviewCount ?? 0,

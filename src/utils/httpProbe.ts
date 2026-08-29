@@ -9,6 +9,10 @@ export interface HttpProbeResult {
 /**
  * Simple HTTP(S) GET probe. Returns status code + parsed JSON body.
  * Suitable for health checks and API verification probes.
+ *
+ * The timeout is enforced with an explicit absolute timer: Bun does not
+ * reliably emit the request 'timeout' event for stalled connections, which
+ * previously left this promise pending forever and deadlocked startup.
  */
 export function httpGet(url: string, opts?: {
   timeout?: number;
@@ -19,6 +23,16 @@ export function httpGet(url: string, opts?: {
     if (u.hostname === 'localhost') u.hostname = '127.0.0.1';
     const isHttps = u.protocol === 'https:';
     const mod = isHttps ? https : http;
+    const timeoutMs = opts?.timeout ?? 10000;
+
+    let settled = false;
+
+    const settle = (fn: () => void): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      fn();
+    };
 
     const req = mod.request(
       {
@@ -26,7 +40,6 @@ export function httpGet(url: string, opts?: {
         hostname: u.hostname,
         port: u.port ? Number(u.port) : isHttps ? 443 : 80,
         path: `${u.pathname}${u.search}`,
-        timeout: opts?.timeout ?? 10000,
         headers: opts?.headers,
       },
       (res) => {
@@ -39,12 +52,21 @@ export function httpGet(url: string, opts?: {
           } catch {
             json = {};
           }
-          resolve({ statusCode: res.statusCode ?? 0, json });
+          settle(() => resolve({ statusCode: res.statusCode ?? 0, json }));
         });
+        res.on('error', (err: Error) => settle(() => reject(err)));
       },
     );
-    req.on('timeout', () => req.destroy(new Error('timeout')));
-    req.on('error', reject);
+
+    // eslint-disable-next-line prefer-const -- assigned once; declared late because `settle` clears it
+    let timer: ReturnType<typeof setTimeout> = setTimeout(() => {
+      req.destroy();
+      settle(() => reject(new Error(`timeout after ${timeoutMs}ms`)));
+    }, timeoutMs);
+    if (typeof timer.unref === 'function') timer.unref();
+
+    req.on('timeout', () => req.destroy());
+    req.on('error', (err) => settle(() => reject(err)));
     req.end();
   });
 }

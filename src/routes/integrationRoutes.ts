@@ -46,8 +46,8 @@ export function createIntegrationRoutes(deps: IntegrationRoutesDeps): Router {
    *     tags: [Integrations]
    *     summary: Capture social profile baseline on connect
    *     description: >
-   *       Fetches live Instagram or GMB metrics, writes a profile_baseline point
-   *       to Influx, and marks the Social record as baselineCaptured.
+   *       Fetches live Instagram or GMB metrics and writes a profile_baseline point
+   *       to Influx.
    *     security:
    *       - BearerAuth: []
    *     requestBody:
@@ -69,8 +69,6 @@ export function createIntegrationRoutes(deps: IntegrationRoutesDeps): Router {
    *         $ref: '#/components/responses/Unauthorized'
    *       404:
    *         $ref: '#/components/responses/NotFound'
-   *       409:
-   *         description: Baseline already captured
    *       502:
    *         description: Upstream social API fetch failed
    *       503:
@@ -102,22 +100,13 @@ export function createIntegrationRoutes(deps: IntegrationRoutesDeps): Router {
 
     try {
       const social = await Social.findOne({
-        userId: auth.userId,
+        businessId: auth.userId,
         socialAccountId,
         provider,
       }).lean();
 
       if (!social) {
         res.status(404).json({ error: 'Social record not found', code: 'NOT_FOUND' });
-        return;
-      }
-
-      if (social.baselineCaptured) {
-        res.status(409).json({
-          error: 'Baseline already captured',
-          code: 'BASELINE_ALREADY_CAPTURED',
-          baselineCapturedAt: social.baselineCapturedAt,
-        });
         return;
       }
 
@@ -181,11 +170,6 @@ export function createIntegrationRoutes(deps: IntegrationRoutesDeps): Router {
         res.status(400).json({ error: `Unsupported provider: ${social.provider}`, code: 'UNSUPPORTED_PROVIDER' });
         return;
       }
-
-      await Social.updateOne(
-        { _id: social._id },
-        { $set: { baselineCaptured: true, baselineCapturedAt: now } },
-      );
 
       res.status(201).json({ success: true, baseline: { ...baseline, connectedAt: now.toISOString() } });
     } catch (err: unknown) {

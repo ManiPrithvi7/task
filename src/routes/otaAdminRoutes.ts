@@ -12,6 +12,7 @@ import {
   type IFirmwareRollout
 } from '../models/FirmwareRelease';
 import { Device } from '../models/Device';
+import { DeviceOtaState } from '../models/DeviceOtaState';
 import type { IFirmwareStorage } from '../services/firmwareStorageService';
 import { OciStorageError } from '../services/ociStorageErrors';
 import {
@@ -200,7 +201,7 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
       void getAuditService()
         ?.logEvent({
           event: AuditEventType.OTA_RELEASE_VALIDATED,
-          userId: auth.userId,
+          businessId: auth.userId,
           details: { version, sha256, signature, keyFingerprint, result: true }
         })
         .catch(() => undefined);
@@ -235,7 +236,7 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
       void getAuditService()
         ?.logEvent({
           event: AuditEventType.OTA_RELEASE_CREATED,
-          userId: auth.userId,
+          businessId: auth.userId,
           details: { version, objectKey, sizeBytes: head.sizeBytes }
         })
         .catch(() => undefined);
@@ -254,7 +255,7 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
         void getAuditService()
           ?.logEvent({
             event: AuditEventType.OTA_RELEASE_VALIDATED,
-            userId: auth.userId,
+            businessId: auth.userId,
             details: { version, sha256, keyFingerprint: keyFingerprint || undefined, result: false, code: err.code, error: err.message }
           })
           .catch(() => undefined);
@@ -340,7 +341,7 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
       void getAuditService()
         ?.logEvent({
           event: AuditEventType.OTA_RELEASE_PROMOTED,
-          userId: auth.userId,
+          businessId: auth.userId,
           details: { version }
         })
         .catch(() => undefined);
@@ -411,15 +412,17 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
       return;
     }
 
+    const otaState = await DeviceOtaState.findOne({ deviceId }).lean();
+
     res.json({
       success: true,
       device_id: deviceId,
-      firmware_version: device.firmwareVersion,
-      firmware_reported_at: device.firmwareReportedAt,
-      ota_last_check_at: device.otaLastCheckAt,
-      ota_state: device.otaState,
-      ota_target_version: device.otaTargetVersion,
-      ota_blocked_versions: device.otaBlockedVersions || [],
+      firmware_version: otaState?.firmwareVersion,
+      firmware_reported_at: otaState?.firmwareReportedAt,
+      ota_last_check_at: otaState?.otaLastCheckAt,
+      ota_state: otaState?.otaState,
+      ota_target_version: otaState?.otaTargetVersion,
+      ota_blocked_versions: otaState?.otaBlockedVersions || [],
       timestamp: new Date().toISOString()
     });
   });
@@ -490,8 +493,10 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
         }
 
         for (const deviceId of deviceIds) {
-          const device = await Device.findOne({ clientId: deviceId });
-          const current = device?.firmwareVersion || '0.0.0';
+          const otaState = await DeviceOtaState.findOne({ deviceId })
+            .select({ firmwareVersion: 1 })
+            .lean();
+          const current = otaState?.firmwareVersion || '0.0.0';
           const resolved = await otaService.resolveUpdate({
             deviceId,
             currentVersion: current
@@ -507,7 +512,7 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
       void getAuditService()
         ?.logEvent({
           event: AuditEventType.OTA_PUSH_SENT,
-          userId: auth.userId,
+          businessId: auth.userId,
           details: { version, target, deviceIds, force }
         })
         .catch(() => undefined);
@@ -552,7 +557,7 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
     void getAuditService()
       ?.logEvent({
         event: AuditEventType.OTA_SIGNING_CONFIRMED,
-        userId: auth.userId,
+        businessId: auth.userId,
         details: { notes: notes || undefined }
       })
       .catch(() => undefined);
@@ -651,7 +656,7 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
     void getAuditService()
       ?.logEvent({
         event: AuditEventType.OTA_ROLLOUT_HALTED,
-        userId: auth.userId,
+        businessId: auth.userId,
         details: { version, action: 'halt' }
       })
       .catch(() => undefined);
@@ -683,7 +688,7 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
     void getAuditService()
       ?.logEvent({
         event: AuditEventType.OTA_ROLLOUT_RETRYABLE,
-        userId: auth.userId,
+        businessId: auth.userId,
         details: { version, action: 'mark-retryable' }
       })
       .catch(() => undefined);
@@ -715,7 +720,7 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
     void getAuditService()
       ?.logEvent({
         event: AuditEventType.OTA_ROLLOUT_RETRIED,
-        userId: auth.userId,
+        businessId: auth.userId,
         details: { version, action: 'retry', status: result.status }
       })
       .catch(() => undefined);

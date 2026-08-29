@@ -10,7 +10,6 @@ import {
   mapReviewPayloadToStorage,
   resolveGmbReviewPayload
 } from './gmb/gmbReviewResolve';
-import { GoogleBusinessReview } from '../models/GoogleBusinessReview';
 import { GoogleBusinessLocation } from '../models/GoogleBusinessLocation';
 import { resolveDevicesForUser } from './resolve/resolveDevices';
 import { publishGmbScreen } from './delivery/publishGmbScreen';
@@ -20,7 +19,7 @@ import { logger } from '../utils/logger';
 import { shouldSkipForStimulate } from '../utils/stimulateAllowlist';
 
 export type GmbEnrichmentContext = {
-  userId: string;
+  businessId: string;
   locationObjectId: string;
   account: string;
   location: string;
@@ -55,10 +54,10 @@ async function runGmbEnrichment(
     return;
   }
 
-  const oauth2Client = await getValidOAuth2Client(ctx.userId, ctx.webhookConfig);
+  const oauth2Client = await getValidOAuth2Client(ctx.businessId, ctx.webhookConfig);
   if (!oauth2Client) {
     logger.warn('[GMB_ENRICHMENT] OAuth unavailable — skip enrichment', {
-      userId: ctx.userId
+      businessId: ctx.businessId
     });
     return;
   }
@@ -84,30 +83,11 @@ async function runGmbEnrichment(
   const stored = mapReviewPayloadToStorage(reviewPayload);
   const locationOid = new mongoose.Types.ObjectId(ctx.locationObjectId);
 
-  await GoogleBusinessReview.findOneAndUpdate(
-    { reviewId: stored.reviewId },
-    {
-      $set: {
-        locationId: locationOid,
-        starRating: stored.starRating,
-        comment: stored.comment,
-        reviewerName: stored.reviewerName,
-        updateTime: stored.updateTime,
-        notificationReceived: true
-      },
-      $setOnInsert: {
-        reviewId: stored.reviewId,
-        createTime: stored.createTime
-      }
-    },
-    { upsert: true }
-  );
-
   const locationDoc = await GoogleBusinessLocation.findById(locationOid).lean();
   const verifiedReview = locationDoc?.totalReviewCount ?? 0;
 
   const devices = await resolveDevicesForUser(
-    ctx.userId,
+    ctx.businessId,
     ctx.webhookConfig.deviceTarget
   );
 
@@ -129,12 +109,12 @@ async function runGmbEnrichment(
         qrText: 'https://g.page/r/review'
       },
       ctx.webhookConfig.mqttPublishEnabled,
-      { userId: ctx.userId, deviceId: device.clientId }
+      { deviceId: device.clientId }
     );
   }
 
-  logger.info('[GMB_ENRICHMENT] Enriched review upserted and republished', {
-    userId: ctx.userId,
+  logger.info('[GMB_ENRICHMENT] Enriched review republished', {
+    businessId: ctx.businessId,
     reviewId: stored.reviewId,
     account: resolveGmbAccountResourceName(notification.account!)
   });

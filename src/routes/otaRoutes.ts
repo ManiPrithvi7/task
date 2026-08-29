@@ -8,7 +8,7 @@ import { Router, Request, Response } from 'express';
 import type { RedisClientType } from 'redis';
 import type { OtaConfig } from '../config';
 import { requireMtlsDeviceCert } from '../middleware/mtlsAuth';
-import { Device } from '../models/Device';
+import { DeviceOtaState } from '../models/DeviceOtaState';
 import { FirmwareRelease, FirmwareReleaseStatus } from '../models/FirmwareRelease';
 import type { IFirmwareStorage } from '../services/firmwareStorageService';
 import { OciStorageError } from '../services/ociStorageErrors';
@@ -79,7 +79,7 @@ export function createOtaRoutes(deps: OtaRoutesDeps): Router {
       next();
       return;
     }
-    void requireMtlsDeviceCert({ allowedSlots: ['primary'] })(req, res, next);
+    void requireMtlsDeviceCert()(req, res, next);
   }
 
   router.get('/ota/offer/:version', skipMtlsWhenTestOta, async (req: Request, res: Response) => {
@@ -116,8 +116,10 @@ export function createOtaRoutes(deps: OtaRoutesDeps): Router {
       }
 
       const deviceId = (req as { deviceId?: string }).deviceId as string;
-      const device = await Device.findOne({ clientId: deviceId });
-      const currentVersion = device?.firmwareVersion || '0.0.0';
+      const otaState = await DeviceOtaState.findOne({ deviceId })
+        .select({ firmwareVersion: 1 })
+        .lean();
+      const currentVersion = otaState?.firmwareVersion || '0.0.0';
 
       const offer = await deps.otaService.resolveUpdate({
         deviceId,
@@ -295,7 +297,7 @@ export function createOtaRoutes(deps: OtaRoutesDeps): Router {
       return;
     }
 
-    void requireMtlsDeviceCert({ allowedSlots: ['primary'] })(req, res, async (err?: unknown) => {
+    void requireMtlsDeviceCert()(req, res, async (err?: unknown) => {
       if (err) {
         next(err);
         return;
@@ -340,7 +342,7 @@ export function createOtaRoutes(deps: OtaRoutesDeps): Router {
     });
   });
 
-  router.post('/ota/report', requireMtlsDeviceCert({ allowedSlots: ['primary'] }), async (req: Request, res: Response) => {
+  router.post('/ota/report', requireMtlsDeviceCert(), async (req: Request, res: Response) => {
     try {
       const deviceId = (req as any).deviceId as string;
 

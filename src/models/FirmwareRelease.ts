@@ -21,7 +21,7 @@ export interface IFirmwareRollout {
   strategy: FirmwareRolloutStrategy;
   percentage?: number;
   deviceIds?: string[];
-  userIds?: string[];
+  businessIds?: string[];
   blockedDeviceIds?: string[];
 }
 
@@ -62,7 +62,7 @@ const FirmwareRolloutSchema = new Schema<IFirmwareRollout>(
     },
     percentage: { type: Number, min: 0, max: 100 },
     deviceIds: [{ type: String }],
-    userIds: [{ type: String }],
+    businessIds: [{ type: String }],
     blockedDeviceIds: [{ type: String }]
   },
   { _id: false }

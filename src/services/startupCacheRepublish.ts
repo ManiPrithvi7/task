@@ -144,7 +144,7 @@ async function republishGmbFromCache(
   if (!ctx) return false;
 
   let verifiedReview = ctx.verifiedReviewCount;
-  const integrations = device.userId ? await getUserIntegrations(device.userId) : null;
+  const integrations = device.businessId ? await getUserIntegrations(device.businessId) : null;
   const locationId = integrations?.gmb?.locationId;
   if (locationId) {
     const cached = await getGmbReviewCount(locationId);

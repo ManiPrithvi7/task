@@ -2,44 +2,35 @@
  * Social Model - Mongoose schema for Social collection
  * Matches Prisma schema from Next.js web app
  *
- * NOTE: This is a READ-ONLY model for mqtt-publisher-lite.
- * Social account management is handled by the Next.js web app.
+ * NOTE: proofmqtt is READ-ONLY except for token refresh — it may update
+ * accessToken/refreshToken/tokenExp/tokenCreatedAt for INSTAGRAM and
+ * GOOGLE_BUSINESS providers. All other fields are managed by the Next.js app.
  */
 
 import mongoose, { Document, Schema } from 'mongoose';
 
 export enum Provider {
   INSTAGRAM = 'INSTAGRAM',
-  GOOGLE_BUSINESS = 'GOOGLE_BUSINESS',
-  SQUARE = 'SQUARE',
-  SHOPIFY = 'SHOPIFY'
+  GOOGLE_BUSINESS = 'GOOGLE_BUSINESS'
 }
 
 export interface ISocial extends Document {
   _id: mongoose.Types.ObjectId;
-  userId: mongoose.Types.ObjectId;
+  businessId: mongoose.Types.ObjectId;
   socialAccountId: string;
   provider: Provider;
-  url?: string;
-  profilePictureURL?: string;
-  followerCount?: number;
-  lastSyncedAt?: Date;
   accessToken: string;
   refreshToken: string;
   tokenExp: string;
-  nfcCount: number;
-  scanCount: number;
   tokenCreatedAt?: Date;
-  baselineCaptured?: boolean;
-  baselineCapturedAt?: Date;
   updatedAt?: Date;
   createdAt?: Date;
 }
 
 const SocialSchema = new Schema<ISocial>({
-  userId: {
+  businessId: {
     type: Schema.Types.ObjectId,
-    ref: 'User',
+    ref: 'Business',
     required: true
   },
   socialAccountId: {
@@ -53,22 +44,6 @@ const SocialSchema = new Schema<ISocial>({
     default: Provider.INSTAGRAM,
     required: true
   },
-  url: {
-    type: String,
-    required: false
-  },
-  profilePictureURL: {
-    type: String,
-    required: false
-  },
-  followerCount: {
-    type: Number,
-    required: false
-  },
-  lastSyncedAt: {
-    type: Date,
-    required: false
-  },
   accessToken: {
     type: String,
     required: true
@@ -81,27 +56,9 @@ const SocialSchema = new Schema<ISocial>({
     type: String,
     required: true
   },
-  nfcCount: {
-    type: Number,
-    required: true,
-    default: 0
-  },
-  scanCount: {
-    type: Number,
-    required: true,
-    default: 0
-  },
   tokenCreatedAt: {
     type: Date,
     default: Date.now
-  },
-  baselineCaptured: {
-    type: Boolean,
-    default: false
-  },
-  baselineCapturedAt: {
-    type: Date,
-    default: null
   }
 }, {
   timestamps: true, // Automatically adds createdAt and updatedAt
@@ -109,10 +66,7 @@ const SocialSchema = new Schema<ISocial>({
   collection: 'Social'
 });
 
-// Indexes (matching Prisma schema). Collection name: `Social`.
-SocialSchema.index({ userId: 1 });
-SocialSchema.index({ provider: 1 });
-SocialSchema.index({ userId: 1, socialAccountId: 1, provider: 1 });
+// Indexes (matching Prisma: @@index([businessId, provider]); socialAccountId unique above)
+SocialSchema.index({ businessId: 1, provider: 1 });
 
 export const Social = mongoose.model<ISocial>('Social', SocialSchema);
-

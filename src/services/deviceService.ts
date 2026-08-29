@@ -7,6 +7,7 @@
  */
 
 import { Device, IDevice, DeviceStatus } from '../models/Device';
+import { DeviceOtaState } from '../models/DeviceOtaState';
 import { logger } from '../utils/logger';
 import { withMongoRetry } from '../utils/mongoRetry';
 import mongoose from 'mongoose';
@@ -20,12 +21,20 @@ const ACTIVE_PREFIX = 'proof.mqtt:active:';
 
 export interface ActiveDevice {
   deviceId: string;
-  userId: string;
+  businessId: string;
   lastSeen: number;
-  /** Present when `Social` has `INSTAGRAM` for `Device.userId` (written at `/active` registration). */
+  /** Present when `Social` has `INSTAGRAM` for `Device.businessId` (written at `/active` registration). */
   instagramAccountId?: string;
   /** Same source as Redis `proof.mqtt:device:{id}`. */
   accessToken?: string;
+}
+
+/** Legacy local-file entries predate the userId→businessId rename. */
+function normalizeActiveDevice(d: ActiveDevice & { userId?: string }): ActiveDevice {
+  if (d.businessId === undefined && typeof d.userId === 'string') {
+    return { ...d, businessId: d.userId };
+  }
+  return d;
 }
 
 export class ActiveDeviceCache {
@@ -92,7 +101,8 @@ export class ActiveDeviceCache {
   async getActive(deviceId: string): Promise<ActiveDevice | null> {
     try {
       const local = await this.localStore.getAll();
-      return local.find(d => d.deviceId === deviceId) || null;
+      const found = local.find(d => d.deviceId === deviceId);
+      return found ? normalizeActiveDevice(found) : null;
     } catch (err: unknown) {
       logger.error('ActiveDeviceCache: failed to get active device', {
         deviceId,
@@ -107,7 +117,7 @@ export class ActiveDeviceCache {
    */
   async getAllActive(): Promise<ActiveDevice[]> {
     try {
-      return await this.localStore.getAll();
+      return (await this.localStore.getAll()).map(normalizeActiveDevice);
     } catch (err: unknown) {
       logger.error('ActiveDeviceCache: failed to read local active devices', {
         error: err instanceof Error ? err.message : String(err)
@@ -205,8 +215,11 @@ export class DeviceService {
         const appVersion =
           data.metadata?.appVersion || data.metadata?.app_version || data.metadata?.fw_version;
         if (typeof appVersion === 'string' && appVersion.trim()) {
-          existing.firmwareVersion = appVersion.trim();
-          existing.firmwareReportedAt = new Date();
+          await DeviceOtaState.updateOne(
+            { deviceId: existing.clientId },
+            { $set: { firmwareVersion: appVersion.trim(), firmwareReportedAt: new Date() } },
+            { upsert: true }
+          );
         }
         
         // Update status if it's not already active
@@ -230,23 +243,25 @@ export class DeviceService {
       const appVersion =
         data.metadata?.appVersion || data.metadata?.app_version || data.metadata?.fw_version;
       const device = new Device({
-        userId: undefined, // Will be set when allocated to user
+        businessId: undefined, // Will be set when allocated to a business
         macID: data.macID,
         crt: undefined, // Will be filled during provisioning
         ca_certificate: undefined, // Will be filled during provisioning
         clientId: data.clientId,
         status: initialStatus,
         tokenUsed: false,
-        lastSeenAt: new Date(),
-        ...(typeof appVersion === 'string' && appVersion.trim()
-          ? {
-              firmwareVersion: appVersion.trim(),
-              firmwareReportedAt: new Date()
-            }
-          : {})
+        lastSeenAt: new Date()
       });
 
       await device.save();
+
+      if (typeof appVersion === 'string' && appVersion.trim()) {
+        await DeviceOtaState.updateOne(
+          { deviceId: device.clientId },
+          { $set: { firmwareVersion: appVersion.trim(), firmwareReportedAt: new Date() } },
+          { upsert: true }
+        );
+      }
 
       logger.info('Device registered', {
         deviceId: data.deviceId,
@@ -280,7 +295,7 @@ export class DeviceService {
 
       return {
         deviceId: device.clientId,
-        username: device.userId?.toString() || 'unassigned',
+        username: device.businessId?.toString() || 'unassigned',
         status: device.status === DeviceStatus.ACTIVE ? 'active' : 'inactive',
         clientId: device.clientId,
         macID: device.macID,
@@ -308,7 +323,7 @@ export class DeviceService {
       devices.forEach(device => {
         deviceMap.set(device.clientId, {
           deviceId: device.clientId,
-          username: device.userId?.toString() || 'unassigned',
+          username: device.businessId?.toString() || 'unassigned',
           status: device.status === DeviceStatus.ACTIVE ? 'active' : 'inactive',
           clientId: device.clientId,
           macID: device.macID,
@@ -376,21 +391,21 @@ export class DeviceService {
   }
 
   /**
-   * Get devices by user ID
+   * Get devices by business ID
    */
-  async getDevicesByUserId(userId: string): Promise<DeviceData[]> {
+  async getDevicesByBusinessId(businessId: string): Promise<DeviceData[]> {
     try {
-      if (!mongoose.Types.ObjectId.isValid(userId)) {
+      if (!mongoose.Types.ObjectId.isValid(businessId)) {
         return [];
       }
 
       const devices = await Device.find({
-        userId: new mongoose.Types.ObjectId(userId)
+        businessId: new mongoose.Types.ObjectId(businessId)
       });
 
       return devices.map(device => ({
         deviceId: device.clientId,
-        username: device.userId?.toString() || 'unassigned',
+        username: device.businessId?.toString() || 'unassigned',
         status: device.status === DeviceStatus.ACTIVE ? 'active' : 'inactive',
         clientId: device.clientId,
         macID: device.macID,
@@ -402,7 +417,7 @@ export class DeviceService {
         }
       }));
     } catch (error) {
-      logger.error('Failed to get devices by user', { userId, error });
+      logger.error('Failed to get devices by business', { businessId, error });
       return [];
     }
   }

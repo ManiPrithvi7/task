@@ -179,7 +179,7 @@ export async function handleGmbWebhook(req: Request, res: Response, deps: Webhoo
     const ctx = await resolveGmbSocialContext(account, location);
     tracker.markResolved();
 
-    const devices = ctx ? await resolveDevicesForUser(ctx.userId, deps.webhookConfig.deviceTarget) : [];
+    const devices = ctx ? await resolveDevicesForUser(ctx.businessId, deps.webhookConfig.deviceTarget) : [];
 
     if (!ctx) {
       logger.info('[GMB_WEBHOOK] no_linked_location', { account, location, eventType });
@@ -213,7 +213,7 @@ export async function handleGmbWebhook(req: Request, res: Response, deps: Webhoo
     );
     logger.info('[GMB_WEBHOOK] processing', {
       eventType,
-      userId: ctx.userId,
+      businessId: ctx.businessId,
       deviceCount: devices.length,
       rating,
       verifiedReview,
@@ -276,7 +276,7 @@ export async function handleGmbWebhook(req: Request, res: Response, deps: Webhoo
           qrText: 'https://g.page/r/review'
         },
         deps.webhookConfig.mqttPublishEnabled,
-        { userId: ctx.userId, deviceId: device.clientId, locationId: location }
+        { deviceId: device.clientId, locationId: location }
       );
       lastTopic = result.topic;
       lastClientId = device.clientId;
@@ -284,7 +284,7 @@ export async function handleGmbWebhook(req: Request, res: Response, deps: Webhoo
     }
 
     scheduleGmbEnrichment(notification, {
-      userId: ctx.userId,
+      businessId: ctx.businessId,
       locationObjectId: ctx.locationObjectId,
       account: account!,
       location: location!,

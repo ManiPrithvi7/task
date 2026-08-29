@@ -113,7 +113,7 @@ describe('DeviceStateLogService', () => {
           fwVersion: '1.0.0',
           fwTrack: 'stable',
           ipHash: 'iphash1',
-          userIdAtTime: 'user-1',
+          businessIdAtTime: 'user-1',
         })
       );
 
@@ -140,7 +140,7 @@ describe('DeviceStateLogService', () => {
         fwVersion: '2.0.0',
         fwTrack: 'beta',
         ipHash: 'abc123',
-        userIdAtTime: '507f1f77bcf86cd799439011',
+        businessIdAtTime: '507f1f77bcf86cd799439011',
       });
 
       await service.recordTransition(input);
@@ -154,7 +154,7 @@ describe('DeviceStateLogService', () => {
         ipHash: 'abc123',
         previousHash: 'GENESIS',
         timestamp: fixedTimestamp.toISOString(),
-        userIdAtTime: '507f1f77bcf86cd799439011',
+        businessIdAtTime: '507f1f77bcf86cd799439011',
       });
 
       expect(writeArg.hashPreimage).toBe(expectedPreimage);
@@ -171,7 +171,7 @@ describe('DeviceStateLogService', () => {
       expect(parsed.fwTrack).toBeNull();
       expect(parsed.fwVersion).toBeNull();
       expect(parsed.ipHash).toBeNull();
-      expect(parsed.userIdAtTime).toBeNull();
+      expect(parsed.businessIdAtTime).toBeNull();
     });
 
     it('writes companion device_active metrics row', async () => {
@@ -187,7 +187,7 @@ describe('DeviceStateLogService', () => {
         fwTrack: undefined,
         ipHash: undefined,
         reason: 'puback',
-        userIdAtTime: undefined,
+        businessIdAtTime: undefined,
         timestamp: fixedTimestamp,
       });
     });

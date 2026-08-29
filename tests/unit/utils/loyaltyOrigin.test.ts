@@ -30,4 +30,23 @@ describe('isAllowedLoyaltyOrigin', () => {
     expect(isAllowedLoyaltyOrigin('https://statsnapp-abc.vercel.app')).toBe(true);
     expect(isAllowedLoyaltyOrigin('https://evil.com/?x=https://statsnapp-abc.vercel.app')).toBe(false);
   });
+
+  it('allows loopback Origins so local Next.js WebSocket upgrades succeed', () => {
+    expect(isAllowedLoyaltyOrigin('http://localhost:3000')).toBe(true);
+    expect(isAllowedLoyaltyOrigin('http://127.0.0.1:3000')).toBe(true);
+  });
+
+  it('allows RFC1918 Origins in development for phone/LAN Next.js', () => {
+    process.env.NODE_ENV = 'development';
+    expect(isAllowedLoyaltyOrigin('http://10.106.98.236:3000')).toBe(true);
+    expect(isAllowedLoyaltyOrigin('http://192.168.1.10:3000')).toBe(true);
+  });
+
+  it('does not allow RFC1918 Origins in production unless CORS listed', () => {
+    process.env.NODE_ENV = 'production';
+    delete process.env.CORS_ALLOWED_ORIGINS;
+    expect(isAllowedLoyaltyOrigin('http://10.106.98.236:3000')).toBe(false);
+    process.env.CORS_ALLOWED_ORIGINS = 'http://10.106.98.236:3000';
+    expect(isAllowedLoyaltyOrigin('http://10.106.98.236:3000')).toBe(true);
+  });
 });

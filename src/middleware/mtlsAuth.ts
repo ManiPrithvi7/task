@@ -4,8 +4,6 @@ import { logger } from '../utils/logger';
 import { DeviceCertificate, DeviceCertificateStatus } from '../models/DeviceCertificate';
 import { deviceIdFromCertPem } from '../utils/deviceKeys';
 
-export type MtlsCertSlot = 'primary' | 'staging';
-
 function firstHeader(req: Request, headerName: string): string | null {
   const v = req.headers[headerName.toLowerCase()];
   if (!v) return null;
@@ -117,25 +115,13 @@ export function extractMtlsIdentityFromProxy(req: Request): MtlsIdentity | null 
   return extractMtlsIdentityFromNativeTls(req);
 }
 
-async function findActiveCertForSlots(deviceId: string, allowedSlots: MtlsCertSlot[]): Promise<any | null> {
+async function findActiveCert(deviceId: string): Promise<any | null> {
   const now = new Date();
-
-  // Slot field does not exist yet pre-migration. Treat missing slot as 'primary'.
-  const slotQuery =
-    allowedSlots.length > 0
-      ? {
-          $or: [
-            { slot: { $in: allowedSlots } },
-            ...(allowedSlots.includes('primary') ? [{ slot: { $exists: false } }] : [])
-          ]
-        }
-      : {};
 
   return DeviceCertificate.findOne({
     device_id: deviceId,
     status: DeviceCertificateStatus.active,
-    expires_at: { $gt: now },
-    ...(slotQuery as any)
+    expires_at: { $gt: now }
   });
 }
 
@@ -146,9 +132,7 @@ function normalizeFingerprint(value: unknown): string {
     .toLowerCase();
 }
 
-export function requireMtlsDeviceCert(opts?: { allowedSlots?: MtlsCertSlot[] }) {
-  const allowedSlots = opts?.allowedSlots ?? (['primary', 'staging'] as MtlsCertSlot[]);
-
+export function requireMtlsDeviceCert() {
   return async (req: Request, res: Response, next: NextFunction) => {
     const identity = extractMtlsIdentityFromProxy(req);
     if (!identity) {
@@ -156,9 +140,9 @@ export function requireMtlsDeviceCert(opts?: { allowedSlots?: MtlsCertSlot[] }) 
       return;
     }
 
-    let certDoc: Awaited<ReturnType<typeof findActiveCertForSlots>>;
+    let certDoc: Awaited<ReturnType<typeof findActiveCert>>;
     try {
-      certDoc = await findActiveCertForSlots(identity.deviceId, allowedSlots);
+      certDoc = await findActiveCert(identity.deviceId);
     } catch (err: unknown) {
       logger.error('mTLS certificate lookup failed', {
         deviceId: identity.deviceId,
@@ -189,8 +173,7 @@ export function requireMtlsDeviceCert(opts?: { allowedSlots?: MtlsCertSlot[] }) 
     const storedFingerprint = normalizeFingerprint((certDoc as any).fingerprint);
     if (!presentedFingerprint || presentedFingerprint !== storedFingerprint) {
       logger.warn('mTLS fingerprint mismatch — possible cert replay attack', {
-        deviceId: identity.deviceId,
-        slot: (certDoc as any).slot || 'primary'
+        deviceId: identity.deviceId
       });
       res.status(403).json({
         success: false,
@@ -204,8 +187,7 @@ export function requireMtlsDeviceCert(opts?: { allowedSlots?: MtlsCertSlot[] }) 
     (req as any).deviceId = identity.deviceId;
     (req as any).mtls = {
       cn: identity.cn,
-      fingerprint256: identity.fingerprint256,
-      slot: (certDoc as any).slot || 'primary'
+      fingerprint256: identity.fingerprint256
     };
 
     next();
