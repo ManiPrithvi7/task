@@ -127,7 +127,7 @@ describe('LoyaltyService', () => {
     });
   });
 
-  it('publishes spin/start on MQTT when session is CREATED and WS is not connected', async () => {
+  it('publishes spin-start on MQTT when session is CREATED and WS is not connected', async () => {
     const { service, publish } = makeService();
     const session = {
       sessionId: 'ls_1',
@@ -441,7 +441,7 @@ describe('LoyaltyService', () => {
     });
 
     await service.handleAck('proof.mqtt/DEVICE-17/ack', {
-      type: 'spin/ack',
+      type: 'spin-ack',
       spinId: 'spin_1',
       startedAt: new Date().toISOString(),
       ttlMs: 5000
@@ -503,7 +503,7 @@ describe('LoyaltyService', () => {
       status: 'ACK_RECEIVED'
     });
     await service.handleAck('proof.mqtt/DEVICE-17/ack', {
-      type: 'spin/ack',
+      type: 'spin-ack',
       spinId: 'spin_1',
       startedAt: new Date().toISOString(),
       ttlMs: 5000

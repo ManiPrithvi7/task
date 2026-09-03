@@ -86,7 +86,12 @@ describe('influx config validation', () => {
   });
 
   it('throws when REDIS_URL missing in production', () => {
-    process.env = { ...process.env, ...baseEnv(), NODE_ENV: 'production' };
+    process.env = {
+      ...process.env,
+      ...baseEnv(),
+      NODE_ENV: 'production',
+      OTA_ENABLED: 'false'
+    };
     cleanEnv();
     delete process.env.REDIS_URL;
     delete process.env.TEST_OTA;
