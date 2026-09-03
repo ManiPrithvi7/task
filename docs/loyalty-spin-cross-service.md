@@ -13,12 +13,12 @@ Source of truth for **statsnapp** (Next.js web app) and **proofmqtt** (this Node
 
 ## 1. MQTT and presence (do not invent a second subsystem)
 
-| Direction | Topic | QoS | Payload `type` |
-|-----------|-------|-----|----------------|
-| Node → ESP32 | `{MQTT_TOPIC_ROOT}/{deviceId}/loyalty` | 2 | `spin/start` |
-| ESP32 → Node | `{MQTT_TOPIC_ROOT}/{deviceId}/ack` | 1 | `spin/ack` |
+| Direction | Topic | QoS | retain | Payload `type` |
+|-----------|-------|-----|--------|----------------|
+| Node → ESP32 | `{MQTT_TOPIC_ROOT}/{deviceId}/loyalty` | 2 | false | `spin-start` |
+| ESP32 → Node | `{MQTT_TOPIC_ROOT}/{deviceId}/ack` | 1 | false | `spin-ack` |
 
-Default root is `proof.mqtt` (same as OTA/screens). Example: `proof.mqtt/DEVICE-17/loyalty` and `proof.mqtt/DEVICE-17/ack`. Loyalty never uses `{MQTT_TOPIC_ROOT}/{deviceId}/cmd`. Node ignores non-`spin/ack` payloads on `/ack` so OTA rollback handshake can share that topic.
+Default root is `proof.mqtt` (same as OTA/screens). Example: `proof.mqtt/DEVICE-17/loyalty` and `proof.mqtt/DEVICE-17/ack`. Loyalty never uses `{MQTT_TOPIC_ROOT}/{deviceId}/cmd`. Node ignores non-`spin-ack` payloads on `/ack` so OTA rollback handshake can share that topic. Publish ack **immediately after accepting a valid `spin-start`**, before animation completes.
 
 **Device online** for join: Node `ActiveDeviceCache.getActive(deviceId)` (MQTT `/active` + LWT). There is no `GET /api/v1/devices/{clientId}/status`.
 
@@ -32,8 +32,8 @@ Default root is `proof.mqtt` (same as OTA/screens). Example: `proof.mqtt/DEVICE-
 3. Browser  waits for WS event loyalty.session.ready
 4. Browser  → POST statsnapp /api/loyalty/spin   { sessionId, deviceId, idempotencyKey }
 5. statsnapp picks result, writes Prisma, POST Node /loyalty/spin with X-Loyalty-Key + result
-6. Node     → MQTT spin/start (includes result + issuedAt/expiresAt)
-7. ESP32    → MQTT spin/ack
+6. Node     → MQTT spin-start (includes result + issuedAt/expiresAt)
+7. ESP32    → MQTT spin-ack (immediately after accepting start; before animation completes)
 8. Node     → WS loyalty.spin.started { spinId, startedAt, ttlMs, revealAt, serverNow }  (no result)
 9. Browser  reveals locally at revealAt using result from step 5
 10. Optional GET Node /loyalty/spin/:spinId  (poll fallback / reconciliation)
@@ -183,7 +183,7 @@ Published on `{MQTT_TOPIC_ROOT}/{deviceId}/loyalty` after a successful spin pers
 
 ```json
 {
-  "type": "spin/start",
+  "type": "spin-start",
   "spinId": "spin_abc123",
   "result": { "digits": [7, 7, 7], "value": "777", "reward": "Free Item" },
   "ttlMs": 5000,
@@ -198,7 +198,16 @@ Firmware **must discard** if device clock `now > expiresAt` (stale queue after r
 
 **Deployment gate:** flash firmware that subscribes `{MQTT_TOPIC_ROOT}/{id}/loyalty` **before** staging drills. Builds still listening on `device/{id}/loyalty` or `{id}/command` will time out every spin at 5s. OTA command topic `{MQTT_TOPIC_ROOT}/{id}/cmd` is unrelated.
 
-Ack: `{ "type": "spin/ack", "spinId", "startedAt", "ttlMs" }` on `{MQTT_TOPIC_ROOT}/{deviceId}/ack`.
+Device ack on `{MQTT_TOPIC_ROOT}/{deviceId}/ack` (QoS 1, retain false), immediately after accepting a valid `spin-start`:
+
+```json
+{
+  "type": "spin-ack",
+  "spinId": "spin_abc123",
+  "startedAt": "2026-08-27T17:00:01.234Z",
+  "ttlMs": 5000
+}
+```
 
 ---
 

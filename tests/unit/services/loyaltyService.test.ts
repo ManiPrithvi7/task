@@ -157,7 +157,7 @@ describe('LoyaltyService', () => {
       })
     );
     const payload = JSON.parse(publish.mock.calls[0][0].payload);
-    expect(payload.type).toBe('spin/start');
+    expect(payload.type).toBe('spin-start');
     expect(payload.result).toEqual({ digits: [7, 7, 7], value: '777', reward: 'Free Item' });
     expect(body.status).toBe('command_published');
     expect(created.status).toBe('COMMAND_PUBLISHED');
@@ -390,7 +390,7 @@ describe('LoyaltyService', () => {
     });
 
     await service.handleAck('proof.mqtt/DEVICE-17/ack', {
-      type: 'spin/ack',
+      type: 'spin-ack',
       spinId: 'spin_1',
       startedAt: new Date().toISOString(),
       ttlMs: 5000

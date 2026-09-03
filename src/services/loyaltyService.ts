@@ -488,7 +488,7 @@ export class LoyaltyService {
   ): Promise<void> {
     const topic = `${this.topicRoot}/${deviceId}/loyalty`;
     const mqttPayload = {
-      type: 'spin/start',
+      type: 'spin-start',
       spinId: spin.spinId,
       result: spin.result,
       ttlMs: this.config.ttlMs,
@@ -540,7 +540,7 @@ export class LoyaltyService {
     if (!deviceId) return;
     if (!message || typeof message !== 'object') return;
     const msg = message as { type?: string; spinId?: string; startedAt?: string; ttlMs?: number };
-    if (msg.type !== 'spin/ack') {
+    if (msg.type !== 'spin-ack') {
       return;
     }
     if (typeof msg.spinId !== 'string') {
