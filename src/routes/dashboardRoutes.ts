@@ -3,6 +3,7 @@ import { AuthService } from '../services/authService';
 import { Device } from '../models/Device';
 import { getInfluxService } from '../services/influxService';
 import { cachedQuery } from '../services/influxQueryCache';
+import { DASHBOARD_RANGES, parseDashboardRange } from '../utils/dashboardRange';
 
 export interface DashboardRoutesDeps {
   authService: AuthService;
@@ -30,6 +31,19 @@ async function requireAuth(
 async function verifyDeviceOwnership(deviceId: string, userId: string): Promise<boolean> {
   const device = await Device.findOne({ clientId: deviceId }).select({ businessId: 1 }).lean();
   return device?.businessId?.toString() === userId;
+}
+
+function readDashboardRange(req: Request, res: Response, fallback: string): string | null {
+  const range = parseDashboardRange(req.query.range, fallback);
+  if (!range) {
+    res.status(400).json({
+      error: 'Invalid range',
+      code: 'INVALID_RANGE',
+      allowed: [...DASHBOARD_RANGES]
+    });
+    return null;
+  }
+  return range;
 }
 
 const sanitizeForDashboard = (rows: Record<string, unknown>[]): Record<string, unknown>[] =>
@@ -90,7 +104,8 @@ export function createDashboardRoutes(deps: DashboardRoutesDeps): Router {
     }
 
     try {
-      const range = req.query.range || '-90d';
+      const range = readDashboardRange(req, res, '-90d');
+      if (!range) return;
       const cacheKey = `ig:summary:${deviceId}:${range}`;
       const result = await cachedQuery(
         cacheKey,
@@ -155,7 +170,8 @@ export function createDashboardRoutes(deps: DashboardRoutesDeps): Router {
     }
 
     try {
-      const range = req.query.range || '-90d';
+      const range = readDashboardRange(req, res, '-90d');
+      if (!range) return;
       const cacheKey = `gmb:summary:${locationId}:${range}`;
       const result = await cachedQuery(
         cacheKey,
@@ -222,8 +238,9 @@ export function createDashboardRoutes(deps: DashboardRoutesDeps): Router {
     }
 
     try {
-      const range = req.query.range || '-90d';
-      const snapshots = await influx.queryGmbMetrics(locationId, String(range));
+      const range = readDashboardRange(req, res, '-90d');
+      if (!range) return;
+      const snapshots = await influx.queryGmbMetrics(locationId, range);
       res.json({ review_snapshots: sanitizeForDashboard(snapshots) });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -270,8 +287,9 @@ export function createDashboardRoutes(deps: DashboardRoutesDeps): Router {
     }
 
     try {
-      const range = req.query.range || '-90d';
-      const milestones = await influx.queryGmbMilestones(locationId, String(range));
+      const range = readDashboardRange(req, res, '-90d');
+      if (!range) return;
+      const milestones = await influx.queryGmbMilestones(locationId, range);
       res.json({ velocity: sanitizeForDashboard(milestones) });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -317,9 +335,10 @@ export function createDashboardRoutes(deps: DashboardRoutesDeps): Router {
     }
 
     try {
-      const range = req.query.range || '-7d';
-      const audits = await influx.queryGmbWebhookAudits(locationId, String(range));
-      const mqttDeliveries = await influx.queryMqttDeliveryByLocation(locationId, 'gmb', String(range));
+      const range = readDashboardRange(req, res, '-7d');
+      if (!range) return;
+      const audits = await influx.queryGmbWebhookAudits(locationId, range);
+      const mqttDeliveries = await influx.queryMqttDeliveryByLocation(locationId, 'gmb', range);
       res.json({
         webhook_audits: sanitizeForDashboard(audits),
         mqtt_deliveries: sanitizeForDashboard(mqttDeliveries),
@@ -375,7 +394,8 @@ export function createDashboardRoutes(deps: DashboardRoutesDeps): Router {
     }
 
     try {
-      const range = req.query.range || '-7d';
+      const range = readDashboardRange(req, res, '-7d');
+      if (!range) return;
       const cacheKey = `device:audit:${deviceId}:${range}`;
       const result = await cachedQuery(
         cacheKey,

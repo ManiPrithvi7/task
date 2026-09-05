@@ -26,11 +26,14 @@ export type StoreReading = {
 export type StoreDelta = StoreReading & { delta: number };
 
 const MAX_JSONL_BYTES = 2 * 1024 * 1024;
+export const UNTRACKED_SLOPE_SAMPLES = 10;
+export const UNTRACKED_SLOPE_KB = 10 * 1024;
 
 let timer: ReturnType<typeof setInterval> | null = null;
 let lastRss = 0;
 let lastStores: StoreReading[] | null = null;
 let sampleTicks = 0;
+const rssWindowKb: number[] = [];
 
 function dataDir(): string {
   return path.resolve(process.env.DATA_DIR || './data');
@@ -122,7 +125,8 @@ export function readStoreSizes(appSnapshot?: AppLeakSnapshot): StoreReading[] {
 export function diagnoseStores(
   prev: StoreReading[] | null,
   curr: StoreReading[],
-  rssDeltaKb: number
+  rssDeltaKb: number,
+  rssSlopeKb = 0
 ): { suspect: string; growing: StoreDelta[]; note: string } {
   const growing: StoreDelta[] = [];
   if (prev) {
@@ -151,11 +155,11 @@ export function diagnoseStores(
       note: `${growing[0].module} grew (+${growing[0].delta} on ${growing[0].key}); RSS did not rise this tick`
     };
   }
-  if (rssDeltaKb > 2048) {
+  if (rssSlopeKb >= UNTRACKED_SLOPE_KB) {
     return {
       suspect: 'untracked_native_or_heap',
       growing,
-      note: `RSS +${rssDeltaKb} KB but watched stores are flat — Bun/native/SDK or a store not in this list`
+      note: `RSS +${rssSlopeKb} KB over ${UNTRACKED_SLOPE_SAMPLES} samples; stores flat — Bun/native/SDK or a store not in this list`
     };
   }
   return {
@@ -168,8 +172,15 @@ export function diagnoseStores(
 export function collectLeakDiagnostics(appSnapshot?: AppLeakSnapshot): Record<string, unknown> {
   const mu = process.memoryUsage();
   const delta = lastRss === 0 ? 0 : mu.rss - lastRss;
+  const rssKb = Math.round(mu.rss / 1024);
+  rssWindowKb.push(rssKb);
+  if (rssWindowKb.length > UNTRACKED_SLOPE_SAMPLES) rssWindowKb.shift();
+  const rssSlopeKb =
+    rssWindowKb.length >= UNTRACKED_SLOPE_SAMPLES
+      ? rssWindowKb[rssWindowKb.length - 1] - rssWindowKb[0]
+      : 0;
   const stores = readStoreSizes(appSnapshot);
-  const diagnosis = diagnoseStores(lastStores, stores, Math.round(delta / 1024));
+  const diagnosis = diagnoseStores(lastStores, stores, Math.round(delta / 1024), rssSlopeKb);
   lastRss = mu.rss;
   lastStores = stores;
 
@@ -227,6 +238,7 @@ export function startLeakHunter(getAppSnapshot?: () => AppLeakSnapshot): void {
   lastRss = 0;
   lastStores = null;
   sampleTicks = 0;
+  rssWindowKb.length = 0;
   logger.info('leak hunter writing local diagnose files', {
     latest: leakHunterLatestPath(),
     history: leakHunterJsonlPath(),
@@ -262,4 +274,5 @@ export function stopLeakHunter(): void {
   lastRss = 0;
   lastStores = null;
   sampleTicks = 0;
+  rssWindowKb.length = 0;
 }

@@ -1,8 +1,20 @@
-import { getSwaggerSpec, resetSwaggerSpecCache } from '@/config/swagger';
+import { getSwaggerSpec, resetSwaggerSpecCache, setupSwaggerUi } from '@/config/swagger';
 
 describe('swagger', () => {
   beforeEach(() => {
     resetSwaggerSpecCache();
+  });
+
+  it('skips UI unless SWAGGER_ENABLED=true', () => {
+    const prev = process.env.SWAGGER_ENABLED;
+    delete process.env.SWAGGER_ENABLED;
+    const use = jest.fn();
+    const get = jest.fn();
+    setupSwaggerUi({ use, get } as never);
+    expect(use).not.toHaveBeenCalled();
+    expect(get).not.toHaveBeenCalled();
+    if (prev === undefined) delete process.env.SWAGGER_ENABLED;
+    else process.env.SWAGGER_ENABLED = prev;
   });
 
   it('generates OpenAPI spec without error', () => {

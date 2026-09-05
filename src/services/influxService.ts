@@ -18,6 +18,7 @@ import { logger } from '../utils/logger';
 import { InfluxDBConfig } from '../config';
 import { InfluxDiskQueue } from './influxDiskQueue';
 import { invalidateCache } from './influxQueryCache';
+import { rotateKeepingOne } from '../utils/rotateFile';
 
 import { BucketTarget } from '../storage/influx/types';
 import type { InfluxWriteUsageCallback } from '../storage/influx/BaseInfluxRepo';
@@ -105,6 +106,7 @@ const INFLUX_USAGE_CSV_NAME = 'influx_usage.csv';
 const INFLUX_USAGE_CSV_HEADER =
   'timestamp,operation,command,key,query_or_write,status,duration_ms,error\n';
 const INFLUX_USAGE_VALUE_MAX_LEN = 2000;
+const INFLUX_USAGE_CSV_MAX_BYTES = 2 * 1024 * 1024;
 
 export class InfluxService {
   private client: InfluxDB;
@@ -205,6 +207,9 @@ export class InfluxService {
 
     this.usageLogWriting = true;
     try {
+      this.ensureUsageCsvReady();
+      await rotateKeepingOne(this.usageCsvPath, INFLUX_USAGE_CSV_MAX_BYTES);
+      if (!fs.existsSync(this.usageCsvPath)) this.usageCsvReady = false;
       this.ensureUsageCsvReady();
       while (this.usageLogQueue.length > 0) {
         const batch = this.usageLogQueue.splice(0, 100).join('');

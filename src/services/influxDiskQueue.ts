@@ -3,6 +3,7 @@ import path from 'path';
 import readline from 'readline';
 import { createReadStream } from 'fs';
 import { logger } from '../utils/logger';
+import { rotateKeepingOne } from '../utils/rotateFile';
 import { isPermanentInfluxWriteError, influxWriteErrorMessage } from '../utils/influxQueueError';
 
 export interface InfluxDiskQueueOptions {
@@ -36,6 +37,8 @@ export class InfluxDiskQueue {
 
   private async rejectLine(line: string, reason: string): Promise<void> {
     const payload = `${line}\n`;
+    // ponytail: 2MB cap + one .1 generation; byte-delta is the file-slope signal until the next deploy
+    await rotateKeepingOne(this.rejectedPath(), 2 * 1024 * 1024).catch(() => undefined);
     await fs.appendFile(this.rejectedPath(), payload, 'utf8').catch((err: unknown) => {
       logger.error('[INFLUX_QUEUE] dead-letter append failed', {
         error: err instanceof Error ? err.message : String(err)

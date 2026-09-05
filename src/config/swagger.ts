@@ -45,6 +45,8 @@ export function resetSwaggerSpecCache(): void {
 }
 
 export function setupSwaggerUi(app: Express): void {
+  if (process.env.SWAGGER_ENABLED !== 'true') return;
+
   app.get('/api/docs/openapi.json', (_req, res) => {
     res.json(getSwaggerSpec());
   });

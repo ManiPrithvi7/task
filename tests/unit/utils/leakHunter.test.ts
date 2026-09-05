@@ -26,11 +26,19 @@ describe('leak hunter diagnose', () => {
     ).toBe(true);
   });
 
-  it('marks untracked when RSS rises and stores are flat', () => {
+  it('does not flag a single +2 MB RSS bump as untracked', () => {
     const stores: StoreReading[] = [
       { key: 'influx.queryCache', module: 'influxQueryCache', file: 'src/services/influxQueryCache.ts', count: 0 }
     ];
-    const d = diagnoseStores(stores, stores, 4096);
+    const d = diagnoseStores(stores, stores, 4096, 4096);
+    expect(d.suspect).toBe('none');
+  });
+
+  it('marks untracked when a 10-sample RSS slope exceeds 10 MB', () => {
+    const stores: StoreReading[] = [
+      { key: 'influx.queryCache', module: 'influxQueryCache', file: 'src/services/influxQueryCache.ts', count: 0 }
+    ];
+    const d = diagnoseStores(stores, stores, 4096, 12 * 1024);
     expect(d.suspect).toBe('untracked_native_or_heap');
     expect(d.growing).toEqual([]);
   });

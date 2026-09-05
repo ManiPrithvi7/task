@@ -4,7 +4,7 @@ import type { BootstrapHost } from './bootstrapHost';
 import type { ActiveDevice } from '../services/deviceService';
 import { Device } from '../models/Device';
 import { clearAllPublishHashesForDevice } from '../services/mqttChangeDetection';
-import { getLocalPromoRotationCache } from '../services/localCaches';
+import { getLocalConnectDebounce, getLocalPromoRotationCache } from '../services/localCaches';
 import { cacheUserIntegrations } from '../services/userIntegrationCache';
 import { getDeviceStateLogService } from '../services/deviceStateLogService';
 import { REDIS_KEYS } from '../constants/redisKeys';
@@ -348,6 +348,7 @@ export async function handleDeviceLWT(
 
   const clearedPublishHashes = await clearAllPublishHashesForDevice(deviceId);
   getLocalPromoRotationCache().clear(deviceId);
+  getLocalConnectDebounce().clear(deviceId);
   if (clearedPublishHashes > 0) {
     logger.info('💀 [LIFECYCLE:LWT] Cleared MQTT publish dedupe hashes', {
       deviceId,
