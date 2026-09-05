@@ -1,9 +1,15 @@
 import { createHash } from 'crypto';
-import { IG_PROFILE_API_ENDPOINT } from '@/lib/socials/instagramMetrics';
+import { getIgFetchBodySizeSnapshot, IG_PROFILE_API_ENDPOINT } from '@/lib/socials/instagramMetrics';
 
 describe('instagram metrics audit constants', () => {
   it('uses graph.instagram.com/me as api endpoint tag value', () => {
     expect(IG_PROFILE_API_ENDPOINT).toBe('graph.instagram.com/me');
+  });
+
+  it('tracks last body sizes as numbers not retained payloads', () => {
+    const snap = getIgFetchBodySizeSnapshot();
+    expect(snap.lastGraphResponseBytes).toBeGreaterThanOrEqual(0);
+    expect(snap.lastDetailsJsonBytes).toBeGreaterThanOrEqual(0);
   });
 
   it('sha256 is stable for compliance hashing', () => {

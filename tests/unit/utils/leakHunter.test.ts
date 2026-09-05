@@ -46,5 +46,18 @@ describe('leak hunter diagnose', () => {
     expect(stores.find((s) => s.key === 'influx.queryCache')?.count).toBe(1);
     expect(stores.find((s) => s.key === 'mqtt.pendingAcks')?.count).toBe(2);
     expect(JSON.stringify(snap)).not.toContain('leak-hunter-test');
+    const pipe = snap.igPipeline as Record<string, number>;
+    expect(pipe).toEqual(
+      expect.objectContaining({
+        fetchesEnqueued: expect.any(Number),
+        fetchesApplied: expect.any(Number),
+        fetchesSucceeded: expect.any(Number),
+        fetchesFailed: expect.any(Number),
+        fetchesNoCredentials: expect.any(Number),
+        lastGraphResponseBytes: expect.any(Number)
+      })
+    );
+    expect(pipe).not.toHaveProperty('lastRawResponse');
+    expect(pipe).not.toHaveProperty('mediaBuffers');
   });
 });

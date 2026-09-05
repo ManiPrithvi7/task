@@ -81,8 +81,10 @@ describe('instagramService outcome applicator', () => {
   });
 
   it('success with no cached followers: audit + metrics + baseline + publish + flush', async () => {
+    const before = Number(getInstagramPollingMetricsSnapshot().fetchesSucceeded);
     const mqtt = makeMqtt();
     await applyInstagramServerlessDeviceOutcome(successRow(), mqtt, 'proof', 'scheduled');
+    expect(Number(getInstagramPollingMetricsSnapshot().fetchesSucceeded)).toBe(before + 1);
 
     expect(mockInflux.writeInstagramOutcomeBatch).toHaveBeenCalledWith(
       expect.objectContaining({

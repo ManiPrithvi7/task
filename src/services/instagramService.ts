@@ -25,6 +25,7 @@ import { getInfluxService } from './influxService';
 import { getActiveDeviceCache } from './deviceService';
 import {
   fetchInstagramProfileMetrics,
+  getIgFetchBodySizeSnapshot,
   IG_PROFILE_API_ENDPOINT,
   InstagramProfileFetchError
 } from '../lib/socials/instagramMetrics';
@@ -69,6 +70,10 @@ const counters = {
   priorityCycles: 0,
   backgroundCycles: 0,
   fetchesEnqueued: 0,
+  fetchesApplied: 0,
+  fetchesSucceeded: 0,
+  fetchesFailed: 0,
+  fetchesNoCredentials: 0,
   fetchesDeduped: 0,
   /** Redis failures in dedupe reservation; dedupe disabled on these paths. */
   fetchDedupeRedisErrors: 0,
@@ -173,6 +178,8 @@ export function observeAttentionFetchLatencyMs(correlationId: string | undefined
 export function getInstagramPollingMetricsSnapshot(): Record<string, unknown> {
   return {
     ...counters,
+    correlationPending: correlationStartMs.size,
+    ...getIgFetchBodySizeSnapshot(),
     attentionE2eLatencyMs: buildLatencySnapshot()
   };
 }
@@ -667,6 +674,14 @@ export async function applyInstagramServerlessDeviceOutcome(
   correlationId?: string
 ): Promise<void> {
   const deviceId = row.deviceId;
+  igPollMetricsInc('fetchesApplied');
+  if (row.success) {
+    igPollMetricsInc('fetchesSucceeded');
+  } else if (row.error === 'no_instagram_credentials') {
+    igPollMetricsInc('fetchesNoCredentials');
+  } else {
+    igPollMetricsInc('fetchesFailed');
+  }
   const oldFollowers = await readCachedFollowers(deviceId);
   const newFollowers = row.success && row.followers_count != null ? row.followers_count : null;
 

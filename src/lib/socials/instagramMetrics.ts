@@ -49,6 +49,17 @@ function sha256Hex(text: string): string {
   return createHash('sha256').update(text, 'utf8').digest('hex');
 }
 
+/** Last Graph / details body sizes (bytes). Overwritten each fetch; not retained payloads. */
+let lastGraphResponseBytes = 0;
+let lastDetailsJsonBytes = 0;
+
+export function getIgFetchBodySizeSnapshot(): {
+  lastGraphResponseBytes: number;
+  lastDetailsJsonBytes: number;
+} {
+  return { lastGraphResponseBytes, lastDetailsJsonBytes };
+}
+
 /**
  * Fetches Instagram profile metrics via proof-socials Graph helpers.
  * Surfaces HTTP 429 and Graph error codes for proofmqtt retry/circuit logic.
@@ -82,6 +93,7 @@ export async function fetchInstagramProfileMetrics(
   }
 
   const text = await res.text();
+  lastGraphResponseBytes = text.length;
   const primaryResponseSha256 = sha256Hex(text);
   const httpStatus = res.status;
 
@@ -118,8 +130,9 @@ export async function fetchInstagramProfileMetrics(
     typeof mediaRaw === 'number' && Number.isFinite(mediaRaw) ? mediaRaw : 0;
 
   const details = await ig.getInstagramUserDetails(accessToken);
-  const detailsResponseSha256 =
-    details != null ? sha256Hex(JSON.stringify(details)) : undefined;
+  const detailsJson = details != null ? JSON.stringify(details) : '';
+  lastDetailsJsonBytes = detailsJson.length;
+  const detailsResponseSha256 = detailsJson ? sha256Hex(detailsJson) : undefined;
   const username =
     details && typeof details.username === 'string' && details.username.trim()
       ? details.username.trim()

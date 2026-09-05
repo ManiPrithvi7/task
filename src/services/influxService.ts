@@ -195,6 +195,7 @@ export class InfluxService {
     durationMs: number;
     error: string;
   }): void {
+    if (this.usageLogQueue.length >= 5000) this.usageLogQueue.shift();
     this.usageLogQueue.push(this.buildUsageCsvLine(entry));
     void this.flushUsageLogQueue();
   }

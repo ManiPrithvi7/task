@@ -4,6 +4,7 @@ import { stimCacheSize } from '../../stimulate/cache';
 import { getIgDeviceRuntimeCache } from '../services/igDeviceRuntimeCache';
 import { getInfluxService } from '../services/influxService';
 import { influxQueryCacheSize } from '../services/influxQueryCache';
+import { getIgFetchBodySizeSnapshot } from '../lib/socials/instagramMetrics';
 import { getInstagramPollingMetricsSnapshot } from '../services/instagramService';
 import { getLocalPromoRotationCache, getLocalPublishHashCache } from '../services/localCaches';
 import { getRedisService } from '../services/redisService';
@@ -29,6 +30,7 @@ const MAX_JSONL_BYTES = 2 * 1024 * 1024;
 let timer: ReturnType<typeof setInterval> | null = null;
 let lastRss = 0;
 let lastStores: StoreReading[] | null = null;
+let sampleTicks = 0;
 
 function dataDir(): string {
   return path.resolve(process.env.DATA_DIR || './data');
@@ -42,51 +44,58 @@ export function leakHunterLatestPath(): string {
   return path.join(dataDir(), 'leak-hunter-latest.json');
 }
 
+function safeCount(read: () => number): number {
+  try {
+    const n = read();
+    return typeof n === 'number' && Number.isFinite(n) ? n : -1;
+  } catch {
+    return -1;
+  }
+}
+
 export function readStoreSizes(appSnapshot?: AppLeakSnapshot): StoreReading[] {
-  const influx = getInfluxService();
-  const redis = getRedisService();
   return [
     {
       key: 'influx.usageLogQueue',
       module: 'InfluxService',
       file: 'src/services/influxService.ts',
-      count: influx?.usageLogQueueLength() ?? -1
+      count: safeCount(() => getInfluxService()?.usageLogQueueLength() ?? -1)
     },
     {
       key: 'influx.queryCache',
       module: 'influxQueryCache',
       file: 'src/services/influxQueryCache.ts',
-      count: influxQueryCacheSize()
+      count: safeCount(influxQueryCacheSize)
     },
     {
       key: 'redis.usageLogQueue',
       module: 'RedisService',
       file: 'src/services/redisService.ts',
-      count: redis?.usageLogQueueLength() ?? -1
+      count: safeCount(() => getRedisService()?.usageLogQueueLength() ?? -1)
     },
     {
       key: 'maps.igDeviceRuntime',
       module: 'IgDeviceRuntimeCache',
       file: 'src/services/igDeviceRuntimeCache.ts',
-      count: getIgDeviceRuntimeCache().size()
+      count: safeCount(() => getIgDeviceRuntimeCache().size())
     },
     {
       key: 'maps.publishHash',
       module: 'LocalPublishHashCache',
       file: 'src/services/localCaches.ts',
-      count: getLocalPublishHashCache().size()
+      count: safeCount(() => getLocalPublishHashCache().size())
     },
     {
       key: 'maps.promoRotation',
       module: 'LocalPromoRotationCache',
       file: 'src/services/localCaches.ts',
-      count: getLocalPromoRotationCache().size()
+      count: safeCount(() => getLocalPromoRotationCache().size())
     },
     {
       key: 'maps.stimCache',
       module: 'stimulate/cache',
       file: 'stimulate/cache.ts',
-      count: stimCacheSize()
+      count: safeCount(stimCacheSize)
     },
     {
       key: 'mqtt.pendingAcks',
@@ -164,6 +173,8 @@ export function collectLeakDiagnostics(appSnapshot?: AppLeakSnapshot): Record<st
   lastRss = mu.rss;
   lastStores = stores;
 
+  const igPoll = getInstagramPollingMetricsSnapshot();
+  const bodies = getIgFetchBodySizeSnapshot();
   return {
     timestamp: new Date().toISOString(),
     memory: {
@@ -175,7 +186,17 @@ export function collectLeakDiagnostics(appSnapshot?: AppLeakSnapshot): Record<st
     diagnosis,
     stores,
     redisConnected: getRedisService()?.isRedisConnected() ?? false,
-    igPoll: getInstagramPollingMetricsSnapshot()
+    igPoll,
+    igPipeline: {
+      fetchesEnqueued: Number(igPoll.fetchesEnqueued ?? 0),
+      fetchesApplied: Number(igPoll.fetchesApplied ?? 0),
+      fetchesSucceeded: Number(igPoll.fetchesSucceeded ?? 0),
+      fetchesFailed: Number(igPoll.fetchesFailed ?? 0),
+      fetchesNoCredentials: Number(igPoll.fetchesNoCredentials ?? 0),
+      correlationPending: Number(igPoll.correlationPending ?? 0),
+      lastGraphResponseBytes: bodies.lastGraphResponseBytes,
+      lastDetailsJsonBytes: bodies.lastDetailsJsonBytes
+    }
   };
 }
 
@@ -205,6 +226,7 @@ export function startLeakHunter(getAppSnapshot?: () => AppLeakSnapshot): void {
   if (timer) return;
   lastRss = 0;
   lastStores = null;
+  sampleTicks = 0;
   logger.info('leak hunter writing local diagnose files', {
     latest: leakHunterLatestPath(),
     history: leakHunterJsonlPath(),
@@ -212,6 +234,15 @@ export function startLeakHunter(getAppSnapshot?: () => AppLeakSnapshot): void {
   });
   const tick = (): void => {
     const payload = collectLeakDiagnostics(getAppSnapshot?.());
+    sampleTicks += 1;
+    // ponytail: Railway has no SSH to the JSON files; one sample / 5 min is the watch surface
+    if (sampleTicks % 10 === 0) {
+      logger.info('leak_hunter_sample', {
+        rss_mb: (payload.memory as { rss_mb?: number }).rss_mb,
+        suspect: (payload.diagnosis as { suspect?: string }).suspect,
+        igPipeline: payload.igPipeline
+      });
+    }
     void writeReport(payload).catch((err: unknown) => {
       logger.warn('leak hunter file write failed', {
         error: err instanceof Error ? err.message : String(err)
@@ -230,4 +261,5 @@ export function stopLeakHunter(): void {
   }
   lastRss = 0;
   lastStores = null;
+  sampleTicks = 0;
 }
