@@ -70,4 +70,28 @@ describe('loyaltyRoutes', () => {
     expect(res.status).toBe(200);
     expect(res.body.result).toEqual(result);
   });
+
+  it('does not construct loyalty service until join or spin', async () => {
+    const getService = jest.fn(() => ({
+      join: jest.fn().mockResolvedValue({ sessionId: 'ls_1', deviceId: 'DEVICE-17', expiresAt: 't' })
+    })) as jest.Mock;
+    const a = express();
+    a.use(express.json());
+    a.use(
+      '/loyalty',
+      createLoyaltyRoutes({
+        getService: getService as () => LoyaltyService,
+        tryService: () => undefined,
+        loyalty,
+        env: 'test'
+      })
+    );
+    expect(getService).not.toHaveBeenCalled();
+    const getRes = await request(a).get('/loyalty/spin/spin_1');
+    expect(getRes.status).toBe(404);
+    expect(getService).not.toHaveBeenCalled();
+    const joinRes = await request(a).post('/loyalty/join').send({ deviceId: 'DEVICE-17' });
+    expect(joinRes.status).toBe(201);
+    expect(getService).toHaveBeenCalledTimes(1);
+  });
 });

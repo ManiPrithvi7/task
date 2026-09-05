@@ -7,6 +7,7 @@
 import mongoose from 'mongoose';
 import { mongoDriverTimeouts } from '../config/mongoConnection';
 import { logger } from '../utils/logger';
+import { incActivity } from '../utils/activityMetrics';
 
 export interface MongoConfig {
   uri: string;
@@ -65,6 +66,7 @@ export class MongoService {
         bufferCommands: false,
         retryWrites: true,
         retryReads: true,
+        monitorCommands: true,
         ...this.config.options
       };
 
@@ -84,6 +86,10 @@ export class MongoService {
       
       this.connection = mongoose.connection;
       this.isConnected = true;
+
+      this.connection.getClient().on('commandStarted', () => {
+        incActivity('databaseQueries');
+      });
 
       this.setupEventHandlers();
 

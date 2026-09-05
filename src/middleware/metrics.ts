@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import client from 'prom-client';
+import { incActivity } from '../utils/activityMetrics';
 
 export const metricsRegister = new client.Registry();
 client.collectDefaultMetrics({ register: metricsRegister });
@@ -24,6 +25,7 @@ export function metricsMiddleware(req: Request, res: Response, next: NextFunctio
   const end = httpRequestDuration.startTimer();
   res.on('finish', () => {
     const route = req.route?.path || req.path;
+    incActivity('httpRequests');
     httpRequestsTotal.inc({ method: req.method, route, status: res.statusCode.toString() });
     end({ method: req.method, route });
   });

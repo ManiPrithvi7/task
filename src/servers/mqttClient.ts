@@ -2,6 +2,7 @@ import mqtt, { MqttClient, IClientOptions, IPublishPacket } from 'mqtt';
 import * as dns from 'dns';
 import { EventEmitter } from 'events';
 import { logger } from '../utils/logger';
+import { incActivity } from '../utils/activityMetrics';
 import {
   applyMqttJsTlsOptions,
   normalizeTlsPem,
@@ -264,6 +265,7 @@ export class MqttClientManager extends EventEmitter {
       });
 
       this.client.on('message', (topic, payload, packet) => {
+        incActivity('mqttMessages');
         logger.debug('Message received', {
           topic,
           size: payload.length,
@@ -369,6 +371,7 @@ export class MqttClientManager extends EventEmitter {
             });
             reject(error);
           } else {
+            incActivity('publishes');
             const deliveryTime = Date.now() - publishTime;
             logger.debug('Message published', {
               topic: fullTopic,

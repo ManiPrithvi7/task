@@ -12,6 +12,7 @@ const mockConnection: any = {
   name: 'db',
   readyState: 1,
   db: null,
+  getClient: jest.fn(() => ({ on: jest.fn() })),
   on: jest.fn((event: string, cb: (...args: unknown[]) => void) => {
     mockHandlers[event] = cb;
   })

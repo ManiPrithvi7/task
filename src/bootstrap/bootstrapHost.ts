@@ -60,6 +60,7 @@ export interface BootstrapHost {
   otaRolloutScheduler?: RolloutSchedulerHandle;
   mqttIngressState: MqttIngressRouterState;
   loyaltyService?: LoyaltyService;
+  ensureLoyaltyService(): Promise<LoyaltyService>;
   isServicesReady: boolean;
   isIngressReady: boolean;
   keepAliveTimer: ReturnType<typeof setInterval> | null;

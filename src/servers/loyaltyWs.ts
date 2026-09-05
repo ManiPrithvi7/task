@@ -22,7 +22,7 @@ export function clientIpFromUpgrade(req: IncomingMessage): string {
 
 export function attachLoyaltyWs(
   server: Server,
-  service: LoyaltyService
+  getService: () => LoyaltyService | undefined
 ): { close: () => void } {
   const perIp = new Map<string, RateEntry>();
 
@@ -75,7 +75,7 @@ export function attachLoyaltyWs(
   pingTimer.unref?.();
 
   wss.on('connection', (socket: WebSocket, req: IncomingMessage) => {
-    void onConnection(socket, req, service);
+    void onConnection(socket, req, getService);
   });
 
   return {
@@ -86,7 +86,11 @@ export function attachLoyaltyWs(
   };
 }
 
-async function onConnection(socket: WebSocket, req: IncomingMessage, service: LoyaltyService): Promise<void> {
+async function onConnection(
+  socket: WebSocket,
+  req: IncomingMessage,
+  getService: () => LoyaltyService | undefined
+): Promise<void> {
   let sessionId = '';
   try {
     const host = req.headers.host || 'localhost';
@@ -94,6 +98,20 @@ async function onConnection(socket: WebSocket, req: IncomingMessage, service: Lo
     sessionId = url.searchParams.get('sessionId') || '';
     if (!sessionId) {
       socket.send(JSON.stringify({ event: 'loyalty.session.error', code: 'SESSION_INVALID', message: 'sessionId required' }));
+      socket.close(4401, 'sessionId required');
+      return;
+    }
+
+    // Join/spin already constructed the service. Never construct here.
+    const service = getService();
+    if (!service) {
+      socket.send(
+        JSON.stringify({
+          event: 'loyalty.session.error',
+          code: 'SESSION_INVALID',
+          message: 'Session is invalid or expired'
+        })
+      );
       socket.close(4401, 'sessionId required');
       return;
     }

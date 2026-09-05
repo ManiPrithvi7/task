@@ -8,7 +8,8 @@ jest.mock('@/models/LoyaltySession', () => ({
     create: jest.fn(),
     findOne: jest.fn(),
     findOneAndUpdate: jest.fn(),
-    find: jest.fn()
+    find: jest.fn(),
+    exists: jest.fn()
   },
   LoyaltySessionStatus: {
     CREATED: 'CREATED',
@@ -16,7 +17,8 @@ jest.mock('@/models/LoyaltySession', () => ({
     SPINNING: 'SPINNING',
     COMPLETED: 'COMPLETED',
     EXPIRED: 'EXPIRED'
-  }
+  },
+  LOYALTY_ACTIVE_SESSION_STATUSES: ['CREATED', 'READY', 'SPINNING']
 }));
 
 jest.mock('@/models/LoyaltySpin', () => ({
@@ -24,7 +26,8 @@ jest.mock('@/models/LoyaltySpin', () => ({
     create: jest.fn(),
     findOne: jest.fn(),
     find: jest.fn(),
-    findOneAndUpdate: jest.fn()
+    findOneAndUpdate: jest.fn(),
+    exists: jest.fn()
   },
   LoyaltySpinStatus: {
     CREATED: 'CREATED',
@@ -62,7 +65,9 @@ const loyaltyConfig: LoyaltyConfig = {
   previewOriginPattern: ''
 };
 
-function makeService(overrides?: { publish?: jest.Mock; connected?: boolean }) {
+const liveServices: LoyaltyService[] = [];
+
+function makeService(overrides?: { publish?: jest.Mock; connected?: boolean; onIdle?: () => void }) {
   const publish = overrides?.publish ?? jest.fn().mockResolvedValue(undefined);
   const mqtt = {
     publish,
@@ -73,8 +78,10 @@ function makeService(overrides?: { publish?: jest.Mock; connected?: boolean }) {
     mqtt,
     config: loyaltyConfig,
     topicRoot: 'proof.mqtt',
-    getActiveDevice
+    getActiveDevice,
+    onIdle: overrides?.onIdle
   });
+  liveServices.push(service);
   return { service, publish, getActiveDevice };
 }
 
@@ -100,12 +107,20 @@ describe('LoyaltyService', () => {
     });
     (LoyaltySession.findOneAndUpdate as jest.Mock).mockResolvedValue(null);
     (LoyaltySession.create as jest.Mock).mockResolvedValue({});
+    (LoyaltySession.exists as jest.Mock).mockResolvedValue(null);
+    (LoyaltySession.find as jest.Mock).mockResolvedValue([]);
     (LoyaltySpin.findOne as jest.Mock).mockResolvedValue(null);
     (LoyaltySpin.find as jest.Mock).mockResolvedValue([]);
+    (LoyaltySpin.exists as jest.Mock).mockResolvedValue(null);
     (LoyaltySpin.findOneAndUpdate as jest.Mock).mockImplementation(async (_q, update) => {
       const set = update?.$set || {};
       return { status: set.status, failCode: set.failCode, failMessage: set.failMessage };
     });
+  });
+
+  afterEach(() => {
+    for (const s of liveServices) s.stop();
+    liveServices.length = 0;
   });
 
   it('join returns 503 when device is not in the active cache', async () => {
@@ -610,5 +625,84 @@ describe('LoyaltyService', () => {
     });
     expect(session.status).toBe('READY');
     expect(ready.deviceId).toBe('DEVICE-17');
+  });
+
+  it('stays dormant on start when Mongo has no unfinished loyalty work', async () => {
+    const { service } = makeService();
+    await service.start();
+    expect(service.isSweeping()).toBe(false);
+    expect(LoyaltySpin.exists).toHaveBeenCalled();
+    expect(LoyaltySession.exists).toHaveBeenCalled();
+    expect(LoyaltySpin.find).not.toHaveBeenCalled();
+  });
+
+  it('recovers and arms sweep timers when boot finds leftover work', async () => {
+    const { service } = makeService();
+    (LoyaltySpin.exists as jest.Mock).mockResolvedValue({ _id: 'spin' });
+    await service.start();
+    expect(LoyaltySpin.find).toHaveBeenCalled();
+    expect(service.isSweeping()).toBe(true);
+  });
+
+  it('join while dormant arms sweep timers', async () => {
+    const { service } = makeService();
+    await service.start();
+    expect(service.isSweeping()).toBe(false);
+    await service.join('DEVICE-17');
+    expect(service.isSweeping()).toBe(true);
+  });
+
+  it('stops the service when a mutating sweep leaves no unfinished work', async () => {
+    const onIdle = jest.fn();
+    const { service } = makeService({ onIdle });
+    (LoyaltySpin.exists as jest.Mock).mockResolvedValue({ _id: 'spin' });
+    await service.start();
+    expect(service.isSweeping()).toBe(true);
+
+    const stale = spinDoc({
+      status: 'COMMAND_PUBLISHED',
+      commandPublishedAt: new Date(Date.now() - 10_000)
+    });
+    (LoyaltySpin.find as jest.Mock).mockResolvedValueOnce([stale]).mockResolvedValueOnce([]);
+    (LoyaltySpin.exists as jest.Mock).mockResolvedValue(null);
+    (LoyaltySession.exists as jest.Mock).mockResolvedValue(null);
+
+    await service.sweepAckTimeouts();
+    expect(service.isSweeping()).toBe(false);
+    expect(onIdle).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps sweep timers when work is created during exists check', async () => {
+    const { service } = makeService();
+    (LoyaltySpin.exists as jest.Mock).mockResolvedValue({ _id: 'spin' });
+    await service.start();
+    expect(service.isSweeping()).toBe(true);
+
+    let releaseExists: (value: null) => void = () => undefined;
+    const existsGate = new Promise<null>((resolve) => {
+      releaseExists = resolve;
+    });
+    let sawExists: () => void = () => undefined;
+    const existsStarted = new Promise<void>((resolve) => {
+      sawExists = resolve;
+    });
+    (LoyaltySpin.exists as jest.Mock).mockImplementation(() => {
+      sawExists();
+      return existsGate;
+    });
+    (LoyaltySession.exists as jest.Mock).mockResolvedValue(null);
+
+    const stale = spinDoc({
+      status: 'COMMAND_PUBLISHED',
+      commandPublishedAt: new Date(Date.now() - 10_000)
+    });
+    (LoyaltySpin.find as jest.Mock).mockResolvedValueOnce([stale]).mockResolvedValueOnce([]);
+
+    const sweepDone = service.sweepAckTimeouts();
+    await existsStarted;
+    await service.join('DEVICE-17');
+    releaseExists(null);
+    await sweepDone;
+    expect(service.isSweeping()).toBe(true);
   });
 });

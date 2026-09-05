@@ -10,10 +10,16 @@ import { safeEqualString } from '../utils/safeEqual';
 import { logger } from '../utils/logger';
 
 export type LoyaltyRoutesDeps = {
-  service: LoyaltyService;
+  service?: LoyaltyService;
+  getService?: () => LoyaltyService | Promise<LoyaltyService>;
+  tryService?: () => LoyaltyService | undefined;
   loyalty: LoyaltyConfig;
   env: string;
 };
+
+function demandService(deps: LoyaltyRoutesDeps): Promise<LoyaltyService> | LoyaltyService {
+  return deps.service ?? deps.getService!();
+}
 
 function sendLoyaltyError(res: Response, err: unknown): void {
   if (err instanceof LoyaltyHttpError) {
@@ -47,7 +53,7 @@ export function requireLoyaltySpinKey(loyalty: LoyaltyConfig, env: string) {
 
 export function createLoyaltyRoutes(deps: LoyaltyRoutesDeps): Router {
   const router = Router();
-  const { service, loyalty, env } = deps;
+  const { loyalty, env } = deps;
 
   router.use(
     cors({
@@ -115,7 +121,7 @@ export function createLoyaltyRoutes(deps: LoyaltyRoutesDeps): Router {
    */
   router.post('/join', joinLimiter, async (req: Request, res: Response) => {
     try {
-      const body = await service.join(req.body?.deviceId);
+      const body = await (await demandService(deps)).join(req.body?.deviceId);
       res.status(201).json(body);
     } catch (err: unknown) {
       sendLoyaltyError(res, err);
@@ -138,7 +144,7 @@ export function createLoyaltyRoutes(deps: LoyaltyRoutesDeps): Router {
     async (req: Request, res: Response) => {
       try {
         validateLoyaltyResult(req.body?.result);
-        const body = await service.spin({
+        const body = await (await demandService(deps)).spin({
           sessionId: req.body?.sessionId,
           idempotencyKey: req.body?.idempotencyKey,
           spinId: req.body?.spinId,
@@ -160,7 +166,12 @@ export function createLoyaltyRoutes(deps: LoyaltyRoutesDeps): Router {
    */
   router.get('/spin/:spinId', async (req: Request, res: Response) => {
     try {
-      const body = await service.getSpin(req.params.spinId);
+      const svc = deps.service ?? deps.tryService?.();
+      if (!svc) {
+        res.status(404).json({ code: 'SPIN_NOT_FOUND', message: 'Unknown spinId' });
+        return;
+      }
+      const body = await svc.getSpin(req.params.spinId);
       res.status(200).json(body);
     } catch (err: unknown) {
       sendLoyaltyError(res, err);

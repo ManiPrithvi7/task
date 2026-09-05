@@ -6,6 +6,7 @@
 import crypto from 'crypto';
 import { Device, DeviceStatus } from '../models/Device';
 import {
+  LOYALTY_ACTIVE_SESSION_STATUSES,
   LoyaltySession,
   LoyaltySessionStatus,
   type ILoyaltySession
@@ -33,6 +34,12 @@ const CLOCK_DRIFT_WARN_MS = 5000;
 const REVEAL_SWEEP_GRACE_MS = 2000;
 const DEVICE_ID_MAX = 64;
 const SYMBOLS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+const UNFINISHED_SPIN_STATUSES = [
+  LoyaltySpinStatus.CREATED,
+  LoyaltySpinStatus.COMMAND_PUBLISHED,
+  LoyaltySpinStatus.ACK_RECEIVED,
+  LoyaltySpinStatus.REVEALED
+] as const;
 
 export type LoyaltyMqttClient = {
   publish: (message: {
@@ -56,6 +63,8 @@ export type LoyaltyServiceDeps = {
   topicRoot: string;
   getActiveDevice?: (deviceId: string) => Promise<{ deviceId: string } | null>;
   now?: () => Date;
+  /** Called after stop() when no unfinished sessions/spins remain. */
+  onIdle?: () => void;
 };
 
 export type LoyaltySpinRequest = {
@@ -136,6 +145,9 @@ export class LoyaltyService {
   /** deviceId → live browser socket. Single Node instance only. */
   readonly activeConnections = new Map<string, LoyaltyConnection>();
 
+  private started = false;
+  private workGen = 0;
+  private sweepMutated = false;
   private ackTimer?: ReturnType<typeof setInterval>;
   private sessionTimer?: ReturnType<typeof setInterval>;
   private readonly mqtt: LoyaltyMqttClient;
@@ -143,6 +155,7 @@ export class LoyaltyService {
   private readonly topicRoot: string;
   private readonly getActiveDevice: (deviceId: string) => Promise<{ deviceId: string } | null>;
   private readonly now: () => Date;
+  private readonly onIdle?: () => void;
 
   constructor(deps: LoyaltyServiceDeps) {
     this.mqtt = deps.mqtt;
@@ -151,13 +164,56 @@ export class LoyaltyService {
     this.getActiveDevice =
       deps.getActiveDevice ?? ((id) => getActiveDeviceCache().getActive(id));
     this.now = deps.now ?? (() => new Date());
+    this.onIdle = deps.onIdle;
   }
 
-  start(): void {
+  /** True while 1s/5s Mongo sweep timers are armed. */
+  isSweeping(): boolean {
+    return this.ackTimer != null && this.sessionTimer != null;
+  }
+
+  start(): Promise<void> {
+    if (this.started) return Promise.resolve();
+    this.started = true;
+    return this.recoverIfNeeded();
+  }
+
+  stop(): void {
+    this.started = false;
+    this.stopSweeps();
+    for (const [deviceId, conn] of this.activeConnections) {
+      try {
+        conn.socket.close(1001, 'server shutdown');
+      } catch {
+        /* ignore */
+      }
+      this.activeConnections.delete(deviceId);
+    }
+  }
+
+  private async recoverIfNeeded(): Promise<void> {
+    if (!(await this.hasUnfinishedLoyaltyWork())) return;
+    await this.sweepAckTimeouts();
+    await this.sweepSessions();
+    this.enterActiveSweeps();
+    await this.maybeRelease();
+  }
+
+  private async hasUnfinishedLoyaltyWork(): Promise<boolean> {
+    const [spin, session] = await Promise.all([
+      LoyaltySpin.exists({ status: { $in: [...UNFINISHED_SPIN_STATUSES] } }),
+      LoyaltySession.exists({ status: { $in: [...LOYALTY_ACTIVE_SESSION_STATUSES] } })
+    ]);
+    return Boolean(spin) || Boolean(session);
+  }
+
+  private markWorkCreated(): void {
+    this.workGen += 1;
+    this.enterActiveSweeps();
+  }
+
+  private enterActiveSweeps(): void {
     if (this.ackTimer) return;
-    // Interval only — no per-spin setTimeout (ack timeout + reveal are swept from Mongo).
-    void this.sweepAckTimeouts();
-    void this.sweepSessions();
     this.ackTimer = setInterval(() => {
       void this.sweepAckTimeouts();
     }, 1000);
@@ -168,19 +224,25 @@ export class LoyaltyService {
     this.sessionTimer.unref?.();
   }
 
-  stop(): void {
+  private stopSweeps(): void {
     if (this.ackTimer) clearInterval(this.ackTimer);
     if (this.sessionTimer) clearInterval(this.sessionTimer);
     this.ackTimer = undefined;
     this.sessionTimer = undefined;
-    for (const [deviceId, conn] of this.activeConnections) {
-      try {
-        conn.socket.close(1001, 'server shutdown');
-      } catch {
-        /* ignore */
-      }
-      this.activeConnections.delete(deviceId);
-    }
+  }
+
+  private async maybeRelease(): Promise<void> {
+    const gen = this.workGen;
+    if (await this.hasUnfinishedLoyaltyWork()) return;
+    if (gen !== this.workGen) return;
+    this.stop();
+    this.onIdle?.();
+  }
+
+  private async afterSweepMutation(): Promise<void> {
+    if (!this.sweepMutated) return;
+    this.sweepMutated = false;
+    await this.maybeRelease();
   }
 
   sendJson(deviceId: string, payload: Record<string, unknown>): void {
@@ -244,6 +306,7 @@ export class LoyaltyService {
         status: LoyaltySessionStatus.CREATED,
         expiresAt
       });
+      this.markWorkCreated();
     } catch (err: unknown) {
       if (isDuplicateKeyError(err, 'deviceId') || isDuplicateKeyError(err)) {
         throw new LoyaltyHttpError(409, 'ACTIVE_SESSION_EXISTS', 'An active session already exists for this device');
@@ -366,6 +429,7 @@ export class LoyaltyService {
           issuedAt,
           expiresAt: commandExpiresAt
         });
+        this.markWorkCreated();
       } catch (err: unknown) {
         if (isDuplicateKeyError(err, 'idempotencyKey') || isDuplicateKeyError(err, 'sessionId')) {
           const dup = await LoyaltySpin.findOne({ sessionId, idempotencyKey });
@@ -653,6 +717,7 @@ export class LoyaltyService {
       spin.status = LoyaltySpinStatus.COMPLETED;
       await spin.save();
     }
+    await this.afterSweepMutation();
   }
 
   async sweepSessions(): Promise<void> {
@@ -683,7 +748,9 @@ export class LoyaltyService {
         { sessionId: session.sessionId, status: LoyaltySessionStatus.SPINNING },
         { $set: { status: wsOk ? LoyaltySessionStatus.READY : LoyaltySessionStatus.EXPIRED } }
       );
+      this.sweepMutated = true;
     }
+    await this.afterSweepMutation();
   }
 
   private async failSpin(
@@ -704,6 +771,7 @@ export class LoyaltyService {
       { new: true }
     );
     if (!updated) return;
+    this.sweepMutated = true;
     spin.status = LoyaltySpinStatus.FAILED;
     spin.failCode = code;
     spin.failMessage = message;
@@ -734,11 +802,13 @@ export class LoyaltyService {
       { sessionId, status: { $in: [LoyaltySessionStatus.SPINNING, LoyaltySessionStatus.READY] } },
       { $set: { status: LoyaltySessionStatus.COMPLETED } }
     );
+    this.sweepMutated = true;
     this.activeConnections.delete(deviceId);
   }
 
   private async expireSession(session: ILoyaltySession, reason: string): Promise<void> {
     session.status = LoyaltySessionStatus.EXPIRED;
+    this.sweepMutated = true;
     await session.save();
     incLoyaltySessionExpiry(reason);
     const mapped = this.activeConnections.get(session.deviceId);

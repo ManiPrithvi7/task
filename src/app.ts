@@ -903,13 +903,6 @@ export class StatsMqttLite {
     
     await this.mqttClient.connect();
 
-    this.loyaltyService = new LoyaltyService({
-      mqtt: this.mqttClient,
-      config: this.config.loyalty,
-      topicRoot: this.config.mqtt.topicRoot
-    });
-    this.loyaltyService.start();
-
     this.mqttClient.on('brokerConnect', ({ reconnect }: { reconnect: boolean }) => {
       if (reconnect && this.isIngressReady) {
         logger.info('MQTT reconnected — re-subscribing to topics');
@@ -967,6 +960,23 @@ export class StatsMqttLite {
 
     this.nonLifecycleTopicsSubscribed = true;
     logger.info('Subscribed to non-lifecycle proof.mqtt topics', { count: topics.length, root });
+  }
+
+  async ensureLoyaltyService(): Promise<LoyaltyService> {
+    if (!this.loyaltyService) {
+      this.loyaltyService = new LoyaltyService({
+        mqtt: this.mqttClient,
+        config: this.config.loyalty,
+        topicRoot: this.config.mqtt.topicRoot,
+        onIdle: () => {
+          this.loyaltyService = undefined;
+          logger.info('Loyalty service stopped (flow complete)');
+        }
+      });
+      await this.loyaltyService.start();
+      logger.info('Loyalty service started on demand (join/spin)');
+    }
+    return this.loyaltyService;
   }
 
   private async subscribeLoyaltyAck(): Promise<void> {
