@@ -46,3 +46,7 @@ export function invalidateCache(prefix: string): void {
 export function clearInfluxQueryCache(): void {
   cache.clear();
 }
+
+export function influxQueryCacheSize(): number {
+  return cache.size;
+}

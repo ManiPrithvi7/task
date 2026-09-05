@@ -62,6 +62,11 @@ export class RedisService {
   private usageLogQueue: string[] = [];
   private usageLogWriting = false;
 
+  /** In-memory CSV flush backlog (grows if disk append fails). */
+  usageLogQueueLength(): number {
+    return this.usageLogQueue.length;
+  }
+
   constructor(config: RedisConfig) {
     this.usageCsvPath = path.resolve(
       config.dataDir || process.env.DATA_DIR || './data',

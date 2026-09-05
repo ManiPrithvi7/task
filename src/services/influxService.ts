@@ -119,6 +119,11 @@ export class InfluxService {
   private usageLogQueue: string[] = [];
   private usageLogWriting = false;
 
+  /** In-memory CSV flush backlog (grows if disk append fails). */
+  usageLogQueueLength(): number {
+    return this.usageLogQueue.length;
+  }
+
   igMetrics: IgMetricsRepo;
   igMilestone: IgMilestoneRepo;
   gmbMetrics: GmbMetricsRepo;

@@ -49,6 +49,10 @@ export function clearAllStimCache(): void {
   store.clear();
 }
 
+export function stimCacheSize(): number {
+  return store.size;
+}
+
 export function clearDeviceStimCache(deviceId: string): void {
   for (const k of [...store.keys()]) {
     if (k.endsWith(`:${deviceId}`)) store.delete(k);

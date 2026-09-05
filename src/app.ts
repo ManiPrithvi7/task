@@ -159,6 +159,19 @@ export class StatsMqttLite {
     validateConfig(this.config);
   }
 
+  /** Counts for leak-hunter logs — sizes only, no payloads. */
+  leakSnapshot(): {
+    mqttPendingAcks: number;
+    deferredPending: number;
+    ingressBuffer: number;
+  } {
+    return {
+      mqttPendingAcks: this.mqttClient ? this.mqttClient.getPendingAckCount() : -1,
+      deferredPending: this.deferredWork.pendingCount(),
+      ingressBuffer: this.mqttIngressState.buffer.length
+    };
+  }
+
   private bootstrapHost(): BootstrapHost {
     return this as unknown as BootstrapHost;
   }

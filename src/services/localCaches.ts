@@ -42,6 +42,10 @@ export class LocalPromoRotationCache {
   clear(deviceId: string): void {
     this.rotation.delete(deviceId);
   }
+
+  size(): number {
+    return this.rotation.size;
+  }
 }
 
 export class LocalPublishHashCache {
@@ -83,6 +87,10 @@ export class LocalPublishHashCache {
       }
     }
     return removed;
+  }
+
+  size(): number {
+    return this.cache.size;
   }
 }
 

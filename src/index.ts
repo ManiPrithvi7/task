@@ -1,16 +1,21 @@
 import { StatsMqttLite } from './app';
 import { logger } from './utils/logger';
+import { startLeakHunter, stopLeakHunter } from './utils/leakHunter';
 
 const app = new StatsMqttLite();
 let shuttingDown = false;
 
-app.start().catch((error) => {
-  logger.error('Fatal error during startup', {
-    error: error.message,
-    stack: error.stack
+app.start()
+  .then(() => {
+    startLeakHunter(() => app.leakSnapshot());
+  })
+  .catch((error) => {
+    logger.error('Fatal error during startup', {
+      error: error.message,
+      stack: error.stack
+    });
+    process.exit(1);
   });
-  process.exit(1);
-});
 
 const shutdown = async (signal: string) => {
   if (shuttingDown) {
@@ -28,6 +33,7 @@ const shutdown = async (signal: string) => {
   forceTimer.unref();
 
   try {
+    stopLeakHunter();
     await app.stop();
     clearTimeout(forceTimer);
     process.exit(0);

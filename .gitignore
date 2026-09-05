@@ -20,3 +20,5 @@ influx_usage.csv
 data/influx_usage.csv
 redis_usage.csv
 data/redis_usage.csv
+data/leak-hunter.jsonl
+data/leak-hunter-latest.json

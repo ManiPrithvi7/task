@@ -152,6 +152,10 @@ class IgDeviceRuntimeCacheImpl {
     this.devices.get(deviceId)?.dirtyFields.clear();
   }
 
+  size(): number {
+    return this.devices.size;
+  }
+
   delete(deviceId: string): void {
     const e = this.devices.get(deviceId);
     if (e?.gmbProfileId) {
