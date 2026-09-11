@@ -13,12 +13,17 @@ Source of truth for **statsnapp** (Next.js web app) and **proofmqtt** (this Node
 
 ## 1. MQTT and presence (do not invent a second subsystem)
 
-| Direction | Topic | QoS | retain | Payload `type` |
-|-----------|-------|-----|--------|----------------|
-| Node → ESP32 | `{MQTT_TOPIC_ROOT}/{deviceId}/loyalty` | 2 | false | `spin-start` |
-| ESP32 → Node | `{MQTT_TOPIC_ROOT}/{deviceId}/ack` | 1 | false | `spin-ack` |
+All loyalty MQTT messages use the **v1.2 screen envelope** (`version`, `screen: "loyalty"`, `celebration`, `muted`, `timestamp`, `payload`).
 
-Default root is `proof.mqtt` (same as OTA/screens). Example: `proof.mqtt/DEVICE-17/loyalty` and `proof.mqtt/DEVICE-17/ack`. Loyalty never uses `{MQTT_TOPIC_ROOT}/{deviceId}/cmd`. Node ignores non-`spin-ack` payloads on `/ack` so OTA rollback handshake can share that topic. Publish ack **immediately after accepting a valid `spin-start`**, before animation completes.
+| Direction | Topic | QoS | retain | Payload `type` (inside `payload`) |
+|-----------|-------|-----|--------|-----------------------------------|
+| Node → ESP32 | `{MQTT_TOPIC_ROOT}/{deviceId}/loyalty` | 1 | **true** | `loyalty-idle` |
+| Node → ESP32 | `{MQTT_TOPIC_ROOT}/{deviceId}/loyalty/spin` | 1 | false | `spin-start` |
+| ESP32 → Node | `{MQTT_TOPIC_ROOT}/{deviceId}/ack` | 1 | false | `spin-ack` (enveloped) |
+
+Default root is `proof.mqtt` (same as OTA/screens). Examples: `proof.mqtt/DEVICE-17/loyalty`, `proof.mqtt/DEVICE-17/loyalty/spin`, `proof.mqtt/DEVICE-17/ack`. Loyalty never uses `{MQTT_TOPIC_ROOT}/{deviceId}/cmd`. Node ignores non-enveloped or non-`spin-ack` payloads on `/ack` so OTA rollback handshake can share that topic. Device publishes ack **immediately after accepting a valid `spin-start`**, before animation completes.
+
+**Idle screen:** Node publishes retained `loyalty-idle` on device active/registration and startup republish. `businessName` resolves from `Device.businessId` → Mongo `Business.name`.
 
 **Device online** for join: Node `ActiveDeviceCache.getActive(deviceId)` (MQTT `/active` + LWT). There is no `GET /api/v1/devices/{clientId}/status`.
 
@@ -32,7 +37,7 @@ Default root is `proof.mqtt` (same as OTA/screens). Example: `proof.mqtt/DEVICE-
 3. Browser  waits for WS event loyalty.session.ready
 4. Browser  → POST statsnapp /api/loyalty/spin   { sessionId, deviceId, idempotencyKey }
 5. statsnapp picks result, writes Prisma, POST Node /loyalty/spin with X-Loyalty-Key + result
-6. Node     → MQTT spin-start (includes result + issuedAt/expiresAt)
+6. Node     → MQTT enveloped spin-start on `/loyalty/spin` (includes result + issuedAt/expiresAt)
 7. ESP32    → MQTT spin-ack (immediately after accepting start; before animation completes)
 8. Node     → WS loyalty.spin.started { spinId, startedAt, ttlMs, revealAt, serverNow }  (no result)
 9. Browser  reveals locally at revealAt using result from step 5
@@ -177,37 +182,92 @@ Session dies 45s after `createdAt` if no spin starts (even if WSS is open). Fron
 
 ---
 
-## 5. Node command payload (firmware; web app does not send this)
+## 5. Node MQTT payloads (firmware; web app does not send these)
 
-Published on `{MQTT_TOPIC_ROOT}/{deviceId}/loyalty` after a successful spin persist:
-
-```json
-{
-  "type": "spin-start",
-  "spinId": "spin_abc123",
-  "result": { "digits": [7, 7, 7], "value": "777", "reward": "Free Item" },
-  "ttlMs": 5000,
-  "reels": 3,
-  "symbols": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
-  "issuedAt": "2026-08-27T17:00:00.000Z",
-  "expiresAt": "2026-08-27T17:00:10.000Z"
-}
-```
-
-Firmware **must discard** if device clock `now > expiresAt` (stale queue after reconnect).
-
-**Deployment gate:** flash firmware that subscribes `{MQTT_TOPIC_ROOT}/{id}/loyalty` **before** staging drills. Builds still listening on `device/{id}/loyalty` or `{id}/command` will time out every spin at 5s. OTA command topic `{MQTT_TOPIC_ROOT}/{id}/cmd` is unrelated.
-
-Device ack on `{MQTT_TOPIC_ROOT}/{deviceId}/ack` (QoS 1, retain false), immediately after accepting a valid `spin-start`:
+### Envelope (all loyalty MQTT messages)
 
 ```json
 {
-  "type": "spin-ack",
-  "spinId": "spin_abc123",
-  "startedAt": "2026-08-27T17:00:01.234Z",
-  "ttlMs": 5000
+  "version": "1.2",
+  "screen": "loyalty",
+  "celebration": "false",
+  "muted": "false",
+  "timestamp": "2026-08-29T10:00:00.000Z",
+  "payload": { }
 }
 ```
+
+### Retained idle — `{MQTT_TOPIC_ROOT}/{deviceId}/loyalty` (QoS 1, retain true)
+
+Published on device active/registration and startup republish:
+
+```json
+{
+  "version": "1.2",
+  "screen": "loyalty",
+  "celebration": "false",
+  "muted": "false",
+  "timestamp": "2026-05-15T10:35:00.000Z",
+  "payload": {
+    "type": "loyalty-idle",
+    "businessName": "Atlus Coffee Co."
+  }
+}
+```
+
+### Spin-start — `{MQTT_TOPIC_ROOT}/{deviceId}/loyalty/spin` (QoS 1, retain false)
+
+Published after a successful spin persist:
+
+```json
+{
+  "version": "1.2",
+  "screen": "loyalty",
+  "celebration": "false",
+  "muted": "true",
+  "timestamp": "2026-08-29T10:00:00.000Z",
+  "payload": {
+    "type": "spin-start",
+    "spinId": "spin_abc123",
+    "ttlMs": 5000,
+    "result": {
+      "digits": ["HEARTS", "DIAMONDS", "JOKER"],
+      "value": 100,
+      "reward": "Free Item"
+    },
+    "issuedAt": "2026-08-29T10:00:00.000Z",
+    "expiresAt": "2026-08-29T10:00:10.000Z"
+  }
+}
+```
+
+`payload.issuedAt` equals envelope `timestamp`. `result.digits` are reel symbol strings (length ≥ 3). `result.value` is an integer score. Node maps statsnapp’s stored result into this shape at publish time.
+
+Firmware **must discard** if device SNTP time `now > expiresAt` (stale queue after reconnect).
+
+**Deployment gate (hard break):** firmware v1.2 discards unenveloped messages. Ship server enveloped spin-start **before or with** firmware release. Device must subscribe to `{MQTT_TOPIC_ROOT}/{id}/loyalty` (idle) and `{MQTT_TOPIC_ROOT}/{id}/loyalty/spin` (spin). OTA command topic `{MQTT_TOPIC_ROOT}/{id}/cmd` is unrelated.
+
+### Device ack — `{MQTT_TOPIC_ROOT}/{deviceId}/ack` (QoS 1, retain false)
+
+Immediately after accepting a valid enveloped `spin-start`:
+
+```json
+{
+  "version": "1.2",
+  "screen": "loyalty",
+  "celebration": "false",
+  "muted": "true",
+  "timestamp": "2026-08-29T10:00:01.234Z",
+  "payload": {
+    "type": "spin-ack",
+    "spinId": "spin_abc123",
+    "startedAt": "2026-08-29T10:00:01.234Z",
+    "ttlMs": 5000
+  }
+}
+```
+
+Envelope `timestamp` must equal `payload.startedAt`.
 
 ---
 
@@ -234,5 +294,8 @@ Node `activeConnections` is in-memory (one process). Redis pub/sub is future wor
 - [ ] `kill -9` Node mid-spin → sweeper unlocks device within ~5s of boot
 - [ ] Phone clock ±3s (or set to 2020) → reveal still syncs via `serverNow`
 - [ ] Network drop mid-spin → `loyalty.spin.failed` or GET poll recovers
-- [ ] Firmware on the device is subscribed to `{MQTT_TOPIC_ROOT}/{id}/loyalty` (default `proof.mqtt/{id}/loyalty`, not `device/{id}/loyalty` or `/command`)
+- [ ] Device reconnect shows retained `loyalty-idle` with correct `businessName` from Mongo
+- [ ] Spin publishes to `{MQTT_TOPIC_ROOT}/{id}/loyalty/spin` with v1.2 envelope; device acks with enveloped `spin-ack`
+- [ ] Flat (unenveloped) spin-start is no longer sent on `/loyalty`
+- [ ] Firmware subscribes to `{MQTT_TOPIC_ROOT}/{id}/loyalty` (idle) and `{MQTT_TOPIC_ROOT}/{id}/loyalty/spin` (not `device/{id}/loyalty` or `/command`)
 

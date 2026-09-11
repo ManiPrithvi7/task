@@ -85,7 +85,7 @@ import {
   type MqttTlsConnectMaterial
 } from './utils/mqttTlsOptions';
 import { ensureDeviceProvisioned as checkDeviceProvisioned } from './services/deviceProvisioningGate';
-import { LoyaltyService } from './services/loyaltyService';
+import { isLoyaltySpinAckEnvelope, LoyaltyService } from './services/loyaltyService';
 
 export class StatsMqttLite {
   private config: AppConfig;
@@ -988,10 +988,12 @@ export class StatsMqttLite {
   }
 
   private async onLoyaltyAck(topic: string, payload: Buffer): Promise<void> {
-    if (!this.loyaltyService) return;
     try {
       const message = JSON.parse(payload.toString());
-      await this.loyaltyService.handleAck(topic, message);
+      if (!isLoyaltySpinAckEnvelope(message)) return;
+
+      const service = await this.ensureLoyaltyService();
+      await service.handleAck(topic, message);
     } catch (err: unknown) {
       logger.warn('loyalty ack parse/handle failed', {
         topic,

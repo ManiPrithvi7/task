@@ -29,11 +29,16 @@ import {
 } from './loyaltyMetrics';
 import { isDuplicateKeyError, LoyaltyHttpError } from '../utils/loyaltyErrors';
 import { logger } from '../utils/logger';
+import {
+  buildLoyaltySpinStartEnvelope,
+  parseLoyaltyScreenEnvelope,
+  type LoyaltySpinStartPayload,
+  type ScreenEnvelope
+} from './screenEnvelope';
 
 const CLOCK_DRIFT_WARN_MS = 5000;
 const REVEAL_SWEEP_GRACE_MS = 2000;
 const DEVICE_ID_MAX = 64;
-const SYMBOLS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
 const UNFINISHED_SPIN_STATUSES = [
   LoyaltySpinStatus.CREATED,
   LoyaltySpinStatus.COMMAND_PUBLISHED,
@@ -127,6 +132,48 @@ export function parseLoyaltyAckDeviceId(topic: string, topicRoot: string): strin
 
 function toIso(d: Date): string {
   return d.toISOString();
+}
+
+/** Inner spin-start payload for `{topicRoot}/{deviceId}/loyalty/spin` envelope. */
+export function buildSpinStartMqttPayload(
+  spin: Pick<ILoyaltySpin, 'spinId' | 'result' | 'ttlMs'>,
+  issuedAt: Date,
+  commandExpiresAt: Date,
+  fallbackTtlMs: number
+): LoyaltySpinStartPayload {
+  const value = Number.parseInt(spin.result.value, 10);
+  if (!Number.isInteger(value)) {
+    throw new LoyaltyHttpError(400, 'INVALID_RESULT', 'result.value must be an integer score');
+  }
+  return {
+    type: 'spin-start',
+    spinId: spin.spinId,
+    ttlMs: spin.ttlMs ?? fallbackTtlMs,
+    result: {
+      digits: spin.result.digits.map((d) => String(d)),
+      value,
+      reward: spin.result.reward
+    },
+    issuedAt: toIso(issuedAt),
+    expiresAt: toIso(commandExpiresAt)
+  };
+}
+
+/** v1.2 enveloped spin-start for MQTT publish. */
+export function buildSpinStartMqttMessage(
+  spin: Pick<ILoyaltySpin, 'spinId' | 'result' | 'ttlMs'>,
+  issuedAt: Date,
+  commandExpiresAt: Date,
+  fallbackTtlMs: number
+): ScreenEnvelope<LoyaltySpinStartPayload> {
+  const inner = buildSpinStartMqttPayload(spin, issuedAt, commandExpiresAt, fallbackTtlMs);
+  return buildLoyaltySpinStartEnvelope(inner);
+}
+
+/** True when raw `/ack` JSON is a v1.2 loyalty spin-ack envelope. */
+export function isLoyaltySpinAckEnvelope(message: unknown): boolean {
+  const parsed = parseLoyaltyScreenEnvelope(message);
+  return parsed?.payload.type === 'spin-ack';
 }
 
 function spinPublic(spin: ILoyaltySpin, includeResult: boolean) {
@@ -550,17 +597,13 @@ export class LoyaltyService {
     issuedAt: Date,
     commandExpiresAt: Date
   ): Promise<void> {
-    const topic = `${this.topicRoot}/${deviceId}/loyalty`;
-    const mqttPayload = {
-      type: 'spin-start',
-      spinId: spin.spinId,
-      result: spin.result,
-      ttlMs: this.config.ttlMs,
-      reels: 3,
-      symbols: SYMBOLS,
-      issuedAt: toIso(issuedAt),
-      expiresAt: toIso(commandExpiresAt)
-    };
+    const topic = `${this.topicRoot}/${deviceId}/loyalty/spin`;
+    const mqttPayload = buildSpinStartMqttMessage(
+      spin,
+      issuedAt,
+      commandExpiresAt,
+      this.config.ttlMs
+    );
 
     try {
       if (!this.mqtt.isConnected()) {
@@ -569,7 +612,7 @@ export class LoyaltyService {
       await this.mqtt.publish({
         topic,
         payload: JSON.stringify(mqttPayload),
-        qos: 2,
+        qos: 1,
         retain: false
       });
     } catch (err: unknown) {
@@ -602,14 +645,27 @@ export class LoyaltyService {
   async handleAck(topic: string, message: unknown): Promise<void> {
     const deviceId = parseLoyaltyAckDeviceId(topic, this.topicRoot);
     if (!deviceId) return;
-    if (!message || typeof message !== 'object') return;
-    const msg = message as { type?: string; spinId?: string; startedAt?: string; ttlMs?: number };
-    if (msg.type !== 'spin-ack') {
-      return;
-    }
+
+    const parsed = parseLoyaltyScreenEnvelope(message);
+    if (!parsed) return;
+    const msg = parsed.payload;
+    if (msg.type !== 'spin-ack') return;
+
     if (typeof msg.spinId !== 'string') {
       logger.warn('loyalty ack missing spinId', { deviceId });
       return;
+    }
+
+    if (
+      typeof msg.startedAt === 'string' &&
+      parsed.envelope.timestamp !== msg.startedAt
+    ) {
+      logger.warn('loyalty ack timestamp mismatch', {
+        deviceId,
+        spinId: msg.spinId,
+        envelopeTimestamp: parsed.envelope.timestamp,
+        startedAt: msg.startedAt
+      });
     }
 
     const spin = await LoyaltySpin.findOne({ spinId: msg.spinId, deviceId });

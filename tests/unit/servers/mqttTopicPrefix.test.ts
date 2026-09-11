@@ -5,12 +5,18 @@ describe('resolveMqttFullTopic', () => {
     expect(resolveMqttFullTopic('prefix', 'proof.mqtt/DEVICE-17/loyalty')).toBe(
       'prefix/proof.mqtt/DEVICE-17/loyalty'
     );
+    expect(resolveMqttFullTopic('prefix', 'proof.mqtt/DEVICE-17/loyalty/spin')).toBe(
+      'prefix/proof.mqtt/DEVICE-17/loyalty/spin'
+    );
     expect(resolveMqttFullTopic('prefix', 'proof.mqtt/+/ack')).toBe('prefix/proof.mqtt/+/ack');
   });
 
   it('leaves topic unchanged when MQTT_TOPIC_PREFIX is empty (prod default)', () => {
     expect(resolveMqttFullTopic('', 'proof.mqtt/DEVICE-17/loyalty')).toBe(
       'proof.mqtt/DEVICE-17/loyalty'
+    );
+    expect(resolveMqttFullTopic('', 'proof.mqtt/DEVICE-17/loyalty/spin')).toBe(
+      'proof.mqtt/DEVICE-17/loyalty/spin'
     );
     expect(resolveMqttFullTopic(undefined, 'proof.mqtt/DEVICE-17/ack')).toBe(
       'proof.mqtt/DEVICE-17/ack'

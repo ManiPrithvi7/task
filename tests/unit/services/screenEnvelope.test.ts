@@ -1,9 +1,12 @@
 import {
   buildGmbScreenPayload,
   buildInstagramScreenPayload,
+  buildLoyaltyIdleEnvelope,
+  buildLoyaltySpinStartEnvelope,
   gmbReviewMetrics,
   getInstagramMegaCrossedMilestones,
   instagramFollowerMetrics,
+  parseLoyaltyScreenEnvelope,
   resolveCelebrationState
 } from '../../../src/services/screenEnvelope';
 
@@ -150,5 +153,62 @@ describe('getInstagramMegaCrossedMilestones', () => {
   it('returns every 25 crossed between old and new', () => {
     expect(getInstagramMegaCrossedMilestones(95, 205)).toEqual([100, 125, 150, 175, 200]);
     expect(getInstagramMegaCrossedMilestones(100, 100)).toEqual([]);
+  });
+});
+
+describe('parseLoyaltyScreenEnvelope', () => {
+  const valid = {
+    version: '1.2',
+    screen: 'loyalty',
+    celebration: 'false',
+    muted: 'false',
+    timestamp: '2026-08-29T10:00:00.000Z',
+    payload: { type: 'loyalty-idle', businessName: 'Atlus Coffee Co.' }
+  };
+
+  it('accepts a valid loyalty envelope', () => {
+    const parsed = parseLoyaltyScreenEnvelope(valid);
+    expect(parsed?.payload.type).toBe('loyalty-idle');
+    expect(parsed?.envelope.version).toBe('1.2');
+  });
+
+  it('rejects bad version, screen, timestamp, or payload', () => {
+    expect(parseLoyaltyScreenEnvelope(null)).toBeNull();
+    expect(parseLoyaltyScreenEnvelope({ ...valid, version: '1.1' })).toBeNull();
+    expect(parseLoyaltyScreenEnvelope({ ...valid, screen: 'instagram' })).toBeNull();
+    expect(parseLoyaltyScreenEnvelope({ ...valid, timestamp: 'not-a-date' })).toBeNull();
+    expect(parseLoyaltyScreenEnvelope({ ...valid, payload: 'x' })).toBeNull();
+  });
+});
+
+describe('buildLoyaltyIdleEnvelope', () => {
+  it('wraps loyalty-idle with celebration and muted false', () => {
+    const ts = new Date('2026-05-15T10:35:00.000Z');
+    expect(buildLoyaltyIdleEnvelope('Atlus Coffee Co.', ts)).toEqual({
+      version: '1.2',
+      screen: 'loyalty',
+      celebration: 'false',
+      muted: 'false',
+      timestamp: '2026-05-15T10:35:00.000Z',
+      payload: { type: 'loyalty-idle', businessName: 'Atlus Coffee Co.' }
+    });
+  });
+});
+
+describe('buildLoyaltySpinStartEnvelope', () => {
+  it('wraps spin-start with muted true and matching timestamp', () => {
+    const inner = {
+      type: 'spin-start' as const,
+      spinId: 'spin_1',
+      ttlMs: 10_000,
+      result: { digits: ['HEARTS'], value: 100, reward: 'Free Coffee' },
+      issuedAt: '2026-08-29T10:00:00.000Z',
+      expiresAt: '2026-08-29T10:00:30.000Z'
+    };
+    const envelope = buildLoyaltySpinStartEnvelope(inner);
+    expect(envelope.screen).toBe('loyalty');
+    expect(envelope.muted).toBe('true');
+    expect(envelope.timestamp).toBe(inner.issuedAt);
+    expect(envelope.payload).toEqual(inner);
   });
 });

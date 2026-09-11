@@ -2,7 +2,37 @@
  * PROOF Display screen MQTT envelope — v1.2 with string `celebration` ("true"|"false").
  */
 
-export type ScreenId = 'instagram' | 'gmb' | 'pos' | 'promotion';
+export type ScreenId = 'instagram' | 'gmb' | 'pos' | 'promotion' | 'loyalty';
+
+export type LoyaltyIdlePayload = {
+  type: 'loyalty-idle';
+  businessName: string;
+};
+
+export type LoyaltySpinStartPayload = {
+  type: 'spin-start';
+  spinId: string;
+  ttlMs: number;
+  result: {
+    digits: string[];
+    value: number;
+    reward: string;
+  };
+  issuedAt: string;
+  expiresAt: string;
+};
+
+export type LoyaltySpinAckPayload = {
+  type: 'spin-ack';
+  spinId: string;
+  startedAt: string;
+  ttlMs: number;
+};
+
+export type ParsedLoyaltyScreenEnvelope = {
+  envelope: ScreenEnvelope<Record<string, unknown>>;
+  payload: Record<string, unknown>;
+};
 
 export type ScreenEnvelope<TPayload> = {
   version: '1.2';
@@ -45,6 +75,50 @@ export function buildScreenEnvelope<TPayload>(
     timestamp: (opts?.timestamp ?? new Date()).toISOString(),
     payload
   };
+}
+
+function isValidIso8601(value: string): boolean {
+  const parsed = Date.parse(value);
+  return !Number.isNaN(parsed);
+}
+
+/** Stage 1 envelope validation for loyalty-scope MQTT messages. */
+export function parseLoyaltyScreenEnvelope(raw: unknown): ParsedLoyaltyScreenEnvelope | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const msg = raw as Record<string, unknown>;
+  if (msg.version !== '1.2') return null;
+  if (msg.screen !== 'loyalty') return null;
+  if (typeof msg.timestamp !== 'string' || !isValidIso8601(msg.timestamp)) return null;
+  if (!msg.payload || typeof msg.payload !== 'object') return null;
+  if (msg.celebration !== 'true' && msg.celebration !== 'false') return null;
+  if (msg.muted !== 'true' && msg.muted !== 'false') return null;
+
+  return {
+    envelope: msg as ScreenEnvelope<Record<string, unknown>>,
+    payload: msg.payload as Record<string, unknown>
+  };
+}
+
+export function buildLoyaltyIdleEnvelope(
+  businessName: string,
+  timestamp?: Date
+): ScreenEnvelope<LoyaltyIdlePayload> {
+  return buildScreenEnvelope(
+    'loyalty',
+    { type: 'loyalty-idle', businessName },
+    { celebration: 'false', muted: 'false', timestamp }
+  );
+}
+
+export function buildLoyaltySpinStartEnvelope(
+  inner: LoyaltySpinStartPayload,
+  opts?: Pick<BuildScreenEnvelopeOpts, 'muted' | 'celebration'>
+): ScreenEnvelope<LoyaltySpinStartPayload> {
+  return buildScreenEnvelope('loyalty', inner, {
+    timestamp: new Date(inner.issuedAt),
+    celebration: opts?.celebration ?? 'false',
+    muted: opts?.muted ?? 'true'
+  });
 }
 
 /** Mega checked first — mega wins when both mini and mega match. */

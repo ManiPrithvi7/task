@@ -17,6 +17,7 @@ import { publishGmbScreen } from '../webhooks/delivery/publishGmbScreen';
 import { getGmbReviewCount } from '../webhooks/gmbReviewCache';
 import { logger } from '../utils/logger';
 import { shouldSkipForStimulate } from '../utils/stimulateAllowlist';
+import { publishLoyaltyIdleForDevice } from './publishLoyaltyIdle';
 
 export const REDIS_ACTIVE_DEVICES_SET = 'proof.mqtt:active:devices';
 
@@ -132,6 +133,19 @@ async function republishInstagramFromFollowersCache(
   return true;
 }
 
+async function republishLoyaltyIdleFromMongo(
+  device: ActiveDevice,
+  topicRoot: string,
+  mqttClient: MqttClientManager
+): Promise<boolean> {
+  if (!device.businessId) return false;
+  await publishLoyaltyIdleForDevice(mqttClient, topicRoot, device.deviceId);
+  logger.info('[STARTUP_CACHE] Republished loyalty idle from Mongo', {
+    deviceId: device.deviceId
+  });
+  return true;
+}
+
 async function republishGmbFromCache(
   device: ActiveDevice,
   topicRoot: string,
@@ -177,10 +191,11 @@ export async function republishCachedScreensForActiveDevices(
   mqttClient: MqttClientManager,
   topicRoot: string,
   mqttPublishEnabled: boolean
-): Promise<{ igPublished: number; gmbPublished: number; deviceCount: number }> {
+): Promise<{ igPublished: number; gmbPublished: number; loyaltyPublished: number; deviceCount: number }> {
   const devices = await getActiveDeviceCache().getAllActive();
   let igPublished = 0;
   let gmbPublished = 0;
+  let loyaltyPublished = 0;
 
   for (const device of devices) {
     try {
@@ -204,13 +219,25 @@ export async function republishCachedScreensForActiveDevices(
         error: err instanceof Error ? err.message : String(err)
       });
     }
+
+    try {
+      if (await republishLoyaltyIdleFromMongo(device, topicRoot, mqttClient)) {
+        loyaltyPublished += 1;
+      }
+    } catch (err: unknown) {
+      logger.warn('[STARTUP_CACHE] Loyalty idle republish failed', {
+        deviceId: device.deviceId,
+        error: err instanceof Error ? err.message : String(err)
+      });
+    }
   }
 
   logger.info('[STARTUP_CACHE] Startup cache republish complete', {
     deviceCount: devices.length,
     igPublished,
-    gmbPublished
+    gmbPublished,
+    loyaltyPublished
   });
 
-  return { igPublished, gmbPublished, deviceCount: devices.length };
+  return { igPublished, gmbPublished, loyaltyPublished, deviceCount: devices.length };
 }

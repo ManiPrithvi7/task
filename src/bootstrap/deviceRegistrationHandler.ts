@@ -11,6 +11,7 @@ import { REDIS_KEYS } from '../constants/redisKeys';
 import { writeDeviceHashOnConnect } from '../services/igDeviceRuntimeCache';
 import { parsePilotBootPayload, isPilotOtaStatusEvent, normalizeOtaEventKey } from '../utils/pilotOtaPayload';
 import { logger } from '../utils/logger';
+import { publishLoyaltyIdleForDevice } from '../services/publishLoyaltyIdle';
 
 export function extractDeviceIdFromTopic(host: BootstrapHost, topic: string): string | null {
   const root = host.config.mqtt.topicRoot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -276,6 +277,15 @@ export async function handleDeviceRegistration(
       });
     });
   }
+
+  void publishLoyaltyIdleForDevice(host.mqttClient, host.config.mqtt.topicRoot, deviceId).catch(
+    (err: unknown) => {
+      logger.warn('[LIFECYCLE:REGISTER] Loyalty idle publish failed', {
+        deviceId,
+        error: err instanceof Error ? err.message : String(err)
+      });
+    }
+  );
 
   host.deferredWork.enqueueConnectRefresh(deviceId);
   if (host.isServicesReady) {

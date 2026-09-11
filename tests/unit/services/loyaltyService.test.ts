@@ -52,7 +52,13 @@ import { Device } from '@/models/Device';
 import { LoyaltySession } from '@/models/LoyaltySession';
 import { LoyaltySpin } from '@/models/LoyaltySpin';
 import { LoyaltyHttpError } from '@/utils/loyaltyErrors';
-import { LoyaltyService, parseLoyaltyAckDeviceId } from '@/services/loyaltyService';
+import {
+  LoyaltyService,
+  buildSpinStartMqttMessage,
+  buildSpinStartMqttPayload,
+  isLoyaltySpinAckEnvelope,
+  parseLoyaltyAckDeviceId
+} from '@/services/loyaltyService';
 import type { LoyaltyConfig } from '@/config/loyaltyConfig';
 
 const loyaltyConfig: LoyaltyConfig = {
@@ -83,6 +89,25 @@ function makeService(overrides?: { publish?: jest.Mock; connected?: boolean; onI
   });
   liveServices.push(service);
   return { service, publish, getActiveDevice };
+}
+
+function envelopedSpinAck(
+  overrides: Partial<{ spinId: string; startedAt: string; ttlMs: number }> = {}
+) {
+  const startedAt = overrides.startedAt ?? new Date().toISOString();
+  return {
+    version: '1.2',
+    screen: 'loyalty',
+    celebration: 'false',
+    muted: 'true',
+    timestamp: startedAt,
+    payload: {
+      type: 'spin-ack',
+      spinId: overrides.spinId ?? 'spin_1',
+      startedAt,
+      ttlMs: overrides.ttlMs ?? 5000
+    }
+  };
 }
 
 function spinDoc(over: Record<string, unknown> = {}) {
@@ -167,13 +192,22 @@ describe('LoyaltyService', () => {
 
     expect(publish).toHaveBeenCalledWith(
       expect.objectContaining({
-        topic: 'proof.mqtt/DEVICE-17/loyalty',
-        qos: 2
+        topic: 'proof.mqtt/DEVICE-17/loyalty/spin',
+        qos: 1
       })
     );
-    const payload = JSON.parse(publish.mock.calls[0][0].payload);
-    expect(payload.type).toBe('spin-start');
-    expect(payload.result).toEqual({ digits: [7, 7, 7], value: '777', reward: 'Free Item' });
+    const envelope = JSON.parse(publish.mock.calls[0][0].payload);
+    expect(envelope.version).toBe('1.2');
+    expect(envelope.screen).toBe('loyalty');
+    expect(envelope.payload).toEqual({
+      type: 'spin-start',
+      spinId: 'spin_1',
+      ttlMs: 5000,
+      result: { digits: ['7', '7', '7'], value: 777, reward: 'Free Item' },
+      issuedAt: expect.any(String),
+      expiresAt: expect.any(String)
+    });
+    expect(envelope.timestamp).toBe(envelope.payload.issuedAt);
     expect(body.status).toBe('command_published');
     expect(created.status).toBe('COMMAND_PUBLISHED');
   });
@@ -203,7 +237,7 @@ describe('LoyaltyService', () => {
 
     expect(LoyaltySpin.create).not.toHaveBeenCalled();
     expect(publish).toHaveBeenCalledWith(
-      expect.objectContaining({ topic: 'proof.mqtt/DEVICE-17/loyalty', qos: 2 })
+      expect.objectContaining({ topic: 'proof.mqtt/DEVICE-17/loyalty/spin', qos: 1 })
     );
     expect(body.status).toBe('command_published');
   });
@@ -220,7 +254,7 @@ describe('LoyaltyService', () => {
     ).rejects.toBeInstanceOf(LoyaltyHttpError);
   });
 
-  it('publishes MQTT on {topicRoot}/{id}/loyalty with posted result and rolls back on publish failure', async () => {
+  it('publishes MQTT on {topicRoot}/{id}/loyalty/spin with posted result and rolls back on publish failure', async () => {
     const publish = jest.fn().mockRejectedValue(new Error('broker down'));
     const { service } = makeService({ publish });
     const session = {
@@ -250,14 +284,15 @@ describe('LoyaltyService', () => {
 
     expect(publish).toHaveBeenCalledWith(
       expect.objectContaining({
-        topic: 'proof.mqtt/DEVICE-17/loyalty',
-        qos: 2
+        topic: 'proof.mqtt/DEVICE-17/loyalty/spin',
+        qos: 1
       })
     );
-    const payload = JSON.parse(publish.mock.calls[0][0].payload);
-    expect(payload.result).toEqual({ digits: [7, 7, 7], value: '777', reward: 'Free Item' });
-    expect(payload.issuedAt).toBeDefined();
-    expect(payload.expiresAt).toBeDefined();
+    const envelope = JSON.parse(publish.mock.calls[0][0].payload);
+    expect(envelope.payload.result).toEqual({ digits: ['7', '7', '7'], value: 777, reward: 'Free Item' });
+    expect(envelope.payload.ttlMs).toBe(5000);
+    expect(envelope.payload.issuedAt).toBeDefined();
+    expect(envelope.payload.expiresAt).toBeDefined();
     expect(created.status).toBe('FAILED');
   });
 
@@ -301,7 +336,7 @@ describe('LoyaltyService', () => {
     });
 
     expect(publish).toHaveBeenCalledWith(
-      expect.objectContaining({ topic: 'proof.mqtt/DEVICE-17/loyalty', qos: 2 })
+      expect.objectContaining({ topic: 'proof.mqtt/DEVICE-17/loyalty/spin', qos: 1 })
     );
     expect(body.status).toBe('command_published');
   });
@@ -333,8 +368,8 @@ describe('LoyaltyService', () => {
     });
 
     expect(publish).toHaveBeenCalled();
-    const payload = JSON.parse(publish.mock.calls[0][0].payload);
-    expect(payload.result).toEqual(posted);
+    const envelope = JSON.parse(publish.mock.calls[0][0].payload);
+    expect(envelope.payload.result).toEqual({ digits: ['7', '7', '7'], value: 777, reward: 'Free Item' });
     expect(existing.result).toEqual(posted);
     expect(existing.ttlMs).toBe(5000);
     expect(LoyaltySpin.findOneAndUpdate).toHaveBeenCalled();
@@ -404,12 +439,7 @@ describe('LoyaltyService', () => {
       ackReceivedAt: new Date()
     });
 
-    await service.handleAck('proof.mqtt/DEVICE-17/ack', {
-      type: 'spin-ack',
-      spinId: 'spin_1',
-      startedAt: new Date().toISOString(),
-      ttlMs: 5000
-    });
+    await service.handleAck('proof.mqtt/DEVICE-17/ack', envelopedSpinAck());
 
     expect(JSON.parse(send.mock.calls[0][0])).toEqual(
       expect.objectContaining({
@@ -455,12 +485,7 @@ describe('LoyaltyService', () => {
       status: 'ACK_RECEIVED'
     });
 
-    await service.handleAck('proof.mqtt/DEVICE-17/ack', {
-      type: 'spin-ack',
-      spinId: 'spin_1',
-      startedAt: new Date().toISOString(),
-      ttlMs: 5000
-    });
+    await service.handleAck('proof.mqtt/DEVICE-17/ack', envelopedSpinAck());
 
     expect(JSON.parse(send.mock.calls[0][0]).event).toBe('loyalty.spin.started');
     expect(LoyaltySpin.findOneAndUpdate).toHaveBeenCalled();
@@ -517,13 +542,65 @@ describe('LoyaltyService', () => {
       spinId: 'spin_1',
       status: 'ACK_RECEIVED'
     });
+    await service.handleAck('proof.mqtt/DEVICE-17/ack', envelopedSpinAck());
+    expect(LoyaltySpin.findOneAndUpdate).toHaveBeenCalled();
+  });
+
+  it('ignores flat spin-ack without v1.2 envelope', async () => {
+    const { service } = makeService();
+    (LoyaltySpin.findOne as jest.Mock).mockResolvedValue(spinDoc({ status: 'COMMAND_PUBLISHED' }));
     await service.handleAck('proof.mqtt/DEVICE-17/ack', {
       type: 'spin-ack',
       spinId: 'spin_1',
       startedAt: new Date().toISOString(),
       ttlMs: 5000
     });
-    expect(LoyaltySpin.findOneAndUpdate).toHaveBeenCalled();
+    expect(LoyaltySpin.findOne).not.toHaveBeenCalled();
+    expect(isLoyaltySpinAckEnvelope({ type: 'spin-ack', spinId: 'spin_1' })).toBe(false);
+  });
+
+  it('buildSpinStartMqttPayload matches firmware spin-start inner shape', () => {
+    const issuedAt = new Date('2026-08-29T10:00:00.000Z');
+    const expiresAt = new Date('2026-08-29T10:00:30.000Z');
+    expect(
+      buildSpinStartMqttPayload(
+        {
+          spinId: '550e8400-e29b-41d4-a716-446655440000',
+          ttlMs: 10_000,
+          result: { digits: ['HEARTS', 'DIAMONDS', 'JOKER'] as unknown as number[], value: '100', reward: 'Free Coffee' }
+        },
+        issuedAt,
+        expiresAt,
+        5000
+      )
+    ).toEqual({
+      type: 'spin-start',
+      spinId: '550e8400-e29b-41d4-a716-446655440000',
+      ttlMs: 10_000,
+      result: { digits: ['HEARTS', 'DIAMONDS', 'JOKER'], value: 100, reward: 'Free Coffee' },
+      issuedAt: '2026-08-29T10:00:00.000Z',
+      expiresAt: '2026-08-29T10:00:30.000Z'
+    });
+  });
+
+  it('buildSpinStartMqttMessage wraps inner payload in v1.2 envelope', () => {
+    const issuedAt = new Date('2026-08-29T10:00:00.000Z');
+    const expiresAt = new Date('2026-08-29T10:00:30.000Z');
+    const message = buildSpinStartMqttMessage(
+      {
+        spinId: 'spin_1',
+        ttlMs: 10_000,
+        result: { digits: [7, 7, 7], value: '100', reward: 'Free Coffee' }
+      },
+      issuedAt,
+      expiresAt,
+      5000
+    );
+    expect(message.version).toBe('1.2');
+    expect(message.screen).toBe('loyalty');
+    expect(message.muted).toBe('true');
+    expect(message.timestamp).toBe('2026-08-29T10:00:00.000Z');
+    expect(message.payload.type).toBe('spin-start');
   });
 
   it('parses ack deviceId from MQTT_TOPIC_ROOT and ignores the old device/ prefix', () => {
