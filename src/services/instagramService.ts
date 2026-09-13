@@ -1493,6 +1493,7 @@ export class InstagramPoller {
     if (!fetchInvoker?.isConfigured()) return;
 
     try {
+      if (this.localPriorityZsetSize === 0) return;
       igPollMetricsInc('priorityCycles');
       if (await this.circuitGate.isOpen()) {
         logger.debug('[IG_POLLER] Circuit open, skipping priority cycle');
@@ -1501,7 +1502,6 @@ export class InstagramPoller {
       }
 
       const redis = this.redisService.getClient();
-      if (this.localPriorityZsetSize === 0) return;
 
       let active = await this.safeRedisCall(
         'priorityReadPrune',
@@ -1557,6 +1557,12 @@ export class InstagramPoller {
     if (!fetchInvoker?.isConfigured()) return;
 
     try {
+      const allActive = await getActiveDeviceCache().getAllActive();
+      const hasIgCreds = allActive.some(
+        (d) => Boolean(d.instagramAccountId?.trim()) && Boolean(d.accessToken?.trim())
+      );
+      if (!hasIgCreds) return;
+
       igPollMetricsInc('backgroundCycles');
       if (await this.circuitGate.isOpen()) {
         logger.debug('[IG_POLLER] Circuit open, skipping background cycle');
@@ -1567,9 +1573,6 @@ export class InstagramPoller {
       const redis = this.redisService.getClient();
       const nowMs = Date.now();
 
-      // Background pool should be derived from the server-persisted active device cache
-      // to avoid split-brain between Redis registries and local state.
-      const allActive = await getActiveDeviceCache().getAllActive();
       let allDeviceIds = allActive.map((d) => d.deviceId).filter(Boolean);
       // TEMP STIMULATE — remove after testing: skip stim devices (allowlist + lock)
       allDeviceIds = allDeviceIds.filter((id) => !isStimulateDevice(id));

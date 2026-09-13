@@ -1,6 +1,7 @@
 import { describe, expect, it, jest, beforeEach, afterEach } from 'bun:test';
 import {
   InstagramPoller,
+  getInstagramPollingMetricsSnapshot,
   resetInstagramPollingScriptsCache,
   evalAtomicPriorityReadAndPruneEvalSha,
   loadInstagramPollingScripts
@@ -71,9 +72,11 @@ describe('InstagramPoller priority EVALSHA gate', () => {
     );
 
     await poller.start();
+    const before = Number(getInstagramPollingMetricsSnapshot().priorityCycles);
     await (poller as unknown as { priorityScheduler(): Promise<void> }).priorityScheduler();
 
     expect(evalSpy).not.toHaveBeenCalled();
+    expect(Number(getInstagramPollingMetricsSnapshot().priorityCycles)).toBe(before);
     poller.stop();
   });
 
