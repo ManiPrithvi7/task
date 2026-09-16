@@ -325,9 +325,9 @@ export class CAService {
         { name: 'keyUsage', ...keyUsageFlags, critical: true },
         { name: 'extKeyUsage', ...extKeyUsageFlags, critical: true },
         { name: 'subjectKeyIdentifier', subjectKeyIdentifier: true },
-        // Keyid-only AKI (same as Root CA). Issuer+serial GeneralNames from node-forge
-        // is what ESP32 mbedTLS reports as tlsErr=-9568 after factory reissue.
-        { name: 'authorityKeyIdentifier', authorityKeyIdentifier: true }
+        // node-forge only writes AKI keyid when `keyIdentifier` is set. Issuer+serial
+        // GeneralNames is the encoding ESP32 mbedTLS rejects with tlsErr=-9568.
+        { name: 'authorityKeyIdentifier', keyIdentifier: rootCert.generateSubjectKeyIdentifier().getBytes() }
       ];
 
       // Add SAN if required by profile or if CSR provided SAN (preserve existing SANs)

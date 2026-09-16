@@ -1,7 +1,7 @@
 # Graph Report - proofmqtt  (2026-09-16)
 
 ## Corpus Check
-- 383 files · ~200,212 words
+- 383 files · ~200,282 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `18554dc7`
+- Built from commit: `d0a436eb`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -181,14 +181,13 @@
 - Community 164
 - post-commit
 - post-merge
-- post-rewrite
+- getRedisService
 - LocalDeviceBackoff
 - pre-auto-gc
 - pre-commit
 - shouldSkipForStimulate
 - pre-push
 - pre-merge-commit
-- REDIS_KEYS
 - pre-push
 - pre-rebase
 - prepare-commit-msg
@@ -244,6 +243,7 @@
 - 6. Testing — thin for size, not absent
 - Prerequisites
 - Production OCI flow (server + Oracle Object Storage)
+- 2. Security — the good, the bad, the ugly
 - StatsPublisher
 
 ## God Nodes (most connected - your core abstractions)
@@ -332,8 +332,8 @@ Cohesion: 0.05
 Nodes (39): compression, cors, dotenv, express-rate-limit, google-auth-library, helmet, @influxdata/influxdb-client, jsonwebtoken (+31 more)
 
 ### Community 15 - "Community 15"
-Cohesion: 0.20
-Nodes (15): getActiveDeviceCache(), syncScreenFieldImmediate(), getRedisService(), ActiveSetRedisClient, devicesNeedingHydration(), HydrateActiveDeviceFn, republishCachedScreensForActiveDevices(), republishGmbFromCache() (+7 more)
+Cohesion: 0.19
+Nodes (14): REDIS_KEYS, ensureFreshInstagramAccessToken(), InstagramTokenContext, loadInstagramTokenContextForUser(), updateDeviceTokenInRedis(), getActiveDeviceCache(), ActiveSetRedisClient, devicesNeedingHydration() (+6 more)
 
 ### Community 16 - "Community 16"
 Cohesion: 0.13
@@ -525,7 +525,7 @@ Nodes (15): 1. Added `isRedisConfigured()` Method, 2. Added Configuration Check 
 
 ### Community 65 - "Community 65"
 Cohesion: 0.11
-Nodes (19): 10. Verdict table, 11. Bottom line, 2. Security — the good, the bad, the ugly, 4. Database and storage choices, 5. Configuration — env variable hell, 7. Directory structure and file gravity, 8. Feature focus — scope creep, 9. Operational and compliance notes (+11 more)
+Nodes (19): 10. Verdict table, 11. Bottom line, 1. Architecture, 4. Database and storage choices, 5. Configuration — env variable hell, 7. Directory structure and file gravity, 8. Feature focus — scope creep, 9. Operational and compliance notes (+11 more)
 
 ### Community 66 - "Community 66"
 Cohesion: 0.25
@@ -660,8 +660,8 @@ Cohesion: 0.29
 Nodes (5): mockCacheUserIntegrations, mockClearHashes, mockGetActive, mockGetUserIntegrations, mockShouldSkip
 
 ### Community 102 - "Community 102"
-Cohesion: 0.50
-Nodes (4): 1. Architecture, Problems, Strengths, What it is
+Cohesion: 0.28
+Nodes (7): Device, IDevice, bearerToken(), createRecoveryRoutes(), DeviceVerificationResult, buildRecoveryRoutesApp(), mockFindOne
 
 ### Community 103 - "Community 103"
 Cohesion: 0.20
@@ -879,9 +879,9 @@ Nodes (6): fetchInstagramProfileMetrics(), InstagramProfileFetchAudit, Instagram
 Cohesion: 0.33
 Nodes (6): DeviceSchema, DeviceStatus, DeviceData, baseDeviceData, mockDeviceFindOne, mockDeviceSave
 
-### Community 167 - "post-rewrite"
-Cohesion: 0.28
-Nodes (7): Device, IDevice, bearerToken(), createRecoveryRoutes(), DeviceVerificationResult, buildRecoveryRoutesApp(), mockFindOne
+### Community 167 - "getRedisService"
+Cohesion: 0.52
+Nodes (6): syncScreenFieldImmediate(), getRedisService(), getGmbReviewCacheEntry(), getGmbReviewCount(), GmbReviewCacheEntry, setGmbReviewCount()
 
 ### Community 169 - "pre-auto-gc"
 Cohesion: 0.50
@@ -902,10 +902,6 @@ Nodes (3): cleanup_stale_jest(), on_interrupt(), run-unit-tests.sh script
 ### Community 173 - "pre-merge-commit"
 Cohesion: 0.40
 Nodes (4): Actions, Causes, OTA webhook reject, Symptoms
-
-### Community 174 - "REDIS_KEYS"
-Cohesion: 0.48
-Nodes (5): REDIS_KEYS, ensureFreshInstagramAccessToken(), InstagramTokenContext, loadInstagramTokenContextForUser(), updateDeviceTokenInRedis()
 
 ### Community 176 - "pre-rebase"
 Cohesion: 0.67
@@ -947,6 +943,10 @@ Nodes (4): Device firmware config (mqttclient), Hardware & host, Prerequisites, 
 Cohesion: 0.50
 Nodes (4): Production commands, Production OCI flow (server + Oracle Object Storage), Production verification checklist, Server prerequisites
 
+### Community 227 - "2. Security — the good, the bad, the ugly"
+Cohesion: 0.50
+Nodes (4): 2. Security — the good, the bad, the ugly, Bad, Good, Ugly (corrected from prior drafts)
+
 ### Community 244 - "StatsPublisher"
 Cohesion: 0.19
 Nodes (9): buildGmbScreenPayload(), buildScreenEnvelope(), gmbReviewMetrics(), DeviceScreenState, gmbDemoVariant(), SAMPLE_GMB_REVIEWS, StatsPublisher, TEST_GMB_V6_VARIANTS (+1 more)
@@ -959,7 +959,7 @@ Nodes (9): buildGmbScreenPayload(), buildScreenEnvelope(), gmbReviewMetrics(), D
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `logger` connect `Community 29` to `Community 0`, `Community 1`, `Community 2`, `Community 7`, `Community 9`, `Community 11`, `Community 142`, `Community 15`, `Community 17`, `Community 20`, `Community 21`, `Community 28`, `Community 30`, `Community 31`, `Community 33`, `Community 162`, `Community 35`, `Community 36`, `Community 34`, `post-merge`, `Community 39`, `Community 40`, `Community 45`, `REDIS_KEYS`, `Community 46`, `Community 51`, `Community 53`, `mongoRetry.ts`, `Community 61`, `Community 62`, `Community 63`, `Community 66`, `Community 68`, `Community 74`, `Community 81`, `Community 83`, `Community 84`, `Community 85`, `Community 88`, `Community 89`, `Community 91`, `Community 92`, `Community 96`, `Community 103`, `StatsPublisher`, `AppConfig`, `Community 127`?**
+- **Why does `logger` connect `Community 29` to `Community 0`, `Community 1`, `Community 2`, `Community 7`, `Community 9`, `Community 11`, `Community 142`, `Community 15`, `Community 17`, `Community 20`, `Community 21`, `Community 28`, `Community 30`, `Community 31`, `Community 33`, `Community 162`, `Community 35`, `Community 36`, `Community 34`, `post-merge`, `Community 39`, `Community 40`, `getRedisService`, `Community 45`, `Community 46`, `Community 51`, `Community 53`, `mongoRetry.ts`, `Community 61`, `Community 62`, `Community 63`, `Community 66`, `Community 68`, `Community 74`, `Community 81`, `Community 83`, `Community 84`, `Community 85`, `Community 88`, `Community 89`, `Community 91`, `Community 92`, `Community 96`, `Community 103`, `StatsPublisher`, `AppConfig`, `Community 127`?**
   _High betweenness centrality (0.056) - this node is a cross-community bridge._
 - **Why does `InfluxService` connect `Community 4` to `Community 1`, `Community 35`, `chainValidator.ts`, `Community 69`, `Community 11`, `Community 12`, `Community 107`, `Community 28`, `Community 29`?**
   _High betweenness centrality (0.041) - this node is a cross-community bridge._

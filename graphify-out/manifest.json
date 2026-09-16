@@ -340,8 +340,8 @@
     "semantic_hash": ""
   },
   "src/services/caService.ts": {
-    "mtime": 1789576417.7147248,
-    "ast_hash": "45a0cd25bf8229df3727259a480834d5",
+    "mtime": 1789579549.0847898,
+    "ast_hash": "56f15724d1a15679c5b48af2a762bac2",
     "semantic_hash": ""
   },
   "src/services/chainValidator.ts": {
@@ -1595,8 +1595,8 @@
     "semantic_hash": ""
   },
   "tests/unit/services/caService.test.ts": {
-    "mtime": 1789575141.9386866,
-    "ast_hash": "957fabdf2138c8c2eaca2e46305654f0",
+    "mtime": 1789579549.1246767,
+    "ast_hash": "096e2d799e447145614fd7c92c270b36",
     "semantic_hash": ""
   },
   "tests/unit/services/deviceProvisioningGate.test.ts": {

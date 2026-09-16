@@ -136,6 +136,22 @@ describe('CAService.signCSR', () => {
     }
   });
 
+  it('encodes AKI as keyid only (no issuer/serial GeneralNames)', async () => {
+    const deviceId = 'device-aki-1';
+    const cn = ca.formatExpectedCN(deviceId);
+    const doc = await ca.signCSR(makeCsrPem(cn, 2048), deviceId, '507f1f77bcf86cd799439011');
+    const issued = forge.pki.certificateFromPem(doc.certificate);
+    const aki = issued.getExtension('authorityKeyIdentifier') as { value?: string } | undefined;
+    expect(aki?.value).toBeTruthy();
+    const seq = forge.asn1.fromDer(aki!.value as string);
+    expect(seq.type).toBe(forge.asn1.Type.SEQUENCE);
+    const parts = seq.value as forge.asn1.Asn1[];
+    expect(parts.length).toBe(1);
+    expect(parts[0].tagClass).toBe(forge.asn1.Class.CONTEXT_SPECIFIC);
+    expect(parts[0].type).toBe(0);
+    expect(typeof parts[0].value === 'string' && (parts[0].value as string).length > 0).toBe(true);
+  });
+
   it('rejects RSA key smaller than minimum bits', async () => {
     const deviceId = 'device-small-key';
     const cn = ca.formatExpectedCN(deviceId);

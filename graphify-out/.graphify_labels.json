@@ -166,14 +166,13 @@
   "164": "Community 164",
   "165": "post-commit",
   "166": "post-merge",
-  "167": "post-rewrite",
+  "167": "getRedisService",
   "168": "LocalDeviceBackoff",
   "169": "pre-auto-gc",
   "170": "pre-commit",
   "171": "shouldSkipForStimulate",
   "172": "pre-push",
   "173": "pre-merge-commit",
-  "174": "REDIS_KEYS",
   "175": "pre-push",
   "176": "pre-rebase",
   "177": "prepare-commit-msg",
@@ -226,5 +225,6 @@
   "224": "6. Testing — thin for size, not absent",
   "225": "Prerequisites",
   "226": "Production OCI flow (server + Oracle Object Storage)",
+  "227": "2. Security — the good, the bad, the ugly",
   "244": "StatsPublisher"
 }

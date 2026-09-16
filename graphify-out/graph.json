@@ -5444,7 +5444,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_constants_rediskeys",
-      "community": 174,
+      "community": 15,
       "norm_label": "rediskeys.ts"
     },
     {
@@ -5454,7 +5454,7 @@
       "source_location": "L5",
       "_origin": "ast",
       "id": "src_constants_rediskeys_redis_keys",
-      "community": 174,
+      "community": 15,
       "norm_label": "redis_keys"
     },
     {
@@ -5704,7 +5704,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_lib_socials_instagramtokenrefresh",
-      "community": 174,
+      "community": 15,
       "norm_label": "instagramtokenrefresh.ts"
     },
     {
@@ -5714,7 +5714,7 @@
       "source_location": "L10",
       "_origin": "ast",
       "id": "src_lib_socials_instagramtokenrefresh_updatedevicetokeninredis",
-      "community": 174,
+      "community": 15,
       "norm_label": "updatedevicetokeninredis()"
     },
     {
@@ -5724,7 +5724,7 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "src_lib_socials_instagramtokenrefresh_instagramtokencontext",
-      "community": 174,
+      "community": 15,
       "norm_label": "instagramtokencontext"
     },
     {
@@ -5734,7 +5734,7 @@
       "source_location": "L40",
       "_origin": "ast",
       "id": "src_lib_socials_instagramtokenrefresh_loadinstagramtokencontextforuser",
-      "community": 174,
+      "community": 15,
       "norm_label": "loadinstagramtokencontextforuser()"
     },
     {
@@ -5744,7 +5744,7 @@
       "source_location": "L71",
       "_origin": "ast",
       "id": "src_lib_socials_instagramtokenrefresh_ensurefreshinstagramaccesstoken",
-      "community": 174,
+      "community": 15,
       "norm_label": "ensurefreshinstagramaccesstoken()"
     },
     {
@@ -6454,7 +6454,7 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "src_models_device_idevice",
-      "community": 167,
+      "community": 102,
       "norm_label": "idevice"
     },
     {
@@ -6474,7 +6474,7 @@
       "source_location": "L142",
       "_origin": "ast",
       "id": "src_models_device_device",
-      "community": 167,
+      "community": 102,
       "norm_label": "device"
     },
     {
@@ -7564,7 +7564,7 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "src_routes_recoveryroutes_bearertoken",
-      "community": 167,
+      "community": 102,
       "norm_label": "bearertoken()"
     },
     {
@@ -7574,7 +7574,7 @@
       "source_location": "L19",
       "_origin": "ast",
       "id": "src_routes_recoveryroutes_createrecoveryroutes",
-      "community": 167,
+      "community": 102,
       "norm_label": "createrecoveryroutes()"
     },
     {
@@ -8984,7 +8984,7 @@
       "source_location": "L203",
       "_origin": "ast",
       "id": "src_services_deviceservice_deviceservice_registerdevice",
-      "community": 167,
+      "community": 102,
       "norm_label": ".registerdevice()"
     },
     {
@@ -9954,7 +9954,7 @@
       "source_location": "L523",
       "_origin": "ast",
       "id": "src_services_igdeviceruntimecache_syncscreenfieldimmediate",
-      "community": 15,
+      "community": 167,
       "norm_label": "syncscreenfieldimmediate()"
     },
     {
@@ -15824,7 +15824,7 @@
       "source_location": "L718",
       "_origin": "ast",
       "id": "src_services_redisservice_getredisservice",
-      "community": 15,
+      "community": 167,
       "norm_label": "getredisservice()"
     },
     {
@@ -17074,7 +17074,7 @@
       "source_location": "L17",
       "_origin": "ast",
       "id": "src_services_userservice_deviceverificationresult",
-      "community": 167,
+      "community": 102,
       "norm_label": "deviceverificationresult"
     },
     {
@@ -20034,7 +20034,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_webhooks_gmbreviewcache",
-      "community": 15,
+      "community": 167,
       "norm_label": "gmbreviewcache.ts"
     },
     {
@@ -20044,7 +20044,7 @@
       "source_location": "L11",
       "_origin": "ast",
       "id": "src_webhooks_gmbreviewcache_gmbreviewcacheentry",
-      "community": 15,
+      "community": 167,
       "norm_label": "gmbreviewcacheentry"
     },
     {
@@ -20054,7 +20054,7 @@
       "source_location": "L20",
       "_origin": "ast",
       "id": "src_webhooks_gmbreviewcache_getgmbreviewcount",
-      "community": 15,
+      "community": 167,
       "norm_label": "getgmbreviewcount()"
     },
     {
@@ -20064,7 +20064,7 @@
       "source_location": "L25",
       "_origin": "ast",
       "id": "src_webhooks_gmbreviewcache_getgmbreviewcacheentry",
-      "community": 15,
+      "community": 167,
       "norm_label": "getgmbreviewcacheentry()"
     },
     {
@@ -20074,7 +20074,7 @@
       "source_location": "L52",
       "_origin": "ast",
       "id": "src_webhooks_gmbreviewcache_setgmbreviewcount",
-      "community": 15,
+      "community": 167,
       "norm_label": "setgmbreviewcount()"
     },
     {
@@ -21444,7 +21444,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_unit_routes_recoveryroutes_test",
-      "community": 167,
+      "community": 102,
       "norm_label": "recoveryroutes.test.ts"
     },
     {
@@ -21454,7 +21454,7 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "tests_unit_routes_recoveryroutes_test_mockfindone",
-      "community": 167,
+      "community": 102,
       "norm_label": "mockfindone"
     },
     {
@@ -21464,7 +21464,7 @@
       "source_location": "L16",
       "_origin": "ast",
       "id": "tests_unit_routes_recoveryroutes_test_buildrecoveryroutesapp",
-      "community": 167,
+      "community": 102,
       "norm_label": "buildrecoveryroutesapp()"
     },
     {
@@ -30724,7 +30724,7 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "home_maniprithvi_desktop_proofmqtt_docs_uncensored_1_architecture",
-      "community": 102,
+      "community": 65,
       "norm_label": "1. architecture"
     },
     {
@@ -30734,7 +30734,7 @@
       "source_location": "L20",
       "_origin": "ast",
       "id": "home_maniprithvi_desktop_proofmqtt_docs_uncensored_what_it_is",
-      "community": 102,
+      "community": 65,
       "norm_label": "what it is"
     },
     {
@@ -30744,7 +30744,7 @@
       "source_location": "L35",
       "_origin": "ast",
       "id": "home_maniprithvi_desktop_proofmqtt_docs_uncensored_strengths",
-      "community": 102,
+      "community": 65,
       "norm_label": "strengths"
     },
     {
@@ -30754,7 +30754,7 @@
       "source_location": "L41",
       "_origin": "ast",
       "id": "home_maniprithvi_desktop_proofmqtt_docs_uncensored_problems",
-      "community": 102,
+      "community": 65,
       "norm_label": "problems"
     },
     {
@@ -30764,7 +30764,7 @@
       "source_location": "L54",
       "_origin": "ast",
       "id": "home_maniprithvi_desktop_proofmqtt_docs_uncensored_2_security_the_good_the_bad_the_ugly",
-      "community": 65,
+      "community": 227,
       "norm_label": "2. security \u2014 the good, the bad, the ugly"
     },
     {
@@ -30774,7 +30774,7 @@
       "source_location": "L56",
       "_origin": "ast",
       "id": "home_maniprithvi_desktop_proofmqtt_docs_uncensored_good",
-      "community": 65,
+      "community": 227,
       "norm_label": "good"
     },
     {
@@ -30784,7 +30784,7 @@
       "source_location": "L65",
       "_origin": "ast",
       "id": "home_maniprithvi_desktop_proofmqtt_docs_uncensored_bad",
-      "community": 65,
+      "community": 227,
       "norm_label": "bad"
     },
     {
@@ -30794,7 +30794,7 @@
       "source_location": "L93",
       "_origin": "ast",
       "id": "home_maniprithvi_desktop_proofmqtt_docs_uncensored_ugly_corrected_from_prior_drafts",
-      "community": 65,
+      "community": 227,
       "norm_label": "ugly (corrected from prior drafts)"
     },
     {
@@ -100874,5 +100874,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "18554dc7497f38a0d4f7420689e31bf721361211"
+  "built_at_commit": "d0a436eb22996ca8cb56b122bd1a333ebbfdb0f2"
 }
