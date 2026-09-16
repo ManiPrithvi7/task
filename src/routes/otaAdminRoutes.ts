@@ -12,7 +12,6 @@ import {
   type IFirmwareRollout
 } from '../models/FirmwareRelease';
 import { Device } from '../models/Device';
-import { DeviceOtaState } from '../models/DeviceOtaState';
 import type { IFirmwareStorage } from '../services/firmwareStorageService';
 import { OciStorageError } from '../services/ociStorageErrors';
 import {
@@ -412,7 +411,7 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
       return;
     }
 
-    const otaState = await DeviceOtaState.findOne({ deviceId }).lean();
+    const otaState = await Device.findOne({ clientId: deviceId }).lean();
 
     res.json({
       success: true,
@@ -493,7 +492,7 @@ export function createOtaAdminRoutes(deps: OtaAdminRoutesDeps): Router {
         }
 
         for (const deviceId of deviceIds) {
-          const otaState = await DeviceOtaState.findOne({ deviceId })
+          const otaState = await Device.findOne({ clientId: deviceId })
             .select({ firmwareVersion: 1 })
             .lean();
           const current = otaState?.firmwareVersion || '0.0.0';

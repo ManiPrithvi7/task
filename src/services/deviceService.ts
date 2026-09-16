@@ -7,7 +7,6 @@
  */
 
 import { Device, IDevice, DeviceStatus } from '../models/Device';
-import { DeviceOtaState } from '../models/DeviceOtaState';
 import { logger } from '../utils/logger';
 import { withMongoRetry } from '../utils/mongoRetry';
 import mongoose from 'mongoose';
@@ -215,10 +214,9 @@ export class DeviceService {
         const appVersion =
           data.metadata?.appVersion || data.metadata?.app_version || data.metadata?.fw_version;
         if (typeof appVersion === 'string' && appVersion.trim()) {
-          await DeviceOtaState.updateOne(
-            { deviceId: existing.clientId },
-            { $set: { firmwareVersion: appVersion.trim(), firmwareReportedAt: new Date() } },
-            { upsert: true }
+          await Device.updateOne(
+            { clientId: existing.clientId },
+            { $set: { firmwareVersion: appVersion.trim(), firmwareReportedAt: new Date() } }
           );
         }
         
@@ -243,7 +241,7 @@ export class DeviceService {
       const appVersion =
         data.metadata?.appVersion || data.metadata?.app_version || data.metadata?.fw_version;
       const device = new Device({
-        businessId: undefined, // Will be set when allocated to a business
+        userId: undefined, // Will be set when allocated to a business
         macID: data.macID,
         crt: undefined, // Will be filled during provisioning
         ca_certificate: undefined, // Will be filled during provisioning
@@ -256,10 +254,9 @@ export class DeviceService {
       await device.save();
 
       if (typeof appVersion === 'string' && appVersion.trim()) {
-        await DeviceOtaState.updateOne(
-          { deviceId: device.clientId },
-          { $set: { firmwareVersion: appVersion.trim(), firmwareReportedAt: new Date() } },
-          { upsert: true }
+        await Device.updateOne(
+          { clientId: device.clientId },
+          { $set: { firmwareVersion: appVersion.trim(), firmwareReportedAt: new Date() } }
         );
       }
 
@@ -295,7 +292,7 @@ export class DeviceService {
 
       return {
         deviceId: device.clientId,
-        username: device.businessId?.toString() || 'unassigned',
+        username: device.userId?.toString() || 'unassigned',
         status: device.status === DeviceStatus.ACTIVE ? 'active' : 'inactive',
         clientId: device.clientId,
         macID: device.macID,
@@ -323,7 +320,7 @@ export class DeviceService {
       devices.forEach(device => {
         deviceMap.set(device.clientId, {
           deviceId: device.clientId,
-          username: device.businessId?.toString() || 'unassigned',
+          username: device.userId?.toString() || 'unassigned',
           status: device.status === DeviceStatus.ACTIVE ? 'active' : 'inactive',
           clientId: device.clientId,
           macID: device.macID,
@@ -400,12 +397,12 @@ export class DeviceService {
       }
 
       const devices = await Device.find({
-        businessId: new mongoose.Types.ObjectId(businessId)
+        userId: new mongoose.Types.ObjectId(businessId)
       });
 
       return devices.map(device => ({
         deviceId: device.clientId,
-        username: device.businessId?.toString() || 'unassigned',
+        username: device.userId?.toString() || 'unassigned',
         status: device.status === DeviceStatus.ACTIVE ? 'active' : 'inactive',
         clientId: device.clientId,
         macID: device.macID,

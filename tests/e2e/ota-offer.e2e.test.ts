@@ -14,8 +14,8 @@ jest.mock('@/models/DeviceCertificate', () => ({
 
 import { DeviceCertificate } from '@/models/DeviceCertificate';
 
-jest.mock('@/models/DeviceOtaState', () => ({
-  DeviceOtaState: {
+jest.mock('@/models/Device', () => ({
+  Device: {
     findOne: jest.fn().mockReturnValue({
       select: () => ({
         lean: () => Promise.resolve({ firmwareVersion: '4.3.0' })

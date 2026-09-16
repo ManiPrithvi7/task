@@ -96,7 +96,7 @@ export async function cacheUserIntegrations(userId: string): Promise<UserIntegra
 
   try {
     const userOid = new mongoose.Types.ObjectId(userId);
-    const socials = await Social.find({ businessId: userOid }).lean();
+    const socials = await Social.find({ userId: userOid }).lean();
     const cache: UserIntegrationCache = {
       userId,
       updatedAt: new Date().toISOString()

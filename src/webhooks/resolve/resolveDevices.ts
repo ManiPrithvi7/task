@@ -22,7 +22,7 @@ export async function resolveDevicesForUser(
 
   if (target === 'all_active') {
     const devices = await Device.find({
-      businessId: userOid,
+      userId: userOid,
       status: DeviceStatus.ACTIVE
     })
       .select({ _id: 1, clientId: 1 })
@@ -36,7 +36,7 @@ export async function resolveDevicesForUser(
       }));
   }
 
-  const primary = await Device.findOne({ businessId: userOid })
+  const primary = await Device.findOne({ userId: userOid })
     .sort({ createdAt: 1 })
     .select({ _id: 1, clientId: 1 })
     .lean();

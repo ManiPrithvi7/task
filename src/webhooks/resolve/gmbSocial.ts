@@ -25,7 +25,7 @@ export async function resolveGmbSocialContext(
     provider: Provider.GOOGLE_BUSINESS
   }).lean();
 
-  if (!social?.businessId) return null;
+  if (!social?.userId) return null;
 
   const profiles = await GoogleBusinessProfile.find({ socialId: social._id }).select({ _id: 1 }).lean();
   const profileIds = profiles.map((p) => p._id);
@@ -46,7 +46,7 @@ export async function resolveGmbSocialContext(
   if (!locationRecord) return null;
 
   return {
-    businessId: String(social.businessId),
+    businessId: String(social.userId),
     socialId: String(social._id),
     locationObjectId: String(locationRecord._id),
     verifiedReviewCount: locationRecord.totalReviewCount ?? 0,

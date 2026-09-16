@@ -13,7 +13,8 @@ import { logger } from '../utils/logger';
 import {
   DeviceCertificate,
   IDeviceCertificate,
-  DeviceCertificateStatus
+  DeviceCertificateStatus,
+  DeviceCertificateSlot
 } from '../models/DeviceCertificate';
 
 /**
@@ -82,6 +83,10 @@ export class CAService {
   constructor(config: CAConfig, _dbPath?: string) {
     this.config = config;
     // Always use MongoDB - parameters kept for backward compatibility
+  }
+
+  private normalizeSlot(slot: DeviceCertificateSlot | undefined): DeviceCertificateSlot {
+    return slot === 'staging' ? 'staging' : 'primary';
   }
 
   /**
@@ -223,8 +228,8 @@ export class CAService {
   async signCSR(
     csrPem: string,
     deviceId: string,
-    businessId: string,
-    opts?: { allowReplace?: boolean }
+    userId: string,
+    opts?: { slot?: DeviceCertificateSlot; allowReplacePrimary?: boolean }
   ): Promise<IDeviceCertificate> {
     try {
       if (!this.rootCA) {
@@ -325,8 +330,6 @@ export class CAService {
         { name: 'keyUsage', ...keyUsageFlags, critical: true },
         { name: 'extKeyUsage', ...extKeyUsageFlags, critical: true },
         { name: 'subjectKeyIdentifier', subjectKeyIdentifier: true },
-        // Present on both production_v1 and production_v5. Kept for inspection of ESP32
-        // tlsErr=-9568 (mbedTLS INVALID_EXTENSIONS / ASN1_OUT_OF_DATA) after factory reissue.
         { name: 'authorityKeyIdentifier', authorityKeyIdentifier: true, authorityCertIssuer: true, serialNumber: this.rootCA.serialNumber }
       ];
 
@@ -378,7 +381,7 @@ export class CAService {
             await auditService.logEvent({
               event: eventMap[event] ?? AuditEventType.CERTIFICATE_ISSUED,
               deviceId,
-              businessId,
+              businessId: userId,
               serialNumber: typeof details.serialNumber === 'string' ? details.serialNumber : undefined,
               certificateFingerprint:
                 typeof details.fingerprint === 'string' ? details.fingerprint : fingerprint,
@@ -391,7 +394,7 @@ export class CAService {
           const entry = {
             event,
             deviceId,
-            businessId,
+            userId,
             details,
             timestamp: new Date()
           };
@@ -461,9 +464,10 @@ export class CAService {
         });
       };
       
-      const allowReplaceDefault =
+      const slot = this.normalizeSlot(opts?.slot);
+      const allowReplacePrimaryDefault =
         process.env.ALLOW_ONBOARDING_WITH_ACTIVE_CERT === 'true' || process.env.NODE_ENV === 'development';
-      const allowReplace = opts?.allowReplace ?? allowReplaceDefault;
+      const allowReplacePrimary = opts?.allowReplacePrimary ?? allowReplacePrimaryDefault;
 
       // If MongoDB is not connected, skip DB persistence and return a lightweight certificate object.
       const mongooseConnected = mongoose.connection && (mongoose.connection.readyState === 1);
@@ -472,7 +476,8 @@ export class CAService {
         const mockDoc: any = {
           _id: new mongoose.Types.ObjectId(),
           device_id: deviceId,
-          business_id: new mongoose.Types.ObjectId(businessId),
+          slot,
+          user_id: new mongoose.Types.ObjectId(userId),
           certificate: certificatePem,
           private_key: '',
           ca_certificate: this.rootCA.certificate,
@@ -500,21 +505,25 @@ export class CAService {
         return mockDoc as IDeviceCertificate;
       }
 
-      // Single-slot model: one cert per device_id (unique). Rotation overwrites in place,
-      // which implicitly retires the previous cert (mTLS auth reads this collection).
-      if (!allowReplace) {
-        const existingActive = await this.findActiveCertificateByDeviceId(deviceId);
-        if (existingActive) {
+      // Primary slot retains the historical “do not replace active primary unless allowed” behavior.
+      if (slot === 'primary' && !allowReplacePrimary) {
+        const existingActivePrimary = await this.findActiveCertificateByDeviceId(deviceId, { slots: ['primary'] });
+        if (existingActivePrimary) {
           throw new DeviceAlreadyHasCertificateError(
             'Device already has an active certificate',
-            existingActive._id.toString()
+            existingActivePrimary._id.toString()
           );
         }
       }
 
+      // Slot-scoped upsert: ensures at most one record per device_id+slot.
+      // NOTE: Some deployments may still have a legacy UNIQUE index on { device_id } (no slot),
+      // which will throw E11000 on insert when a different slot exists. We fall back to a
+      // device_id-only update in that case to keep issuance working without requiring a DB migration.
       const updateDoc = {
         $set: {
-          business_id: new mongoose.Types.ObjectId(businessId),
+          user_id: new mongoose.Types.ObjectId(userId),
+          slot,
           certificate: certificatePem,
           private_key: '', // Empty string (device keeps its private key)
           ca_certificate: this.rootCA.certificate,
@@ -526,11 +535,34 @@ export class CAService {
         }
       };
 
-      const certDoc = await DeviceCertificate.findOneAndUpdate(
-        { device_id: deviceId },
-        updateDoc,
-        { upsert: true, new: true, setDefaultsOnInsert: true }
-      );
+      let certDoc: any;
+      try {
+        certDoc = await DeviceCertificate.findOneAndUpdate(
+          { device_id: deviceId, slot },
+          updateDoc,
+          { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+      } catch (e: any) {
+        const msg = e?.message ? String(e.message) : String(e);
+        const isDup = msg.includes('E11000') && (msg.includes('device_id') || msg.includes('device_certificates_device_id_key'));
+        if (!isDup) throw e;
+
+        logger.warn('Legacy unique index on device_id detected; falling back to device_id-only certificate upsert', {
+          deviceId,
+          slot,
+          error: msg
+        });
+
+        certDoc = await DeviceCertificate.findOneAndUpdate(
+          { device_id: deviceId },
+          updateDoc,
+          { upsert: false, new: true }
+        );
+        if (!certDoc) {
+          // If we couldn't update (should be rare), surface the original error.
+          throw e;
+        }
+      }
 
       await audit('CERT_ISSUED', {
         certificateId: certDoc._id,
@@ -543,7 +575,8 @@ export class CAService {
 
       logger.info('CSR signed and certificate stored in MongoDB', {
         deviceId,
-        businessId,
+        userId,
+        slot,
         cn,
         serialNumber: cert.serialNumber,
         expiresAt: notAfter.toISOString()
@@ -595,17 +628,10 @@ export class CAService {
   }
 
   /**
-   * Generate certificate serial number.
-   *
-   * INSPECTION (production_v5 vs production_v1, ESP32 factory-reset TLS):
-   * v5 prefixed 0x00 so OpenSSL 3 / Mosquitto would not treat a high-bit first
-   * byte as a negative INTEGER (TLS alert 42). Temporarily restored v1 encoding
-   * so newly reissued device certs match v1 DER serials. v5 line kept below.
+   * Generate certificate serial number
    */
   private generateSerialNumber(): string {
     const bytes = forge.random.getBytesSync(16);
-    // v5 (commented for inspection — do not delete):
-    // return '00' + forge.util.bytesToHex(bytes);
     return forge.util.bytesToHex(bytes);
   }
 
@@ -638,20 +664,35 @@ export class CAService {
   }
 
   /**
-   * Active certificate lookup (single-slot: one cert per device_id).
+   * Slot-aware active certificate lookup.
+   * Defaults to primary-only for backward compatibility.
    */
-  async findActiveCertificateByDeviceId(deviceId: string): Promise<IDeviceCertificate | null> {
+  async findActiveCertificateByDeviceId(
+    deviceId: string,
+    opts?: { slots?: DeviceCertificateSlot[] }
+  ): Promise<IDeviceCertificate | null> {
     try {
       const now = new Date();
+      const slots = (opts?.slots?.length ? opts.slots : (['primary'] as DeviceCertificateSlot[])).map((s) =>
+        this.normalizeSlot(s)
+      );
+      // Align with mtlsAuth: treat missing slot as primary for pre-migration docs.
+      const slotQuery = {
+        $or: [
+          { slot: { $in: slots } },
+          ...(slots.includes('primary') ? [{ slot: { $exists: false } }] : [])
+        ]
+      };
       const cert = await DeviceCertificate.findOne({
         device_id: deviceId,
         status: DeviceCertificateStatus.active,
-        expires_at: { $gt: now }
-      });
+        expires_at: { $gt: now },
+        ...slotQuery
+      }).sort({ slot: 1 }); // primary then staging if both are in query
       return cert || null;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('Failed to find active certificate', { deviceId, error: errorMessage });
+      logger.error('Failed to find active certificate (slot-aware)', { deviceId, error: errorMessage });
       // Distinguish DB blip from missing cert (callers must not treat as unprovisioned).
       throw new CertLookupUnavailableError(
         `Certificate lookup temporarily unavailable for device ${deviceId}`
@@ -678,14 +719,46 @@ export class CAService {
   /**
    * Find certificate by device ID
    */
-  async findCertificateByDeviceId(deviceId: string): Promise<IDeviceCertificate | null> {
+  async findCertificateByDeviceId(deviceId: string, slot?: DeviceCertificateSlot): Promise<IDeviceCertificate | null> {
     try {
-      return await DeviceCertificate.findOne({ device_id: deviceId });
+      const s = slot ? this.normalizeSlot(slot) : 'primary';
+      return await DeviceCertificate.findOne({ device_id: deviceId, slot: s });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logger.error('Failed to find certificate by device ID', { deviceId, error: errorMessage });
       return null;
     }
+  }
+
+  async promoteStagingToPrimary(deviceId: string): Promise<{ promoted: boolean }> {
+    const now = new Date();
+    // Fetch both in parallel for clear error messaging
+    const [staging, primary] = await Promise.all([
+      DeviceCertificate.findOne({ device_id: deviceId, slot: 'staging', status: DeviceCertificateStatus.active }),
+      DeviceCertificate.findOne({ device_id: deviceId, slot: 'primary', status: DeviceCertificateStatus.active })
+    ]);
+    if (!staging) {
+      return { promoted: false };
+    }
+
+    // Revoke old primary (if any) only at confirm time.
+    if (primary) {
+      primary.status = DeviceCertificateStatus.revoked;
+      primary.revoked_at = now;
+      await primary.save();
+    }
+
+    // Promote staging → primary by changing slot.
+    staging.slot = 'primary';
+    await staging.save();
+
+    // Ensure there is no remaining active staging (defense-in-depth)
+    await DeviceCertificate.updateMany(
+      { device_id: deviceId, slot: 'staging', status: DeviceCertificateStatus.active },
+      { $set: { status: DeviceCertificateStatus.revoked, revoked_at: now } }
+    );
+
+    return { promoted: true };
   }
 
   async revokeAllDeviceCertificates(deviceId: string): Promise<number> {

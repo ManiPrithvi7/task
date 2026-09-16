@@ -167,7 +167,7 @@ describe('LoyaltyService', () => {
     });
   });
 
-  it('publishes spin-start on MQTT when session is CREATED and WS is not connected', async () => {
+  it('records spin without MQTT when session is CREATED and WS is not connected', async () => {
     const { service, publish } = makeService();
     const session = {
       sessionId: 'ls_1',
@@ -190,24 +190,7 @@ describe('LoyaltyService', () => {
       result: { digits: [7, 7, 7], value: '777', reward: 'Free Item' }
     });
 
-    expect(publish).toHaveBeenCalledWith(
-      expect.objectContaining({
-        topic: 'proof.mqtt/DEVICE-17/loyalty/spin',
-        qos: 1
-      })
-    );
-    const envelope = JSON.parse(publish.mock.calls[0][0].payload);
-    expect(envelope.version).toBe('1.2');
-    expect(envelope.screen).toBe('loyalty');
-    expect(envelope.payload).toEqual({
-      type: 'spin-start',
-      spinId: 'spin_1',
-      ttlMs: 5000,
-      result: { digits: ['7', '7', '7'], value: 777, reward: 'Free Item' },
-      issuedAt: expect.any(String),
-      expiresAt: expect.any(String)
-    });
-    expect(envelope.timestamp).toBe(envelope.payload.issuedAt);
+    expect(publish).not.toHaveBeenCalled();
     expect(body.status).toBe('command_published');
     expect(created.status).toBe('COMMAND_PUBLISHED');
   });
@@ -236,9 +219,7 @@ describe('LoyaltyService', () => {
     });
 
     expect(LoyaltySpin.create).not.toHaveBeenCalled();
-    expect(publish).toHaveBeenCalledWith(
-      expect.objectContaining({ topic: 'proof.mqtt/DEVICE-17/loyalty/spin', qos: 1 })
-    );
+    expect(publish).not.toHaveBeenCalled();
     expect(body.status).toBe('command_published');
   });
 
@@ -252,48 +233,6 @@ describe('LoyaltyService', () => {
         result: { digits: [1, 2], value: '12', reward: 'X' } as never
       })
     ).rejects.toBeInstanceOf(LoyaltyHttpError);
-  });
-
-  it('publishes MQTT on {topicRoot}/{id}/loyalty/spin with posted result and rolls back on publish failure', async () => {
-    const publish = jest.fn().mockRejectedValue(new Error('broker down'));
-    const { service } = makeService({ publish });
-    const session = {
-      sessionId: 'ls_1',
-      deviceId: 'DEVICE-17',
-      status: 'READY',
-      expiresAt: new Date(Date.now() + 60_000)
-    };
-    (LoyaltySession.findOne as jest.Mock).mockResolvedValue(session);
-    service.activeConnections.set('DEVICE-17', {
-      sessionId: 'ls_1',
-      socket: { send: jest.fn(), close: jest.fn(), readyState: 1 },
-      expiresAt: session.expiresAt
-    });
-    const created = spinDoc();
-    (LoyaltySpin.create as jest.Mock).mockResolvedValue(created);
-    (LoyaltySession.findOneAndUpdate as jest.Mock).mockResolvedValue({ ...session, status: 'SPINNING' });
-
-    await expect(
-      service.spin({
-        sessionId: 'ls_1',
-        idempotencyKey: 'k',
-        spinId: 'spin_1',
-        result: { digits: [7, 7, 7], value: '777', reward: 'Free Item' }
-      })
-    ).rejects.toMatchObject({ status: 503, code: 'MQTT_PUBLISH_FAILED' });
-
-    expect(publish).toHaveBeenCalledWith(
-      expect.objectContaining({
-        topic: 'proof.mqtt/DEVICE-17/loyalty/spin',
-        qos: 1
-      })
-    );
-    const envelope = JSON.parse(publish.mock.calls[0][0].payload);
-    expect(envelope.payload.result).toEqual({ digits: ['7', '7', '7'], value: 777, reward: 'Free Item' });
-    expect(envelope.payload.ttlMs).toBe(5000);
-    expect(envelope.payload.issuedAt).toBeDefined();
-    expect(envelope.payload.expiresAt).toBeDefined();
-    expect(created.status).toBe('FAILED');
   });
 
   it('returns existing spin on idempotencyKey hit without publishing MQTT', async () => {
@@ -335,13 +274,11 @@ describe('LoyaltyService', () => {
       result: { digits: [7, 7, 7], value: '777', reward: 'Free Item' }
     });
 
-    expect(publish).toHaveBeenCalledWith(
-      expect.objectContaining({ topic: 'proof.mqtt/DEVICE-17/loyalty/spin', qos: 1 })
-    );
+    expect(publish).not.toHaveBeenCalled();
     expect(body.status).toBe('command_published');
   });
 
-  it('fills result and ttlMs on a sparse existing row so save succeeds after MQTT', async () => {
+  it('fills result and ttlMs on a sparse existing row so save succeeds', async () => {
     const { service, publish } = makeService();
     const existing = spinDoc({
       status: 'created',
@@ -367,9 +304,7 @@ describe('LoyaltyService', () => {
       result: posted
     });
 
-    expect(publish).toHaveBeenCalled();
-    const envelope = JSON.parse(publish.mock.calls[0][0].payload);
-    expect(envelope.payload.result).toEqual({ digits: ['7', '7', '7'], value: 777, reward: 'Free Item' });
+    expect(publish).not.toHaveBeenCalled();
     expect(existing.result).toEqual(posted);
     expect(existing.ttlMs).toBe(5000);
     expect(LoyaltySpin.findOneAndUpdate).toHaveBeenCalled();

@@ -86,7 +86,7 @@ export async function getValidOAuth2Client(
   if (!oauth2Client) return null;
 
   const social = await Social.findOne({
-    businessId: new mongoose.Types.ObjectId(businessId),
+    userId: new mongoose.Types.ObjectId(businessId),
     provider: Provider.GOOGLE_BUSINESS
   }).lean();
 

@@ -11,8 +11,6 @@ import { REDIS_KEYS } from '../constants/redisKeys';
 import { writeDeviceHashOnConnect } from '../services/igDeviceRuntimeCache';
 import { parsePilotBootPayload, isPilotOtaStatusEvent, normalizeOtaEventKey } from '../utils/pilotOtaPayload';
 import { logger } from '../utils/logger';
-import { publishLoyaltyIdleForDevice } from '../services/publishLoyaltyIdle';
-
 export function extractDeviceIdFromTopic(host: BootstrapHost, topic: string): string | null {
   const root = host.config.mqtt.topicRoot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const match = topic.match(new RegExp(`^${root}/([^/]+)/`));
@@ -99,7 +97,7 @@ export async function cacheActiveDevice(host: BootstrapHost, deviceId: string): 
       logger.warn('📋 [LIFECYCLE:CACHE] Device not found in MongoDB — caching defaults only', { deviceId });
       await host.activeDeviceCache.setActive({
         deviceId,
-        businessId: '',
+        businessId: '', // Redis cache owner id (from Device.userId)
         lastSeen: Date.now()
       });
       return;
@@ -107,11 +105,11 @@ export async function cacheActiveDevice(host: BootstrapHost, deviceId: string): 
 
     logger.info('📋 [LIFECYCLE:CACHE] Step 2/2 — Social (Instagram) for device', {
       deviceId,
-      businessId: deviceDoc.businessId?.toString() || 'none',
+      businessId: deviceDoc.userId?.toString() || 'none',
       deviceStatus: deviceDoc.status
     });
 
-    const mongoUserId = deviceDoc.businessId?.toString() || '';
+    const mongoUserId = deviceDoc.userId?.toString() || '';
     const hasLinkedMongoUser = Boolean(mongoUserId && mongoose.Types.ObjectId.isValid(mongoUserId));
 
     if (!hasLinkedMongoUser) {
@@ -255,7 +253,7 @@ export async function handleDeviceRegistration(
   await cacheActiveDevice(host, deviceId);
   await host.redisMarkDeviceActive(deviceId);
 
-  const mongoBusinessId = (await Device.findOne({ clientId: deviceId }).select({ businessId: 1 }).lean())?.businessId
+  const mongoBusinessId = (await Device.findOne({ clientId: deviceId }).select({ userId: 1 }).lean())?.userId
     ?.toString();
   const ip = pilotBoot.ipAddress;
   void getDeviceStateLogService()
@@ -277,15 +275,6 @@ export async function handleDeviceRegistration(
       });
     });
   }
-
-  void publishLoyaltyIdleForDevice(host.mqttClient, host.config.mqtt.topicRoot, deviceId).catch(
-    (err: unknown) => {
-      logger.warn('[LIFECYCLE:REGISTER] Loyalty idle publish failed', {
-        deviceId,
-        error: err instanceof Error ? err.message : String(err)
-      });
-    }
-  );
 
   host.deferredWork.enqueueConnectRefresh(deviceId);
   if (host.isServicesReady) {

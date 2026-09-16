@@ -29,8 +29,8 @@ async function requireAuth(
 }
 
 async function verifyDeviceOwnership(deviceId: string, userId: string): Promise<boolean> {
-  const device = await Device.findOne({ clientId: deviceId }).select({ businessId: 1 }).lean();
-  return device?.businessId?.toString() === userId;
+  const device = await Device.findOne({ clientId: deviceId }).select({ userId: 1 }).lean();
+  return device?.userId?.toString() === userId;
 }
 
 function readDashboardRange(req: Request, res: Response, fallback: string): string | null {

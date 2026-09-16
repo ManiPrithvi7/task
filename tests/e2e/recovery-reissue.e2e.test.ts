@@ -8,7 +8,7 @@ jest.mock('@/models/Device', () => ({
   Device: {
     findOne: jest.fn().mockResolvedValue({
       clientId: TEST_DEVICE_ID,
-      businessId: '507f1f77bcf86cd799439011'
+      userId: '507f1f77bcf86cd799439011'
     }),
     updateOne: jest.fn().mockResolvedValue({ modifiedCount: 1 })
   },

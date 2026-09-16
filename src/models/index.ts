@@ -3,14 +3,11 @@
  * Exports all Mongoose models with enums
  */
 
-export { Business } from './Business';
-export type { IBusiness } from './Business';
+export { User } from './User';
+export type { IUser } from './User';
 
-export { Device, DeviceStatus } from './Device';
+export { Device, DeviceStatus, DeviceOtaState } from './Device';
 export type { IDevice } from './Device';
-
-export { DeviceOtaState, DeviceOtaStatus } from './DeviceOtaState';
-export type { IDeviceOtaState } from './DeviceOtaState';
 
 export { LoyaltySession, LoyaltySessionStatus } from './LoyaltySession';
 export type { ILoyaltySession } from './LoyaltySession';
@@ -25,7 +22,7 @@ export { DeviceACL, DeviceTier } from './DeviceACL';
 export type { IDeviceACL } from './DeviceACL';
 
 export { DeviceCertificate, DeviceCertificateStatus } from './DeviceCertificate';
-export type { IDeviceCertificate } from './DeviceCertificate';
+export type { IDeviceCertificate, DeviceCertificateSlot } from './DeviceCertificate';
 
 export { GoogleBusinessProfile } from './GoogleBusinessProfile';
 export type { IGoogleBusinessProfile } from './GoogleBusinessProfile';

@@ -1,7 +1,6 @@
 import type { RedisClientType } from 'redis';
 import { REDIS_KEYS } from '../constants/redisKeys';
 import { Device } from '../models/Device';
-import { DeviceOtaState } from '../models/DeviceOtaState';
 import { Social, Provider } from '../models/Social';
 import { getActiveDeviceCache } from './deviceService';
 import { getRedisService } from './redisService';
@@ -329,30 +328,28 @@ async function queryMongoDeviceState(
   try {
     const device = await Device.findOne({ clientId: deviceId })
       .select({
-        businessId: 1,
+        userId: 1,
         status: 1,
         provisionedAt: 1,
-        createdAt: 1
+        createdAt: 1,
+        firmwareVersion: 1,
+        otaTargetVersion: 1
       })
       .lean();
     if (!device) return null;
 
-    const otaState = await DeviceOtaState.findOne({ deviceId })
-      .select({ firmwareVersion: 1, otaTargetVersion: 1 })
-      .lean();
-
-    const businessId = device.businessId ? String(device.businessId) : undefined;
+    const businessId = device.userId ? String(device.userId) : undefined;
     const result: Partial<Omit<DeviceRuntimeState, 'dirtyFields'>> = {
       businessId,
       status: device.status === 'ACTIVE' ? 'active' : 'inactive',
-      otaCurrentVersion: otaState?.firmwareVersion,
-      otaTargetVersion: otaState?.otaTargetVersion,
+      otaCurrentVersion: device.firmwareVersion,
+      otaTargetVersion: device.otaTargetVersion,
       registeredAt: (device.provisionedAt ?? device.createdAt)?.getTime?.() ?? Date.now()
     };
 
-    if (device.businessId) {
+    if (device.userId) {
       const ig = await Social.findOne({
-        businessId: device.businessId,
+        userId: device.userId,
         provider: Provider.INSTAGRAM
       })
         .sort({ updatedAt: -1 })
@@ -364,7 +361,7 @@ async function queryMongoDeviceState(
       }
 
       const gmb = await Social.findOne({
-        businessId: device.businessId,
+        userId: device.userId,
         provider: Provider.GOOGLE_BUSINESS
       })
         .select({ accessToken: 1, socialAccountId: 1 })

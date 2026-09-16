@@ -18,6 +18,7 @@ jest.mock('@/models/Device', () => {
     save: mockDeviceSave,
   }));
   (DeviceModel as unknown as { findOne: jest.Mock }).findOne = mockDeviceFindOne;
+  (DeviceModel as unknown as { updateOne: jest.Mock }).updateOne = jest.fn().mockResolvedValue({ acknowledged: true });
   return {
     Device: DeviceModel,
     DeviceStatus: {
@@ -27,13 +28,6 @@ jest.mock('@/models/Device', () => {
     },
   };
 });
-
-jest.mock('@/models/DeviceOtaState', () => ({
-  DeviceOtaState: {
-    updateOne: jest.fn().mockResolvedValue({ acknowledged: true }),
-  },
-}));
-
 
 import { Device, DeviceStatus } from '@/models/Device';
 import { ActiveDeviceCache, DeviceService, type DeviceData } from '@/services/deviceService';
@@ -150,7 +144,7 @@ describe('DeviceService.registerDevice', () => {
         clientId: 'client-abc',
         status: DeviceStatus.ACTIVE,
         tokenUsed: false,
-        businessId: undefined,
+        userId: undefined,
         crt: undefined,
         ca_certificate: undefined,
       })

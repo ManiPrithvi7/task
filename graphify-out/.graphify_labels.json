@@ -173,6 +173,7 @@
   "171": "shouldSkipForStimulate",
   "172": "pre-push",
   "173": "pre-merge-commit",
+  "174": "README.md",
   "175": "pre-push",
   "176": "pre-rebase",
   "177": "prepare-commit-msg",
@@ -185,6 +186,11 @@
   "184": "promotionConfig.ts",
   "185": "swaggerSchemas.ts",
   "186": "{\n  verifyShopifyWebhook,\n  verifySquareWebhook,\n  isSquarePaymentEvent,\n  isSquareInvoiceEvent,\n  isSquareAppWebhookEvent,\n  parseSquareWebhookEnvelope,\n  getIdString,\n  buildReviewFromNotification,\n  isGmbTestNotification,\n  resolveGmbAccountResourceName,\n  resolveGmbLocationResourceName,\n  resolveGmbReviewPayload,\n  resolveGmbReviewResourceName\n}",
+  "187": ".sync",
+  "188": "OTA_FIRMWARE_CONTRACT.md",
+  "189": "Pilot MQTT contract (minimal — firmware v1)",
+  "190": "📋 Environment Variables",
+  "191": "3. OTA subsystem — ambitious and footgun-prone",
   "192": "express-rate-limit",
   "193": "google-auth-library",
   "194": "helmet",
@@ -215,5 +221,9 @@
   "219": "upload-release.ts",
   "220": "promotionConfig.ts",
   "221": "swaggerSchemas.ts",
-  "222": "{\n  getIdString,\n  buildReviewFromNotification,\n  isGmbTestNotification,\n  resolveGmbAccountResourceName,\n  resolveGmbLocationResourceName,\n  resolveGmbReviewPayload,\n  resolveGmbReviewResourceName\n}"
+  "222": "{\n  getIdString,\n  buildReviewFromNotification,\n  isGmbTestNotification,\n  resolveGmbAccountResourceName,\n  resolveGmbLocationResourceName,\n  resolveGmbReviewPayload,\n  resolveGmbReviewResourceName\n}",
+  "223": "6. Testing — thin for size, not absent",
+  "224": "Prerequisites",
+  "225": "Production OCI flow (server + Oracle Object Storage)",
+  "226": "recoverySessionService.test.ts"
 }

@@ -1,15 +1,15 @@
 /**
- * Business Model - Mongoose schema for Business collection
+ * User Model - Mongoose schema for User collection
  * Matches Prisma schema from Next.js web app
  *
  * NOTE: This is a READ-ONLY model for mqtt-publisher-lite.
- * Business creation and management is handled by the Next.js web app.
- * We only query businesses to verify existence during provisioning.
+ * User creation and management is handled by the Next.js web app.
+ * We only query users to verify existence during provisioning.
  */
 
 import mongoose, { Document, Schema } from 'mongoose';
 
-export interface IBusiness extends Document {
+export interface IUser extends Document {
   _id: mongoose.Types.ObjectId;
   name?: string;
   email?: string;
@@ -17,6 +17,10 @@ export interface IBusiness extends Document {
   image?: string;
   password?: string;
   isTwoFactorEnabled: boolean;
+
+  // Action Screen preferences (mutually exclusive toggles)
+  adManagementEnabled: boolean;
+  brandCanvasEnabled: boolean;
 
   // Cookie consent preferences (GDPR compliant)
   cookieConsentAccepted?: boolean | null;
@@ -27,7 +31,7 @@ export interface IBusiness extends Document {
   updatedAt?: Date;
 }
 
-const BusinessSchema = new Schema<IBusiness>({
+const UserSchema = new Schema<IUser>({
   name: {
     type: String,
     required: false
@@ -35,8 +39,7 @@ const BusinessSchema = new Schema<IBusiness>({
   email: {
     type: String,
     required: false,
-    unique: true,
-    sparse: true // Prisma: email String? @unique — sparse allows multiple docs without an email
+    sparse: true // Allows multiple null values
   },
   emailVerified: {
     type: Date,
@@ -51,6 +54,18 @@ const BusinessSchema = new Schema<IBusiness>({
     required: false
   },
   isTwoFactorEnabled: {
+    type: Boolean,
+    default: false,
+    required: true
+  },
+
+  // Action Screen preferences (mutually exclusive toggles)
+  adManagementEnabled: {
+    type: Boolean,
+    default: true,
+    required: true
+  },
+  brandCanvasEnabled: {
     type: Boolean,
     default: false,
     required: true
@@ -71,8 +86,13 @@ const BusinessSchema = new Schema<IBusiness>({
     required: false
   }
 }, {
-  timestamps: true,
-  collection: 'Business' // Prisma default collection name
+  timestamps: true, // Automatically adds createdAt and updatedAt
+  collection: 'User' // Prisma uses capitalized collection name
 });
 
-export const Business = mongoose.model<IBusiness>('Business', BusinessSchema);
+// Indexes
+// Note: email has sparse: true in schema (allows multiple null values with unique constraint)
+// Note: _id is automatically indexed by MongoDB
+
+export const User = mongoose.model<IUser>('User', UserSchema);
+

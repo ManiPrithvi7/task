@@ -22,7 +22,7 @@ export interface ACLRule {
 export interface IDeviceACL extends Document {
   _id: mongoose.Types.ObjectId;
   device_id: string;
-  business_id: mongoose.Types.ObjectId;
+  user_id: mongoose.Types.ObjectId;
   tier: DeviceTier;
   rules: ACLRule[];
   last_updated: Date;
@@ -52,9 +52,9 @@ const DeviceACLSchema = new Schema<IDeviceACL>({
     required: true,
     unique: true
   },
-  business_id: {
+  user_id: {
     type: Schema.Types.ObjectId,
-    ref: 'Business',
+    ref: 'User',
     required: true
   },
   tier: {
@@ -79,7 +79,7 @@ const DeviceACLSchema = new Schema<IDeviceACL>({
 
 // Indexes (matching Prisma schema)
 // Note: device_id already has unique: true in schema definition
-DeviceACLSchema.index({ business_id: 1 });
+DeviceACLSchema.index({ user_id: 1 });
 DeviceACLSchema.index({ tier: 1 });
 DeviceACLSchema.index({ last_updated: 1 });
 

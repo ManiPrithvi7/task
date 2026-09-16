@@ -597,39 +597,11 @@ export class LoyaltyService {
     issuedAt: Date,
     commandExpiresAt: Date
   ): Promise<void> {
-    const topic = `${this.topicRoot}/${deviceId}/loyalty/spin`;
-    const mqttPayload = buildSpinStartMqttMessage(
-      spin,
-      issuedAt,
-      commandExpiresAt,
-      this.config.ttlMs
-    );
-
-    try {
-      if (!this.mqtt.isConnected()) {
-        throw new Error('MQTT client not connected');
-      }
-      await this.mqtt.publish({
-        topic,
-        payload: JSON.stringify(mqttPayload),
-        qos: 1,
-        retain: false
-      });
-    } catch (err: unknown) {
-      logger.error('loyalty MQTT publish failed', {
-        spinId: spin.spinId,
-        deviceId,
-        topic,
-        error: err instanceof Error ? err.message : String(err)
-      });
-      await this.failSpin(spin, 'MQTT_PUBLISH_FAILED', 'Failed to publish spin command', true);
-      throw new LoyaltyHttpError(503, 'MQTT_PUBLISH_FAILED', 'Failed to publish spin command');
-    }
-
-    logger.info('loyalty MQTT spin/start published', {
+    logger.info('loyalty MQTT spin publish skipped (disabled on test_mqtt)', {
       spinId: spin.spinId,
       deviceId,
-      topic
+      issuedAt: issuedAt.toISOString(),
+      commandExpiresAt: commandExpiresAt.toISOString()
     });
   }
 

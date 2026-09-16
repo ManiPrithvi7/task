@@ -4,7 +4,7 @@ export interface IGoogleBusinessLocation extends Document {
   _id: mongoose.Types.ObjectId;
   profileId: mongoose.Types.ObjectId;
   locationId: string;
-  locationName: string;
+  locationName?: string;
   storeCode?: string;
   address?: string;
   phoneNumber?: string;
@@ -25,7 +25,7 @@ const GoogleBusinessLocationSchema = new Schema<IGoogleBusinessLocation>(
   {
     profileId: { type: Schema.Types.ObjectId, required: true },
     locationId: { type: String, required: true, unique: true },
-    locationName: { type: String, required: true },
+    locationName: { type: String },
     storeCode: { type: String },
     address: { type: String },
     phoneNumber: { type: String },

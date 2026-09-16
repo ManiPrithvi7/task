@@ -1,6 +1,6 @@
 import { OtaEventHandler } from '@/services/otaService';
 
-import { DeviceOtaState } from '@/models/DeviceOtaState';
+import { Device } from '@/models/Device';
 import { AuditEventType, getAuditService } from '@/services/auditService';
 
 jest.mock('@/services/influxService', () => ({
@@ -19,14 +19,8 @@ jest.mock('@/services/auditService', () => ({
 jest.mock('@/models/Device', () => ({
   Device: {
     findOne: jest.fn()
-  }
-}));
-
-jest.mock('@/models/DeviceOtaState', () => ({
-  DeviceOtaState: {
-    findOne: jest.fn()
   },
-  DeviceOtaStatus: {
+  DeviceOtaState: {
     DOWNLOADING: 'downloading',
     VALIDATING: 'validating',
     NOTIFIED: 'notified',
@@ -58,7 +52,7 @@ describe('OtaEventHandler', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (getAuditService as jest.Mock).mockReturnValue({ logEvent: mockLogEvent });
-    (DeviceOtaState.findOne as jest.Mock).mockReturnValue({
+    (Device.findOne as jest.Mock).mockReturnValue({
       select: jest.fn().mockReturnValue({
         lean: jest.fn().mockResolvedValue({
           deviceId: 'dev-1',

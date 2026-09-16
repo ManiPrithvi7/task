@@ -19,15 +19,15 @@ export type DeviceGmbContext = {
  */
 export async function resolveGmbContextForDevice(deviceId: string): Promise<DeviceGmbContext | null> {
   try {
-    const deviceDoc = await Device.findOne({ clientId: deviceId }).select({ businessId: 1 }).lean();
-    if (!deviceDoc?.businessId) {
+    const deviceDoc = await Device.findOne({ clientId: deviceId }).select({ userId: 1 }).lean();
+    if (!deviceDoc?.userId) {
       logger.debug('[GMB_DEVICE] No business linked to device', { deviceId });
       return null;
     }
 
-    const businessId = String(deviceDoc.businessId);
+    const businessId = String(deviceDoc.userId);
     const social = await Social.findOne({
-      businessId: deviceDoc.businessId,
+      userId: deviceDoc.userId,
       provider: Provider.GOOGLE_BUSINESS
     })
       .select({ _id: 1 })

@@ -166,12 +166,12 @@ export async function syncGmbLocationForDevice(
   webhookConfig: WebhookConfig,
   opts?: { knownLocationId?: string }
 ): Promise<DeviceGmbContext | null> {
-  const deviceDoc = await Device.findOne({ clientId: deviceId }).select({ businessId: 1 }).lean();
-  if (!deviceDoc?.businessId) return null;
+  const deviceDoc = await Device.findOne({ clientId: deviceId }).select({ userId: 1 }).lean();
+  if (!deviceDoc?.userId) return null;
 
-  const businessId = String(deviceDoc.businessId);
+  const businessId = String(deviceDoc.userId);
   const social = await Social.findOne({
-    businessId: deviceDoc.businessId,
+    userId: deviceDoc.userId,
     provider: Provider.GOOGLE_BUSINESS
   }).lean();
   if (!social) return null;

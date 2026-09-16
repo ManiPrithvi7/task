@@ -85,7 +85,7 @@ import {
   type MqttTlsConnectMaterial
 } from './utils/mqttTlsOptions';
 import { ensureDeviceProvisioned as checkDeviceProvisioned } from './services/deviceProvisioningGate';
-import { isLoyaltySpinAckEnvelope, LoyaltyService } from './services/loyaltyService';
+import { LoyaltyService } from './services/loyaltyService';
 
 export class StatsMqttLite {
   private config: AppConfig;
@@ -294,7 +294,6 @@ export class StatsMqttLite {
       await this.initializeMqttClient();
       await this.subscribeLifecycleTopics();
       await this.subscribeToTopics();
-      await this.subscribeLoyaltyAck();
 
       this.isIngressReady = true;
       this.startupTime = Date.now();
@@ -916,11 +915,6 @@ export class StatsMqttLite {
             error: err instanceof Error ? err.message : String(err)
           });
         });
-        void this.subscribeLoyaltyAck().catch((err: unknown) => {
-          logger.error('MQTT loyalty ack re-subscribe failed', {
-            error: err instanceof Error ? err.message : String(err)
-          });
-        });
       }
       this.hasConnectedOnce = true;
     });
@@ -977,29 +971,6 @@ export class StatsMqttLite {
       logger.info('Loyalty service started on demand (join/spin)');
     }
     return this.loyaltyService;
-  }
-
-  private async subscribeLoyaltyAck(): Promise<void> {
-    const topic = `${this.config.mqtt.topicRoot}/+/ack`;
-    await this.mqttClient.subscribe(topic, (receivedTopic, payload) => {
-      void this.onLoyaltyAck(receivedTopic, payload);
-    });
-    logger.info('Subscribed to loyalty ack topic', { topic });
-  }
-
-  private async onLoyaltyAck(topic: string, payload: Buffer): Promise<void> {
-    try {
-      const message = JSON.parse(payload.toString());
-      if (!isLoyaltySpinAckEnvelope(message)) return;
-
-      const service = await this.ensureLoyaltyService();
-      await service.handleAck(topic, message);
-    } catch (err: unknown) {
-      logger.warn('loyalty ack parse/handle failed', {
-        topic,
-        error: err instanceof Error ? err.message : String(err)
-      });
-    }
   }
 
   private async ensureDeviceProvisioned(deviceId: string): Promise<boolean> {

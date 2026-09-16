@@ -11,12 +11,9 @@ import type { OtaConfig } from '../config';
 import {
   Device,
   DeviceStatus,
+  DeviceOtaState,
   type IDevice
 } from '../models/Device';
-import {
-  DeviceOtaState,
-  DeviceOtaStatus
-} from '../models/DeviceOtaState';
 import {
   FirmwareRelease,
   FirmwareReleaseStatus,
@@ -536,15 +533,14 @@ export class OtaCommandPublisher {
       }
     );
 
-    await DeviceOtaState.updateOne(
-      { deviceId },
+    await Device.updateOne(
+      { clientId: deviceId },
       {
         $set: {
-          otaState: DeviceOtaStatus.NOTIFIED,
+          otaState: DeviceOtaState.NOTIFIED,
           otaTargetVersion: offer.version
         }
       },
-      { upsert: true }
     );
 
     void getAuditService()
@@ -641,7 +637,7 @@ export class OtaEventHandler {
     const key = eventKey(payload);
     if (!key) return;
 
-    const otaStateDoc = await DeviceOtaState.findOne({ deviceId }).select({ firmwareVersion: 1, otaState: 1 }).lean();
+    const otaStateDoc = await Device.findOne({ clientId: deviceId }).select({ firmwareVersion: 1, otaState: 1 }).lean();
     const previousFirmwareVersion = otaStateDoc?.firmwareVersion || 'unknown';
 
     const active = await this.otaService.getActiveReleaseMeta().catch(() => null);
@@ -866,7 +862,7 @@ export class OtaService {
       return null;
     }
 
-    const otaState = await DeviceOtaState.findOne({ deviceId: input.deviceId })
+    const otaState = await Device.findOne({ clientId: input.deviceId })
       .select({ otaBlockedVersions: 1 })
       .lean();
     const blocked = new Set(otaState?.otaBlockedVersions || []);
@@ -885,10 +881,9 @@ export class OtaService {
 
       const offer = await this.buildOffer(release);
       if (offer) {
-        await DeviceOtaState.updateOne(
-          { deviceId: input.deviceId },
-          { $set: { otaLastCheckAt: new Date(), otaTargetVersion: release.version } },
-          { upsert: true }
+        await Device.updateOne(
+          { clientId: input.deviceId },
+          { $set: { otaLastCheckAt: new Date(), otaTargetVersion: release.version } }
         );
 
         void getAuditService()
@@ -903,10 +898,9 @@ export class OtaService {
       }
     }
 
-    await DeviceOtaState.updateOne(
-      { deviceId: input.deviceId },
-      { $set: { otaLastCheckAt: new Date() } },
-      { upsert: true }
+    await Device.updateOne(
+      { clientId: input.deviceId },
+      { $set: { otaLastCheckAt: new Date() } }
     );
 
     void getAuditService()
@@ -1491,7 +1485,7 @@ export class OtaService {
     const device = await Device.findOne({ clientId: deviceId });
     if (!device || !this.isDeviceEligible(device)) return;
 
-    const otaState = await DeviceOtaState.findOne({ deviceId }).select({ otaBlockedVersions: 1 }).lean();
+    const otaState = await Device.findOne({ clientId: deviceId }).select({ otaBlockedVersions: 1 }).lean();
     const blocked = new Set(otaState?.otaBlockedVersions || []);
     if (blocked.has(active.version)) return;
 
@@ -1571,18 +1565,13 @@ export class OtaService {
 
     const devices = await Device.find({
       status: { $in: [DeviceStatus.PROVISIONED, DeviceStatus.ACTIVE, DeviceStatus.OFFLINE] }
-    }).select({ clientId: 1, businessId: 1, status: 1 });
-
-    const otaStates = await DeviceOtaState.find({})
-      .select({ deviceId: 1, otaBlockedVersions: 1 })
-      .lean();
-    const blockedByDevice = new Map(otaStates.map((s) => [s.deviceId, s.otaBlockedVersions || []]));
+    }).select({ clientId: 1, userId: 1, status: 1, otaBlockedVersions: 1 });
 
     const out: string[] = [];
     for (const device of devices) {
       const id = device.clientId;
       if (!id) continue;
-      if ((blockedByDevice.get(id) || []).includes(release.version)) continue;
+      if ((device.otaBlockedVersions || []).includes(release.version)) continue;
       if (this.matchesRollout(release, device, id)) {
         out.push(id);
       }
@@ -1623,15 +1612,16 @@ export class OtaService {
 
     let pushed = 0;
     await mapPool(candidates, this.otaConfig.mqttPushConcurrency || 100, async (deviceId) => {
-      const [device, otaState] = await Promise.all([
-        Device.findOne({ clientId: deviceId }),
-        DeviceOtaState.findOne({ deviceId })
-          .select({ firmwareVersion: 1, otaBlockedVersions: 1 })
-          .lean()
-      ]);
-      const currentVersion = otaState?.firmwareVersion || '0.0.0';
+      const device = await Device.findOne({ clientId: deviceId }).select({
+        firmwareVersion: 1,
+        otaBlockedVersions: 1,
+        userId: 1,
+        status: 1,
+        clientId: 1
+      });
+      const currentVersion = device?.firmwareVersion || '0.0.0';
       if (!device || !this.isDeviceEligible(device)) return;
-      if ((otaState?.otaBlockedVersions || []).includes(version)) return;
+      if ((device.otaBlockedVersions || []).includes(version)) return;
       if (!this.matchesRollout(release, device, deviceId)) return;
       if (!isVersionGreater(version, currentVersion) && currentVersion !== version) {
         // still offer if behind
@@ -1737,9 +1727,9 @@ export class OtaService {
       }
       case FirmwareRolloutStrategy.ALL:
       default:
-        if (rollout.businessIds?.length && device.businessId) {
-          const bid = device.businessId.toString();
-          if (!rollout.businessIds.includes(bid)) {
+        if (rollout.userIds?.length && device.userId) {
+          const bid = device.userId.toString();
+          if (!rollout.userIds.includes(bid)) {
             return false;
           }
         }
@@ -1819,15 +1809,14 @@ export class OtaService {
       return { blocked: false, failures: 0 };
     }
 
-    const otaState =
-      (await DeviceOtaState.findOne({ deviceId })) ?? new DeviceOtaState({ deviceId });
+    const otaState = device;
 
     const failuresMap = otaState.otaRollbackFailures || new Map<string, number>();
     const prev = failuresMap.get(version) ?? 0;
     const next = prev + 1;
     failuresMap.set(version, next);
     otaState.otaRollbackFailures = failuresMap;
-    otaState.otaState = DeviceOtaStatus.ROLLBACK_REPORTED;
+    otaState.otaState = DeviceOtaState.ROLLBACK_REPORTED;
 
     const threshold = this.otaConfig.rollbackFailureThreshold;
     const permanent = kind === 'permanent';
@@ -1888,17 +1877,16 @@ export class OtaService {
   }
 
   async recordOtaSuccess(deviceId: string, version: string): Promise<void> {
-    await DeviceOtaState.updateOne(
-      { deviceId },
+    await Device.updateOne(
+      { clientId: deviceId },
       {
         $set: {
           firmwareVersion: version,
           firmwareReportedAt: new Date(),
-          otaState: DeviceOtaStatus.IDLE
+          otaState: DeviceOtaState.IDLE
         },
         $unset: { otaTargetVersion: 1 }
-      },
-      { upsert: true }
+      }
     );
 
     getIgDeviceRuntimeCache().set(deviceId, {
@@ -1920,7 +1908,7 @@ export class OtaService {
   ): Promise<void> {
     if (!fwVersion.trim()) return;
 
-    const otaState = await DeviceOtaState.findOne({ deviceId })
+    const otaState = await Device.findOne({ clientId: deviceId })
       .select({ otaTargetVersion: 1, firmwareVersion: 1 })
       .lean();
     const active = await this.otaRedisState?.getActiveRelease().catch(() => null);

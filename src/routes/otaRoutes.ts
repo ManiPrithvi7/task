@@ -8,7 +8,7 @@ import { Router, Request, Response } from 'express';
 import type { RedisClientType } from 'redis';
 import type { OtaConfig } from '../config';
 import { requireMtlsDeviceCert } from '../middleware/mtlsAuth';
-import { DeviceOtaState } from '../models/DeviceOtaState';
+import { Device } from '../models/Device';
 import { FirmwareRelease, FirmwareReleaseStatus } from '../models/FirmwareRelease';
 import type { IFirmwareStorage } from '../services/firmwareStorageService';
 import { OciStorageError } from '../services/ociStorageErrors';
@@ -116,7 +116,7 @@ export function createOtaRoutes(deps: OtaRoutesDeps): Router {
       }
 
       const deviceId = (req as { deviceId?: string }).deviceId as string;
-      const otaState = await DeviceOtaState.findOne({ deviceId })
+      const otaState = await Device.findOne({ clientId: deviceId })
         .select({ firmwareVersion: 1 })
         .lean();
       const currentVersion = otaState?.firmwareVersion || '0.0.0';
