@@ -325,6 +325,8 @@ export class CAService {
         { name: 'keyUsage', ...keyUsageFlags, critical: true },
         { name: 'extKeyUsage', ...extKeyUsageFlags, critical: true },
         { name: 'subjectKeyIdentifier', subjectKeyIdentifier: true },
+        // Present on both production_v1 and production_v5. Kept for inspection of ESP32
+        // tlsErr=-9568 (mbedTLS INVALID_EXTENSIONS / ASN1_OUT_OF_DATA) after factory reissue.
         { name: 'authorityKeyIdentifier', authorityKeyIdentifier: true, authorityCertIssuer: true, serialNumber: this.rootCA.serialNumber }
       ];
 
@@ -593,13 +595,18 @@ export class CAService {
   }
 
   /**
-   * RFC 5280: serial MUST be a non-negative INTEGER (≤20 octets).
-   * Prefix 0x00 so a high-bit first random byte is not encoded as negative
-   * (OpenSSL 3 / Mosquitto TLS client-auth rejects those with alert 42).
+   * Generate certificate serial number.
+   *
+   * INSPECTION (production_v5 vs production_v1, ESP32 factory-reset TLS):
+   * v5 prefixed 0x00 so OpenSSL 3 / Mosquitto would not treat a high-bit first
+   * byte as a negative INTEGER (TLS alert 42). Temporarily restored v1 encoding
+   * so newly reissued device certs match v1 DER serials. v5 line kept below.
    */
   private generateSerialNumber(): string {
     const bytes = forge.random.getBytesSync(16);
-    return '00' + forge.util.bytesToHex(bytes);
+    // v5 (commented for inspection — do not delete):
+    // return '00' + forge.util.bytesToHex(bytes);
+    return forge.util.bytesToHex(bytes);
   }
 
   /**

@@ -314,6 +314,11 @@ export function createLifecycleRoutes(deps: LifecycleDeps): Router {
 
       try {
         await caService.revokeAllDeviceCertificates(deviceId);
+        // INSPECTION: production_v5 vs production_v1 reissue.
+        // v1: signCSR(..., userId, { slot: 'primary', allowReplacePrimary: true }) + response.slot
+        // v5 (live): businessId + { allowReplace: true }, no slot.
+        // Not reverted: Device.businessId is required on this branch; changing owner/slot
+        // would break issuance rather than isolate the ESP32 TLS parse error.
         const certDoc = await caService.signCSR(csrPem, deviceId, businessId, { allowReplace: true });
 
         await recoverySessionService.consumeSession(deviceId);

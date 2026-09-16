@@ -2,7 +2,8 @@ import mqtt, { MqttClient, IClientOptions, IPublishPacket } from 'mqtt';
 import * as dns from 'dns';
 import { EventEmitter } from 'events';
 import { logger } from '../utils/logger';
-import { incActivity } from '../utils/activityMetrics';
+// v5 inspection: activity metrics are not part of v1 connect path.
+// import { incActivity } from '../utils/activityMetrics';
 import {
   applyMqttJsTlsOptions,
   normalizeTlsPem,
@@ -57,6 +58,7 @@ export interface PublishMetadata {
   deviceId?: string;
   timestamp?: string;
   initiator?: string;
+  // v5 inspection: delivery callback unused while v1 QoS1 ack path is restored.
   /** Invoked when broker confirms delivery (PUBACK for QoS 1, PUBCOMP for QoS 2). */
   onDelivered?: () => void;
 }
@@ -66,7 +68,8 @@ interface PendingAck {
   deviceId: string;
   timestamp: number;
   timeout: NodeJS.Timeout;
-  qos: 1 | 2;
+  // v5 inspection: qos/onDelivered kept on the type; live path is v1 QoS1-only.
+  qos?: 1 | 2;
   onDelivered?: () => void;
 }
 
@@ -80,7 +83,8 @@ export class MqttClientManager extends EventEmitter {
   private maxReconnectAttempts: number;
   private brokerConnectCount: number = 0;
   private pendingAcks: Map<number, PendingAck> = new Map();
-  private deliveryCallbackByTopic: Map<string, () => void> = new Map();
+  // v5 inspection: topic-keyed delivery callbacks (QoS1/2 onDelivered).
+  // private deliveryCallbackByTopic: Map<string, () => void> = new Map();
   private recentPublishes: Map<string, { timestamp: number; metadata: PublishMetadata }> = new Map();
   private readonly ECHO_WINDOW_MS = 2000;
   
@@ -103,6 +107,10 @@ export class MqttClientManager extends EventEmitter {
   }
 
   async connect(): Promise<void> {
+    // INSPECTION: production_v5 `.connect()` matches production_v1 (mTLS mqtts, MQTT v5,
+    // keepalive 45, applyMqttJsTlsOptions). No v5 connect-option delta to comment out.
+    // ESP32 factory-reset failure is device TLS to broker.withproof.io:8883 after reissue,
+    // not this Node mqtt.js session.
     if (this.config.dnsPreflightEnabled) {
       await this.resolveBrokerDns();
     }
@@ -236,36 +244,47 @@ export class MqttClientManager extends EventEmitter {
       });
 
       this.client.on('packetsend', (packet: any) => {
-        if (
-          packet.cmd === 'publish' &&
-          (packet.qos === 1 || packet.qos === 2) &&
-          packet.messageId
-        ) {
-          logger.info(`📤 QoS ${packet.qos} message sent`, {
+        // v5 inspection (commented — do not delete): QoS2 + onDelivered tracking.
+        // if (
+        //   packet.cmd === 'publish' &&
+        //   (packet.qos === 1 || packet.qos === 2) &&
+        //   packet.messageId
+        // ) {
+        //   logger.info(`📤 QoS ${packet.qos} message sent`, {
+        //     messageId: packet.messageId,
+        //     topic: packet.topic,
+        //     qos: packet.qos
+        //   });
+        //   const onDelivered = this.deliveryCallbackByTopic.get(packet.topic);
+        //   if (onDelivered) {
+        //     this.deliveryCallbackByTopic.delete(packet.topic);
+        //   }
+        //   this.trackOutboundMessage(packet, onDelivered);
+        // }
+        if (packet.cmd === 'publish' && packet.qos === 1 && packet.messageId) {
+          logger.info('📤 QoS 1 message sent', {
             messageId: packet.messageId,
             topic: packet.topic,
             qos: packet.qos
           });
-          const onDelivered = this.deliveryCallbackByTopic.get(packet.topic);
-          if (onDelivered) {
-            this.deliveryCallbackByTopic.delete(packet.topic);
-          }
-          this.trackOutboundMessage(packet, onDelivered);
+          this.trackQoS1Message(packet);
         }
       });
 
       this.client.on('packetreceive', (packet: any) => {
         if (packet.cmd === 'puback' && packet.messageId) {
           logger.info('✅ PUBACK received', { messageId: packet.messageId });
-          this.handleDeliveryAck(packet.messageId, 'puback');
-        } else if (packet.cmd === 'pubcomp' && packet.messageId) {
-          logger.info('✅ PUBCOMP received', { messageId: packet.messageId });
-          this.handleDeliveryAck(packet.messageId, 'pubcomp');
+          this.handlePubAck(packet.messageId);
         }
+        // v5 inspection (commented — do not delete): QoS2 PUBCOMP.
+        // else if (packet.cmd === 'pubcomp' && packet.messageId) {
+        //   logger.info('✅ PUBCOMP received', { messageId: packet.messageId });
+        //   this.handleDeliveryAck(packet.messageId, 'pubcomp');
+        // }
       });
 
       this.client.on('message', (topic, payload, packet) => {
-        incActivity('mqttMessages');
+        // v5 inspection: incActivity('mqttMessages');
         logger.debug('Message received', {
           topic,
           size: payload.length,
@@ -371,7 +390,7 @@ export class MqttClientManager extends EventEmitter {
             });
             reject(error);
           } else {
-            incActivity('publishes');
+            // v5 inspection: incActivity('publishes');
             const deliveryTime = Date.now() - publishTime;
             logger.debug('Message published', {
               topic: fullTopic,
@@ -379,9 +398,10 @@ export class MqttClientManager extends EventEmitter {
               deliveryTime: `${deliveryTime}ms`
             });
 
-            if (metadata?.onDelivered && (message.qos === 1 || message.qos === 2)) {
-              this.deliveryCallbackByTopic.set(fullTopic, metadata.onDelivered);
-            }
+            // v5 inspection (commented — do not delete):
+            // if (metadata?.onDelivered && (message.qos === 1 || message.qos === 2)) {
+            //   this.deliveryCallbackByTopic.set(fullTopic, metadata.onDelivered);
+            // }
 
             const messageKey = `${fullTopic}:${payloadString.substring(0, 100)}`;
             this.recentPublishes.set(messageKey, {
@@ -565,7 +585,7 @@ export class MqttClientManager extends EventEmitter {
       logger.debug('Cleared pending delivery ack timer', { messageId, reason });
     }
     this.pendingAcks.clear();
-    this.deliveryCallbackByTopic.clear();
+    // v5 inspection: this.deliveryCallbackByTopic.clear();
   }
 
   private async resolveBrokerDns(maxAttempts = 5): Promise<void> {
@@ -593,6 +613,75 @@ export class MqttClientManager extends EventEmitter {
     }
   }
 
+  private trackQoS1Message(packet: any): void {
+    const deviceId = this.extractDeviceIdFromTopic(packet.topic);
+    if (!deviceId) return;
+
+    const messageId = packet.messageId;
+
+    const timeout = setTimeout(() => {
+      if (!this.isConnected()) {
+        logger.debug('QoS1 PUBACK pending but MQTT offline — skip inactive mark', {
+          deviceId,
+          messageId,
+          topic: packet.topic
+        });
+        this.pendingAcks.delete(messageId);
+        return;
+      }
+
+      logger.warn('QoS 1 PUBACK timeout - marking device inactive', {
+        deviceId,
+        topic: packet.topic,
+        messageId,
+        timeout: '30s'
+      });
+
+      if (this.onDeviceInactive) {
+        this.onDeviceInactive(deviceId);
+      }
+
+      this.pendingAcks.delete(messageId);
+    }, 30000);
+
+    this.pendingAcks.set(messageId, {
+      topic: packet.topic,
+      deviceId,
+      timestamp: Date.now(),
+      timeout
+    });
+
+    logger.info('⏱️ Tracking QoS 1 message (30s timeout)', {
+      deviceId,
+      messageId,
+      topic: packet.topic,
+      pendingCount: this.pendingAcks.size
+    });
+  }
+
+  private handlePubAck(messageId: number): void {
+    const pending = this.pendingAcks.get(messageId);
+    if (!pending) return;
+
+    clearTimeout(pending.timeout);
+    this.pendingAcks.delete(messageId);
+
+    const deliveryTime = Date.now() - pending.timestamp;
+    logger.info('✅ QoS 1 PUBACK confirmed', {
+      deviceId: pending.deviceId,
+      messageId,
+      deliveryTime: `${deliveryTime}ms`,
+      pendingCount: this.pendingAcks.size
+    });
+
+    if (this.onDeviceActive) {
+      this.onDeviceActive(pending.deviceId);
+    }
+  }
+
+  /*
+   * v5 inspection (commented — do not delete): QoS1/QoS2 delivery tracking + onDelivered.
+   *
   private trackOutboundMessage(packet: any, onDelivered?: () => void): void {
     const deviceId = this.extractDeviceIdFromTopic(packet.topic);
     if (!deviceId) return;
@@ -677,6 +766,7 @@ export class MqttClientManager extends EventEmitter {
       this.onDeviceActive(pending.deviceId);
     }
   }
+  */
 
   private extractDeviceIdFromTopic(topic: string): string | null {
     const root = this.config.topicRoot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
