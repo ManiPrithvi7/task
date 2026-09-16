@@ -180,8 +180,11 @@ export class CAService {
       cert.setExtensions([
         { name: 'basicConstraints', cA: true, critical: true },
         { name: 'keyUsage', keyCertSign: true, cRLSign: true, critical: true },
-        { name: 'subjectKeyIdentifier', subjectKeyIdentifier: true },
-        { name: 'authorityKeyIdentifier', authorityKeyIdentifier: true }
+        { name: 'subjectKeyIdentifier', subjectKeyIdentifier: true }
+        // NOTE: no authorityKeyIdentifier on a self-signed root. node-forge encodes
+        // `authorityKeyIdentifier: true` (no keyIdentifier) as an EMPTY SEQUENCE,
+        // which mbedTLS >= 3.6 (ESP32) rejects: X509_INVALID_EXTENSIONS +
+        // ASN1_OUT_OF_DATA (tlsErr=-9568). A root CA does not need AKI (RFC 5280).
       ]);
 
       cert.sign(keys.privateKey, forge.md.sha256.create());
