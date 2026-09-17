@@ -55,11 +55,11 @@ describe('isAtOrPastTarget', () => {
   });
 });
 
-describe('gmbCelebration (mini/5, mega/25)', () => {
+describe('gmbCelebration (mini/5, mega/10)', () => {
   it('celebration at mini and mega boundaries', () => {
     expect(gmbCelebration(5)).toBe('true');
+    expect(gmbCelebration(10)).toBe('true');
     expect(gmbCelebration(15)).toBe('true');
-    expect(gmbCelebration(25)).toBe('true');
   });
 
   it('no celebration off-slab or at 0', () => {
@@ -69,11 +69,11 @@ describe('gmbCelebration (mini/5, mega/25)', () => {
   });
 });
 
-describe('igCelebration (mini/5, mega/25)', () => {
+describe('igCelebration (mini/5, mega/10)', () => {
   it('celebration at mini and mega boundaries', () => {
     expect(igCelebration(5)).toBe('true');
     expect(igCelebration(10)).toBe('true');
-    expect(igCelebration(25)).toBe('true');
+    expect(igCelebration(15)).toBe('true');
   });
 
   it('no celebration off-slab or at 0', () => {

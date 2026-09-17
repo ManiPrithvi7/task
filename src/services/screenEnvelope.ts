@@ -50,9 +50,9 @@ export type BuildScreenEnvelopeOpts = {
 };
 
 export const IG_MINI_INTERVAL = 5;
-export const IG_MEGA_INTERVAL = 25;
+export const IG_MEGA_INTERVAL = 10;
 export const GMB_MINI_INTERVAL = 5;
-export const GMB_MEGA_INTERVAL = 25;
+export const GMB_MEGA_INTERVAL = 10;
 
 export type CelebrationType = 'mini' | 'mega';
 
@@ -265,7 +265,7 @@ export function buildInstagramScreenPayload(input: InstagramScreenPayloadInput):
   };
 }
 
-/** IG mega milestones crossed between old and new follower counts (every 100). */
+/** IG mega milestones crossed between old and new follower counts (every 10). */
 export function getInstagramMegaCrossedMilestones(oldF: number, newF: number): number[] {
   if (oldF >= newF) return [];
   const milestones: number[] = [];

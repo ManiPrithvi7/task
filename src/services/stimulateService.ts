@@ -50,11 +50,11 @@ function parseIntervalMs(): number {
 }
 
 function parseIgTarget(): number {
-  return Math.max(1, parseInt(process.env.STIMULATE_IG_TARGET || '500', 10) || 500);
+  return Math.max(1, parseInt(process.env.STIMULATE_IG_TARGET || '5000', 10) || 5000);
 }
 
 function parseGmbTarget(): number {
-  return Math.max(1, parseInt(process.env.STIMULATE_GMB_TARGET || '100', 10) || 100);
+  return Math.max(1, parseInt(process.env.STIMULATE_GMB_TARGET || '5000', 10) || 5000);
 }
 
 async function takeStimLock(

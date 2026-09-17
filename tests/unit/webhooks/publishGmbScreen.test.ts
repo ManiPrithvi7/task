@@ -44,13 +44,13 @@ describe('publishGmbScreen payload shapes', () => {
     });
   });
 
-  it('mega celebration every 25', () => {
-    const envelope = buildGmbPublishEnvelope(25);
+  it('mega celebration every 10', () => {
+    const envelope = buildGmbPublishEnvelope(20);
     expect(envelope.celebration).toBe('true');
     expect(envelope.payload).toMatchObject({
       celebration_type: 'mega',
-      verifiedReview: 25,
-      nextGoal: 25,
+      verifiedReview: 20,
+      nextGoal: 20,
       remainingGoal: 0,
       progress: 100
     });

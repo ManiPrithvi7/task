@@ -41,7 +41,7 @@ function gmbDemoVariant(label: 'v6_normal' | 'v6_mini' | 'v6_mega', verifiedRevi
 const TEST_GMB_V6_VARIANTS = [
   gmbDemoVariant('v6_normal', 42),
   gmbDemoVariant('v6_mini', 15),
-  gmbDemoVariant('v6_mega', 25)
+  gmbDemoVariant('v6_mega', 20)
 ];
 
 /** Per-device state for Instagram, GMB (for mock rotation). */
