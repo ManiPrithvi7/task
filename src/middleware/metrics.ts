@@ -21,10 +21,15 @@ const httpRequestDuration = new client.Histogram({
   registers: [register]
 });
 
+/** Express route pattern, or a single bucket for 404s/scanners — never raw req.path. */
+export function metricsRouteLabel(req: { route?: { path?: string } }): string {
+  return req.route?.path || 'unmatched';
+}
+
 export function metricsMiddleware(req: Request, res: Response, next: NextFunction) {
   const end = httpRequestDuration.startTimer();
   res.on('finish', () => {
-    const route = req.route?.path || req.path;
+    const route = metricsRouteLabel(req);
     incActivity('httpRequests');
     httpRequestsTotal.inc({ method: req.method, route, status: res.statusCode.toString() });
     end({ method: req.method, route });

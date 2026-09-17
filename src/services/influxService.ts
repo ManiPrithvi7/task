@@ -107,6 +107,8 @@ const INFLUX_USAGE_CSV_HEADER =
   'timestamp,operation,command,key,query_or_write,status,duration_ms,error\n';
 const INFLUX_USAGE_VALUE_MAX_LEN = 2000;
 const INFLUX_USAGE_CSV_MAX_BYTES = 2 * 1024 * 1024;
+/** Cap dashboard Flux payloads so 90-day series cannot fill the query cache. */
+export const DASHBOARD_FLUX_ROW_LIMIT = 5000;
 
 export class InfluxService {
   private client: InfluxDB;
@@ -691,6 +693,7 @@ export class InfluxService {
         |> filter(fn: (r) => r.device_id == "${deviceId}")
         |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
         |> sort(columns: ["_time"])
+        |> limit(n: ${DASHBOARD_FLUX_ROW_LIMIT})
     `);
   }
 
@@ -708,6 +711,7 @@ export class InfluxService {
         |> filter(fn: (r) => r.device_id == "${deviceId}")
         |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
         |> sort(columns: ["_time"], desc: true)
+        |> limit(n: ${DASHBOARD_FLUX_ROW_LIMIT})
     `);
   }
 
@@ -724,6 +728,7 @@ export class InfluxService {
         |> filter(fn: (r) => r.location_id == "${locationId}")
         |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
         |> sort(columns: ["_time"])
+        |> limit(n: ${DASHBOARD_FLUX_ROW_LIMIT})
     `);
   }
 
@@ -741,6 +746,7 @@ export class InfluxService {
         |> filter(fn: (r) => r.location_id == "${locationId}")
         |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
         |> sort(columns: ["_time"], desc: true)
+        |> limit(n: ${DASHBOARD_FLUX_ROW_LIMIT})
     `);
   }
 
