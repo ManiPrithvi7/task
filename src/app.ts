@@ -809,7 +809,7 @@ export class StatsMqttLite {
           ' Set MQTT_TLS_SERVERNAME to a broker cert SAN (e.g. broker.withproof.io) when MQTT_BROKER is a Railway proxy hostname.';
       } else if (earlyDisconnect) {
         hint =
-          ' Broker may be sending a malformed TLS ServerHello (NanoMQ cert/key on Railway). Re-run npm run pki:broker, update NANOMQ_TLS_* on the broker service, or set MQTT_TLS_SKIP_PRECHECK=true after verifying with npm run pki:verify.';
+          ' Broker may be sending a malformed TLS ServerHello (NanoMQ cert/key on Railway). Re-run ./scripts/pki/generate-broker-cert.sh, update NANOMQ_TLS_* on the broker service, or set MQTT_TLS_SKIP_PRECHECK=true after verifying with ./scripts/pki/verify-broker-tls.sh.';
       }
       throw new Error(`TLS validation failed for broker ${broker}: ${errMsg}${hint}`);
     }

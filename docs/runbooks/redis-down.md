@@ -19,5 +19,5 @@
 
 ## Related
 
-- [docs/REDIS_CONNECTION_FIX.md](../REDIS_CONNECTION_FIX.md)
+- [docs/REDIS_CLOUD_SETUP.md](../REDIS_CLOUD_SETUP.md)
 - [deferred-queue-backlog.md](deferred-queue-backlog.md)

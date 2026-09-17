@@ -3,10 +3,10 @@
  * Broker server certs: use OpenSSL scripts in this directory (generate-broker-cert.sh).
  *
  * Usage:
- *   npm run pki -- init-ca
- *   npm run pki -- app-client
- *   npm run pki -- rotate
- *   npm run pki -- print-app-env
+ *   bun scripts/pki/pki.ts init-ca
+ *   bun scripts/pki/pki.ts app-client
+ *   bun scripts/pki/pki.ts rotate
+ *   bun scripts/pki/pki.ts print-app-env
  */
 import * as fs from 'fs';
 import * as path from 'path';
@@ -88,7 +88,7 @@ async function cmdInitCa(): Promise<void> {
   const ca = new CAService(caConfig());
   await ca.initialize();
   console.log('[pki] Root CA ready:', path.join(caStoragePath, 'root-ca.crt'));
-  console.log('[pki] Next: npm run pki -- app-client  (or generate broker cert via ./scripts/pki/generate-broker-cert.sh)');
+  console.log('[pki] Next: bun scripts/pki/pki.ts app-client  (or generate broker cert via ./scripts/pki/generate-broker-cert.sh)');
 }
 
 async function cmdAppClient(): Promise<void> {
@@ -130,7 +130,7 @@ async function cmdPrintAppEnv(): Promise<void> {
 
   for (const p of [caCertPath, clientCertPath, clientKeyPath]) {
     if (!fs.existsSync(p)) {
-      throw new Error(`Missing ${p} — run: npm run pki -- init-ca && npm run pki -- app-client`);
+      throw new Error(`Missing ${p} — run: bun scripts/pki/pki.ts init-ca && bun scripts/pki/pki.ts app-client`);
     }
   }
 
@@ -149,7 +149,7 @@ async function cmdPrintAppEnv(): Promise<void> {
 }
 
 function usage(): never {
-  console.log(`Usage: npm run pki -- <command>
+  console.log(`Usage: bun scripts/pki/pki.ts <command>
 
 Commands:
   init-ca        Create or load Root CA in ${caStoragePath}

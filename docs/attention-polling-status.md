@@ -2,9 +2,7 @@
 
 This document summarizes attention-weighted IoT Instagram polling across roadmap phases **A–G** for the **current architecture**:
 
-**Main server (Render)** holds Redis Lua scheduling, MQTT lifecycle, and calls an **HTTPS POST** to a **serverless worker** (e.g. **Vercel**) that talks to **Instagram Graph API**. Results return in JSON; the server writes Mongo/Influx, updates **`device:followers:{id}`**, and publishes MQTT **`screen_update`** when the device is online (no Kafka, no HTTP `/attention`).
-
-For historical roadmap bullets, see `attention-iot-polling-roadmap.mdc`.
+**Main server** holds Redis Lua scheduling, MQTT lifecycle, and calls an **HTTPS POST** to a **serverless worker** (e.g. **Vercel**) that talks to **Instagram Graph API**. Results return in JSON; the server writes Mongo/Influx, updates **`device:followers:{id}`**, and publishes MQTT **`screen_update`** when the device is online (no Kafka, no HTTP `/attention`).
 
 ---
 

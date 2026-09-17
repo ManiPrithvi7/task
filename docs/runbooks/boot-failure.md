@@ -14,7 +14,7 @@ Process exits during `validateConfig` / service init; logs show thrown Error fro
 
 ## Actions
 
-1. Run `bun scripts/validate-env.ts --production` with the deployment env (or load `tests/fixtures/prod-env.env` shape).
+1. Run `bun scripts/validate-env.ts --production` with the deployment env (or load `tests/fixtures/prod-env.env.example` shape).
 2. Compare against [docs/CONFIG_MATRIX.md](../CONFIG_MATRIX.md).
 3. Fix env; redeploy. Do not bypass with skip-auth flags in prod.
 

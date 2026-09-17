@@ -76,7 +76,7 @@ This path is for **HTTP download / streaming tests only**.
 Production OTA is documented in:
 
 - [`docs/OTA_FIRMWARE_CONTRACT.md`](./OTA_FIRMWARE_CONTRACT.md) — server API + storage contract
-- [`Proof Display OTA .md`](../Proof%20Display%20OTA%20.md) — device architecture
+- [`OTA_DISPLAY_BLUEPRINT.md`](./OTA_DISPLAY_BLUEPRINT.md) — device architecture
 
 ### High-level production path
 

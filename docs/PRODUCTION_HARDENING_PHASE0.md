@@ -67,7 +67,7 @@
 
 ## GMB dedupe fail-open
 
-**Accepted pilot risk** with structured warn + metric field `dedupe_fail_open=true`. Fail-closed deferred to post-pilot (owner: platform). Documented in uncensored / runbooks.
+**Accepted pilot risk** with structured warn + metric field `dedupe_fail_open=true`. Fail-closed deferred to post-pilot (owner: platform). Documented in runbooks.
 
 ## Execution order
 

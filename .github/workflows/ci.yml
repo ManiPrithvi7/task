@@ -15,7 +15,7 @@ jobs:
         run: |
           set -a
           # shellcheck disable=SC1091
-          source tests/fixtures/prod-env.env
+          source tests/fixtures/prod-env.env.example
           set +a
           bun scripts/validate-env.ts --production
       # Stabilize-before-require: e2e is required once green; continue-on-error removed after local green.

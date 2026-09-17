@@ -12,4 +12,4 @@
 2. Update CI / release pipeline Bearer token in the same change window.
 3. Confirm `/api/webhooks/ota-release` accepts a canary request.
 
-Never commit real secrets; CI uses `tests/fixtures/prod-env.env` fake values only.
+Never commit real secrets; CI uses `tests/fixtures/prod-env.env.example` fake values only.

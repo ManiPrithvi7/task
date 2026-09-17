@@ -7,6 +7,9 @@ backups/
 *.p12
 *.pfx
 *.key.der
+*.csr
+*.srl
+*.bak-*
 node_modules/
 test-suite/
 dist/
@@ -15,6 +18,9 @@ session-*.md
 .env
 *.env
 strix_runs/
+# Runtime PKI / device cache — generated locally, not source
+data/certs/
+data/active-devices.json
 # Local usage traces (runtime/debug exports — do not commit)
 influx_usage.csv
 data/influx_usage.csv

@@ -1,6 +1,6 @@
 /**
  * Misconfig boot coverage via validateConfig (same rules as scripts/validate-env.ts).
- * Full script path uses tests/fixtures/prod-env.env in CI.
+ * Full script path uses tests/fixtures/prod-env.env.example in CI.
  */
 import { loadConfig, validateConfig } from '@/config';
 

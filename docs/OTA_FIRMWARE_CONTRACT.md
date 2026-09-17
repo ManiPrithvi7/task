@@ -1,6 +1,6 @@
 # OTA Firmware Contract (server ↔ device v4.3)
 
-Server-side API and MQTT schemas for the Proof Display OTA system. Device behavior is defined in [Proof Display OTA .md](./Proof%20Display%20OTA%20.md).
+Server-side API and MQTT schemas for the Proof Display OTA system. Device behavior is defined in [OTA display blueprint](./OTA_DISPLAY_BLUEPRINT.md).
 
 ## Enable OTA
 

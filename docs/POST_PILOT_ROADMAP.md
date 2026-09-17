@@ -109,7 +109,7 @@ Launch Checklist for Pilot v1:
 
 **Cross-References:**
 - `DEVICE_RECOVERY_FIRMWARE.md` (Flows 2/4)
-- `REDIS_CONNECTION_FIX.md` (Redis troubleshooting)
+- `REDIS_CLOUD_SETUP.md` (Redis setup)
 - `OTA_FIRMWARE_CONTRACT.md` (OTA debugging)
 
 #### P3.3post-p1 - GA Rate Limiting with Redis Store

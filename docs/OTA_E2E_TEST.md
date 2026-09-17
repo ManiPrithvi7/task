@@ -452,7 +452,7 @@ export OTA_FIRMWARE_VERSION=4.3.1-mvp
 - ESP32 firmware OTA implementation: `../mqttclient/main/ota_handler.c`
 - MQTT topic wiring: `../mqttclient/main/mqtt_handler.c`
 - WiFi dev bypass: `../mqttclient/main/wifi_provisioning.c`
-- Server OTA contract (when deployed): `docs/Proof Display OTA .md`
+- Server OTA contract (when deployed): `docs/OTA_DISPLAY_BLUEPRINT.md`
 
 ---
 

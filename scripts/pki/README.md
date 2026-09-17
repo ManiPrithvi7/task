@@ -4,10 +4,10 @@ Two stacks — one per cert type:
 
 | Task | Command |
 |------|---------|
-| Root CA (dev/local) | `npm run pki -- init-ca` |
-| Proof app MQTT client | `npm run pki -- app-client` |
-| Rotate Root CA (disruptive) | `npm run pki -- rotate` |
-| Print app `.env` base64 | `npm run pki -- print-app-env` |
+| Root CA (dev/local) | `bun scripts/pki/pki.ts init-ca` |
+| Proof app MQTT client | `bun scripts/pki/pki.ts app-client` |
+| Rotate Root CA (disruptive) | `bun scripts/pki/pki.ts rotate` |
+| Print app `.env` base64 | `bun scripts/pki/pki.ts print-app-env` |
 | Broker server cert | `./scripts/pki/generate-broker-cert.sh` |
 | Deploy broker to Railway | `./scripts/pki/print-railway-broker-env.sh` |
 | Verify broker TLS | `./scripts/pki/verify-broker-tls.sh --compare-both` (8883 + proxy 12359) |

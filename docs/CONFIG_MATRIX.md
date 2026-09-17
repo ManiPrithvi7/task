@@ -39,7 +39,7 @@ Environment variables read by `loadConfig()` / enforced by `validateConfig()`. R
 Do not run `bun scripts/validate-env.ts --production` on an empty env. Load the checked-in fixture:
 
 ```bash
-set -a && source tests/fixtures/prod-env.env && set +a
+set -a && source tests/fixtures/prod-env.env.example && set +a
 bun scripts/validate-env.ts --production
 ```
 
@@ -58,4 +58,4 @@ bun scripts/validate-env.ts --production
 
 **Pilot limits:** deferred work queue is in-memory (lost on restart / not multi-instance). MQTT ingress buffers max 100 messages during warmup (drop-oldest). See [docs/runbooks/](runbooks/README.md) and [docs/PRODUCTION_HARDENING_PHASE0.md](PRODUCTION_HARDENING_PHASE0.md).
 
-See also [docs/PILOT_V1_EXCEPTIONS.md](PILOT_V1_EXCEPTIONS.md) and [docs/uncensored.md](uncensored.md).
+See also [docs/PILOT_V1_EXCEPTIONS.md](PILOT_V1_EXCEPTIONS.md).
