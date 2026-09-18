@@ -279,8 +279,8 @@ export class StimulateService {
 
     const payload = {
       cmd: 'ota_update',
+      track: 'pilot',
       version: offer.version,
-      rollout: { strategy: 'percentage', percentage: 100 },
       download_url: offer.downloadUrl,
       sha256: offer.sha256,
       signature: offer.signature,

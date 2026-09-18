@@ -6,7 +6,7 @@ Devices accept that signature **only** if they verify **this lab public key**. P
 
 ## Device must already
 
-- Subscribe to `{MQTT_TOPIC_ROOT}/{deviceId}/cmd` and handle `cmd: ota_update` (including `force: true` and `rollout.percentage: 100`).
+- Subscribe to `{MQTT_TOPIC_ROOT}/{deviceId}/cmd` and handle `cmd: ota_update` (including `track: "pilot"` and `force: true`).
 - Download `download_url` (OCI GET PAR minted at connect — not a long-lived env URL).
 - Verify sha256 of bytes, Ed25519 over the UTF-8 sha256 hex string, and `size_bytes`.
 - Honor `force: true`.

@@ -88,14 +88,15 @@ describe('StimulateService stim OTA on /active', () => {
     const payload = JSON.parse(msg.payload) as Record<string, unknown>;
     expect(payload).toMatchObject({
       cmd: 'ota_update',
+      track: 'pilot',
       version: '4.3.1-stim',
       download_url: 'https://cdn.example.com/firmware.bin',
       sha256: SHA256,
       signature: SIGNATURE,
       size_bytes: 1124448,
-      force: true,
-      rollout: { strategy: 'percentage', percentage: 100 }
+      force: true
     });
+    expect(payload.rollout).toBeUndefined();
     expect(typeof payload.issued_at).toBe('string');
   });
 
