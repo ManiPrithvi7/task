@@ -94,7 +94,7 @@ describe('StimulateService stim OTA on /active', () => {
       sha256: SHA256,
       signature: SIGNATURE,
       size_bytes: 1124448,
-      force: true
+      force: false
     });
     expect(payload.rollout).toBeUndefined();
     expect(typeof payload.issued_at).toBe('string');

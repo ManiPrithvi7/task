@@ -285,7 +285,7 @@ export class StimulateService {
       sha256: offer.sha256,
       signature: offer.signature,
       size_bytes: offer.sizeBytes,
-      force: true,
+      force: false,
       issued_at: new Date().toISOString()
     };
     const topic = `${this.deps.topicRoot}/${deviceId}/cmd`;
