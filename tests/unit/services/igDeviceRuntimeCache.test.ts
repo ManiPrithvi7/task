@@ -36,4 +36,13 @@ describe('IgDeviceRuntimeCache GMB index', () => {
     expect(cache.getByGmbProfileId('loc-a')).toEqual(['d1']);
     expect(cache.getOtaStatus('d1')).toBe('pending');
   });
+
+  it('igNoCredentials is session-local and cleared on delete', () => {
+    const cache = getIgDeviceRuntimeCache();
+    expect(cache.hasNoInstagramCredentials('d1')).toBe(false);
+    cache.setIgNoCredentials('d1', true);
+    expect(cache.hasNoInstagramCredentials('d1')).toBe(true);
+    cache.delete('d1');
+    expect(cache.hasNoInstagramCredentials('d1')).toBe(false);
+  });
 });

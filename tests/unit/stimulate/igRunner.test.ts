@@ -31,6 +31,19 @@ describe('runIgTick synthetic ramp', () => {
   beforeEach(() => {
     mockPublish.mockClear();
     clearStimCache('instagram', deviceId);
+    const { getIgDeviceRuntimeCache } = require('../../../src/services/igDeviceRuntimeCache');
+    getIgDeviceRuntimeCache().delete(deviceId);
+  });
+
+  it('resumes from runtime last-published after empty in-memory cache', async () => {
+    const { getIgDeviceRuntimeCache } = require('../../../src/services/igDeviceRuntimeCache');
+    getIgDeviceRuntimeCache().setFollowers(deviceId, 39);
+
+    const result = await runIgTick(deviceId, 'proof.mqtt', mqttClient, 1, 500, redis);
+
+    expect(result).toEqual({ done: false, publishedCount: 1 });
+    const call = mockPublish.mock.calls[0][0] as { payload: string };
+    expect(JSON.parse(call.payload).payload.followers).toBe(40);
   });
 
   it('publishes step count on first tick', async () => {

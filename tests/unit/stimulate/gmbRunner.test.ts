@@ -28,6 +28,24 @@ describe('runGmbTick synthetic ramp', () => {
   beforeEach(() => {
     mockPublishGmbScreen.mockClear();
     clearStimCache('gmb', deviceId);
+    const { getIgDeviceRuntimeCache } = require('../../../src/services/igDeviceRuntimeCache');
+    getIgDeviceRuntimeCache().delete(deviceId);
+  });
+
+  it('resumes from runtime last-published after empty in-memory cache', async () => {
+    const { getIgDeviceRuntimeCache } = require('../../../src/services/igDeviceRuntimeCache');
+    getIgDeviceRuntimeCache().setGmbReviewCount(deviceId, 33);
+
+    const result = await runGmbTick(deviceId, 'proof.mqtt', mqttClient, true, 1, 100, redis);
+
+    expect(result).toEqual({ done: false, publishedCount: 1 });
+    expect(mockPublishGmbScreen).toHaveBeenCalledWith(
+      mqttClient,
+      'proof.mqtt',
+      deviceId,
+      { verifiedReview: 34, rating: 4 },
+      true
+    );
   });
 
   it('publishes step count regardless of GMB credentials', async () => {

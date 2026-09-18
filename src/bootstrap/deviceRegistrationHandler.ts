@@ -8,7 +8,7 @@ import { getLocalConnectDebounce, getLocalPromoRotationCache } from '../services
 import { cacheUserIntegrations } from '../services/userIntegrationCache';
 import { getDeviceStateLogService } from '../services/deviceStateLogService';
 import { REDIS_KEYS } from '../constants/redisKeys';
-import { writeDeviceHashOnConnect } from '../services/igDeviceRuntimeCache';
+import { writeDeviceHashOnConnect, getIgDeviceRuntimeCache } from '../services/igDeviceRuntimeCache';
 import { parsePilotBootPayload, isPilotOtaStatusEvent, normalizeOtaEventKey } from '../utils/pilotOtaPayload';
 import { logger } from '../utils/logger';
 import { publishLoyaltyIdleForDevice } from '../services/publishLoyaltyIdle';
@@ -156,6 +156,7 @@ export async function cacheActiveDevice(host: BootstrapHost, deviceId: string): 
       hashFields.ig_accessToken = igFromSocial.accessToken;
     }
     await writeDeviceHashOnConnect(deviceId, hashFields);
+    getIgDeviceRuntimeCache().setIgNoCredentials(deviceId, !igFromSocial);
   } catch (err: unknown) {
     logger.error('❌ [LIFECYCLE:CACHE] Failed to cache active device', {
       deviceId,

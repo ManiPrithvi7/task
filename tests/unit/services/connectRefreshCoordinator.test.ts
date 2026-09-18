@@ -5,6 +5,7 @@ const mockGetUserIntegrations = jest.fn();
 const mockCacheUserIntegrations = jest.fn();
 const mockClearHashes = jest.fn();
 const mockShouldSkip = jest.fn();
+const mockSetIgNoCredentials = jest.fn();
 
 jest.mock('@/services/deviceService', () => ({
   getActiveDeviceCache: () => ({ getActive: mockGetActive })
@@ -21,6 +22,10 @@ jest.mock('@/services/mqttChangeDetection', () => ({
 
 jest.mock('@/utils/stimulateAllowlist', () => ({
   shouldSkipForStimulate: (...args: unknown[]) => mockShouldSkip(...args)
+}));
+
+jest.mock('@/services/igDeviceRuntimeCache', () => ({
+  getIgDeviceRuntimeCache: () => ({ setIgNoCredentials: mockSetIgNoCredentials })
 }));
 
 function makeDeps(overrides: Record<string, unknown> = {}) {

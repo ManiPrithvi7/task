@@ -8,6 +8,7 @@ import { getUserIntegrations, cacheUserIntegrations } from './userIntegrationCac
 import { getActiveDeviceCache } from './deviceService';
 // TEMP STIMULATE — remove after testing
 import { shouldSkipForStimulate } from '../utils/stimulateAllowlist';
+import { getIgDeviceRuntimeCache } from './igDeviceRuntimeCache';
 
 export type ConnectRefreshCoordinatorDeps = {
   mqttClient: MqttClientManager;
@@ -52,12 +53,17 @@ export class ConnectRefreshCoordinator {
 
     const tasks: Promise<unknown>[] = [];
 
-    if (integrations.instagram && instagramPoller) {
-      if (await shouldSkipForStimulate(deviceId, 'instagram')) {
-        logger.info('[STIM_SKIP] Connect refresh skipping Instagram for stim device', { deviceId });
-      } else {
-        tasks.push(this.refreshInstagram(deviceId));
+    if (integrations.instagram) {
+      getIgDeviceRuntimeCache().setIgNoCredentials(deviceId, false);
+      if (instagramPoller) {
+        if (await shouldSkipForStimulate(deviceId, 'instagram')) {
+          logger.info('[STIM_SKIP] Connect refresh skipping Instagram for stim device', { deviceId });
+        } else {
+          tasks.push(this.refreshInstagram(deviceId));
+        }
       }
+    } else {
+      getIgDeviceRuntimeCache().setIgNoCredentials(deviceId, true);
     }
 
     if (integrations.gmb) {

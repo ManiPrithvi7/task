@@ -1121,7 +1121,13 @@ function toNormalizedRow(deviceId: string, result: InstagramFetchResult): Normal
 }
 
 async function resolveDeviceMeta(deviceId: string): Promise<ResolvedMeta | null> {
-  return getIgDeviceRuntimeCache().resolveMeta(deviceId);
+  const meta = await getIgDeviceRuntimeCache().resolveMeta(deviceId);
+  if (!meta) return null;
+  return {
+    instagramAccountId: meta.instagramAccountId,
+    accessToken: meta.accessToken,
+    userId: meta.businessId
+  };
 }
 
 export class InstagramDirectFetchInvoker implements InstagramFetchInvoker {
@@ -1152,28 +1158,25 @@ export class InstagramDirectFetchInvoker implements InstagramFetchInvoker {
         });
         return;
       }
-      const meta = await resolveDeviceMeta(deviceId);
-
-      if (!meta) {
-        const level = attentionLike ? 'info' : 'debug';
-        logger[level]('[IG_DIRECT] No Instagram credentials (Redis proof.mqtt:device:{id} or active-devices.json)', {
+      const runtime = getIgDeviceRuntimeCache();
+      if (runtime.hasNoInstagramCredentials(deviceId)) {
+        logger.debug('[IG_DIRECT] Skip — no Instagram on this connection', {
           deviceId,
           trigger: opts.trigger
         });
-        await applyInstagramServerlessDeviceOutcome(
-          {
-            deviceId,
-            success: false,
-            fetched_at: new Date().toISOString(),
-            error: 'no_instagram_credentials'
-          },
-          this.mqttClient,
-          topicRoot,
-          opts.trigger,
-          cid
-        );
         return;
       }
+      const meta = await resolveDeviceMeta(deviceId);
+
+      if (!meta) {
+        runtime.setIgNoCredentials(deviceId, true);
+        logger.info('[IG_DIRECT] No Instagram credentials — skip until disconnect', {
+          deviceId,
+          trigger: opts.trigger
+        });
+        return;
+      }
+      runtime.setIgNoCredentials(deviceId, false);
 
       const result = await fetchInstagramMetrics(deviceId, {
         accessToken: meta.accessToken,
@@ -1369,6 +1372,13 @@ export class InstagramPoller {
         logger.info('[STIM_SKIP] Instagram immediate fetch skipped for stim device', { deviceId, trigger });
         return false;
       }
+      if (getIgDeviceRuntimeCache().hasNoInstagramCredentials(deviceId)) {
+        logger.debug('[IG_POLLER] Immediate fetch skipped — no Instagram on this connection', {
+          deviceId,
+          trigger
+        });
+        return false;
+      }
       if (await this.circuitGate.isOpen()) return false;
 
       const allowed = await this.backoff.shouldAllow(deviceId);
@@ -1420,6 +1430,12 @@ export class InstagramPoller {
     if (deviceIds.length === 0) return [];
     const runtime = getIgDeviceRuntimeCache();
     return deviceIds.filter((id) => !runtime.getPowerSave(id));
+  }
+
+  private filterOutNoInstagram(deviceIds: string[]): string[] {
+    if (deviceIds.length === 0) return [];
+    const runtime = getIgDeviceRuntimeCache();
+    return deviceIds.filter((id) => !runtime.hasNoInstagramCredentials(id));
   }
 
   private async takeBackgroundWindow(deviceIds: string[]): Promise<string[]> {
@@ -1510,6 +1526,8 @@ export class InstagramPoller {
       );
       this.localPriorityZsetSize = active.length;
       if (active.length === 0) return;
+      active = this.filterOutNoInstagram(active);
+      if (active.length === 0) return;
       // TEMP STIMULATE — remove after testing: skip stim devices (allowlist + lock)
       active = active.filter((id) => !isStimulateDevice(id));
       if (active.length > 0 && this.redisService.isRedisConnected()) {
@@ -1580,6 +1598,9 @@ export class InstagramPoller {
         }
         allDeviceIds = filtered;
       }
+
+      allDeviceIds = this.filterOutNoInstagram(allDeviceIds);
+      if (allDeviceIds.length === 0) return;
 
       // Subtract devices currently in the active priority window (Redis zset).
       // IMPORTANT: do NOT use evalAtomicPriorityReadAndPruneEvalSha here; it is destructive (prunes the zset).

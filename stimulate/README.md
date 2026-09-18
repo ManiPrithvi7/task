@@ -11,7 +11,7 @@ STIMULATE_INTERVAL_MS=30000
 STIMULATE_STEP=1
 STIMULATE_IG_TARGET=5000
 STIMULATE_GMB_TARGET=5000
-# Optional: also drop Redis stim locks on boot
+# Optional: wipe cursor and do not resume Redis last-published
 # STIMULATE_CLEAR=1
 ```
 
@@ -26,10 +26,9 @@ Main-app live IG poller / connect refresh / GMB publish skip those device IDs.
 
 ## Behaviour
 
-- **Credentials ignored** — stim always publishes synthetic ramps from 0 (IG and GMB), whether or not social is linked.
-- **In-memory progress only** — no `data/stimulate/` files. Server restart → ramp from 0 again.
-- **Device `/active` reset** — reconnecting an allowlisted device clears progress and restarts both platform loops from 0.
-- When target is reached, that platform **stops** (no repeated same-message publishes). Reconnect to ramp again.
+- **Credentials ignored** — stim always publishes synthetic ramps (IG and GMB), whether or not social is linked.
+- **Progress** — in-memory cursor plus Redis device hash (`ig_follower_count` / `gmb_review_count`). Server restart and `/active` resume from last published. Set `STIMULATE_CLEAR=1` to start from 0.
+- When target is reached, that platform **stops**. `STIMULATE_CLEAR=1` (or empty last-published cache) starts from 0 again.
 - Topics: `{topicRoot}/{deviceId}/instagram` and `{topicRoot}/{deviceId}/gmb`.
 - Same v1.2 celebration payloads as production (mini/mega boundaries apply).
 

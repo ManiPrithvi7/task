@@ -1,7 +1,7 @@
 /**
  * TEMP STIMULATE — remove after testing
  * In-process stimulate loops for allowlisted devices (no separate process).
- * Progress is in-memory only; /active on an allowlisted device restarts the ramp from 0.
+ * In-memory cursor + device runtime/Redis hash (`ig_follower_count` / `gmb_review_count`).
  */
 import type { MqttClientManager } from '../servers/mqttClient';
 import type { RedisService } from './redisService';
@@ -9,9 +9,17 @@ import { logger } from '../utils/logger';
 import { parseStimulateAllowlist, isStimulateDevice } from '../utils/stimulateAllowlist';
 import { runIgTick, STIM_IG_LOCK_TTL_SEC } from '../../stimulate/igRunner';
 import { runGmbTick, STIM_GMB_LOCK_TTL_SEC } from '../../stimulate/gmbRunner';
-import { clearStimCache, clearDeviceStimCache, clearAllStimCache, readStimCache } from '../../stimulate/cache';
+import {
+  clearStimCache,
+  clearDeviceStimCache,
+  clearAllStimCache,
+  readStimCache,
+  writeStimCache
+} from '../../stimulate/cache';
 import { getActiveDeviceCache } from './deviceService';
 import { getLocalStimLock } from './localCaches';
+import { getIgDeviceRuntimeCache } from './igDeviceRuntimeCache';
+import { REDIS_KEYS } from '../constants/redisKeys';
 
 export type StimulatePlatform = 'instagram' | 'gmb';
 
@@ -90,7 +98,7 @@ export class StimulateService {
 
   /**
    * Start per-device/platform publish loops. No-op if STIMULATE_DEVICE empty.
-   * Progress is in-memory; server restart always ramps from 0.
+   * Resumes from in-memory cursor or Redis device hash when present.
    */
   async start(
     mqttClient: MqttClientManager,
@@ -117,19 +125,26 @@ export class StimulateService {
       return;
     }
 
-    // Drop any leftover in-memory / local stim locks
-    clearAllStimCache();
-    if (process.env.STIMULATE_CLEAR === '1') {
+    const forceReset = process.env.STIMULATE_CLEAR === '1';
+    if (forceReset) {
+      clearAllStimCache();
+      const runtime = getIgDeviceRuntimeCache();
       for (const d of devices) {
         getLocalStimLock().releaseAll(d);
+        runtime.setFollowers(d, 0);
+        runtime.setGmbReviewCount(d, 0);
       }
-      logger.info('[STIM] STIMULATE_CLEAR=1 — local stim locks cleared');
+      logger.info('[STIM] STIMULATE_CLEAR=1 — stim cursor reset (will not resume Redis counts)');
     }
 
     const step = parseStep();
     const intervalMs = parseIntervalMs();
     const igTarget = parseIgTarget();
     const gmbTarget = parseGmbTarget();
+
+    if (!forceReset) {
+      await this.seedProgressFromExistingCache(devices, igTarget, gmbTarget);
+    }
 
     logger.info('[STIM] ===== Starting in-process stimulate service =====', {
       devices,
@@ -138,10 +153,10 @@ export class StimulateService {
       intervalMs,
       igTarget,
       gmbTarget,
-      progress: 'in-memory (reset on /active or restart)',
+      progress: forceReset ? 'forced reset' : 'resume from memory or Redis device hash',
     });
 
-    await this.spawnLoops(devices, platforms, step, intervalMs, igTarget, gmbTarget);
+    await this.spawnLoops(devices, platforms, step, intervalMs, igTarget, gmbTarget, forceReset);
     this.running = this.loops.length > 0;
     logger.info('[STIM] In-process loops started', { count: this.loops.length });
   }
@@ -160,17 +175,13 @@ export class StimulateService {
 
   /**
    * Device /active on an allowlisted id:
-   *  - If cached ramp is within TTL → resume from last published value.
-   *  - If cache expired or missing → reset ramp from scratch.
+   *  - If last published exists (memory or Redis hash) → resume.
+   *  - Else → start ramp from scratch.
    */
   async resetOnDeviceConnect(deviceId: string): Promise<void> {
     if (!isStimulateDevice(deviceId) || !this.deps) return;
 
     this.stopLoopsForDevice(deviceId);
-
-    const igCache = readStimCache('instagram', deviceId);
-    const gmbCache = readStimCache('gmb', deviceId);
-    const hasValidCache = igCache?.status === 'running' || gmbCache?.status === 'running';
 
     const platforms = parsePlatforms();
     const step = parseStep();
@@ -178,17 +189,75 @@ export class StimulateService {
     const igTarget = parseIgTarget();
     const gmbTarget = parseGmbTarget();
 
+    await this.seedProgressFromExistingCache([deviceId], igTarget, gmbTarget);
+
+    const igCache = readStimCache('instagram', deviceId);
+    const gmbCache = readStimCache('gmb', deviceId);
+    const hasValidCache = Boolean(igCache || gmbCache);
+
     if (hasValidCache) {
-      logger.info('[STIM] /active — cache valid within TTL, resuming ramp', { deviceId });
+      logger.info('[STIM] /active — cache valid, resuming ramp', {
+        deviceId,
+        ig: igCache?.lastPublished,
+        gmb: gmbCache?.lastPublished
+      });
       await this.spawnLoops([deviceId], platforms, step, intervalMs, igTarget, gmbTarget, false);
     } else {
-      logger.info('[STIM] /active — cache expired or missing, resetting ramp from scratch', {
+      logger.info('[STIM] /active — no last-published cache, resetting ramp from scratch', {
         deviceId,
       });
       clearDeviceStimCache(deviceId);
       await this.spawnLoops([deviceId], platforms, step, intervalMs, igTarget, gmbTarget, true);
     }
     this.running = this.loops.length > 0;
+  }
+
+  /** Hydrate in-memory stim cursor from runtime cache / Redis device hash. */
+  private async seedProgressFromExistingCache(
+    devices: string[],
+    igTarget: number,
+    gmbTarget: number
+  ): Promise<void> {
+    const runtime = getIgDeviceRuntimeCache();
+    const redis = this.deps?.redis ?? null;
+
+    for (const deviceId of devices) {
+      if (
+        (runtime.getFollowers(deviceId) == null || runtime.getGmbReviewCount(deviceId) == null) &&
+        redis?.isRedisConnected()
+      ) {
+        try {
+          const hash = await redis.getClient().hGetAll(REDIS_KEYS.deviceHash(deviceId));
+          if (hash && Object.keys(hash).length > 0) {
+            runtime.hydrateFromHashFields(deviceId, hash);
+          }
+        } catch (err: unknown) {
+          logger.debug('[STIM] Redis hash hydrate skipped', {
+            deviceId,
+            error: err instanceof Error ? err.message : String(err)
+          });
+        }
+      }
+
+      if (!readStimCache('instagram', deviceId)) {
+        const ig = runtime.getFollowers(deviceId);
+        if (ig != null && ig > 0) {
+          writeStimCache('instagram', deviceId, {
+            lastPublished: ig,
+            status: ig >= igTarget ? 'done' : 'running'
+          });
+        }
+      }
+      if (!readStimCache('gmb', deviceId)) {
+        const gmb = runtime.getGmbReviewCount(deviceId);
+        if (gmb != null && gmb > 0) {
+          writeStimCache('gmb', deviceId, {
+            lastPublished: gmb,
+            status: gmb >= gmbTarget ? 'done' : 'running'
+          });
+        }
+      }
+    }
   }
 
   private stopLoopsForDevice(deviceId: string): void {

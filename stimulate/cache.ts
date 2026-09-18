@@ -1,7 +1,7 @@
 /**
- * TEMP STIMULATE — in-memory progress only (no disk).
- * Entries have a TTL; expired entries are treated as missing.
- * Server restart loses all state (intentional).
+ * TEMP STIMULATE — in-memory ramp cursor with TTL.
+ * Last published counts also live on the device runtime hash (`ig_follower_count` /
+ * `gmb_review_count`) so a process restart can resume.
  */
 
 export const STIM_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
@@ -12,11 +12,24 @@ export interface StimCacheEntry {
   expiresAt: number;
 }
 
-// process-local Map; ceiling = lost on restart (intentional)
+// process-local Map; Redis device hash is the restart source of truth
 const store = new Map<string, StimCacheEntry>();
 
 function key(platform: string, deviceId: string): string {
   return `${platform}:${deviceId}`;
+}
+
+/** Prefer in-memory cursor; else last runtime/Redis count; else emptyDefault. */
+export function resolveLastPublished(
+  platform: string,
+  deviceId: string,
+  emptyDefault: number,
+  runtimeValue?: number
+): number {
+  const cached = readStimCache(platform, deviceId);
+  if (cached) return cached.lastPublished;
+  if (runtimeValue != null && runtimeValue > 0) return runtimeValue;
+  return emptyDefault;
 }
 
 export function readStimCache(platform: string, deviceId: string): StimCacheEntry | null {

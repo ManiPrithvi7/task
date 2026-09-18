@@ -33,6 +33,8 @@ export interface DeviceRuntimeState {
   igConsecutiveErrors?: number;
   powerSaveSet?: boolean;
   powerSaveSetAt?: number;
+  /** Session-only: Instagram Social checked on connect. Cleared on disconnect. */
+  igNoCredentials?: boolean;
 
   dirtyFields: Set<string>;
 }
@@ -135,6 +137,15 @@ class IgDeviceRuntimeCacheImpl {
     this.entry(deviceId).powerSave = on;
   }
 
+  /** Local session flag — do not persist. Removed when the device hash entry is deleted. */
+  setIgNoCredentials(deviceId: string, absent: boolean): void {
+    this.entry(deviceId).igNoCredentials = absent;
+  }
+
+  hasNoInstagramCredentials(deviceId: string): boolean {
+    return this.devices.get(deviceId)?.igNoCredentials === true;
+  }
+
   getOtaStatus(deviceId: string): string | undefined {
     return this.devices.get(deviceId)?.otaStatus;
   }
@@ -177,6 +188,7 @@ class IgDeviceRuntimeCacheImpl {
     }
     if (fields.ig_accountId !== undefined) e.igAccountId = fields.ig_accountId || undefined;
     if (fields.ig_accessToken !== undefined) e.igAccessToken = fields.ig_accessToken || undefined;
+    if (e.igAccountId?.trim() && e.igAccessToken?.trim()) e.igNoCredentials = false;
     if (fields.ig_follower_count !== undefined) {
       const n = parseInt(fields.ig_follower_count, 10);
       if (!Number.isNaN(n)) e.igFollowerCount = n;

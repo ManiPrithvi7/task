@@ -2,11 +2,11 @@ import { logger } from '../src/utils/logger';
 import { RedisService } from '../src/services/redisService';
 import type { MqttClientManager } from '../src/servers/mqttClient';
 import { publishGmbScreen } from '../src/webhooks/delivery/publishGmbScreen';
-import { readStimCache, writeStimCache } from './cache';
+import { readStimCache, resolveLastPublished, writeStimCache } from './cache';
 import { calcResume, ceilingSequence } from './math';
 import { resolveCelebrationState } from '../src/services/screenEnvelope';
 import { getLocalStimLock } from '../src/services/localCaches';
-import { getIgDeviceRuntimeCache } from '../src/services/igDeviceRuntimeCache';
+import { getIgDeviceRuntimeCache, syncScreenFieldImmediate } from '../src/services/igDeviceRuntimeCache';
 
 export const STIM_GMB_LOCK_TTL_SEC = 3600;
 const STIM_GMB_LOCK_KEY_PREFIX = 'stim:gmb:';
@@ -28,6 +28,7 @@ async function updateGmbCache(deviceId: string, reviews: number): Promise<void> 
   const runtime = getIgDeviceRuntimeCache();
   runtime.setGmbReviewCount(deviceId, reviews);
   runtime.markDirty(deviceId, 'gmb_review_count');
+  await syncScreenFieldImmediate(deviceId, 'gmb_review_count', reviews);
 }
 
 export async function runGmbTick(
@@ -44,7 +45,12 @@ export async function runGmbTick(
     return { done: true, publishedCount: 0 };
   }
 
-  const lastPub = cache?.lastPublished ?? 0;
+  const lastPub = resolveLastPublished(
+    'gmb',
+    deviceId,
+    0,
+    getIgDeviceRuntimeCache().getGmbReviewCount(deviceId)
+  );
   // ponytail: live always 0 — credentials never gate or floor the ramp
   const publishValue = ceilingSequence(calcResume(0, lastPub, step), target);
   const rating = 4;

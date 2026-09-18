@@ -152,7 +152,15 @@ export async function initializeHttpServer(host: BootstrapHost): Promise<void> {
         host.httpServer.getApp().use('/api/v1', dashboardRoutes);
         logger.info('✅ Dashboard routes registered at /api/v1/dashboard/*');
 
-        const integrationRoutes = createIntegrationRoutes({ authService: host.authService });
+        const integrationRoutes = createIntegrationRoutes({
+          authService: host.authService,
+          onConnected: (deviceId) => {
+            void host.connectRefreshCoordinator?.refresh(deviceId).catch((err: unknown) => {
+              const msg = err instanceof Error ? err.message : String(err);
+              logger.warn('[INTEGRATIONS_CONNECT] Live pull failed', { deviceId, error: msg });
+            });
+          }
+        });
         host.httpServer.getApp().use('/api/v1', integrationRoutes);
         logger.info('✅ Integration routes registered at /api/v1/integrations/*');
 
