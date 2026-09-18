@@ -41,6 +41,9 @@ describe('stim OTA admin UI', () => {
     expect(res.statusCode).toBe(200);
     expect(res.body).toBe(STIM_OTA_ADMIN_HTML);
     expect(res.body).toContain('stim/firmware');
+    expect(res.body).toContain('stim/offer');
+    expect(res.body).toContain('cur-version');
+    expect(res.body).toContain('cur-file');
     expect(res.body).not.toContain('Admin JWT');
     expect(res.body).not.toContain('TEST_OTA_SHA256');
     expect(res.body).not.toContain('TEST_OTA_SIGNATURE');

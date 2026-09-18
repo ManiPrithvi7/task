@@ -118,6 +118,7 @@ export function createStimOtaAdminRoutes(deps: StimOtaAdminRoutesDeps): Router {
       res.json({
         success: true,
         version: offer.version,
+        filename: offer.filename,
         object_key: offer.objectKey,
         timestamp: new Date().toISOString()
       });

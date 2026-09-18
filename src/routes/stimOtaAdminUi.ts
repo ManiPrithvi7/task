@@ -13,32 +13,57 @@ export const STIM_OTA_ADMIN_HTML = `<!DOCTYPE html>
     input, button { font: inherit; }
     input[type=text] { width: 100%; padding: 0.4rem 0.5rem; box-sizing: border-box; }
     button { margin-top: 1rem; padding: 0.45rem 0.9rem; cursor: pointer; }
-    pre { background: #1c1c1c; padding: 0.75rem; overflow: auto; white-space: pre-wrap; }
+    pre { background: #1c1c1c; padding: 0.75rem; overflow: auto; white-space: pre-wrap; display: none; }
     .row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .card { background: #1c1c1c; padding: 0.75rem 1rem; margin: 1rem 0; border-radius: 6px; }
+    .muted { color: #aaa; font-size: 13px; }
     .err { color: #f88; }
     .ok { color: #8d8; }
   </style>
 </head>
 <body>
   <h1>Stim OTA</h1>
-  <p>Open for lab testing (no login). Signing fields live in Redis (seeded from env at boot). Upload is optional; MQTT reads Redis on <code>/active</code>.</p>
+  <p>Open for lab testing (no login). MQTT on <code>/active</code> uses the Redis offer below.</p>
+  <div class="card">
+    <div class="muted">Current offer (Redis)</div>
+    <p>Firmware version: <strong id="cur-version">loading…</strong></p>
+    <p>Firmware file: <strong id="cur-file">loading…</strong></p>
+  </div>
   <label>Version (newer than device fw_version) — only for a new bin upload</label>
   <input id="version" type="text" placeholder="9.9.9"/>
   <label>Firmware file</label>
   <input id="file" type="file" accept=".bin,.ino.bin,application/octet-stream"/>
   <div class="row">
     <button type="button" id="upload">Upload</button>
-    <button type="button" id="offer">Load current offer</button>
+    <button type="button" id="offer">Refresh current offer</button>
     <button type="button" id="pubkey">Download lab public key</button>
   </div>
   <pre id="out"></pre>
   <script>
     const base = '/api/v1/admin/ota';
     const out = document.getElementById('out');
+    const curVersion = document.getElementById('cur-version');
+    const curFile = document.getElementById('cur-file');
     function show(ok, data) {
+      out.style.display = 'block';
       out.className = ok ? 'ok' : 'err';
       out.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
     }
+    function setCurrent(json) {
+      curVersion.textContent = (json && json.version) ? json.version : '—';
+      curFile.textContent = (json && json.filename) ? json.filename : '—';
+    }
+    async function loadOffer() {
+      const res = await fetch(base + '/stim/offer');
+      const json = await res.json();
+      if (!res.ok) {
+        setCurrent(null);
+        throw new Error(json.error || res.statusText);
+      }
+      setCurrent(json);
+      return json;
+    }
+    loadOffer().catch(() => setCurrent(null));
     document.getElementById('upload').onclick = async () => {
       try {
         const version = document.getElementById('version').value.trim();
@@ -51,16 +76,13 @@ export const STIM_OTA_ADMIN_HTML = `<!DOCTYPE html>
         const res = await fetch(base + '/stim/firmware', { method: 'POST', body });
         const json = await res.json();
         if (!res.ok) throw new Error(json.error || res.statusText);
+        setCurrent(json);
         show(true, json);
       } catch (e) { show(false, e.message || String(e)); }
     };
     document.getElementById('offer').onclick = async () => {
-      try {
-        const res = await fetch(base + '/stim/offer');
-        const json = await res.json();
-        if (!res.ok) throw new Error(json.error || res.statusText);
-        show(true, json);
-      } catch (e) { show(false, e.message || String(e)); }
+      try { await loadOffer(); }
+      catch (e) { setCurrent(null); }
     };
     document.getElementById('pubkey').onclick = async () => {
       try {
@@ -72,7 +94,6 @@ export const STIM_OTA_ADMIN_HTML = `<!DOCTYPE html>
         a.href = URL.createObjectURL(blob);
         a.download = 'ota-lab-public.pem';
         a.click();
-        show(true, text);
       } catch (e) { show(false, e.message || String(e)); }
     };
   </script>
