@@ -112,7 +112,7 @@ describe('instagramService outcome applicator', () => {
         ]),
       })
     );
-    expect(mockInflux.writeInstagramOutcomeBatch.mock.calls[0][0].milestones).toHaveLength(4);
+    expect(mockInflux.writeInstagramOutcomeBatch.mock.calls[0][0].milestones).toHaveLength(10);
     expect(mockRuntime.setFollowers).toHaveBeenCalledWith('d1', 500, expect.any(Number));
   });
 
