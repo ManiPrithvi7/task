@@ -3,6 +3,7 @@
  */
 import { runIgTick, resolveLiveFollowersForStim } from '../../../stimulate/igRunner';
 import { clearStimCache } from '../../../stimulate/cache';
+import { getIgDeviceRuntimeCache } from '../../../src/services/igDeviceRuntimeCache';
 
 const mockPublish = jest.fn().mockResolvedValue(undefined);
 
@@ -31,12 +32,10 @@ describe('runIgTick synthetic ramp', () => {
   beforeEach(() => {
     mockPublish.mockClear();
     clearStimCache('instagram', deviceId);
-    const { getIgDeviceRuntimeCache } = require('../../../src/services/igDeviceRuntimeCache');
     getIgDeviceRuntimeCache().delete(deviceId);
   });
 
   it('resumes from runtime last-published after empty in-memory cache', async () => {
-    const { getIgDeviceRuntimeCache } = require('../../../src/services/igDeviceRuntimeCache');
     getIgDeviceRuntimeCache().setFollowers(deviceId, 39);
 
     const result = await runIgTick(deviceId, 'proof.mqtt', mqttClient, 1, 500, redis);

@@ -3,6 +3,7 @@
  */
 import { runGmbTick } from '../../../stimulate/gmbRunner';
 import { clearStimCache, writeStimCache } from '../../../stimulate/cache';
+import { getIgDeviceRuntimeCache } from '../../../src/services/igDeviceRuntimeCache';
 
 const mockPublishGmbScreen = jest.fn().mockResolvedValue({
   topic: 'proof.mqtt/DEVICE-STIM-GMB-TEST/gmb',
@@ -28,12 +29,10 @@ describe('runGmbTick synthetic ramp', () => {
   beforeEach(() => {
     mockPublishGmbScreen.mockClear();
     clearStimCache('gmb', deviceId);
-    const { getIgDeviceRuntimeCache } = require('../../../src/services/igDeviceRuntimeCache');
     getIgDeviceRuntimeCache().delete(deviceId);
   });
 
   it('resumes from runtime last-published after empty in-memory cache', async () => {
-    const { getIgDeviceRuntimeCache } = require('../../../src/services/igDeviceRuntimeCache');
     getIgDeviceRuntimeCache().setGmbReviewCount(deviceId, 33);
 
     const result = await runGmbTick(deviceId, 'proof.mqtt', mqttClient, true, 1, 100, redis);
