@@ -1,7 +1,9 @@
 import { loadConfig, validateConfig } from '@/config';
+import { clearStimTestOtaEnv } from '../../helpers/clearStimTestOtaEnv';
 
 const cleanEnv = (): void => {
   delete process.env.INFLUXDB_COMPLIANCE_BUCKET;
+  clearStimTestOtaEnv();
 };
 
 const baseEnv = (): Record<string, string | undefined> => ({

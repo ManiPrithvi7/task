@@ -11,6 +11,14 @@ describe('E2E misconfig boot', () => {
     process.env = { ...saved };
   });
 
+  beforeEach(() => {
+    delete process.env.TEST_OTA_URL;
+    delete process.env.TEST_OTA_VERSION;
+    delete process.env.TEST_OTA_SHA256;
+    delete process.env.TEST_OTA_SIGNATURE;
+    delete process.env.TEST_OTA_SIZE_BYTES;
+  });
+
   it('fails fast when TEST_OTA is enabled in production', () => {
     process.env = {
       ...process.env,
