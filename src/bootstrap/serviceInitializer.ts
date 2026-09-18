@@ -4,6 +4,8 @@ import { initializeHttpServer } from './httpRouteRegistry';
 import { ConnectRefreshCoordinator } from '../services/connectRefreshCoordinator';
 import { GmbConnectPull } from '../services/gmbConnectPull';
 import { StimulateService } from '../services/stimulateService';
+import { tryCreateFirmwareStorageFromOciEnv } from '../services/firmwareStorageService';
+import { hasStimRedisOffer } from '../services/stimOtaRedis';
 import {
   InstagramServerlessBridge,
   InstagramDirectFetchInvoker,
@@ -40,10 +42,11 @@ export async function initializePhase2(host: BootstrapHost): Promise<void> {
 
   await host.processDeferredWork();
   await host.flushMqttMessageBuffer();
-  logSubsystemSummary(host);
+  await logSubsystemSummary(host);
 }
 
-function logSubsystemSummary(host: BootstrapHost): void {
+async function logSubsystemSummary(host: BootstrapHost): Promise<void> {
+  const stimulateOta = await hasStimRedisOffer(host.redisService ?? null);
   logger.info('📋 Enabled subsystems', {
     ota: host.config.ota?.enabled === true,
     instagramPoller: Boolean(host.instagramPoller),
@@ -53,6 +56,7 @@ function logSubsystemSummary(host: BootstrapHost): void {
         host.config.webhooks.mqttPublishEnabled
     ),
     stimulate: Boolean(process.env.STIMULATE_DEVICE?.trim()),
+    stimulateOta,
     provisioning: host.config.provisioning.enabled,
     testOta: process.env.TEST_OTA === 'true'
   });
@@ -194,7 +198,8 @@ async function initializeStimulateService(host: BootstrapHost): Promise<void> {
     host.mqttClient,
     host.redisService ?? null,
     host.config.mqtt.topicRoot,
-    host.config.webhooks.mqttPublishEnabled
+    host.config.webhooks.mqttPublishEnabled,
+    host.firmwareStorageService ?? tryCreateFirmwareStorageFromOciEnv()
   );
 }
 

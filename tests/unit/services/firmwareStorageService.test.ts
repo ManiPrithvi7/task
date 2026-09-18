@@ -6,6 +6,8 @@ import {
   mockOciGetObject,
   mockOciHeadBucket,
   mockOciHeadObject,
+  mockOciDeleteObject,
+  mockOciPutObject,
 } from '../../helpers/moduleMocks';
 
 jest.mock('@/services/ociAuthProvider', () => ({
@@ -210,6 +212,42 @@ describe('OciFirmwareStorageService', () => {
         httpStatus: 403,
         code: 'STORAGE_FORBIDDEN'
       });
+    });
+  });
+
+  describe('deleteObject', () => {
+    it('deletes the object', async () => {
+      mockOciDeleteObject.mockResolvedValue({});
+      await expect(service.deleteObject('firmware/stim/firmware.bin')).resolves.toBeUndefined();
+      expect(mockOciDeleteObject).toHaveBeenCalledWith({
+        namespaceName: 'ns',
+        bucketName: 'bkt',
+        objectName: 'firmware/stim/firmware.bin'
+      });
+    });
+
+    it('ignores OBJECT_NOT_FOUND', async () => {
+      mockOciDeleteObject.mockRejectedValue(new Error('NotAuthorizedOrNotFound 404'));
+      await expect(service.deleteObject('k')).resolves.toBeUndefined();
+    });
+  });
+
+  describe('putObject', () => {
+    it('puts bytes with firmware metadata', async () => {
+      mockOciPutObject.mockResolvedValue({});
+      const body = Buffer.from('bin');
+      await service.putObject('firmware/stim/firmware.bin', body, {
+        version: '9.9.9',
+        sha256: 'aa'
+      });
+      expect(mockOciPutObject).toHaveBeenCalledWith(
+        expect.objectContaining({
+          objectName: 'firmware/stim/firmware.bin',
+          putObjectBody: body,
+          contentLength: 3,
+          opcMeta: { 'firmware-version': '9.9.9', sha256: 'aa' }
+        })
+      );
     });
   });
 });

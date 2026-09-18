@@ -6,10 +6,17 @@ import * as crypto from 'crypto';
 import { Readable } from 'stream';
 import { objectstorage } from 'oci-sdk';
 import type { OtaConfig } from '../config';
-import { otaOciParBaseUrl } from '../config/otaDefaults';
+import { loadOciCredentialsFromEnv } from '../config';
+import {
+  OTA_OCI_BUCKET,
+  OTA_OCI_NAMESPACE,
+  OTA_OCI_REGION,
+  OTA_PRESIGNED_TTL_SEC,
+  otaOciParBaseUrl
+} from '../config/otaDefaults';
 import { logger } from '../utils/logger';
 import { createOciAuthProvider } from './ociAuthProvider';
-import { mapOciError, withOciRetry } from './ociStorageErrors';
+import { mapOciError, withOciRetry, OciStorageError } from './ociStorageErrors';
 
 export const FIRMWARE_VERSION_METADATA_KEY = 'firmware-version';
 export const FIRMWARE_SHA256_METADATA_KEY = 'sha256';
@@ -28,6 +35,8 @@ export interface IFirmwareStorage {
   verifySha256(objectKey: string, expectedSha256: string): Promise<boolean>;
   getObjectStream(objectKey: string): Promise<Readable>;
   verifyBucketAccess(): Promise<void>;
+  deleteObject(objectKey: string): Promise<void>;
+  putObject(objectKey: string, body: Buffer, meta: { version: string; sha256: string }): Promise<void>;
 }
 
 function metaValue(head: objectstorage.responses.HeadObjectResponse, key: string): string | undefined {
@@ -178,6 +187,50 @@ export class OciFirmwareStorageService implements IFirmwareStorage {
     });
   }
 
+  async deleteObject(objectKey: string): Promise<void> {
+    return withOciRetry(async () => {
+      try {
+        await this.client.deleteObject({
+          namespaceName: this.config.oci.namespace,
+          bucketName: this.config.oci.bucket,
+          objectName: objectKey
+        });
+        logger.info('[OTA] OCI object deleted', { objectKey });
+      } catch (err) {
+        const mapped = mapOciError(err);
+        if (mapped instanceof OciStorageError && mapped.code === 'OBJECT_NOT_FOUND') {
+          return;
+        }
+        throw mapped;
+      }
+    });
+  }
+
+  async putObject(
+    objectKey: string,
+    body: Buffer,
+    meta: { version: string; sha256: string }
+  ): Promise<void> {
+    return withOciRetry(async () => {
+      try {
+        await this.client.putObject({
+          namespaceName: this.config.oci.namespace,
+          bucketName: this.config.oci.bucket,
+          objectName: objectKey,
+          putObjectBody: body,
+          contentLength: body.length,
+          opcMeta: {
+            [FIRMWARE_VERSION_METADATA_KEY]: meta.version,
+            [FIRMWARE_SHA256_METADATA_KEY]: meta.sha256.toLowerCase()
+          }
+        });
+        logger.info('[OTA] OCI object put', { objectKey, version: meta.version, size: body.length });
+      } catch (err) {
+        throw mapOciError(err);
+      }
+    });
+  }
+
   async verifyBucketAccess(): Promise<void> {
     await withOciRetry(async () => {
       try {
@@ -199,6 +252,27 @@ export class OciFirmwareStorageService implements IFirmwareStorage {
 
 export function createFirmwareStorageService(config: OtaConfig): IFirmwareStorage {
   return new OciFirmwareStorageService(config);
+}
+
+/** Stim OTA: OCI client when OTA_ENABLED is false but OCI API creds are present. */
+export function tryCreateFirmwareStorageFromOciEnv(): IFirmwareStorage | null {
+  const credentials = loadOciCredentialsFromEnv();
+  if (!credentials) return null;
+  const namespace = process.env.OTA_OCI_NAMESPACE?.trim() || OTA_OCI_NAMESPACE;
+  const bucket = process.env.OTA_OCI_BUCKET?.trim() || OTA_OCI_BUCKET;
+  const region = process.env.OTA_OCI_REGION?.trim() || OTA_OCI_REGION;
+  const parOverride = process.env.OTA_OCI_PAR_BASE_URL?.trim();
+  const ttl = Number.parseInt(process.env.OTA_PRESIGNED_TTL_SEC || '', 10);
+  return new OciFirmwareStorageService({
+    oci: {
+      namespace,
+      bucket,
+      region,
+      parBaseUrl: parOverride || otaOciParBaseUrl(namespace, region),
+      credentials
+    },
+    presignedUrlTtlSec: Number.isFinite(ttl) && ttl >= 60 ? ttl : OTA_PRESIGNED_TTL_SEC
+  } as OtaConfig);
 }
 
 /** @deprecated Use IFirmwareStorage */

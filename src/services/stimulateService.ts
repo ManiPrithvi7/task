@@ -5,8 +5,10 @@
  */
 import type { MqttClientManager } from '../servers/mqttClient';
 import type { RedisService } from './redisService';
+import type { IFirmwareStorage } from './firmwareStorageService';
 import { logger } from '../utils/logger';
 import { parseStimulateAllowlist, isStimulateDevice } from '../utils/stimulateAllowlist';
+import { loadStimOtaOffer } from './stimOtaRedis';
 import { runIgTick, STIM_IG_LOCK_TTL_SEC } from '../../stimulate/igRunner';
 import { runGmbTick, STIM_GMB_LOCK_TTL_SEC } from '../../stimulate/gmbRunner';
 import {
@@ -40,6 +42,7 @@ type StartDeps = {
   redis: RedisService | null;
   topicRoot: string;
   mqttPublishEnabled: boolean;
+  firmwareStorage?: IFirmwareStorage | null;
 };
 
 function parsePlatforms(): StimulatePlatform[] {
@@ -104,14 +107,15 @@ export class StimulateService {
     mqttClient: MqttClientManager,
     redis: RedisService | null,
     topicRoot: string,
-    mqttPublishEnabled: boolean
+    mqttPublishEnabled: boolean,
+    firmwareStorage?: IFirmwareStorage | null
   ): Promise<void> {
     if (this.running) {
       logger.warn('[STIM] Already running — skip start');
       return;
     }
 
-    this.deps = { mqttClient, redis, topicRoot, mqttPublishEnabled };
+    this.deps = { mqttClient, redis, topicRoot, mqttPublishEnabled, firmwareStorage: firmwareStorage ?? null };
 
     const devices = parseStimulateAllowlist();
     if (devices.length === 0) {
@@ -210,6 +214,102 @@ export class StimulateService {
       await this.spawnLoops([deviceId], platforms, step, intervalMs, igTarget, gmbTarget, true);
     }
     this.running = this.loops.length > 0;
+
+    await this.publishTestOtaOnConnect(deviceId);
+  }
+
+  /** One-shot production-shaped ota_update. Version/sha256/signature/size come from Redis only. */
+  private async publishTestOtaOnConnect(deviceId: string): Promise<void> {
+    if (!isStimulateDevice(deviceId) || !this.deps) return;
+
+    if (!this.deps.mqttPublishEnabled) {
+      logger.warn('[STIM-OTA] MQTT publish disabled — skip', { deviceId });
+      return;
+    }
+
+    let offer: {
+      downloadUrl: string;
+      version: string;
+      sha256: string;
+      signature: string;
+      sizeBytes: number;
+    } | null = null;
+
+    try {
+      const redisOffer = await loadStimOtaOffer(this.deps.redis);
+      if (!redisOffer) {
+        return;
+      }
+      let downloadUrl = '';
+      if (redisOffer.objectKey && this.deps.firmwareStorage) {
+        downloadUrl = await this.deps.firmwareStorage.createPresignedGetUrl(
+          redisOffer.objectKey,
+          redisOffer.version
+        );
+      } else if (redisOffer.downloadUrl) {
+        downloadUrl = redisOffer.downloadUrl;
+      } else {
+        logger.warn('[STIM-OTA] Redis offer missing download_url and OCI object — skip', {
+          deviceId
+        });
+        return;
+      }
+      offer = {
+        downloadUrl,
+        version: redisOffer.version,
+        sha256: redisOffer.sha256,
+        signature: redisOffer.signature,
+        sizeBytes: redisOffer.sizeBytes
+      };
+    } catch (err: unknown) {
+      logger.warn('[STIM-OTA] Offer resolve failed — skip', {
+        deviceId,
+        error: err instanceof Error ? err.message : String(err)
+      });
+      return;
+    }
+    if (!offer) return;
+
+    let urlHost = offer.downloadUrl;
+    try {
+      urlHost = new URL(offer.downloadUrl).host;
+    } catch {
+      /* keep raw */
+    }
+
+    const payload = {
+      cmd: 'ota_update',
+      version: offer.version,
+      rollout: { strategy: 'percentage', percentage: 100 },
+      download_url: offer.downloadUrl,
+      sha256: offer.sha256,
+      signature: offer.signature,
+      size_bytes: offer.sizeBytes,
+      force: true,
+      issued_at: new Date().toISOString()
+    };
+    const topic = `${this.deps.topicRoot}/${deviceId}/cmd`;
+
+    try {
+      await this.deps.mqttClient.publish({
+        topic,
+        payload: JSON.stringify(payload),
+        qos: 2,
+        retain: false
+      });
+      logger.info('[STIM-OTA] Published ota_update', {
+        deviceId,
+        version: offer.version,
+        sizeBytes: offer.sizeBytes,
+        downloadHost: urlHost,
+        topic
+      });
+    } catch (err: unknown) {
+      logger.warn('[STIM-OTA] Publish failed', {
+        deviceId,
+        error: err instanceof Error ? err.message : String(err)
+      });
+    }
   }
 
   /** Hydrate in-memory stim cursor from runtime cache / Redis device hash. */

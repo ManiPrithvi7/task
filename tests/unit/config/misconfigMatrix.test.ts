@@ -28,6 +28,14 @@ describe('production misconfig matrix', () => {
     process.env = { ...saved };
   });
 
+  beforeEach(() => {
+    delete process.env.TEST_OTA_URL;
+    delete process.env.TEST_OTA_VERSION;
+    delete process.env.TEST_OTA_SHA256;
+    delete process.env.TEST_OTA_SIGNATURE;
+    delete process.env.TEST_OTA_SIZE_BYTES;
+  });
+
   it('passes with prod-shaped fixture env', () => {
     process.env = { ...process.env, ...baseProd() };
     const config = loadConfig();
@@ -45,6 +53,20 @@ describe('production misconfig matrix', () => {
     process.env = { ...process.env, ...baseProd(), TEST_OTA: 'true' };
     const config = loadConfig();
     expect(() => validateConfig(config)).toThrow(/TEST_OTA/);
+  });
+
+  it('fails when TEST_OTA_URL is set in production', () => {
+    process.env = {
+      ...process.env,
+      ...baseProd(),
+      TEST_OTA_URL: 'https://cdn.example.com/fw.bin',
+      TEST_OTA_VERSION: 'stim:1',
+      TEST_OTA_SHA256: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      TEST_OTA_SIGNATURE: Buffer.alloc(64, 1).toString('base64'),
+      TEST_OTA_SIZE_BYTES: '10'
+    };
+    const config = loadConfig();
+    expect(() => validateConfig(config)).toThrow(/TEST_OTA_URL is not allowed/);
   });
 
   it('fails when JWT missing with provisioning enabled', () => {

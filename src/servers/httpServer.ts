@@ -75,6 +75,10 @@ export class HttpServer {
         loyaltyCors(req, res, next);
         return;
       }
+      if (req.originalUrl.startsWith('/api/v1/admin/ota/stim')) {
+        cors({ origin: true })(req, res, next);
+        return;
+      }
       globalCors(req, res, next);
     });
     this.app.use(helmet({
@@ -115,6 +119,9 @@ export class HttpServer {
           return true;
         }
         if (path.startsWith('/api/v1/ota/download/')) {
+          return true;
+        }
+        if (req.originalUrl.startsWith('/api/v1/admin/ota/stim')) {
           return true;
         }
         return false;

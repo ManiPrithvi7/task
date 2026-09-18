@@ -83,19 +83,108 @@ export function resolveMqttClientId(): string {
   return base;
 }
 
+const SHA256_HEX = /^[a-f0-9]{64}$/;
+
 /** True when TEST_OTA env bypass is active (dev/CI only — blocked in production). */
 export function isTestOtaEnabled(): boolean {
   return process.env.TEST_OTA === 'true';
 }
 
+export type StimTestOtaEnvSeed = {
+  version: string;
+  sha256: string;
+  signature: string;
+  sizeBytes: number;
+  downloadUrl?: string;
+};
+
+/** True when stim-device TEST_OTA_URL is set (allowlisted /active OTA). */
+export function isStimTestOtaUrlSet(): boolean {
+  return Boolean(process.env.TEST_OTA_URL?.trim());
+}
+
+function parseOptionalTestOtaUrl(): string | undefined {
+  const downloadUrl = process.env.TEST_OTA_URL?.trim();
+  if (!downloadUrl) return undefined;
+  let parsed: URL;
+  try {
+    parsed = new URL(downloadUrl);
+  } catch {
+    throw new Error('TEST_OTA_URL must be a valid http(s) URL');
+  }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    throw new Error('TEST_OTA_URL must be a valid http(s) URL');
+  }
+  return downloadUrl;
+}
+
 /**
- * TEST_OTA bypasses OTA gates — allowed only outside production.
+ * TEST_OTA_VERSION / SHA256 / SIGNATURE / SIZE_BYTES for Redis seed.
+ * Returns null when none are set. Throws if the set is partial or invalid.
+ */
+export function parseStimTestOtaEnvSeed(): StimTestOtaEnvSeed | null {
+  const version = process.env.TEST_OTA_VERSION?.trim();
+  const sha256Raw = process.env.TEST_OTA_SHA256?.trim();
+  const signature = process.env.TEST_OTA_SIGNATURE?.trim();
+  const sizeRaw = process.env.TEST_OTA_SIZE_BYTES?.trim();
+  if (!version && !sha256Raw && !signature && !sizeRaw) {
+    return null;
+  }
+  if (!version) {
+    throw new Error('TEST_OTA_VERSION is required when any TEST_OTA_* metadata is set');
+  }
+  const sha256 = sha256Raw?.toLowerCase();
+  if (!sha256 || !SHA256_HEX.test(sha256)) {
+    throw new Error('TEST_OTA_SHA256 must be 64 lowercase hex characters');
+  }
+  if (!signature) {
+    throw new Error('TEST_OTA_SIGNATURE is required when TEST_OTA_VERSION is set');
+  }
+  const sigBytes = Buffer.from(signature, 'base64');
+  if (sigBytes.length !== 64) {
+    throw new Error('TEST_OTA_SIGNATURE must be base64 of a 64-byte Ed25519 signature');
+  }
+  const sizeBytes = sizeRaw ? Number.parseInt(sizeRaw, 10) : NaN;
+  if (!Number.isFinite(sizeBytes) || sizeBytes <= 0) {
+    throw new Error('TEST_OTA_SIZE_BYTES must be a positive integer');
+  }
+  return {
+    version,
+    sha256,
+    signature,
+    sizeBytes,
+    downloadUrl: parseOptionalTestOtaUrl()
+  };
+}
+
+function nodeEnvName(): string {
+  return process.env.NODE_ENV?.trim() || 'development';
+}
+
+/**
+ * TEST_OTA / TEST_OTA_URL bypasses — allowed only outside production.
  * Call from validateConfig and any route that honors TEST_OTA.
  */
 export function assertTestOtaAllowed(): void {
-  if (!isTestOtaEnabled()) return;
-  const env = process.env.NODE_ENV?.trim() || 'development';
-  if (env === 'production') {
+  const env = nodeEnvName();
+  if (isTestOtaEnabled() && env === 'production') {
     throw new Error('TEST_OTA=true is not allowed when NODE_ENV=production');
   }
+  if (isStimTestOtaUrlSet() && env === 'production') {
+    throw new Error('TEST_OTA_URL is not allowed when NODE_ENV=production');
+  }
+  if (env === 'production') {
+    const hasMeta =
+      Boolean(process.env.TEST_OTA_VERSION?.trim()) ||
+      Boolean(process.env.TEST_OTA_SHA256?.trim()) ||
+      Boolean(process.env.TEST_OTA_SIGNATURE?.trim()) ||
+      Boolean(process.env.TEST_OTA_SIZE_BYTES?.trim());
+    if (hasMeta) {
+      throw new Error('TEST_OTA_* offer metadata is not allowed when NODE_ENV=production');
+    }
+  }
+  if (isStimTestOtaUrlSet()) {
+    parseOptionalTestOtaUrl();
+  }
+  parseStimTestOtaEnvSeed();
 }

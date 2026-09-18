@@ -20,12 +20,13 @@ Environment variables read by `loadConfig()` / enforced by `validateConfig()`. R
 | `OTA_RELEASE_WEBHOOK_SECRET` | When OTA on (prod) | warned in dev | CI release ingest |
 | `OCI_*` / `OCI_API_PRIVATE_KEY_BASE64` | When OTA on | — | OCI PAR firmware storage |
 | `TEST_OTA` | **Blocked in prod** | off | Dev/CI only (`assertTestOtaAllowed`) |
+| `TEST_OTA_URL` | **Blocked in prod** | off | Optional download URL seeded into Redis with TEST_OTA_VERSION/SHA256/SIGNATURE/SIZE_BYTES |
 | `OTA_REGISTRATION_DEFER_CONCURRENCY` | No | `10` | Registration storm throttle |
 | `DEFERRED_WORK_REARM` | No | on (`false` disables) | Rollback for deferred drain re-arm |
 | `DEFERRED_WORK_HANDLER_TIMEOUT_MS` | No | `30000` | Bound on deferred work handler; timeout counts failed |
 | `INSTAGRAM_SERVERLESS_URL` | No | off | Poller uses direct Graph if unset |
 | `IG_POLL_*` | No | see `instagramPollingConfig.ts` | Dual Redis schedulers |
-| `STIMULATE_DEVICE` | No | off | In-process IG/GMB ramp (pilot) |
+| `STIMULATE_DEVICE` | No | off | In-process IG/GMB ramp (pilot); stim OTA allowlist |
 | `GMB_*` / webhook vars | When GMB webhooks on | see `webhookConfig.ts` | Pub/Sub push verification |
 | `GMB_PUBSUB_SKIP_AUTH_VERIFY` | **Blocked in prod** | off | Fail-fast at `validateWebhookConfig` |
 | `ENABLE_METRICS_COLLECTION` | Must not be `false` | `true` | Disabling throws at validate |
@@ -53,6 +54,7 @@ bun scripts/validate-env.ts --production
 | GMB webhooks | `webhookConfig` validation | Mounted on HTTP server |
 | Loyalty spin | always on; secret required in staging/prod | `/loyalty/*` + WSS `/loyalty/realtime` |
 | Stimulate | `STIMULATE_DEVICE` | TEMP ramp service on `/active` |
+| Stim TEST OTA | Redis `ota:stim:offer` present (upload). Empty Redis → ignore. | MQTT `/active` for `STIMULATE_DEVICE` only |
 | TEST OTA fan-out | `TEST_OTA=true` (non-prod) | Ungated proof:1.0.1 offers |
 | Deferred drain re-arm | `DEFERRED_WORK_REARM` | Second drain after enqueue-during-flight |
 

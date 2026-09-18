@@ -3,9 +3,13 @@ import { buildOtaProxyDownloadUrl, resolveOtaPublicBaseUrl } from '../config/ota
 import { DeviceOtaState } from '../models/DeviceOtaState';
 import type { DeferredDeviceWorkQueue } from '../services/deferredDeviceWork';
 import type { OtaCommandPublisher, OtaService } from '../services/otaService';
+import { isStimTestOtaUrlSet } from '../config/envHelpers';
 import { getActiveDeviceCache } from '../services/deviceService';
+import { getRedisService } from '../services/redisService';
+import { hasStimRedisOffer } from '../services/stimOtaRedis';
 import { logger } from '../utils/logger';
 import { resolveLocalTestOtaFirmware } from '../utils/localTestOtaFirmware';
+import { isStimulateDevice } from '../utils/stimulateAllowlist';
 
 export interface OtaRegistrationCoordinatorDeps {
   config: AppConfig;
@@ -116,6 +120,15 @@ export async function deliverOtaOnRegistration(
   deviceId: string,
   appVersion?: string
 ): Promise<void> {
+  if (isStimulateDevice(deviceId) && isStimTestOtaUrlSet()) {
+    logger.info('[OTA] Skipping registration OTA — stim TEST_OTA_URL', { deviceId });
+    return;
+  }
+  if (isStimulateDevice(deviceId) && (await hasStimRedisOffer(getRedisService()))) {
+    logger.info('[OTA] Skipping registration OTA — stim Redis offer', { deviceId });
+    return;
+  }
+
   if (!deps.config.ota?.enabled || !deps.otaService) {
     return;
   }

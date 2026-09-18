@@ -196,7 +196,7 @@ function normalizePemFromEnv(raw: string): string {
   return raw.trim().replace(/\\n/g, '\n');
 }
 
-function loadOciCredentialsFromEnv(): OtaOciCredentials | undefined {
+export function loadOciCredentialsFromEnv(): OtaOciCredentials | undefined {
   const tenancyId = process.env.OCI_TENANCY_OCID?.trim();
   const userId = process.env.OCI_USER_OCID?.trim();
   const fingerprint = process.env.OCI_FINGERPRINT?.trim();

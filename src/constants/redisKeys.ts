@@ -15,6 +15,13 @@ export const REDIS_KEYS = {
   /** OTA global config HASH (mirrors Mongo FirmwareRelease). */
   otaActiveRelease: `${keyPrefix}ota:active_release`,
 
+  /** Lab-only stim OTA Ed25519 pair (never production CI secrets). */
+  otaStimLabKeypair: `${keyPrefix}ota:stim:lab_keypair`,
+  otaStimLabKeypairLock: `${keyPrefix}ota:stim:lab_keypair:lock`,
+
+  /** Stim OTA offer HASH (version, sha256, signature, size, object_key). */
+  otaStimOffer: `${keyPrefix}ota:stim:offer`,
+
   /** Provisioning token HASH. */
   provToken: (token: string) => `prov:${token}`,
 

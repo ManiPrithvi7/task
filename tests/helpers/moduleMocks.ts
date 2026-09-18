@@ -10,6 +10,8 @@ export const mockOciCreatePAR = jest.fn();
 export const mockOciHeadObject = jest.fn();
 export const mockOciGetObject = jest.fn();
 export const mockOciHeadBucket = jest.fn();
+export const mockOciDeleteObject = jest.fn();
+export const mockOciPutObject = jest.fn();
 
 export function mockLoggerModule(): typeof import('@/utils/logger') {
   const logger = {
@@ -76,6 +78,8 @@ export function mockOciSdkModule(): Record<string, unknown> {
         headObject: mockOciHeadObject,
         getObject: mockOciGetObject,
         headBucket: mockOciHeadBucket,
+        deleteObject: mockOciDeleteObject,
+        putObject: mockOciPutObject,
       })),
       models: {
         CreatePreauthenticatedRequestDetails: {

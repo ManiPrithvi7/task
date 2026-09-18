@@ -8,6 +8,8 @@ import { createLifecycleRoutes } from '../routes/lifecycleRoutes';
 import { createRecoveryRoutes } from '../routes/recoveryRoutes';
 import { createOtaRoutes } from '../routes/otaRoutes';
 import { createOtaAdminRoutes } from '../routes/otaAdminRoutes';
+import { createStimOtaAdminRoutes } from '../routes/stimOtaAdminRoutes';
+import { tryCreateFirmwareStorageFromOciEnv } from '../services/firmwareStorageService';
 import { createWebhookRoutes, type OtaReleaseWebhookDeps } from '../routes/webhookRoutes';
 import { createDashboardRoutes } from '../routes/dashboardRoutes';
 import { createIntegrationRoutes } from '../routes/integrationRoutes';
@@ -139,6 +141,22 @@ export async function initializeHttpServer(host: BootstrapHost): Promise<void> {
       } else {
         logger.warn('⚠️ OTA admin routes skipped — AuthService not initialized');
       }
+    }
+  }
+
+  if (host.config.app.env !== 'production') {
+    if (!host.firmwareStorageService) {
+      host.firmwareStorageService = tryCreateFirmwareStorageFromOciEnv() ?? undefined;
+    }
+    if (host.firmwareStorageService) {
+      const stimOtaAdmin = createStimOtaAdminRoutes({
+        storage: host.firmwareStorageService,
+        redis: host.redisService ?? null
+      });
+      host.httpServer.getApp().use('/api/v1/admin/ota', stimOtaAdmin);
+      logger.info('✅ Stim OTA UI open (no auth) at /api/v1/admin/ota/stim');
+    } else {
+      logger.warn('[STIM-OTA] UI skipped — OCI storage not configured');
     }
   }
 
