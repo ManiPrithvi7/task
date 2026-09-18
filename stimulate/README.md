@@ -38,6 +38,6 @@ Main-app live IG poller / connect refresh / GMB publish skip those device IDs.
 1. Unset `STIMULATE_*` from `.env` / cloud env.
 2. Delete `stimulate/` (and any leftover `data/stimulate/`).
 3. Delete [`src/services/stimulateService.ts`](../src/services/stimulateService.ts) and remove start/stop + `/active` hook from [`src/app.ts`](../src/app.ts).
-4. Revert TEMP hooks in Instagram/GMB/StatsPublisher + delete `src/utils/stimulateAllowlist.ts`.
+4. Revert TEMP hooks in Instagram/GMB + delete `src/utils/stimulateAllowlist.ts`.
 5. Remove `STIMULATE_*` from `.env.example`.
 6. `graphify update .`

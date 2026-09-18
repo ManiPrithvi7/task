@@ -3,7 +3,6 @@ import type { HttpServer } from '../servers/httpServer';
 import type { MqttClientManager } from '../servers/mqttClient';
 import type { SessionService } from '../services/sessionService';
 import type { DeviceService, ActiveDeviceCache } from '../services/deviceService';
-import type { StatsPublisher } from '../services/statsPublisher';
 import type { ConnectRefreshCoordinator } from '../services/connectRefreshCoordinator';
 import type { DeferredDeviceWorkQueue } from '../services/deferredDeviceWork';
 import type { ProvisioningService } from '../services/provisioningService';
@@ -36,7 +35,6 @@ export interface BootstrapHost {
   sessionService: SessionService;
   deviceService: DeviceService;
   activeDeviceCache: ActiveDeviceCache;
-  statsPublisher?: StatsPublisher;
   connectRefreshCoordinator?: ConnectRefreshCoordinator;
   deferredWork: DeferredDeviceWorkQueue;
   provisioningService?: ProvisioningService;

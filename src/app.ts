@@ -18,7 +18,6 @@ import {
 } from './bootstrap/otaRegistrationCoordinator';
 import { HttpServer } from './servers/httpServer';
 import { MqttClientManager } from './servers/mqttClient';
-import { StatsPublisher } from './services/statsPublisher';
 import { ConnectRefreshCoordinator } from './services/connectRefreshCoordinator';
 import {
   DeferredDeviceWorkQueue,
@@ -101,8 +100,6 @@ export class StatsMqttLite {
   private deviceService!: DeviceService;
   // Note: User management handled by Next.js web app (shared database)
   
-  // Stats publisher
-  private statsPublisher!: StatsPublisher;
   private connectRefreshCoordinator?: ConnectRefreshCoordinator;
   
   // Provisioning services
@@ -1040,11 +1037,6 @@ export class StatsMqttLite {
       // TEMP STIMULATE — remove after testing
       if (this.stimulateService) {
         await this.stimulateService.stop();
-      }
-
-      // Stop stats publisher
-      if (this.statsPublisher) {
-        await this.statsPublisher.stop();
       }
 
       if (this.loyaltyService) {

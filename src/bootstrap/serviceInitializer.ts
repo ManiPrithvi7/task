@@ -1,7 +1,6 @@
 import * as path from 'path';
 import type { BootstrapHost } from './bootstrapHost';
 import { initializeHttpServer } from './httpRouteRegistry';
-import { StatsPublisher } from '../services/statsPublisher';
 import { ConnectRefreshCoordinator } from '../services/connectRefreshCoordinator';
 import { GmbConnectPull } from '../services/gmbConnectPull';
 import { StimulateService } from '../services/stimulateService';
@@ -31,7 +30,6 @@ export async function initializePhase2(host: BootstrapHost): Promise<void> {
 
   await initializeInstagramPoller(host);
   await initializeHttpServer(host);
-  await initializeStatsPublisher(host);
   initializeConnectRefreshCoordinator(host);
   await initializeStimulateService(host);
   initializeKeepAlive(host);
@@ -168,22 +166,6 @@ async function initializeInstagramPoller(host: BootstrapHost): Promise<void> {
 
   await host.instagramPoller.start();
   logger.info('✅ Instagram poller initialized (dual schedulers enabled)');
-}
-
-async function initializeStatsPublisher(host: BootstrapHost): Promise<void> {
-  logger.info('📊 Initializing stats publisher...');
-
-  host.statsPublisher = new StatsPublisher(
-    host.mqttClient,
-    host.deviceService,
-    60 * 1000,
-    host.caService,
-    host.config.provisioning.requireMtlsForRegistration
-  );
-
-  await host.statsPublisher.start();
-
-  logger.info('✅ Stats publisher initialized - publishing every 60s to /instagram, /gmb');
 }
 
 function initializeConnectRefreshCoordinator(host: BootstrapHost): void {
