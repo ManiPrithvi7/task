@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { OAuth2Client } from 'google-auth-library';
 import { AuthService } from '../services/authService';
 import { getInfluxService } from '../services/influxService';
-import { Social, Provider } from '../models/Social';
+import { Provider } from '../models/Social';
 import { GoogleBusinessLocation } from '../models/GoogleBusinessLocation';
 import { fetchInstagramProfileMetrics } from '../lib/socials/instagramMetrics';
 import { gmb } from '../lib/socials/integrations';
@@ -13,6 +13,7 @@ import {
   applyIntegrationConnectCache,
   applyIntegrationDisconnectCache
 } from '../services/integrationConnectCache';
+import { findOwnedSocial, socialOwnerId } from '../lib/socials/findOwnedSocial';
 
 export type IntegrationStatusChangedMeta = {
   provider: Provider;
@@ -27,11 +28,12 @@ export interface IntegrationRoutesDeps {
   applyConnectCache?: typeof applyIntegrationConnectCache;
 }
 
+/** JWT `userId`/`sub` is the Business id. */
 async function requireAuth(
   req: Request,
   res: Response,
   authService: AuthService
-): Promise<{ userId: string } | null> {
+): Promise<{ userId: string; userEmail?: string } | null> {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) {
     logger.warn('[INTEGRATIONS_CONNECT] Auth failed', { code: 'AUTH_TOKEN_MISSING' });
@@ -45,7 +47,7 @@ async function requireAuth(
     res.status(401).json({ error: result.error || 'Invalid token', code: 'AUTH_TOKEN_INVALID' });
     return null;
   }
-  return { userId: result.userId };
+  return { userId: result.userId, userEmail: result.userEmail };
 }
 
 function notifyStatusChanged(
@@ -188,21 +190,19 @@ export function createIntegrationRoutes(deps: IntegrationRoutesDeps): Router {
     }
 
     try {
-      const social = await Social.findOne({
+      const found = await findOwnedSocial({
         businessId: auth.userId,
         socialAccountId,
-        provider,
-      }).lean();
+        provider
+      });
 
-      if (!social) {
-        logger.warn('[INTEGRATIONS_CONNECT] Social not found', {
-          userId: auth.userId,
-          socialAccountId,
-          provider
-        });
+      if (found.status === 'not_found') {
         res.status(404).json({ error: 'Social record not found', code: 'NOT_FOUND' });
         return;
       }
+
+      const social = found.social;
+      const ownerId = socialOwnerId(social, auth.userId);
 
       const now = new Date();
       let baseline: { followers: number; rating?: number; mediaCount?: number; username?: string };
@@ -272,7 +272,7 @@ export function createIntegrationRoutes(deps: IntegrationRoutesDeps): Router {
       }
 
       const { deviceIds } = await applyConnectCache({
-        userId: auth.userId,
+        userId: ownerId,
         provider,
         socialAccountId,
         accessToken: social.accessToken,

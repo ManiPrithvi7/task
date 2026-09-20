@@ -62,6 +62,7 @@ import { SessionService } from './services/sessionService';
 import { Device, type IDevice } from './models/Device';
 import { DeviceCertificate, DeviceCertificateStatus } from './models/DeviceCertificate';
 import { Social, Provider as SocialProvider } from './models/Social';
+import { businessOwnerMatch } from './lib/socials/findOwnedSocial';
 import { createFirmwareStorageService } from './services/firmwareStorageService';
 import {
   OtaService,
@@ -238,16 +239,15 @@ export class StatsMqttLite {
     await markDeviceHashInactive(deviceId);
   }
 
-  /** Latest Instagram row for a Mongo User id (`Social` collection, name `Social` in Atlas). */
+  /** Latest Instagram row for a business id (`Social` collection; JWT userId is businessId). */
   private async loadLatestInstagramSocialForUser(
     userIdStr: string
   ): Promise<{ socialAccountId: string; accessToken: string; tokenExp: string } | null> {
     if (!mongoose.Types.ObjectId.isValid(userIdStr)) return null;
     try {
-      const uid = new mongoose.Types.ObjectId(userIdStr);
       const ig = await Social.findOne({
-        businessId: uid,
-        provider: SocialProvider.INSTAGRAM
+        provider: SocialProvider.INSTAGRAM,
+        ...businessOwnerMatch(userIdStr)
       }).sort({ updatedAt: -1 });
       if (!ig) return null;
       return {

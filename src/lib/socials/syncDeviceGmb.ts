@@ -1,6 +1,7 @@
 import { OAuth2Client } from 'google-auth-library';
 import { Device } from '../../models/Device';
 import { Social, Provider } from '../../models/Social';
+import { businessOwnerMatch } from './findOwnedSocial';
 import { GoogleBusinessProfile } from '../../models/GoogleBusinessProfile';
 import { GoogleBusinessLocation } from '../../models/GoogleBusinessLocation';
 import { getValidOAuth2Client } from '../../services/googleBusiness/googleBusinessOAuth';
@@ -171,8 +172,8 @@ export async function syncGmbLocationForDevice(
 
   const businessId = String(deviceDoc.businessId);
   const social = await Social.findOne({
-    businessId: deviceDoc.businessId,
-    provider: Provider.GOOGLE_BUSINESS
+    provider: Provider.GOOGLE_BUSINESS,
+    ...businessOwnerMatch(businessId)
   }).lean();
   if (!social) return null;
 

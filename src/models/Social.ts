@@ -17,6 +17,8 @@ export enum Provider {
 export interface ISocial extends Document {
   _id: mongoose.Types.ObjectId;
   businessId: mongoose.Types.ObjectId;
+  /** Same ObjectId as businessId; some Prisma rows still name the owner userId. */
+  userId?: mongoose.Types.ObjectId;
   socialAccountId: string;
   provider: Provider;
   accessToken: string;
@@ -31,7 +33,11 @@ const SocialSchema = new Schema<ISocial>({
   businessId: {
     type: Schema.Types.ObjectId,
     ref: 'Business',
-    required: true
+    required: false
+  },
+  userId: {
+    type: Schema.Types.ObjectId,
+    required: false
   },
   socialAccountId: {
     type: String,
@@ -68,5 +74,6 @@ const SocialSchema = new Schema<ISocial>({
 
 // Indexes (matching Prisma: @@index([businessId, provider]); socialAccountId unique above)
 SocialSchema.index({ businessId: 1, provider: 1 });
+SocialSchema.index({ userId: 1, provider: 1 });
 
 export const Social = mongoose.model<ISocial>('Social', SocialSchema);

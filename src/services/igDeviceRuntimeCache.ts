@@ -3,6 +3,7 @@ import { REDIS_KEYS } from '../constants/redisKeys';
 import { Device } from '../models/Device';
 import { DeviceOtaState } from '../models/DeviceOtaState';
 import { Social, Provider } from '../models/Social';
+import { businessOwnerMatch } from '../lib/socials/findOwnedSocial';
 import { getActiveDeviceCache } from './deviceService';
 import { getRedisService } from './redisService';
 import { getLocalOtaFleetTracker } from './igPollCoordination';
@@ -372,9 +373,10 @@ async function queryMongoDeviceState(
     };
 
     if (device.businessId) {
+      const owner = businessOwnerMatch(String(device.businessId));
       const ig = await Social.findOne({
-        businessId: device.businessId,
-        provider: Provider.INSTAGRAM
+        provider: Provider.INSTAGRAM,
+        ...owner
       })
         .sort({ updatedAt: -1 })
         .select({ socialAccountId: 1, accessToken: 1 })
@@ -385,8 +387,8 @@ async function queryMongoDeviceState(
       }
 
       const gmb = await Social.findOne({
-        businessId: device.businessId,
-        provider: Provider.GOOGLE_BUSINESS
+        provider: Provider.GOOGLE_BUSINESS,
+        ...owner
       })
         .select({ accessToken: 1, socialAccountId: 1 })
         .lean();

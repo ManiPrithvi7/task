@@ -36,7 +36,7 @@
  *       type: http
  *       scheme: bearer
  *       bearerFormat: JWT
- *       description: User session JWT from the dashboard
+ *       description: Dashboard session JWT. `sub`/`userId` is the Business id.
  *     ProvisioningToken:
  *       type: apiKey
  *       in: header

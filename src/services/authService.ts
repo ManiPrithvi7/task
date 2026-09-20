@@ -8,10 +8,12 @@ import * as jwt from 'jsonwebtoken';
 import { logger } from '../utils/logger';
 
 export interface AuthTokenPayload {
-  sub?: string;        // Subject (user ID) - common in Auth.js
-  userId?: string;     // User ID (alternative field)
-  id?: string;         // User ID (alternative field)
-  user_id?: string;    // User ID (alternative field)
+  /** Subject — Business id (dashboard JWT still names this userId/sub). */
+  sub?: string;
+  /** Business id (legacy claim name). */
+  userId?: string;
+  id?: string;
+  user_id?: string;
   email?: string;      // User email
   iat?: number;        // Issued at
   exp?: number;         // Expiration
@@ -20,6 +22,7 @@ export interface AuthTokenPayload {
 
 export interface AuthTokenVerificationResult {
   valid: boolean;
+  /** Business id from JWT `sub`/`userId` (endpoint still calls this userId). */
   userId?: string;
   userEmail?: string | undefined;
   error?: string;
@@ -103,7 +106,7 @@ export class AuthService {
         };
       }
 
-      // Extract user ID from token (try multiple common field names)
+      // Extract business id from token (JWT still uses userId/sub)
       let userId: string | undefined;
       if (decoded.sub) {
         userId = decoded.sub;

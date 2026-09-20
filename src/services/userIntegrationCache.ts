@@ -4,6 +4,7 @@ import { GoogleBusinessProfile } from '../models/GoogleBusinessProfile';
 import { GoogleBusinessLocation } from '../models/GoogleBusinessLocation';
 import { getLocalIntegrationsCache } from './localCaches';
 import { getIgDeviceRuntimeCache } from './igDeviceRuntimeCache';
+import { businessOwnerMatch } from '../lib/socials/findOwnedSocial';
 import { logger } from '../utils/logger';
 
 const CACHE_KEY_PREFIX = 'user:integrations:';
@@ -86,6 +87,7 @@ async function resolveGmbLocationId(socialId: mongoose.Types.ObjectId): Promise<
 
 /**
  * Build and persist integration cache from Mongo (24h TTL).
+ * JWT `userId` is the Business id; Social owner may be `businessId` or legacy `userId`.
  * Returns null on failure — callers must handle gracefully.
  */
 export async function cacheUserIntegrations(userId: string): Promise<UserIntegrationCache | null> {
@@ -95,8 +97,7 @@ export async function cacheUserIntegrations(userId: string): Promise<UserIntegra
   }
 
   try {
-    const userOid = new mongoose.Types.ObjectId(userId);
-    const socials = await Social.find({ businessId: userOid }).lean();
+    const socials = await Social.find(businessOwnerMatch(userId)).lean();
     const cache: UserIntegrationCache = {
       userId,
       updatedAt: new Date().toISOString()

@@ -1,6 +1,6 @@
 import { OAuth2Client } from 'google-auth-library';
-import mongoose from 'mongoose';
 import { Social, Provider } from '../../models/Social';
+import { businessOwnerMatch } from '../../lib/socials/findOwnedSocial';
 import { logger } from '../../utils/logger';
 import type { WebhookConfig } from '../../config/webhookConfig';
 
@@ -86,8 +86,8 @@ export async function getValidOAuth2Client(
   if (!oauth2Client) return null;
 
   const social = await Social.findOne({
-    businessId: new mongoose.Types.ObjectId(businessId),
-    provider: Provider.GOOGLE_BUSINESS
+    provider: Provider.GOOGLE_BUSINESS,
+    ...businessOwnerMatch(businessId)
   }).lean();
 
   if (!social) return null;

@@ -1,5 +1,4 @@
 import { OAuth2Client } from 'google-auth-library';
-import mongoose from 'mongoose';
 
 const mockSetCredentials = jest.fn();
 const mockRefreshAccessToken = jest.fn();
@@ -95,8 +94,11 @@ describe('googleBusinessOAuth', () => {
       expect(result).toBeNull();
       expect(mockFindOne).toHaveBeenCalledWith(
         expect.objectContaining({
-          businessId: new mongoose.Types.ObjectId(TEST_USER_ID),
           provider: 'GOOGLE_BUSINESS',
+          $or: expect.arrayContaining([
+            { businessId: TEST_USER_ID },
+            { userId: TEST_USER_ID }
+          ])
         })
       );
     });

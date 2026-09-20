@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { ig, isAccessTokenExpired } from './integrations';
 import { Social, Provider } from '../../models/Social';
+import { businessOwnerMatch } from './findOwnedSocial';
 import { getRedisService } from '../../services/redisService';
 import { getActiveDeviceCache } from '../../services/deviceService';
 import { getIgDeviceRuntimeCache } from '../../services/igDeviceRuntimeCache';
@@ -43,8 +44,8 @@ export async function loadInstagramTokenContextForUser(
   if (!mongoose.Types.ObjectId.isValid(userId)) return null;
   try {
     const ig = await Social.findOne({
-      businessId: new mongoose.Types.ObjectId(userId),
-      provider: Provider.INSTAGRAM
+      provider: Provider.INSTAGRAM,
+      ...businessOwnerMatch(userId)
     })
       .sort({ updatedAt: -1 })
       .select({ accessToken: 1, tokenExp: 1, tokenCreatedAt: 1 })
@@ -112,7 +113,7 @@ export async function ensureFreshInstagramAccessToken(opts: {
   if (opts.userId && mongoose.Types.ObjectId.isValid(opts.userId)) {
     try {
       await Social.updateOne(
-        { businessId: new mongoose.Types.ObjectId(opts.userId), provider: Provider.INSTAGRAM },
+        { provider: Provider.INSTAGRAM, ...businessOwnerMatch(opts.userId) },
         {
           $set: {
             accessToken: newToken,

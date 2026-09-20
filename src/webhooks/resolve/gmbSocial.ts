@@ -1,4 +1,5 @@
 import { Social, Provider } from '../../models/Social';
+import { socialOwnerId } from '../../lib/socials/findOwnedSocial';
 import {
   getGmbAccountLookupValues,
   resolveGmbLocationResourceName
@@ -25,7 +26,8 @@ export async function resolveGmbSocialContext(
     provider: Provider.GOOGLE_BUSINESS
   }).lean();
 
-  if (!social?.businessId) return null;
+  const ownerId = social ? socialOwnerId(social, '') : '';
+  if (!social || !ownerId) return null;
 
   const profiles = await GoogleBusinessProfile.find({ socialId: social._id }).select({ _id: 1 }).lean();
   const profileIds = profiles.map((p) => p._id);
@@ -46,7 +48,7 @@ export async function resolveGmbSocialContext(
   if (!locationRecord) return null;
 
   return {
-    businessId: String(social.businessId),
+    businessId: ownerId,
     socialId: String(social._id),
     locationObjectId: String(locationRecord._id),
     verifiedReviewCount: locationRecord.totalReviewCount ?? 0,

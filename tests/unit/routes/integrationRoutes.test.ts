@@ -8,9 +8,21 @@ const mockApplyDisconnect = jest.fn();
 const mockApplyConnect = jest.fn();
 const mockOnStatusChanged = jest.fn();
 const mockGetInflux = jest.fn();
+const mockFindOwned = jest.fn();
+const mockFetchIg = jest.fn();
 
 jest.mock('@/services/influxService', () => ({
   getInfluxService: () => mockGetInflux()
+}));
+
+jest.mock('@/lib/socials/findOwnedSocial', () => ({
+  findOwnedSocial: (...args: unknown[]) => mockFindOwned(...args),
+  socialOwnerId: (social: { businessId?: unknown; userId?: unknown }, fallback: string) =>
+    String(social.businessId || social.userId || fallback)
+}));
+
+jest.mock('@/lib/socials/instagramMetrics', () => ({
+  fetchInstagramProfileMetrics: (...args: unknown[]) => mockFetchIg(...args)
 }));
 
 function buildApp() {
@@ -101,5 +113,64 @@ describe('POST /api/v1/integrations/connect disconnect', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.disconnected).toBe(true);
+  });
+});
+
+describe('POST /api/v1/integrations/connect', () => {
+  const BUSINESS_ID = 'aaaaaaaaaaaaaaaaaaaaaaaa';
+  const ACCOUNT_ID = '17841404223549106';
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockVerify.mockResolvedValue({ valid: true, userId: BUSINESS_ID });
+    mockGetInflux.mockReturnValue({ writeProfileBaseline: jest.fn().mockResolvedValue(undefined) });
+    mockApplyConnect.mockResolvedValue({ deviceIds: ['d1'] });
+    mockFetchIg.mockResolvedValue({
+      metrics: { followers_count: 42, media_count: 3, username: 'proof' }
+    });
+  });
+
+  it('looks up Social with JWT userId as businessId', async () => {
+    mockFindOwned.mockResolvedValue({
+      status: 'ok',
+      social: {
+        _id: 's1',
+        userId: BUSINESS_ID,
+        provider: Provider.INSTAGRAM,
+        accessToken: 'tok'
+      }
+    });
+
+    const res = await request(buildApp())
+      .post('/api/v1/integrations/connect')
+      .set('Authorization', 'Bearer tok')
+      .send({ provider: 'INSTAGRAM', socialAccountId: ACCOUNT_ID });
+
+    expect(mockFindOwned).toHaveBeenCalledWith({
+      businessId: BUSINESS_ID,
+      socialAccountId: ACCOUNT_ID,
+      provider: Provider.INSTAGRAM
+    });
+    expect(res.status).toBe(201);
+    expect(mockApplyConnect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: BUSINESS_ID,
+        provider: Provider.INSTAGRAM,
+        socialAccountId: ACCOUNT_ID
+      })
+    );
+  });
+
+  it('returns 404 when Social is not owned by the JWT business id', async () => {
+    mockFindOwned.mockResolvedValue({ status: 'not_found' });
+
+    const res = await request(buildApp())
+      .post('/api/v1/integrations/connect')
+      .set('Authorization', 'Bearer tok')
+      .send({ provider: 'instagram', socialAccountId: ACCOUNT_ID });
+
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe('NOT_FOUND');
+    expect(mockApplyConnect).not.toHaveBeenCalled();
   });
 });

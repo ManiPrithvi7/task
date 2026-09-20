@@ -1,6 +1,6 @@
-import mongoose from 'mongoose';
 import { Device } from '../../models/Device';
 import { Social, Provider } from '../../models/Social';
+import { businessOwnerMatch } from './findOwnedSocial';
 import { GoogleBusinessProfile } from '../../models/GoogleBusinessProfile';
 import { GoogleBusinessLocation } from '../../models/GoogleBusinessLocation';
 import { logger } from '../../utils/logger';
@@ -27,8 +27,8 @@ export async function resolveGmbContextForDevice(deviceId: string): Promise<Devi
 
     const businessId = String(deviceDoc.businessId);
     const social = await Social.findOne({
-      businessId: deviceDoc.businessId,
-      provider: Provider.GOOGLE_BUSINESS
+      provider: Provider.GOOGLE_BUSINESS,
+      ...businessOwnerMatch(businessId)
     })
       .select({ _id: 1 })
       .lean();
