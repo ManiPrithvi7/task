@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { Provider } from '../../../src/models/Social';
+import { Provider } from '@/models/Social';
 
 const mockLeanFind = jest.fn();
 const mockCollectionFindOne = jest.fn();

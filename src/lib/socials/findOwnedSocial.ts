@@ -1,15 +1,27 @@
 import mongoose from 'mongoose';
-import { Social, Provider, type ISocial } from '../../models/Social';
+import { Social, Provider } from '../../models/Social';
 import { logger } from '../../utils/logger';
 
-export type OwnedSocial = ISocial & {
+export type OwnedSocial = {
+  _id: mongoose.Types.ObjectId;
   businessId?: mongoose.Types.ObjectId;
   userId?: mongoose.Types.ObjectId;
+  socialAccountId: string;
+  provider: Provider;
+  accessToken: string;
+  refreshToken: string;
+  tokenExp: string;
+  tokenCreatedAt?: Date;
+  updatedAt?: Date;
 };
 
 export type FindOwnedSocialResult =
   | { status: 'ok'; social: OwnedSocial }
   | { status: 'not_found' };
+
+function asOwnedSocial(doc: unknown): OwnedSocial {
+  return doc as OwnedSocial;
+}
 
 function ownerIds(social: { businessId?: unknown; userId?: unknown }): string[] {
   return [social.businessId, social.userId]
@@ -61,7 +73,7 @@ export async function findOwnedSocial(opts: {
 
   if (byAccount) {
     if (isOwnedByBusiness(byAccount, opts.businessId)) {
-      return { status: 'ok', social: byAccount as OwnedSocial };
+      return { status: 'ok', social: asOwnedSocial(byAccount) };
     }
     logger.warn('[INTEGRATIONS_CONNECT] Social not found', {
       businessId: opts.businessId,
@@ -71,7 +83,7 @@ export async function findOwnedSocial(opts: {
     return { status: 'not_found' };
   }
 
-  let social =
+  const indexed =
     (await Social.findOne({
       socialAccountId: accountId,
       provider: { $in: providers },
@@ -81,24 +93,26 @@ export async function findOwnedSocial(opts: {
       socialAccountId: accountId,
       ...owner
     }).lean());
+  let social: OwnedSocial | null = indexed ? asOwnedSocial(indexed) : null;
 
   if (!social) {
     const raw = await Social.collection.findOne({
       socialAccountId: accountId,
       ...owner
     });
-    if (raw && isOwnedByBusiness(raw, opts.businessId)) {
-      social = raw as typeof social;
+    if (raw && isOwnedByBusiness(raw as { businessId?: unknown; userId?: unknown }, opts.businessId)) {
+      social = asOwnedSocial(raw);
     }
   }
 
   if (!social) {
-    social = await Social.findOne({
+    const latest = await Social.findOne({
       provider: { $in: providers },
       ...owner
     })
       .sort({ updatedAt: -1 })
       .lean();
+    social = latest ? asOwnedSocial(latest) : null;
   }
 
   if (!social) {
@@ -110,7 +124,7 @@ export async function findOwnedSocial(opts: {
     return { status: 'not_found' };
   }
 
-  return { status: 'ok', social: social as OwnedSocial };
+  return { status: 'ok', social };
 }
 
 /** Prefer `businessId`; Prisma legacy docs may only have `userId` (same id). */
