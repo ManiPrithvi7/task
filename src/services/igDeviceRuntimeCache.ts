@@ -190,14 +190,23 @@ class IgDeviceRuntimeCacheImpl {
     if (fields.ig_accessToken !== undefined) e.igAccessToken = fields.ig_accessToken || undefined;
     if (e.igAccountId?.trim() && e.igAccessToken?.trim()) e.igNoCredentials = false;
     if (fields.ig_follower_count !== undefined) {
-      const n = parseInt(fields.ig_follower_count, 10);
-      if (!Number.isNaN(n)) e.igFollowerCount = n;
+      if (fields.ig_follower_count === '') {
+        e.igFollowerCount = undefined;
+        e.lastFollowerCountTimestamp = undefined;
+      } else {
+        const n = parseInt(fields.ig_follower_count, 10);
+        if (!Number.isNaN(n)) e.igFollowerCount = n;
+      }
     }
     if (fields.gmb_profile_id !== undefined) e.gmbProfileId = fields.gmb_profile_id || undefined;
     if (fields.gmb_accessToken !== undefined) e.gmbAccessToken = fields.gmb_accessToken || undefined;
     if (fields.gmb_review_count !== undefined) {
-      const n = parseInt(fields.gmb_review_count, 10);
-      if (!Number.isNaN(n)) e.gmbReviewCount = n;
+      if (fields.gmb_review_count === '') {
+        e.gmbReviewCount = undefined;
+      } else {
+        const n = parseInt(fields.gmb_review_count, 10);
+        if (!Number.isNaN(n)) e.gmbReviewCount = n;
+      }
     }
     if (fields.status === 'active' || fields.status === 'inactive') e.status = fields.status;
     if (fields.power_save !== undefined) {
@@ -460,6 +469,31 @@ export async function hydrateGmbReviewCountFromRedis(
   } catch {
     return undefined;
   }
+}
+
+export const IG_DISCONNECT_HASH_FIELDS = ['ig_accountId', 'ig_accessToken', 'ig_follower_count'] as const;
+export const GMB_DISCONNECT_HASH_FIELDS = ['gmb_accessToken', 'gmb_profile_id', 'gmb_review_count'] as const;
+
+/** Remove provider profile fields from Redis hash + local runtime (keep business_id / OTA). */
+export async function clearDeviceHashFields(deviceId: string, fields: readonly string[]): Promise<void> {
+  if (fields.length === 0) return;
+  const redisSvc = getRedisService();
+  if (redisSvc?.isRedisConnected()) {
+    try {
+      const client = redisSvc.getClient();
+      const key = REDIS_KEYS.deviceHash(deviceId);
+      await client.hDel(key, [...fields]);
+    } catch (err: unknown) {
+      logger.warn('[IG_RUNTIME_CACHE] clearDeviceHashFields failed', {
+        deviceId,
+        error: err instanceof Error ? err.message : String(err)
+      });
+    }
+  }
+
+  const empty: Record<string, string> = {};
+  for (const field of fields) empty[field] = '';
+  getIgDeviceRuntimeCache().hydrateFromHashFields(deviceId, empty);
 }
 
 /** Write device hash on connect (hash-only; overwrites in place). */

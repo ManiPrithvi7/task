@@ -7,13 +7,24 @@ import { GoogleBusinessLocation } from '../models/GoogleBusinessLocation';
 import { fetchInstagramProfileMetrics } from '../lib/socials/instagramMetrics';
 import { gmb } from '../lib/socials/integrations';
 import { logger } from '../utils/logger';
-import { parseConnectProvider } from '../utils/parseConnectProvider';
-import { applyIntegrationConnectCache } from '../services/integrationConnectCache';
+import { parseConnectProvider, parseConnectAction } from '../utils/parseConnectProvider';
+import type { IntegrationConnectAction } from '../utils/parseConnectProvider';
+import {
+  applyIntegrationConnectCache,
+  applyIntegrationDisconnectCache
+} from '../services/integrationConnectCache';
+
+export type IntegrationStatusChangedMeta = {
+  provider: Provider;
+  action: IntegrationConnectAction;
+};
 
 export interface IntegrationRoutesDeps {
   authService: AuthService;
-  /** Live IG/GMB screen pull after cache write. Must not fail the HTTP 201. */
-  onConnected?: (deviceId: string) => void;
+  /** Live IG/GMB screen pull (connect) or zeroed screen (disconnect). Must not fail HTTP. */
+  onStatusChanged?: (deviceId: string, meta: IntegrationStatusChangedMeta) => void;
+  applyDisconnectCache?: typeof applyIntegrationDisconnectCache;
+  applyConnectCache?: typeof applyIntegrationConnectCache;
 }
 
 async function requireAuth(
@@ -37,18 +48,37 @@ async function requireAuth(
   return { userId: result.userId };
 }
 
+function notifyStatusChanged(
+  deps: IntegrationRoutesDeps,
+  deviceIds: string[],
+  meta: IntegrationStatusChangedMeta
+): void {
+  for (const deviceId of deviceIds) {
+    try {
+      deps.onStatusChanged?.(deviceId, meta);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn('[INTEGRATIONS_CONNECT] onStatusChanged failed', { deviceId, error: msg });
+    }
+  }
+}
+
 export function createIntegrationRoutes(deps: IntegrationRoutesDeps): Router {
   const router = Router();
+  const applyConnectCache = deps.applyConnectCache ?? applyIntegrationConnectCache;
+  const applyDisconnectCache = deps.applyDisconnectCache ?? applyIntegrationDisconnectCache;
 
   /**
    * @swagger
    * /api/v1/integrations/connect:
    *   post:
    *     tags: [Integrations]
-   *     summary: Capture social profile baseline and session cache on connect
+   *     summary: Capture social profile baseline on connect, or clear caches on disconnect
    *     description: >
-   *       Fetches live Instagram or GMB metrics, writes a profile_baseline point
-   *       to Influx, then updates user-integration and online-device caches.
+   *       Connect fetches live Instagram or GMB metrics, writes a profile_baseline point
+   *       to Influx, updates session caches, then live-pulls device screens.
+   *       Disconnect (action=disconnect) skips Influx/upstream fetch, removes Redis profile
+   *       fields, and immediately publishes a zeroed screen payload.
    *     security:
    *       - BearerAuth: []
    *     requestBody:
@@ -58,6 +88,12 @@ export function createIntegrationRoutes(deps: IntegrationRoutesDeps): Router {
    *           schema:
    *             $ref: '#/components/schemas/IntegrationConnectRequest'
    *     responses:
+   *       200:
+   *         description: Provider disconnected and caches cleared
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/IntegrationDisconnectResponse'
    *       201:
    *         description: Baseline captured
    *         content:
@@ -81,10 +117,22 @@ export function createIntegrationRoutes(deps: IntegrationRoutesDeps): Router {
     const auth = await requireAuth(req, res, deps.authService);
     if (!auth) return;
 
-    const { socialAccountId, provider: providerRaw } = req.body as { socialAccountId?: string; provider?: string };
-    if (!socialAccountId || !providerRaw) {
-      logger.warn('[INTEGRATIONS_CONNECT] Missing fields', { userId: auth.userId });
-      res.status(400).json({ error: 'socialAccountId and provider required', code: 'FIELDS_REQUIRED' });
+    const body = (req.body ?? {}) as {
+      socialAccountId?: string;
+      provider?: string;
+      action?: unknown;
+      connected?: unknown;
+      event?: unknown;
+    };
+    const action = parseConnectAction(body);
+    const { socialAccountId, provider: providerRaw } = body;
+
+    if (!providerRaw) {
+      logger.warn('[INTEGRATIONS_CONNECT] Missing fields', { userId: auth.userId, action });
+      res.status(400).json({
+        error: action === 'disconnect' ? 'provider required' : 'socialAccountId and provider required',
+        code: 'FIELDS_REQUIRED'
+      });
       return;
     }
 
@@ -95,6 +143,34 @@ export function createIntegrationRoutes(deps: IntegrationRoutesDeps): Router {
         provider: providerRaw
       });
       res.status(400).json({ error: `Unsupported provider: ${providerRaw}`, code: 'UNSUPPORTED_PROVIDER' });
+      return;
+    }
+
+    if (action === 'disconnect') {
+      logger.info('[INTEGRATIONS_DISCONNECT] Request', {
+        userId: auth.userId,
+        socialAccountId,
+        provider
+      });
+      try {
+        const { onlineDeviceIds } = await applyDisconnectCache({
+          userId: auth.userId,
+          provider,
+          socialAccountId
+        });
+        res.status(200).json({ success: true, disconnected: true });
+        notifyStatusChanged(deps, onlineDeviceIds, { provider, action: 'disconnect' });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.error('[INTEGRATIONS_DISCONNECT] Failed', { userId: auth.userId, error: msg });
+        res.status(500).json({ error: 'Integration disconnect failed', detail: msg, code: 'INTERNAL_ERROR' });
+      }
+      return;
+    }
+
+    if (!socialAccountId) {
+      logger.warn('[INTEGRATIONS_CONNECT] Missing fields', { userId: auth.userId, action });
+      res.status(400).json({ error: 'socialAccountId and provider required', code: 'FIELDS_REQUIRED' });
       return;
     }
 
@@ -195,7 +271,7 @@ export function createIntegrationRoutes(deps: IntegrationRoutesDeps): Router {
         return;
       }
 
-      const { deviceIds } = await applyIntegrationConnectCache({
+      const { deviceIds } = await applyConnectCache({
         userId: auth.userId,
         provider,
         socialAccountId,
@@ -204,15 +280,7 @@ export function createIntegrationRoutes(deps: IntegrationRoutesDeps): Router {
       });
 
       res.status(201).json({ success: true, baseline: { ...baseline, connectedAt: now.toISOString() } });
-
-      for (const deviceId of deviceIds) {
-        try {
-          deps.onConnected?.(deviceId);
-        } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : String(err);
-          logger.warn('[INTEGRATIONS_CONNECT] onConnected failed', { deviceId, error: msg });
-        }
-      }
+      notifyStatusChanged(deps, deviceIds, { provider, action: 'connect' });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       logger.error('[INTEGRATIONS_CONNECT] Failed', { userId: auth.userId, error: msg });

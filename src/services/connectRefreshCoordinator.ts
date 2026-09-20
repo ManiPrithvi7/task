@@ -9,6 +9,13 @@ import { getActiveDeviceCache } from './deviceService';
 // TEMP STIMULATE — remove after testing
 import { shouldSkipForStimulate } from '../utils/stimulateAllowlist';
 import { getIgDeviceRuntimeCache } from './igDeviceRuntimeCache';
+import { Provider } from '../models/Social';
+import {
+  buildGmbScreenPayload,
+  buildInstagramScreenPayload,
+  buildScreenEnvelope
+} from './screenEnvelope';
+import type { IntegrationConnectAction } from '../utils/parseConnectProvider';
 
 export type ConnectRefreshCoordinatorDeps = {
   mqttClient: MqttClientManager;
@@ -18,8 +25,21 @@ export type ConnectRefreshCoordinatorDeps = {
   gmbConnectPull: GmbConnectPull;
 };
 
+export type IntegrationStatusChange = {
+  provider: Provider;
+  action: IntegrationConnectAction;
+};
+
 export class ConnectRefreshCoordinator {
   constructor(private readonly deps: ConnectRefreshCoordinatorDeps) {}
+
+  async onStatusChanged(deviceId: string, meta: IntegrationStatusChange): Promise<void> {
+    if (meta.action === 'disconnect') {
+      await this.publishDisconnected(deviceId, meta.provider);
+      return;
+    }
+    await this.refresh(deviceId);
+  }
 
   async refresh(deviceId: string): Promise<void> {
     const root = this.deps.mqttClient.getTopicRoot();
@@ -99,4 +119,58 @@ export class ConnectRefreshCoordinator {
     }
   }
 
+  /** Zeroed IG/GMB screen after unlink — no Graph/GMB API calls. */
+  async publishDisconnected(deviceId: string, provider: Provider): Promise<void> {
+    const mqttClient = this.deps.mqttClient;
+    const mqttReady = await mqttClient.waitUntilConnected({ timeoutMs: 12_000 });
+    if (!mqttReady) {
+      logger.warn('[INTEGRATIONS_DISCONNECT] MQTT not ready — zeroed screen skipped', { deviceId });
+      return;
+    }
+
+    await clearAllPublishHashesForDevice(deviceId);
+
+    const platform = provider === Provider.INSTAGRAM ? 'instagram' : 'gmb';
+    if (await shouldSkipForStimulate(deviceId, platform)) {
+      logger.info('[STIM_SKIP] Disconnect screen skip', { deviceId, provider });
+      return;
+    }
+
+    const root = mqttClient.getTopicRoot();
+    try {
+      if (provider === Provider.INSTAGRAM) {
+        const { payload: screenPayload, envelopeOpts } = buildInstagramScreenPayload({ followers: 0 });
+        const envelope = buildScreenEnvelope('instagram', screenPayload, envelopeOpts);
+        const topic = `${root}/${deviceId}/instagram`;
+        await mqttClient.publish({
+          topic,
+          payload: JSON.stringify(envelope),
+          qos: 1,
+          retain: false
+        });
+        logger.info('[INTEGRATIONS_DISCONNECT] Published zeroed Instagram screen', { deviceId, topic });
+        return;
+      }
+
+      const { payload: screenPayload, envelopeOpts } = buildGmbScreenPayload({
+        verifiedReview: 0,
+        reviews: []
+      });
+      const envelope = buildScreenEnvelope('gmb', screenPayload, envelopeOpts);
+      const topic = `${root}/${deviceId}/gmb`;
+      await mqttClient.publish({
+        topic,
+        payload: JSON.stringify(envelope),
+        qos: 1,
+        retain: false
+      });
+      logger.info('[INTEGRATIONS_DISCONNECT] Published zeroed GMB screen', { deviceId, topic });
+    } catch (err: unknown) {
+      logger.warn('[INTEGRATIONS_DISCONNECT] Zeroed screen publish failed', {
+        deviceId,
+        provider,
+        error: err instanceof Error ? err.message : String(err)
+      });
+    }
+  }
 }

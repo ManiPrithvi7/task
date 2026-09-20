@@ -172,10 +172,14 @@ export async function initializeHttpServer(host: BootstrapHost): Promise<void> {
 
         const integrationRoutes = createIntegrationRoutes({
           authService: host.authService,
-          onConnected: (deviceId) => {
-            void host.connectRefreshCoordinator?.refresh(deviceId).catch((err: unknown) => {
+          onStatusChanged: (deviceId, meta) => {
+            void host.connectRefreshCoordinator?.onStatusChanged(deviceId, meta).catch((err: unknown) => {
               const msg = err instanceof Error ? err.message : String(err);
-              logger.warn('[INTEGRATIONS_CONNECT] Live pull failed', { deviceId, error: msg });
+              logger.warn('[INTEGRATIONS_CONNECT] Status screen update failed', {
+                deviceId,
+                action: meta.action,
+                error: msg
+              });
             });
           }
         });

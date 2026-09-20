@@ -10,3 +10,19 @@ export function parseConnectProvider(raw: string | undefined): Provider | null {
   }
   return null;
 }
+
+export type IntegrationConnectAction = 'connect' | 'disconnect';
+
+/** Connect is the default; unlink may send action, connected:false, or social.disconnected. */
+export function parseConnectAction(body: {
+  action?: unknown;
+  connected?: unknown;
+  event?: unknown;
+}): IntegrationConnectAction {
+  const action = typeof body.action === 'string' ? body.action.trim().toLowerCase() : '';
+  if (action === 'disconnect' || action === 'disconnected') return 'disconnect';
+  if (body.connected === false || body.connected === 'false') return 'disconnect';
+  const event = typeof body.event === 'string' ? body.event.trim().toLowerCase() : '';
+  if (event === 'social.disconnected') return 'disconnect';
+  return 'connect';
+}

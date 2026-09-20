@@ -256,14 +256,25 @@
  *     IntegrationConnectRequest:
  *       type: object
  *       required:
- *         - socialAccountId
  *         - provider
  *       properties:
  *         socialAccountId:
  *           type: string
+ *           description: Required when action is connect
  *         provider:
  *           type: string
  *           enum: [instagram, INSTAGRAM, google_business, GOOGLE_BUSINESS, gmb]
+ *         action:
+ *           type: string
+ *           enum: [connect, disconnect]
+ *           default: connect
+ *         connected:
+ *           type: boolean
+ *           description: Alias for action; false means disconnect
+ *         event:
+ *           type: string
+ *           description: Alias for action; social.disconnected means disconnect
+ *           enum: [social.connected, social.disconnected]
  *
  *     IntegrationConnectResponse:
  *       type: object
@@ -284,6 +295,14 @@
  *             connectedAt:
  *               type: string
  *               format: date-time
+ *
+ *     IntegrationDisconnectResponse:
+ *       type: object
+ *       properties:
+ *         success:
+ *           type: boolean
+ *         disconnected:
+ *           type: boolean
  *
  *     ProfileBaselineRow:
  *       type: object

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { Provider } from '../../../src/models/Social';
-import { parseConnectProvider } from '../../../src/utils/parseConnectProvider';
+import { parseConnectProvider, parseConnectAction } from '../../../src/utils/parseConnectProvider';
 
 describe('parseConnectProvider', () => {
   it('accepts Next and Prisma Instagram aliases', () => {
@@ -20,5 +20,21 @@ describe('parseConnectProvider', () => {
     expect(parseConnectProvider('twitter')).toBeNull();
     expect(parseConnectProvider('')).toBeNull();
     expect(parseConnectProvider(undefined)).toBeNull();
+  });
+});
+
+describe('parseConnectAction', () => {
+  it('defaults to connect', () => {
+    expect(parseConnectAction({})).toBe('connect');
+    expect(parseConnectAction({ action: 'connect' })).toBe('connect');
+    expect(parseConnectAction({ connected: true })).toBe('connect');
+  });
+
+  it('detects disconnect aliases', () => {
+    expect(parseConnectAction({ action: 'disconnect' })).toBe('disconnect');
+    expect(parseConnectAction({ action: 'DISCONNECTED' })).toBe('disconnect');
+    expect(parseConnectAction({ connected: false })).toBe('disconnect');
+    expect(parseConnectAction({ connected: 'false' })).toBe('disconnect');
+    expect(parseConnectAction({ event: 'social.disconnected' })).toBe('disconnect');
   });
 });

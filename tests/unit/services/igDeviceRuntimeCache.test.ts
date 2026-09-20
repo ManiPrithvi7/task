@@ -37,6 +37,33 @@ describe('IgDeviceRuntimeCache GMB index', () => {
     expect(cache.getOtaStatus('d1')).toBe('pending');
   });
 
+  it('hydrateFromHashFields clears empty IG/GMB profile fields', () => {
+    const cache = getIgDeviceRuntimeCache();
+    cache.hydrateFromHashFields('d1', {
+      ig_accountId: 'ig',
+      ig_accessToken: 'tok',
+      ig_follower_count: '12',
+      gmb_profile_id: 'loc-a',
+      gmb_accessToken: 'gmb',
+      gmb_review_count: '3'
+    });
+    cache.hydrateFromHashFields('d1', {
+      ig_accountId: '',
+      ig_accessToken: '',
+      ig_follower_count: '',
+      gmb_profile_id: '',
+      gmb_accessToken: '',
+      gmb_review_count: ''
+    });
+    expect(cache.get('d1')?.igAccountId).toBeUndefined();
+    expect(cache.get('d1')?.igAccessToken).toBeUndefined();
+    expect(cache.get('d1')?.igFollowerCount).toBeUndefined();
+    expect(cache.get('d1')?.gmbProfileId).toBeUndefined();
+    expect(cache.get('d1')?.gmbAccessToken).toBeUndefined();
+    expect(cache.get('d1')?.gmbReviewCount).toBeUndefined();
+    expect(cache.getByGmbProfileId('loc-a')).toEqual([]);
+  });
+
   it('igNoCredentials is session-local and cleared on delete', () => {
     const cache = getIgDeviceRuntimeCache();
     expect(cache.hasNoInstagramCredentials('d1')).toBe(false);
