@@ -22,7 +22,7 @@ ENV NODE_ENV=production \
     PROVISIONING_CA_DIR=/app/data/certs \
     CA_STORAGE_PATH=/app/data/certs
 EXPOSE 3002
-HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=3s --start-period=60s --retries=3 \
   CMD bun -e "fetch('http://127.0.0.1:'+(process.env.PORT||3002)+'/health').then(r => r.ok ? process.exit(0) : process.exit(1))"
 ENTRYPOINT ["dumb-init", "--"]
 CMD ["bun", "run", "./dist/index.js"]

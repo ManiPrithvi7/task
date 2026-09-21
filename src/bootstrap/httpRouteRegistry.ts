@@ -210,7 +210,8 @@ export async function initializeHttpServer(host: BootstrapHost): Promise<void> {
   );
   logger.info('✅ Loyalty routes registered at /loyalty');
 
-  await host.httpServer.start();
+  host.earlyHttp?.attachExpress(host.httpServer.getApp());
+  await host.httpServer.start(host.earlyHttp?.server);
   attachLoyaltyWs(host.httpServer.getServer(), () => host.loyaltyService);
   logger.info('✅ Loyalty WebSocket attached at /loyalty/realtime');
   logger.info('✅ HTTP server initialized');

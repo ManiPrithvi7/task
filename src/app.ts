@@ -16,7 +16,7 @@ import {
   executeOtaRegistrationDelivery,
   type OtaRegistrationCoordinatorDeps
 } from './bootstrap/otaRegistrationCoordinator';
-import { HttpServer } from './servers/httpServer';
+import { HttpServer, listenHttpLiveness, type HttpLivenessBind } from './servers/httpServer';
 import { MqttClientManager } from './servers/mqttClient';
 import { ConnectRefreshCoordinator } from './services/connectRefreshCoordinator';
 import {
@@ -94,6 +94,7 @@ export class StatsMqttLite {
 
 
   private httpServer!: HttpServer;
+  private earlyHttp?: HttpLivenessBind;
   private mqttClient!: MqttClientManager;
   
   // MongoDB-based services
@@ -269,6 +270,13 @@ export class StatsMqttLite {
     try {
       logger.info('🚀 Starting MQTT Publisher Lite...');
       logger.info('━'.repeat(50));
+
+      // Bind /health before Mongo/MQTT/Influx so Railway's probe is not gated on Phase 2.
+      this.earlyHttp = await listenHttpLiveness(this.config.http.port, this.config.http.host);
+      logger.info('HTTP liveness listening', {
+        host: this.config.http.host,
+        port: this.config.http.port
+      });
 
       // Phase 1: ingress-critical path (device /active must be handled ASAP)
       await this.initializeMongoDB();
@@ -1044,10 +1052,13 @@ export class StatsMqttLite {
         this.loyaltyService = undefined;
       }
 
-      // Close HTTP server
+      // Close HTTP server (same socket as early liveness bind)
       if (this.httpServer) {
         await this.httpServer.stop();
+      } else if (this.earlyHttp) {
+        await this.earlyHttp.close();
       }
+      this.earlyHttp = undefined;
 
       // Disconnect MQTT client
       if (this.mqttClient) {

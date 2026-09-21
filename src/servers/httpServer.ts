@@ -1,6 +1,6 @@
 import express, { Express, Request, Response, NextFunction, Router, RequestHandler } from 'express';
 import rateLimit from 'express-rate-limit';
-import { createServer, Server } from 'http';
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'http';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
@@ -19,6 +19,69 @@ export interface HttpConfig {
   host: string;
   requestLogging?: boolean;
   healthChecksEnabled?: boolean;
+}
+
+export type HttpLivenessBind = {
+  server: Server;
+  attachExpress: (app: Express) => void;
+  close: () => Promise<void>;
+};
+
+function requestPath(req: IncomingMessage): string {
+  const raw = req.url || '/';
+  try {
+    return new URL(raw, 'http://127.0.0.1').pathname;
+  } catch {
+    return raw.split('?')[0] || '/';
+  }
+}
+
+function sendJson(res: ServerResponse, status: number, body: Record<string, string>): void {
+  res.writeHead(status, {
+    'Content-Type': 'application/json',
+    'Cache-Control': 'no-store'
+  });
+  res.end(JSON.stringify(body));
+}
+
+/** Bind PORT immediately so Railway /health can pass before Phase 2 finishes. */
+export function listenHttpLiveness(port: number, host: string): Promise<HttpLivenessBind> {
+  let expressApp: Express | null = null;
+  const server = createServer((req: IncomingMessage, res: ServerResponse) => {
+    if (expressApp) {
+      expressApp(req, res);
+      return;
+    }
+    const path = requestPath(req);
+    if (req.method === 'GET' && (path === '/health' || path === '/health/')) {
+      sendJson(res, 200, { status: 'ok', timestamp: new Date().toISOString() });
+      return;
+    }
+    sendJson(res, 503, { status: 'starting', timestamp: new Date().toISOString() });
+  });
+
+  return new Promise((resolve, reject) => {
+    const onError = (err: Error) => reject(err);
+    server.once('error', onError);
+    server.listen(port, host, () => {
+      server.removeListener('error', onError);
+      resolve({
+        server,
+        attachExpress(app: Express) {
+          expressApp = app;
+        },
+        close() {
+          return new Promise<void>((done, fail) => {
+            if (!server.listening) {
+              done();
+              return;
+            }
+            server.close((err) => (err ? fail(err) : done()));
+          });
+        }
+      });
+    });
+  });
 }
 
 export class HttpServer {
@@ -319,10 +382,22 @@ export class HttpServer {
     });
   }
 
-  async start(): Promise<void> {
-    return new Promise((resolve) => {
+  async start(existing?: Server): Promise<void> {
+    if (existing) {
+      this.server = existing;
+      logger.info('HTTP server attached to early listener', {
+        host: this.config.host,
+        port: this.config.port
+      });
+      return;
+    }
+
+    return new Promise((resolve, reject) => {
       this.server = createServer(this.app);
+      const onError = (err: Error) => reject(err);
+      this.server.once('error', onError);
       this.server.listen(this.config.port, this.config.host, () => {
+        this.server?.removeListener('error', onError);
         logger.info('HTTP server started', {
           host: this.config.host,
           port: this.config.port

@@ -1,5 +1,5 @@
 import type { AppConfig } from '../config';
-import type { HttpServer } from '../servers/httpServer';
+import type { HttpServer, HttpLivenessBind } from '../servers/httpServer';
 import type { MqttClientManager } from '../servers/mqttClient';
 import type { SessionService } from '../services/sessionService';
 import type { DeviceService, ActiveDeviceCache } from '../services/deviceService';
@@ -31,6 +31,7 @@ import type { LoyaltyService } from '../services/loyaltyService';
 export interface BootstrapHost {
   config: AppConfig;
   httpServer?: HttpServer;
+  earlyHttp?: HttpLivenessBind;
   mqttClient: MqttClientManager;
   sessionService: SessionService;
   deviceService: DeviceService;
