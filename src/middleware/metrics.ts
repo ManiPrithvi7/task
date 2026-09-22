@@ -1,8 +1,14 @@
 import { Request, Response, NextFunction } from 'express';
 import client from 'prom-client';
+import { registerMemoryGauge } from '../utils/memoryUsageLogger';
 
 const register = new client.Registry();
 client.collectDefaultMetrics({ register });
+
+registerMemoryGauge('promSeries', async () => {
+  const text = await register.metrics();
+  return text.split('\n').filter((l) => l && !l.startsWith('#')).length;
+});
 
 const httpRequestsTotal = new client.Counter({
   name: 'http_requests_total',

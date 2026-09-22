@@ -2,6 +2,7 @@ import mqtt, { MqttClient, IClientOptions, IPublishPacket } from 'mqtt';
 import * as dns from 'dns';
 import { EventEmitter } from 'events';
 import { logger } from '../utils/logger';
+import { registerMemoryGauge } from '../utils/memoryUsageLogger';
 import {
   applyMqttJsTlsOptions,
   normalizeTlsPem,
@@ -165,6 +166,8 @@ export class MqttClientManager extends EventEmitter {
       });
 
       this.client = mqtt.connect(brokerUrl, options);
+      registerMemoryGauge('mqttMsgListeners', () => this.client?.listenerCount('message') ?? 0);
+      registerMemoryGauge('mqttConnected', () => Number(this.client?.connected === true));
 
       const deferStartup = process.env.MQTT_CONNECT_DEFERRED === 'true';
       let settled = false;

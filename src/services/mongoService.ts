@@ -7,6 +7,7 @@
 import mongoose from 'mongoose';
 import { mongoDriverTimeouts } from '../config/mongoConnection';
 import { logger } from '../utils/logger';
+import { registerMemoryGauge } from '../utils/memoryUsageLogger';
 
 export interface MongoConfig {
   uri: string;
@@ -84,6 +85,7 @@ export class MongoService {
       
       this.connection = mongoose.connection;
       this.isConnected = true;
+      registerMemoryGauge('mongoConnected', () => Number(mongoose.connection.readyState === 1));
 
       this.setupEventHandlers();
 

@@ -9,6 +9,7 @@ import * as path from 'path';
 import { createClient, RedisClientType } from 'redis';
 import redisCommands from '@redis/client/dist/lib/client/commands.js';
 import { logger } from '../utils/logger';
+import { registerMemoryGauge } from '../utils/memoryUsageLogger';
 
 const REDIS_COMMAND_DEFINITIONS = redisCommands;
 
@@ -464,6 +465,7 @@ export class RedisService {
         },
         database: this.config.db ?? 0
       }) as RedisClientType;
+      registerMemoryGauge('redisConnected', () => Number(this.client?.isReady === true));
 
       // Setup error handler
       this.client.on('error', (err: Error) => {
