@@ -33,7 +33,7 @@ async function requireAuth(
   req: Request,
   res: Response,
   authService: AuthService
-): Promise<{ userId: string; userEmail?: string } | null> {
+): Promise<{ userId: string } | null> {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) {
     logger.warn('[INTEGRATIONS_CONNECT] Auth failed', { code: 'AUTH_TOKEN_MISSING' });
@@ -47,7 +47,7 @@ async function requireAuth(
     res.status(401).json({ error: result.error || 'Invalid token', code: 'AUTH_TOKEN_INVALID' });
     return null;
   }
-  return { userId: result.userId, userEmail: result.userEmail };
+  return { userId: result.userId };
 }
 
 function notifyStatusChanged(

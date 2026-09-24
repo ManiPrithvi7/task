@@ -408,12 +408,6 @@ export async function handleDeviceStatus(
   const deviceId = extractDeviceIdFromTopic(host, topic);
   if (!deviceId) return;
 
-  const allowed = await host.ensureDeviceProvisioned(deviceId);
-  if (!allowed) {
-    logger.warn('🔒 Status update ignored: device not provisioned', { deviceId });
-    return;
-  }
-
   const eventType = normalizeOtaEventKey(message);
 
   if (host.otaEventHandler && isPilotOtaStatusEvent(eventType)) {
@@ -451,12 +445,6 @@ export async function handleDeviceOtaTelemetry(
 ): Promise<void> {
   const deviceId = extractDeviceIdFromTopic(host, topic);
   if (!deviceId) return;
-
-  const allowed = await host.ensureDeviceProvisioned(deviceId);
-  if (!allowed) {
-    logger.warn('🔒 OTA telemetry ignored: device not provisioned', { deviceId });
-    return;
-  }
 
   const eventType = message?.ota_status || message?.event || message?.type || 'telemetry';
 

@@ -18,15 +18,16 @@ import { OciStorageError } from '../services/ociStorageErrors';
 import {
   FinalizeValidationError,
   computeSigningKeyFingerprint,
-  validateFinalizeInput
+  getOtaReleaseLog,
+  isOtaSigningConfirmed,
+  setOtaSigningConfirmed,
+  validateFinalizeInput,
+  type OtaCommandPublisher,
+  type OtaService
 } from '../services/otaService';
-import { isOtaSigningConfirmed, setOtaSigningConfirmed } from '../services/otaService';
 import { getReleaseObjectKey } from '../utils/firmwareReleaseKey';
 import { buildOtaMqttDownloadUrl } from '../utils/otaDownloadUrl';
-import type { OtaCommandPublisher } from '../services/otaService';
-import type { OtaService } from '../services/otaService';
 import { AuditEventType, getAuditService } from '../services/auditService';
-import { getOtaReleaseLog } from '../services/otaReleaseLog';
 import { safeEqualString } from '../utils/safeEqual';
 import { logger } from '../utils/logger';
 

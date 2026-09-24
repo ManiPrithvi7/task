@@ -5,6 +5,8 @@ import { createFirmwareStorageService } from '../services/firmwareStorageService
 import { resolveOtaPublicBaseUrl } from '../config/otaDefaults';
 import {
   initOtaSigningState,
+  initOtaSigningKeyAudit,
+  createOtaReleaseLog,
   OtaService,
   OtaCommandPublisher,
   OtaEventHandler,
@@ -12,8 +14,6 @@ import {
 } from '../services/otaService';
 import { backfillFirmwareReleaseStageFields } from '../models/FirmwareRelease';
 import { startRolloutScheduler } from '../jobs/rolloutScheduler';
-import { initOtaSigningKeyAudit } from '../services/otaSigningKeyService';
-import { createOtaReleaseLog } from '../services/otaReleaseLog';
 import { logger } from '../utils/logger';
 
 export function initializeOtaServices(host: BootstrapHost): void {

@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
+
 import { AuthService } from '../services/authService';
 import { Device } from '../models/Device';
+import {requireAuth} from "../middleware/auth"
 import { getInfluxService } from '../services/influxService';
 import { cachedQuery } from '../services/influxQueryCache';
 import { DASHBOARD_RANGES, parseDashboardRange } from '../utils/dashboardRange';
@@ -9,24 +11,7 @@ export interface DashboardRoutesDeps {
   authService: AuthService;
 }
 
-async function requireAuth(
-  req: Request,
-  res: Response,
-  authService: AuthService
-): Promise<{ userId: string } | null> {
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith('Bearer ')) {
-    res.status(401).json({ error: 'Authorization required', code: 'AUTH_TOKEN_MISSING' });
-    return null;
-  }
-  const token = authHeader.substring(7);
-  const result = await authService.verifyAuthToken(token);
-  if (!result.valid || !result.userId) {
-    res.status(401).json({ error: result.error || 'Invalid token', code: 'AUTH_TOKEN_INVALID' });
-    return null;
-  }
-  return { userId: result.userId };
-}
+
 
 async function verifyDeviceOwnership(deviceId: string, userId: string): Promise<boolean> {
   const device = await Device.findOne({ clientId: deviceId }).select({ businessId: 1 }).lean();

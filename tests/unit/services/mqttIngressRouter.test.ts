@@ -108,5 +108,30 @@ describe('mqttIngressRouter', () => {
     expect(count).toBe(1);
     expect(h.onStatus).toHaveBeenCalledTimes(1);
     expect(s.buffer).toHaveLength(0);
+    expect(h.ensureProvisioned).not.toHaveBeenCalled();
+  });
+
+  it('does not run the provisioning gate on /status', async () => {
+    const h = handlers();
+    const payload = Buffer.from(
+      JSON.stringify({ status: 'online', timestamp: new Date().toISOString() })
+    );
+
+    await routeMqttMessage('proof.mqtt/DEVICE-19/status', payload, { retain: false }, h, state());
+
+    expect(h.onStatus).toHaveBeenCalledTimes(1);
+    expect(h.ensureProvisioned).not.toHaveBeenCalled();
+  });
+
+  it('does not run the provisioning gate on screen topics', async () => {
+    const h = handlers();
+    const payload = Buffer.from(
+      JSON.stringify({ screen: 'home', timestamp: new Date().toISOString() })
+    );
+
+    await routeMqttMessage('proof.mqtt/DEVICE-19/instagram', payload, { retain: false }, h, state());
+
+    expect(h.onScreenEcho).toHaveBeenCalledTimes(1);
+    expect(h.ensureProvisioned).not.toHaveBeenCalled();
   });
 });

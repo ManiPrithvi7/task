@@ -1,8 +1,12 @@
 import type { RedisService } from '@/services/redisService';
 import type { IFirmwareStorage } from '@/services/firmwareStorageService';
 import { REDIS_KEYS } from '@/constants/redisKeys';
-import { getOrCreateStimLabKeypair, loadStimOtaOffer, seedStimOtaOfferFromEnv } from '@/services/stimOtaRedis';
-import { replaceStimFirmware } from '@/services/stimOtaUpload';
+import {
+  getOrCreateStimLabKeypair,
+  loadStimOtaOffer,
+  replaceStimFirmware,
+  seedStimOtaOfferFromEnv
+} from '@/services/stimulateService';
 import { verifySha256HexSignature } from '@/utils/stimOtaCrypto';
 
 function memoryRedis(): { hashes: Record<string, Record<string, string>>; svc: RedisService } {

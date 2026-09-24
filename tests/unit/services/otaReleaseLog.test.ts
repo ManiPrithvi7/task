@@ -26,7 +26,7 @@ import {
   createOtaReleaseLog,
   getOtaReleaseLog,
   type OtaReleaseLogEntry,
-} from '@/services/otaReleaseLog';
+} from '@/services/otaService';
 
 /* ── Merkle helpers (mirror service semantics) ── */
 

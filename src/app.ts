@@ -684,7 +684,8 @@ export class StatsMqttLite {
         {
           storagePath: this.config.provisioning.caStoragePath,
           rootCAValidityYears: this.config.provisioning.rootCAValidityYears,
-          deviceCertValidityDays: this.config.provisioning.deviceCertValidityDays
+          deviceCertValidityDays: this.config.provisioning.deviceCertValidityDays,
+          certProfile: this.config.provisioning.certProfile
         }
       );
 

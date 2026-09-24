@@ -1,17 +1,17 @@
-import { initOtaSigningKeyAudit } from '@/services/otaSigningKeyService';
-
-const mockComputeFingerprint = jest.fn();
 const mockLogEvent = jest.fn().mockResolvedValue(undefined);
 const mockGetAuditService = jest.fn();
-
-jest.mock('@/services/otaService', () => ({
-  computeSigningKeyFingerprint: (...args: unknown[]) => mockComputeFingerprint(...args)
-}));
 
 jest.mock('@/services/auditService', () => ({
   AuditEventType: { OTA_SIGNING_KEY_LOADED: 'OTA_SIGNING_KEY_LOADED' },
   getAuditService: () => mockGetAuditService()
 }));
+
+import { initOtaSigningKeyAudit } from '@/services/otaService';
+
+const VALID_SIGNING_KEY_PEM = `-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAR5TPk29aGcfmwOnUhgDi0cm14fPExUM2R5tMbXfw+jg=
+-----END PUBLIC KEY-----`;
+const VALID_KEY_FINGERPRINT = '5b138628120cf118';
 
 const auditStub = { logEvent: mockLogEvent };
 
@@ -22,30 +22,25 @@ describe('initOtaSigningKeyAudit', () => {
   });
 
   it('logs key fingerprint on success', () => {
-    mockComputeFingerprint.mockReturnValue('SHA256:abc123');
-    initOtaSigningKeyAudit('-----BEGIN PUBLIC KEY-----', 'env');
+    initOtaSigningKeyAudit(VALID_SIGNING_KEY_PEM, 'env');
     expect(mockLogEvent).toHaveBeenCalledWith({
       event: 'OTA_SIGNING_KEY_LOADED',
-      details: { keyFingerprint: 'SHA256:abc123', source: 'env' }
+      details: { keyFingerprint: VALID_KEY_FINGERPRINT, source: 'env' }
     });
   });
 
   it('logs source file variant', () => {
-    mockComputeFingerprint.mockReturnValue('SHA256:xyz');
-    initOtaSigningKeyAudit('pem', 'file');
+    initOtaSigningKeyAudit(VALID_SIGNING_KEY_PEM, 'file');
     expect(mockLogEvent).toHaveBeenCalledWith(
-      expect.objectContaining({ details: { keyFingerprint: 'SHA256:xyz', source: 'file' } })
+      expect.objectContaining({ details: { keyFingerprint: VALID_KEY_FINGERPRINT, source: 'file' } })
     );
   });
 
   it('logs error details when fingerprint computation throws', () => {
-    mockComputeFingerprint.mockImplementation(() => {
-      throw new Error('bad pem');
-    });
-    initOtaSigningKeyAudit('pem', 'env');
+    initOtaSigningKeyAudit('not-a-pem', 'env');
     expect(mockLogEvent).toHaveBeenCalledWith({
       event: 'OTA_SIGNING_KEY_LOADED',
-      details: { source: 'env', error: 'bad pem' }
+      details: { source: 'env', error: expect.any(String) }
     });
   });
 

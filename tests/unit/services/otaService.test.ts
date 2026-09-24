@@ -73,10 +73,6 @@ jest.mock('@/services/deviceService', () => ({
   })
 }));
 
-jest.mock('@/services/otaReleaseLog', () => ({
-  getOtaReleaseLog: jest.fn().mockReturnValue(null)
-}));
-
 const mockLogEvent = jest.fn().mockResolvedValue(undefined);
 
 jest.mock('@/services/auditService', () => ({

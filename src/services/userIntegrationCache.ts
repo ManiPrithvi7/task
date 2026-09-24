@@ -24,20 +24,11 @@ export type GmbIntegrationCache = {
   accountId: string;
 };
 
-export type PosIntegrationCache = {
-  socialId: string;
-  platform: 'shopify' | 'square';
-  accessToken: string;
-  refreshToken?: string;
-  storeId: string;
-  expiresAt?: string;
-};
 
 export type UserIntegrationCache = {
   userId: string;
   instagram?: InstagramIntegrationCache;
   gmb?: GmbIntegrationCache;
-  pos?: PosIntegrationCache;
   updatedAt: string;
 };
 
@@ -139,8 +130,7 @@ export async function cacheUserIntegrations(userId: string): Promise<UserIntegra
     logger.info('[USER_INTEGRATIONS] Cached', {
       userId,
       hasInstagram: Boolean(cache.instagram),
-      hasGmb: Boolean(cache.gmb),
-      posPlatform: cache.pos?.platform ?? null
+      hasGmb: Boolean(cache.gmb)
     });
 
     return cache;

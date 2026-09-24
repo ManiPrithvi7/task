@@ -15,9 +15,10 @@ export interface AuthTokenPayload {
   id?: string;
   user_id?: string;
   email?: string;      // User email
+  /** Dashboard/admin claim. Absent on ordinary business tokens. */
+  role?: string;
   iat?: number;        // Issued at
   exp?: number;         // Expiration
-  [key: string]: any;   // Allow other fields
 }
 
 export interface AuthTokenVerificationResult {
@@ -55,8 +56,7 @@ export class AuthService {
       }
 
       logger.debug('Verifying auth_token', {
-        tokenLength: authToken.length,
-        tokenPreview: authToken.substring(0, 30) + '...'
+        tokenLength: authToken.length
       });
 
       // Verify JWT signature and expiration
@@ -77,23 +77,34 @@ export class AuthService {
         });
       } catch (jwtError) {
         const jwtErrorMessage = jwtError instanceof Error ? jwtError.message : 'Unknown JWT error';
+        const jwtErrorName = jwtError instanceof Error ? jwtError.name : '';
         logger.warn('JWT verification failed', {
           error: jwtErrorMessage,
-          tokenPreview: authToken.substring(0, 30) + '...'
+          errorName: jwtErrorName,
+          tokenLength: authToken.length
         });
 
-        // Provide specific error messages
-        if (jwtErrorMessage.includes('expired')) {
+        // TokenExpiredError and NotBeforeError subclass JsonWebTokenError, so match name first.
+        // Signature and malformed tokens share JsonWebTokenError; those two messages are exact library strings.
+        if (jwtErrorName === 'TokenExpiredError') {
           return {
             valid: false,
             error: 'auth_token has expired. Please obtain a new token.'
           };
-        } else if (jwtErrorMessage.includes('signature')) {
+        }
+        if (jwtErrorName === 'NotBeforeError') {
+          return {
+            valid: false,
+            error: 'auth_token is not yet valid.'
+          };
+        }
+        if (jwtErrorName === 'JsonWebTokenError' && jwtErrorMessage === 'invalid signature') {
           return {
             valid: false,
             error: 'Invalid auth_token signature. Token may be tampered with or signed with wrong secret.'
           };
-        } else if (jwtErrorMessage.includes('malformed')) {
+        }
+        if (jwtErrorName === 'JsonWebTokenError' && jwtErrorMessage === 'jwt malformed') {
           return {
             valid: false,
             error: 'Malformed auth_token. Token format is invalid.'
@@ -121,7 +132,7 @@ export class AuthService {
       if (!userId) {
         logger.warn('User ID not found in auth_token payload', {
           payloadKeys: Object.keys(decoded),
-          tokenPreview: authToken.substring(0, 30) + '...'
+          tokenLength: authToken.length
         });
         return {
           valid: false,
@@ -134,7 +145,7 @@ export class AuthService {
       if (!userId.match(/^[0-9a-fA-F]{24}$/)) {
         logger.warn('Invalid user ID format in auth_token', {
           userId,
-          tokenPreview: authToken.substring(0, 30) + '...'
+          tokenLength: authToken.length
         });
         return {
           valid: false,
@@ -159,7 +170,7 @@ export class AuthService {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logger.error('Failed to verify auth_token', {
         error: errorMessage,
-        tokenPreview: authToken ? authToken.substring(0, 30) + '...' : 'null'
+        tokenLength: typeof authToken === 'string' ? authToken.length : 0
       });
 
       return {

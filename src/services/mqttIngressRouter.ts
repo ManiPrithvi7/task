@@ -162,27 +162,6 @@ async function handleNonCritical(
     return;
   }
 
-  const incomingDeviceId = handlers.extractDeviceId(topic);
-  if (incomingDeviceId) {
-    try {
-      const allowed = await handlers.ensureProvisioned(incomingDeviceId);
-      if (!allowed) {
-        logger.warn('[MQTT_INGRESS] Dropping message from unprovisioned device', {
-          topic,
-          deviceId: incomingDeviceId
-        });
-        return;
-      }
-    } catch (err: unknown) {
-      logger.error('[MQTT_INGRESS] Provisioning check failed', {
-        topic,
-        deviceId: incomingDeviceId,
-        error: err instanceof Error ? err.message : String(err)
-      });
-      return;
-    }
-  }
-
   if (topic.endsWith('/telemetry')) {
     await handlers.onOtaTelemetry(topic, message);
   } else if (topic.endsWith('/status')) {

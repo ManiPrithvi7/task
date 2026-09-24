@@ -132,6 +132,29 @@ describe('AuthService', () => {
       );
     });
 
+    test('rejects a token that is not yet valid', async () => {
+      const token = jwt.sign({ sub: VALID_USER_ID }, TEST_SECRET, {
+        notBefore: '1h',
+      });
+
+      const result = await authService.verifyAuthToken(token);
+
+      expect(result.valid).toBe(false);
+      expect(result.error).toBe('auth_token is not yet valid.');
+    });
+
+    test('logs token length and does not log a token prefix', async () => {
+      const token = jwt.sign({ sub: VALID_USER_ID }, TEST_SECRET);
+      const debug = jest.spyOn(logger, 'debug');
+
+      await authService.verifyAuthToken(token);
+
+      const logged = JSON.stringify(debug.mock.calls);
+      expect(logged).toContain(`"tokenLength":${token.length}`);
+      expect(logged).not.toContain(token.slice(0, 30));
+      expect(logged).not.toContain('tokenPreview');
+    });
+
     test('rejects tokens with disallowed algorithm (e.g. HS384)', async () => {
       // Sign with HS384, but service only allows HS256
       const token = jwt.sign({ sub: VALID_USER_ID }, TEST_SECRET, {

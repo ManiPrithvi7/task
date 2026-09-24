@@ -3,9 +3,8 @@ import type { BootstrapHost } from './bootstrapHost';
 import { initializeHttpServer } from './httpRouteRegistry';
 import { ConnectRefreshCoordinator } from '../services/connectRefreshCoordinator';
 import { GmbConnectPull } from '../services/gmbConnectPull';
-import { StimulateService } from '../services/stimulateService';
+import { StimulateService, hasStimRedisOffer } from '../services/stimulateService';
 import { tryCreateFirmwareStorageFromOciEnv } from '../services/firmwareStorageService';
-import { hasStimRedisOffer } from '../services/stimOtaRedis';
 import {
   InstagramServerlessBridge,
   InstagramDirectFetchInvoker,

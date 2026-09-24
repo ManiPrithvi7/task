@@ -26,7 +26,7 @@ async function requireAuth(
   req: Request,
   res: Response,
   authService: AuthService
-): Promise<{ userId: string } | null> {
+): Promise<{ userId: string; role?: string } | null> {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) {
     res.status(401).json({ error: 'Authorization required', code: 'AUTH_TOKEN_MISSING' });
@@ -38,7 +38,8 @@ async function requireAuth(
     res.status(401).json({ error: result.error || 'Invalid token', code: 'AUTH_TOKEN_INVALID' });
     return null;
   }
-  return { userId: result.userId };
+  const role = typeof result.decoded?.role === 'string' ? result.decoded.role : undefined;
+  return { userId: result.userId, role };
 }
 
 async function requireAdmin(
@@ -49,15 +50,11 @@ async function requireAdmin(
   const auth = await requireAuth(req, res, authService);
   if (!auth) return null;
 
-  const authHeader = req.headers.authorization!;
-  const token = authHeader.substring(7);
-  const result = await authService.verifyAuthToken(token);
-  const role = typeof result.decoded?.role === 'string' ? result.decoded.role : undefined;
-  if (role !== 'admin') {
+  if (auth.role !== 'admin') {
     res.status(403).json({ error: 'Admin access required for compliance scope', code: 'ADMIN_REQUIRED' });
     return null;
   }
-  return auth;
+  return { userId: auth.userId };
 }
 
 export function createInfluxQueryRoutes(deps: InfluxQueryRoutesDeps): Router {

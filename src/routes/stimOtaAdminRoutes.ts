@@ -11,9 +11,9 @@ import { getRedisService } from '../services/redisService';
 import { OciStorageError } from '../services/ociStorageErrors';
 import {
   getOrCreateStimLabKeypair,
-  loadStimOtaOffer
-} from '../services/stimOtaRedis';
-import { replaceStimFirmware } from '../services/stimOtaUpload';
+  loadStimOtaOffer,
+  replaceStimFirmware
+} from '../services/stimulateService';
 import { parseStimFirmwareUpload } from '../utils/stimFirmwareUploadParse';
 import { isProductionNodeEnv } from '../utils/stimOtaCrypto';
 import { logger } from '../utils/logger';

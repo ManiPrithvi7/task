@@ -6,7 +6,7 @@ import type { OtaCommandPublisher, OtaService } from '../services/otaService';
 import { isStimTestOtaUrlSet } from '../config/envHelpers';
 import { getActiveDeviceCache } from '../services/deviceService';
 import { getRedisService } from '../services/redisService';
-import { hasStimRedisOffer } from '../services/stimOtaRedis';
+import { hasStimRedisOffer } from '../services/stimulateService';
 import { logger } from '../utils/logger';
 import { resolveLocalTestOtaFirmware } from '../utils/localTestOtaFirmware';
 import { isStimulateDevice } from '../utils/stimulateAllowlist';
