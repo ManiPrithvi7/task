@@ -427,7 +427,7 @@ Generate client material: `bun run scripts/pki/pki.ts app-client` (see `scripts/
 | `INFLUXDB_HEALTH_RETRIES` | `3` | Influx startup health probe attempts |
 | `METRICS_INTERVAL_MS` | `10000` | Reserved metrics poll interval (ms) |
 | `METRICS_RETENTION_DAYS` | `30` | Reserved retention hint (days) |
-| `INFLUXDB_QUEUE_FLUSH_MS` | `5000` | Influx disk queue flush interval (ms) |
+| `INFLUXDB_QUEUE_FLUSH_MS` | `1000` (code fallback) | Influx disk queue flush interval (ms). Production must pin `5000` so HEAD deploys do not 5× the tick rate. Legacy alias: `BATCH_TIMEOUT`. |
 | `INFLUXDB_QUEUE_BATCH_MAX` | `500` | Max lines per Influx batch POST |
 | `IG_POLL_BATCH_SIZE` | `50` | Instagram poller devices per batch |
 

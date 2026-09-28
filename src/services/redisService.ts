@@ -164,9 +164,15 @@ export class RedisService {
     durationMs: number;
     error: string;
   }): void {
+    const csvFlag = process.env.REDIS_USAGE_CSV_ENABLED?.trim();
+    if (csvFlag !== 'true' && csvFlag !== '1') return;
     if (this.usageLogQueue.length >= 5000) this.usageLogQueue.shift();
     this.usageLogQueue.push(this.buildUsageCsvLine(entry));
     void this.flushUsageLogQueue();
+  }
+
+  getUsageCsvPath(): string {
+    return this.usageCsvPath;
   }
 
   private async flushUsageLogQueue(): Promise<void> {

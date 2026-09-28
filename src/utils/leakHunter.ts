@@ -14,6 +14,9 @@ export type AppLeakSnapshot = {
   mqttPendingAcks: number;
   deferredPending: number;
   ingressBuffer: number;
+  recentPublishes?: number;
+  loyaltyWsPerIp?: number;
+  deviceStateChains?: number;
 };
 
 export type StoreReading = {
@@ -117,6 +120,24 @@ export function readStoreSizes(appSnapshot?: AppLeakSnapshot): StoreReading[] {
       module: 'mqttIngressRouter',
       file: 'src/services/mqttIngressRouter.ts',
       count: appSnapshot?.ingressBuffer ?? -1
+    },
+    {
+      key: 'mqtt.recentPublishes',
+      module: 'MqttClientManager',
+      file: 'src/servers/mqttClient.ts',
+      count: appSnapshot?.recentPublishes ?? -1
+    },
+    {
+      key: 'ws.loyaltyPerIp',
+      module: 'loyaltyWs',
+      file: 'src/servers/loyaltyWs.ts',
+      count: appSnapshot?.loyaltyWsPerIp ?? -1
+    },
+    {
+      key: 'maps.deviceStateChains',
+      module: 'DeviceStateLogService',
+      file: 'src/services/deviceStateLogService.ts',
+      count: appSnapshot?.deviceStateChains ?? -1
     }
   ];
 }

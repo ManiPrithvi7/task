@@ -28,6 +28,10 @@ export class DeviceStateLogService {
   private chains = new Map<string, ChainState>();
   private initialized = false;
 
+  chainCount(): number {
+    return this.chains.size;
+  }
+
   async initialize(): Promise<void> {
     try {
       const influx = getInfluxService();

@@ -63,6 +63,8 @@ export interface BootstrapHost {
   isServicesReady: boolean;
   isIngressReady: boolean;
   keepAliveTimer: ReturnType<typeof setInterval> | null;
+  loyaltyWsClose?: () => void;
+  loyaltyWsPerIpSize?: () => number;
 
   getRedisClientOrNull(): ReturnType<RedisService['getClient']> | null;
   redisMarkDeviceActive(deviceId: string): Promise<void>;

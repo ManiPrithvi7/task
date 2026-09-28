@@ -212,7 +212,9 @@ export async function initializeHttpServer(host: BootstrapHost): Promise<void> {
 
   host.earlyHttp?.attachExpress(host.httpServer.getApp());
   await host.httpServer.start(host.earlyHttp?.server);
-  attachLoyaltyWs(host.httpServer.getServer(), () => host.loyaltyService);
+  const loyaltyWs = attachLoyaltyWs(host.httpServer.getServer(), () => host.loyaltyService);
+  host.loyaltyWsClose = loyaltyWs.close;
+  host.loyaltyWsPerIpSize = loyaltyWs.perIpSize;
   logger.info('✅ Loyalty WebSocket attached at /loyalty/realtime');
   logger.info('✅ HTTP server initialized');
 }

@@ -23,7 +23,7 @@ export function clientIpFromUpgrade(req: IncomingMessage): string {
 export function attachLoyaltyWs(
   server: Server,
   getService: () => LoyaltyService | undefined
-): { close: () => void } {
+): { close: () => void; perIpSize: () => number } {
   const perIp = new Map<string, RateEntry>();
 
   const verifyClient: VerifyClientCallbackAsync = (info, done) => {
@@ -82,7 +82,8 @@ export function attachLoyaltyWs(
     close: () => {
       clearInterval(pingTimer);
       wss.close();
-    }
+    },
+    perIpSize: () => perIp.size
   };
 }
 

@@ -86,6 +86,7 @@ import {
 } from './utils/mqttTlsOptions';
 import { ensureDeviceProvisioned as checkDeviceProvisioned } from './services/deviceProvisioningGate';
 import { isLoyaltySpinAckEnvelope, LoyaltyService } from './services/loyaltyService';
+import { getDeviceStateLogService } from './services/deviceStateLogService';
 
 export class StatsMqttLite {
   private config: AppConfig;
@@ -150,6 +151,8 @@ export class StatsMqttLite {
   // Startup time for non-lifecycle grace period (set when ingress ready)
   private startupTime: number = Date.now();
   private keepAliveTimer: NodeJS.Timeout | null = null;
+  private loyaltyWsClose?: () => void;
+  private loyaltyWsPerIpSize?: () => number;
   private lifecycleTopicsSubscribed = false;
   private nonLifecycleTopicsSubscribed = false;
 
@@ -163,11 +166,17 @@ export class StatsMqttLite {
     mqttPendingAcks: number;
     deferredPending: number;
     ingressBuffer: number;
+    recentPublishes: number;
+    loyaltyWsPerIp: number;
+    deviceStateChains: number;
   } {
     return {
       mqttPendingAcks: this.mqttClient ? this.mqttClient.getPendingAckCount() : -1,
       deferredPending: this.deferredWork.pendingCount(),
-      ingressBuffer: this.mqttIngressState.buffer.length
+      ingressBuffer: this.mqttIngressState.buffer.length,
+      recentPublishes: this.mqttClient ? this.mqttClient.getRecentPublishesCount() : -1,
+      loyaltyWsPerIp: this.loyaltyWsPerIpSize ? this.loyaltyWsPerIpSize() : -1,
+      deviceStateChains: getDeviceStateLogService().chainCount()
     };
   }
 
@@ -1032,6 +1041,9 @@ export class StatsMqttLite {
         clearInterval(this.keepAliveTimer);
         this.keepAliveTimer = null;
       }
+
+      this.otaRolloutScheduler?.stop();
+      this.loyaltyWsClose?.();
 
       // Stop Instagram poller
       if (this.instagramPoller) {

@@ -4,22 +4,54 @@ import { getInstagramPollingMetricsSnapshot } from './services/instagramService'
 import { getRedisService } from './services/redisService';
 import { getActivityCounters } from './utils/activityMetrics';
 import { startLeakHunter, stopLeakHunter } from './utils/leakHunter';
+import {
+  diagnosticFileMetas,
+  readProcMemoryFields,
+  rssWatchdogMb,
+  tryBunGc
+} from './utils/runtimeDiagnostics';
 
 const app = new StatsMqttLite();
 let shuttingDown = false;
 let memoryLogTimer: ReturnType<typeof setInterval> | null = null;
 
 function logMemoryUsage(): void {
+  const rssBefore = process.memoryUsage().rss;
+  const gcRan = tryBunGc(true);
   const m = process.memoryUsage();
   const ig = getInstagramPollingMetricsSnapshot();
+  const snap = app.leakSnapshot();
+  const proc = readProcMemoryFields();
+  const dataDir = process.env.DATA_DIR || './data';
+  const rssMb = m.rss / 1024 / 1024;
+  const watchdogMb = rssWatchdogMb();
+
   logger.info('memory_usage', {
     memory: {
-      rss: `${(m.rss / 1024 / 1024).toFixed(2)} MB`,
+      rss: `${rssMb.toFixed(2)} MB`,
+      rssBeforeGc: `${(rssBefore / 1024 / 1024).toFixed(2)} MB`,
+      gcRan,
       heapTotal: `${(m.heapTotal / 1024 / 1024).toFixed(2)} MB`,
       heapUsed: `${(m.heapUsed / 1024 / 1024).toFixed(2)} MB`,
       external: `${(m.external / 1024 / 1024).toFixed(2)} MB`,
       arrayBuffers: `${(m.arrayBuffers / 1024 / 1024).toFixed(2)} MB`
     },
+    proc: {
+      smapsRssKb: proc.smaps?.rssKb ?? null,
+      privateDirtyKb: proc.smaps?.privateDirtyKb ?? null,
+      privateCleanKb: proc.smaps?.privateCleanKb ?? null,
+      vmRssKb: proc.status?.vmRssKb ?? null,
+      vmDataKb: proc.status?.vmDataKb ?? null
+    },
+    gauges: {
+      recentPublishes: snap.recentPublishes,
+      mqttPendingAcks: snap.mqttPendingAcks,
+      deferredPending: snap.deferredPending,
+      ingressBuffer: snap.ingressBuffer,
+      loyaltyWsPerIp: snap.loyaltyWsPerIp,
+      deviceStateChains: snap.deviceStateChains
+    },
+    files: diagnosticFileMetas(dataDir, getRedisService()?.getUsageCsvPath()),
     metrics: {
       ...getActivityCounters(),
       redisOperations: getRedisService()?.getCommandStats().total ?? 0,
@@ -29,6 +61,13 @@ function logMemoryUsage(): void {
       fetchesNoCredentials: Number(ig.fetchesNoCredentials ?? 0)
     }
   });
+
+  if (rssMb >= watchdogMb) {
+    logger.warn('rss_watchdog', {
+      rssMb: Number(rssMb.toFixed(2)),
+      thresholdMb: watchdogMb
+    });
+  }
 }
 
 app.start()
@@ -86,19 +125,17 @@ process.on('SIGINT', () => {
   void shutdown('SIGINT');
 });
 
-// Handle unhandled rejections
 process.on('unhandledRejection', (reason, promise) => {
-  logger.error('Unhandled Promise Rejection', { 
+  logger.error('Unhandled Promise Rejection', {
     reason,
-    promise 
+    promise
   });
 });
 
-// Handle uncaught exceptions
 process.on('uncaughtException', (error) => {
-  logger.error('Uncaught Exception', { 
+  logger.error('Uncaught Exception', {
     error: error.message,
-    stack: error.stack 
+    stack: error.stack
   });
   process.exit(1);
 });

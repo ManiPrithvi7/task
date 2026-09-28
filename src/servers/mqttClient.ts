@@ -2,8 +2,9 @@ import mqtt, { MqttClient, IClientOptions, IPublishPacket } from 'mqtt';
 import * as dns from 'dns';
 import { EventEmitter } from 'events';
 import { logger } from '../utils/logger';
-// v5 inspection: activity metrics are not part of v1 connect path.
-// import { incActivity } from '../utils/activityMetrics';
+import { incActivity } from '../utils/activityMetrics';
+// incActivity was commented out during v1/v5 connect-path inspection ("not part of v1").
+// Restored as soak evidence: publishes/mqttMessages were doing evidential work while off.
 import {
   applyMqttJsTlsOptions,
   normalizeTlsPem,
@@ -284,7 +285,7 @@ export class MqttClientManager extends EventEmitter {
       });
 
       this.client.on('message', (topic, payload, packet) => {
-        // v5 inspection: incActivity('mqttMessages');
+        incActivity('mqttMessages');
         logger.debug('Message received', {
           topic,
           size: payload.length,
@@ -390,7 +391,7 @@ export class MqttClientManager extends EventEmitter {
             });
             reject(error);
           } else {
-            // v5 inspection: incActivity('publishes');
+            incActivity('publishes');
             const deliveryTime = Date.now() - publishTime;
             logger.debug('Message published', {
               topic: fullTopic,
@@ -776,6 +777,11 @@ export class MqttClientManager extends EventEmitter {
 
   getPendingAckCount(): number {
     return this.pendingAcks.size;
+  }
+
+  /** Echo-window map size. Stores topic+payload prefix and metadata, not full payloads. */
+  getRecentPublishesCount(): number {
+    return this.recentPublishes.size;
   }
 }
 
