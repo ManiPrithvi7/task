@@ -12,6 +12,7 @@ import {
   writeDeviceHashOnConnect,
   getIgDeviceRuntimeCache,
   readDeviceHashIfPresent,
+  readGmbTokenFields,
   readIgTokenFields
 } from '../services/igDeviceRuntimeCache';
 import { parsePilotBootPayload, isPilotOtaStatusEvent, normalizeOtaEventKey } from '../utils/pilotOtaPayload';
@@ -105,6 +106,7 @@ export async function cacheActiveDevice(host: BootstrapHost, deviceId: string): 
       const accessToken = (cachedHash.ig_accessToken || '').trim();
       const linked = Boolean(igAccountId && accessToken);
       const tokenFields = readIgTokenFields(cachedHash);
+      const gmbTokenFields = readGmbTokenFields(cachedHash);
       const active: ActiveDevice = {
         deviceId,
         businessId,
@@ -115,7 +117,8 @@ export async function cacheActiveDevice(host: BootstrapHost, deviceId: string): 
               accessToken,
               ...tokenFields
             }
-          : {})
+          : {}),
+        ...gmbTokenFields
       };
       await host.activeDeviceCache.setActive(active);
       await writeDeviceHashOnConnect(deviceId, { status: 'active' });

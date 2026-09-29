@@ -156,6 +156,8 @@ describe('applyIntegrationDisconnectCache', () => {
 
     expect(clearHashFields.mock.calls[0][1]).toEqual([
       'gmb_accessToken',
+      'gmb_token_exp',
+      'gmb_token_created_at',
       'gmb_profile_id',
       'gmb_review_count',
       'gmb_reviews_origin'

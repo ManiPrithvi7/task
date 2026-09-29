@@ -31,6 +31,11 @@ export interface ActiveDevice {
   tokenExp?: string;
   /** Epoch ms when the cached Instagram token was issued or last refreshed. */
   tokenCreatedAt?: number;
+  gmbAccessToken?: string;
+  /** Google `expires_in` seconds, same meaning as `Social.tokenExp`. */
+  gmbTokenExp?: string;
+  /** Epoch ms when the cached Google Business token was issued or last refreshed. */
+  gmbTokenCreatedAt?: number;
 }
 
 /** Legacy local-file entries predate the userId→businessId rename. */

@@ -37,9 +37,10 @@ function createAccessTokenOAuthClient(accessToken: string): GmbApiAuth {
 async function getGmbApiAuth(
   userId: string,
   social: { accessToken: string; refreshToken?: string | null },
-  webhookConfig: WebhookConfig
+  webhookConfig: WebhookConfig,
+  deviceId: string
 ): Promise<GmbApiAuth | null> {
-  const oauth = await getValidOAuth2Client(userId, webhookConfig);
+  const oauth = await getValidOAuth2Client(userId, webhookConfig, deviceId);
   if (oauth) {
     return oauth as unknown as GmbApiAuth;
   }
@@ -180,7 +181,7 @@ export async function syncGmbLocationForDevice(
   const profile = await GoogleBusinessProfile.findOne({ socialId: social._id }).lean();
   if (!profile) return null;
 
-  const auth = await getGmbApiAuth(businessId, social, webhookConfig);
+  const auth = await getGmbApiAuth(businessId, social, webhookConfig, deviceId);
   if (!auth) {
     logger.warn('[GMB_SYNC] No GBP auth — cannot fetch initial GMB snapshot', {
       deviceId,

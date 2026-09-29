@@ -21,11 +21,27 @@ jest.mock('@/models/Social', () => ({
   Provider: { GOOGLE_BUSINESS: 'GOOGLE_BUSINESS' }
 }));
 
+jest.mock('@/services/redisService', () => {
+  const hSet = jest.fn().mockResolvedValue(1);
+  const expire = jest.fn().mockResolvedValue(1);
+  return {
+    getRedisService: () => ({
+      isRedisConnected: () => true,
+      getClient: () => ({ isOpen: true, hSet, expire })
+    })
+  };
+});
+
 import {
   createGoogleBusinessOAuth2Client,
   getValidOAuth2Client
 } from '@/services/googleBusiness/googleBusinessOAuth';
 import { logger } from '@/utils/logger';
+import { getRedisService } from '@/services/redisService';
+import {
+  getIgDeviceRuntimeCache,
+  resetIgDeviceRuntimeCacheForTests
+} from '@/services/igDeviceRuntimeCache';
 
 const OAuth2ClientMock = OAuth2Client as unknown as jest.Mock;
 const TEST_USER_ID = '507f1f77bcf86cd799439011';
@@ -53,6 +69,7 @@ function socialDoc(overrides: Record<string, unknown> = {}) {
 describe('googleBusinessOAuth', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    resetIgDeviceRuntimeCacheForTests();
     delete process.env.GOOGLE_BUSINESS_REDIRECT_URI;
     mockRefreshAccessToken.mockResolvedValue({ credentials: { access_token: 'new-token', expiry_date: Date.now() + 3_600_000 } });
   });
@@ -157,6 +174,56 @@ describe('googleBusinessOAuth', () => {
       expect(await getValidOAuth2Client(TEST_USER_ID, webhookConfig())).toBeNull();
       expect(logger.error).toHaveBeenCalledWith('[GMB_OAUTH] refresh failed', expect.anything());
       expect(logger.warn).not.toHaveBeenCalled();
+    });
+
+    it('skips Google refresh when the cached GMB token is still valid', async () => {
+      const deviceId = '274968B43A1D';
+      getIgDeviceRuntimeCache().setGmbToken(deviceId, TEST_USER_ID, 'cached-token', '3600', Date.now() - 60_000);
+      mockFindOne.mockResolvedValue(socialDoc({ tokenCreatedAt: new Date(Date.now() - 4000 * 1000) }));
+
+      const client = await getValidOAuth2Client(TEST_USER_ID, webhookConfig(), deviceId);
+
+      expect(client).not.toBeNull();
+      expect(mockRefreshAccessToken).not.toHaveBeenCalled();
+      expect(mockSetCredentials).toHaveBeenCalledWith({
+        access_token: 'cached-token',
+        refresh_token: 'refresh-token'
+      });
+    });
+
+    it('refreshes an expired cached GMB token and writes expiry onto the device hash', async () => {
+      const deviceId = '274968B43A1D';
+      getIgDeviceRuntimeCache().setGmbToken(
+        deviceId,
+        TEST_USER_ID,
+        'stale-token',
+        '3600',
+        Date.now() - 4000 * 1000
+      );
+      mockFindOne.mockResolvedValue(socialDoc({ accessToken: 'stale-token' }));
+
+      await getValidOAuth2Client(TEST_USER_ID, webhookConfig(), deviceId);
+
+      expect(mockRefreshAccessToken).toHaveBeenCalled();
+      const hSet = getRedisService().getClient().hSet as jest.Mock;
+      expect(hSet).toHaveBeenCalledWith(
+        `proof.mqtt:device:${deviceId}`,
+        expect.objectContaining({
+          gmb_accessToken: 'new-token',
+          gmb_token_exp: expect.any(String),
+          gmb_token_created_at: expect.any(String)
+        })
+      );
+      const cached = getIgDeviceRuntimeCache().gmbToken(deviceId);
+      expect(cached.accessToken).toBe('new-token');
+      expect(cached.tokenExp).toBeTruthy();
+      expect(cached.tokenCreatedAt).toEqual(expect.any(Number));
+    });
+
+    it('refreshes when no creation time is cached or stored', async () => {
+      mockFindOne.mockResolvedValue(socialDoc({ tokenCreatedAt: undefined }));
+      await getValidOAuth2Client(TEST_USER_ID, webhookConfig());
+      expect(mockRefreshAccessToken).toHaveBeenCalled();
     });
   });
 });

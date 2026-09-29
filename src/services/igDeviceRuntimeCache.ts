@@ -27,6 +27,10 @@ export interface DeviceRuntimeState {
   lastFollowerCountTimestamp?: number;
   gmbProfileId?: string;
   gmbAccessToken?: string;
+  /** Duration in seconds (`Social.tokenExp` / Google `expires_in`). */
+  gmbTokenExp?: string;
+  /** Epoch ms when `gmbAccessToken` was issued or last refreshed. */
+  gmbTokenCreatedAt?: number;
   gmbReviewCount?: number;
   gmbReviewsOrigin?: ScreenCountOrigin;
   status?: 'active' | 'inactive';
@@ -55,6 +59,21 @@ export interface ResolvedDeviceMeta {
   businessId?: string;
   tokenExp?: string;
   tokenCreatedAt?: number;
+}
+
+export function readGmbTokenFields(fields: Record<string, string>): {
+  gmbAccessToken?: string;
+  gmbTokenExp?: string;
+  gmbTokenCreatedAt?: number;
+} {
+  const accessToken = (fields.gmb_accessToken || '').trim();
+  const tokenExp = (fields.gmb_token_exp || '').trim();
+  const createdRaw = parseInt(fields.gmb_token_created_at || '', 10);
+  return {
+    ...(accessToken ? { gmbAccessToken: accessToken } : {}),
+    ...(tokenExp ? { gmbTokenExp: tokenExp } : {}),
+    ...(Number.isFinite(createdRaw) ? { gmbTokenCreatedAt: createdRaw } : {})
+  };
 }
 
 export function readIgTokenFields(fields: Record<string, string>): {
@@ -95,6 +114,37 @@ class IgDeviceRuntimeCacheImpl {
 
   getByBusinessId(businessId: string): DeviceRuntimeState[] {
     return [...this.devices.values()].filter((d) => d.businessId === businessId);
+  }
+
+  deviceIdsForBusiness(businessId: string): string[] {
+    const ids: string[] = [];
+    for (const [id, state] of this.devices) {
+      if (state.businessId === businessId) ids.push(id);
+    }
+    return ids;
+  }
+
+  setGmbToken(
+    deviceId: string,
+    businessId: string,
+    accessToken: string,
+    tokenExp: string,
+    createdAtMs: number
+  ): void {
+    const e = this.entry(deviceId);
+    if (!e.businessId) e.businessId = businessId;
+    e.gmbAccessToken = accessToken;
+    e.gmbTokenExp = tokenExp;
+    e.gmbTokenCreatedAt = createdAtMs;
+  }
+
+  gmbToken(deviceId: string): { accessToken?: string; tokenExp?: string; tokenCreatedAt?: number } {
+    const e = this.devices.get(deviceId);
+    return {
+      accessToken: e?.gmbAccessToken,
+      tokenExp: e?.gmbTokenExp,
+      tokenCreatedAt: e?.gmbTokenCreatedAt
+    };
   }
 
   getByGmbProfileId(gmbProfileId: string): string[] {
@@ -312,6 +362,15 @@ class IgDeviceRuntimeCacheImpl {
     }
     if (fields.gmb_profile_id !== undefined) e.gmbProfileId = fields.gmb_profile_id || undefined;
     if (fields.gmb_accessToken !== undefined) e.gmbAccessToken = fields.gmb_accessToken || undefined;
+    if (fields.gmb_token_exp !== undefined) e.gmbTokenExp = fields.gmb_token_exp || undefined;
+    if (fields.gmb_token_created_at !== undefined) {
+      if (fields.gmb_token_created_at === '') {
+        e.gmbTokenCreatedAt = undefined;
+      } else {
+        const created = parseInt(fields.gmb_token_created_at, 10);
+        if (!Number.isNaN(created)) e.gmbTokenCreatedAt = created;
+      }
+    }
     if (fields.gmb_review_count !== undefined) {
       if (fields.gmb_review_count === '') {
         e.gmbReviewCount = undefined;
@@ -360,6 +419,8 @@ class IgDeviceRuntimeCacheImpl {
     if (state.igFollowersOrigin !== undefined) out.ig_followers_origin = state.igFollowersOrigin;
     if (state.gmbProfileId !== undefined) out.gmb_profile_id = state.gmbProfileId;
     if (state.gmbAccessToken !== undefined) out.gmb_accessToken = state.gmbAccessToken;
+    if (state.gmbTokenExp !== undefined) out.gmb_token_exp = state.gmbTokenExp;
+    if (state.gmbTokenCreatedAt !== undefined) out.gmb_token_created_at = String(state.gmbTokenCreatedAt);
     if (state.gmbReviewCount !== undefined) out.gmb_review_count = String(state.gmbReviewCount);
     if (state.gmbReviewsOrigin !== undefined) out.gmb_reviews_origin = state.gmbReviewsOrigin;
     if (state.status !== undefined) out.status = state.status;
@@ -521,11 +582,14 @@ async function queryMongoDeviceState(
         provider: Provider.GOOGLE_BUSINESS,
         ...owner
       })
-        .select({ accessToken: 1, socialAccountId: 1 })
+        .select({ accessToken: 1, socialAccountId: 1, tokenExp: 1, tokenCreatedAt: 1 })
         .lean();
       if (gmb) {
         result.gmbAccessToken = gmb.accessToken;
         result.gmbProfileId = gmb.socialAccountId;
+        if (gmb.tokenExp) result.gmbTokenExp = String(gmb.tokenExp);
+        const createdMs = gmb.tokenCreatedAt ? new Date(gmb.tokenCreatedAt).getTime() : NaN;
+        if (Number.isFinite(createdMs)) result.gmbTokenCreatedAt = createdMs;
       }
     }
 
@@ -612,6 +676,8 @@ export const IG_DISCONNECT_HASH_FIELDS = [
 ] as const;
 export const GMB_DISCONNECT_HASH_FIELDS = [
   'gmb_accessToken',
+  'gmb_token_exp',
+  'gmb_token_created_at',
   'gmb_profile_id',
   'gmb_review_count',
   'gmb_reviews_origin'
