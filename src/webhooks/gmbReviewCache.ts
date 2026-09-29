@@ -72,9 +72,9 @@ export async function setGmbReviewCount(locationId: string, count: number): Prom
   const cache = getIgDeviceRuntimeCache();
   const devices = cache.getByGmbProfileId(locationId);
   for (const deviceId of devices) {
-    cache.setGmbReviewCount(deviceId, normalized);
+    cache.setGmbReviewCount(deviceId, normalized, 'webhook');
     cache.markDirty(deviceId, 'gmb_review_count');
-    await syncScreenFieldImmediate(deviceId, 'gmb_review_count', normalized);
+    await syncScreenFieldImmediate(deviceId, 'gmb_review_count', normalized, 'webhook');
   }
 }
 

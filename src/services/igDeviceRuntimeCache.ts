@@ -9,17 +9,22 @@ import { getRedisService } from './redisService';
 import { getLocalOtaFleetTracker } from './igPollCoordination';
 import { logger } from '../utils/logger';
 
+export type ScreenCountOrigin = 'stim' | 'social' | 'webhook';
+
 export interface DeviceRuntimeState {
   businessId?: string;
   registeredAt?: number;
   igAccountId?: string;
   igAccessToken?: string;
   igFollowerCount?: number;
+  /** Provenance of igFollowerCount — used to reject stim pollution on real paths. */
+  igFollowersOrigin?: ScreenCountOrigin;
   /** Epoch ms when igFollowerCount was last set — used for milestone velocity. */
   lastFollowerCountTimestamp?: number;
   gmbProfileId?: string;
   gmbAccessToken?: string;
   gmbReviewCount?: number;
+  gmbReviewsOrigin?: ScreenCountOrigin;
   status?: 'active' | 'inactive';
   powerSave?: boolean;
   otaCurrentVersion?: string;
@@ -104,10 +109,15 @@ class IgDeviceRuntimeCacheImpl {
     return this.devices.get(deviceId)?.igFollowerCount;
   }
 
-  setFollowers(deviceId: string, count: number, atMs: number = Date.now()): void {
+  setFollowers(deviceId: string, count: number, atMs: number = Date.now(), origin?: ScreenCountOrigin): void {
     const e = this.entry(deviceId);
     e.igFollowerCount = count;
     e.lastFollowerCountTimestamp = atMs;
+    if (origin !== undefined) e.igFollowersOrigin = origin;
+  }
+
+  getIgFollowersOrigin(deviceId: string): ScreenCountOrigin | undefined {
+    return this.devices.get(deviceId)?.igFollowersOrigin;
   }
 
   getLastFollowerCountTimestamp(deviceId: string): number | undefined {
@@ -118,8 +128,29 @@ class IgDeviceRuntimeCacheImpl {
     return this.devices.get(deviceId)?.gmbReviewCount;
   }
 
-  setGmbReviewCount(deviceId: string, count: number): void {
-    this.entry(deviceId).gmbReviewCount = count;
+  setGmbReviewCount(deviceId: string, count: number, origin?: ScreenCountOrigin): void {
+    const e = this.entry(deviceId);
+    e.gmbReviewCount = count;
+    if (origin !== undefined) e.gmbReviewsOrigin = origin;
+  }
+
+  getGmbReviewsOrigin(deviceId: string): ScreenCountOrigin | undefined {
+    return this.devices.get(deviceId)?.gmbReviewsOrigin;
+  }
+
+  clearFollowerCount(deviceId: string): void {
+    const e = this.devices.get(deviceId);
+    if (!e) return;
+    e.igFollowerCount = undefined;
+    e.igFollowersOrigin = undefined;
+    e.lastFollowerCountTimestamp = undefined;
+  }
+
+  clearGmbReviewCount(deviceId: string): void {
+    const e = this.devices.get(deviceId);
+    if (!e) return;
+    e.gmbReviewCount = undefined;
+    e.gmbReviewsOrigin = undefined;
   }
 
   getLastPub(deviceId: string): number {
@@ -199,6 +230,15 @@ class IgDeviceRuntimeCacheImpl {
         if (!Number.isNaN(n)) e.igFollowerCount = n;
       }
     }
+    if (
+      fields.ig_followers_origin === 'stim' ||
+      fields.ig_followers_origin === 'social' ||
+      fields.ig_followers_origin === 'webhook'
+    ) {
+      e.igFollowersOrigin = fields.ig_followers_origin;
+    } else if (fields.ig_followers_origin === '') {
+      e.igFollowersOrigin = undefined;
+    }
     if (fields.gmb_profile_id !== undefined) e.gmbProfileId = fields.gmb_profile_id || undefined;
     if (fields.gmb_accessToken !== undefined) e.gmbAccessToken = fields.gmb_accessToken || undefined;
     if (fields.gmb_review_count !== undefined) {
@@ -208,6 +248,15 @@ class IgDeviceRuntimeCacheImpl {
         const n = parseInt(fields.gmb_review_count, 10);
         if (!Number.isNaN(n)) e.gmbReviewCount = n;
       }
+    }
+    if (
+      fields.gmb_reviews_origin === 'stim' ||
+      fields.gmb_reviews_origin === 'social' ||
+      fields.gmb_reviews_origin === 'webhook'
+    ) {
+      e.gmbReviewsOrigin = fields.gmb_reviews_origin;
+    } else if (fields.gmb_reviews_origin === '') {
+      e.gmbReviewsOrigin = undefined;
     }
     if (fields.status === 'active' || fields.status === 'inactive') e.status = fields.status;
     if (fields.power_save !== undefined) {
@@ -235,9 +284,11 @@ class IgDeviceRuntimeCacheImpl {
     if (state.igAccountId !== undefined) out.ig_accountId = state.igAccountId;
     if (state.igAccessToken !== undefined) out.ig_accessToken = state.igAccessToken;
     if (state.igFollowerCount !== undefined) out.ig_follower_count = String(state.igFollowerCount);
+    if (state.igFollowersOrigin !== undefined) out.ig_followers_origin = state.igFollowersOrigin;
     if (state.gmbProfileId !== undefined) out.gmb_profile_id = state.gmbProfileId;
     if (state.gmbAccessToken !== undefined) out.gmb_accessToken = state.gmbAccessToken;
     if (state.gmbReviewCount !== undefined) out.gmb_review_count = String(state.gmbReviewCount);
+    if (state.gmbReviewsOrigin !== undefined) out.gmb_reviews_origin = state.gmbReviewsOrigin;
     if (state.status !== undefined) out.status = state.status;
     if (state.powerSave !== undefined) out.power_save = state.powerSave ? '1' : '0';
     if (state.otaCurrentVersion !== undefined) out.ota_current_version = state.otaCurrentVersion;
@@ -473,8 +524,21 @@ export async function hydrateGmbReviewCountFromRedis(
   }
 }
 
-export const IG_DISCONNECT_HASH_FIELDS = ['ig_accountId', 'ig_accessToken', 'ig_follower_count'] as const;
-export const GMB_DISCONNECT_HASH_FIELDS = ['gmb_accessToken', 'gmb_profile_id', 'gmb_review_count'] as const;
+export const IG_DISCONNECT_HASH_FIELDS = [
+  'ig_accountId',
+  'ig_accessToken',
+  'ig_follower_count',
+  'ig_followers_origin'
+] as const;
+export const GMB_DISCONNECT_HASH_FIELDS = [
+  'gmb_accessToken',
+  'gmb_profile_id',
+  'gmb_review_count',
+  'gmb_reviews_origin'
+] as const;
+
+export const IG_STIM_POLLUTION_HASH_FIELDS = ['ig_follower_count', 'ig_followers_origin'] as const;
+export const GMB_STIM_POLLUTION_HASH_FIELDS = ['gmb_review_count', 'gmb_reviews_origin'] as const;
 
 /** Remove provider profile fields from Redis hash + local runtime (keep business_id / OTA). */
 export async function clearDeviceHashFields(deviceId: string, fields: readonly string[]): Promise<void> {
@@ -580,14 +644,22 @@ export async function syncScreenFieldImmediate(
     | 'ota_deferred_at'
     | 'ig_accessToken'
     | 'gmb_accessToken',
-  value: string | number
+  value: string | number,
+  origin?: ScreenCountOrigin
 ): Promise<void> {
   const redisSvc = getRedisService();
   if (!redisSvc?.isRedisConnected()) return;
   try {
     const key = REDIS_KEYS.deviceHash(deviceId);
     const client = redisSvc.getClient();
-    await client.hSet(key, field, String(value));
+    const fields: Record<string, string> = { [field]: String(value) };
+    if (origin && field === 'ig_follower_count') {
+      fields.ig_followers_origin = origin;
+    }
+    if (origin && field === 'gmb_review_count') {
+      fields.gmb_reviews_origin = origin;
+    }
+    await client.hSet(key, fields);
     await client.expire(key, DEVICE_HASH_TTL_SEC);
   } catch (err: unknown) {
     logger.warn('[IG_RUNTIME_CACHE] immediate sync failed', {
@@ -596,6 +668,29 @@ export async function syncScreenFieldImmediate(
       error: err instanceof Error ? err.message : String(err)
     });
   }
+}
+
+/**
+ * Whether follower/review counts on a real device hash should be treated as stim pollution.
+ * Explicit origin=stim, or missing origin with count but no IG credentials.
+ */
+export function isStimPollutedIgCount(hash: Record<string, string>): boolean {
+  const raw = hash.ig_follower_count;
+  if (raw == null || raw === '') return false;
+  if (hash.ig_followers_origin === 'stim') return true;
+  if (hash.ig_followers_origin === 'social' || hash.ig_followers_origin === 'webhook') return false;
+  const hasCreds = Boolean(hash.ig_accountId?.trim() && hash.ig_accessToken?.trim());
+  return !hasCreds;
+}
+
+export function isStimPollutedGmbCount(hash: Record<string, string>): boolean {
+  const raw = hash.gmb_review_count;
+  if (raw == null || raw === '') return false;
+  if (hash.gmb_reviews_origin === 'stim') return true;
+  if (hash.gmb_reviews_origin === 'social' || hash.gmb_reviews_origin === 'webhook') return false;
+  // Missing origin + count present without GMB profile/token → treat as untrusted stim leftover
+  const hasCreds = Boolean(hash.gmb_profile_id?.trim() && hash.gmb_accessToken?.trim());
+  return !hasCreds;
 }
 
 /** Write multiple hash fields immediately (OTA / GMB fan-out). */

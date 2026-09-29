@@ -3,7 +3,7 @@
  */
 import { runGmbTick } from '../../../stimulate/gmbRunner';
 import { clearStimCache, writeStimCache } from '../../../stimulate/cache';
-import { getIgDeviceRuntimeCache } from '../../../src/services/igDeviceRuntimeCache';
+import * as stimDeviceCache from '../../../stimulate/stimDeviceCache';
 
 const mockPublishGmbScreen = jest.fn().mockResolvedValue({
   topic: 'proof.mqtt/DEVICE-STIM-GMB-TEST/gmb',
@@ -26,14 +26,15 @@ const redis = {} as Parameters<typeof runGmbTick>[6];
 describe('runGmbTick synthetic ramp', () => {
   const deviceId = 'DEVICE-STIM-GMB-TEST';
 
-  beforeEach(() => {
+  beforeEach(async () => {
     mockPublishGmbScreen.mockClear();
     clearStimCache('gmb', deviceId);
-    getIgDeviceRuntimeCache().delete(deviceId);
+    stimDeviceCache._resetForTests();
+    await stimDeviceCache.del(deviceId);
   });
 
-  it('resumes from runtime last-published after empty in-memory cache', async () => {
-    getIgDeviceRuntimeCache().setGmbReviewCount(deviceId, 33);
+  it('resumes from stim device cache after empty in-memory cursor', async () => {
+    await stimDeviceCache.set(deviceId, { gmbReviewCount: 33, gmbReviewsOrigin: 'stim' });
 
     const result = await runGmbTick(deviceId, 'proof.mqtt', mqttClient, true, 1, 100, redis);
 
@@ -45,6 +46,16 @@ describe('runGmbTick synthetic ramp', () => {
       { verifiedReview: 34, rating: 4 },
       true
     );
+  });
+
+  it('writes reviews to stim cache only (not real runtime path)', async () => {
+    const { getIgDeviceRuntimeCache } = await import('../../../src/services/igDeviceRuntimeCache');
+    getIgDeviceRuntimeCache().delete(deviceId);
+
+    await runGmbTick(deviceId, 'proof.mqtt', mqttClient, true, 1, 100, redis);
+
+    expect(stimDeviceCache.getGmbReviewCount(deviceId)).toBe(1);
+    expect(getIgDeviceRuntimeCache().getGmbReviewCount(deviceId)).toBeUndefined();
   });
 
   it('publishes step count regardless of GMB credentials', async () => {

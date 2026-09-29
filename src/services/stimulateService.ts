@@ -1,7 +1,7 @@
 /**
  * TEMP STIMULATE — remove after testing
  * In-process stimulate loops for allowlisted devices (no separate process).
- * In-memory cursor + device runtime/Redis hash (`ig_follower_count` / `gmb_review_count`).
+ * In-memory cursor + dedicated stimDeviceCache (never the production device hash).
  */
 import type { RedisClientType } from 'redis';
 import type { MqttClientManager } from '../servers/mqttClient';
@@ -25,9 +25,9 @@ import {
   readStimCache,
   writeStimCache
 } from '../../stimulate/cache';
+import * as stimDeviceCache from '../../stimulate/stimDeviceCache';
 import { getActiveDeviceCache } from './deviceService';
 import { getLocalStimLock } from './localCaches';
-import { getIgDeviceRuntimeCache } from './igDeviceRuntimeCache';
 import { REDIS_KEYS } from '../constants/redisKeys';
 
 export type StimulatePlatform = 'instagram' | 'gmb';
@@ -108,7 +108,7 @@ export class StimulateService {
 
   /**
    * Start per-device/platform publish loops. No-op if STIMULATE_DEVICE empty.
-   * Resumes from in-memory cursor or Redis device hash when present.
+   * Resumes from in-memory cursor or stim device cache when present.
    */
   async start(
     mqttClient: MqttClientManager,
@@ -130,6 +130,8 @@ export class StimulateService {
       return;
     }
 
+    stimDeviceCache.logStimCacheActive();
+
     const platforms = parsePlatforms();
     if (platforms.length === 0) {
       logger.warn('[STIM] No valid STIMULATE_PLATFORMS — idle');
@@ -139,13 +141,11 @@ export class StimulateService {
     const forceReset = process.env.STIMULATE_CLEAR === '1';
     if (forceReset) {
       clearAllStimCache();
-      const runtime = getIgDeviceRuntimeCache();
+      await stimDeviceCache.clearAll();
       for (const d of devices) {
         getLocalStimLock().releaseAll(d);
-        runtime.setFollowers(d, 0);
-        runtime.setGmbReviewCount(d, 0);
       }
-      logger.info('[STIM] STIMULATE_CLEAR=1 — stim cursor reset (will not resume Redis counts)');
+      logger.info('[STIM] STIMULATE_CLEAR=1 — stim cursor + stim device cache reset');
     }
 
     const step = parseStep();
@@ -164,7 +164,7 @@ export class StimulateService {
       intervalMs,
       igTarget,
       gmbTarget,
-      progress: forceReset ? 'forced reset' : 'resume from memory or Redis device hash',
+      progress: forceReset ? 'forced reset' : 'resume from memory or stim device cache',
     });
 
     await this.spawnLoops(devices, platforms, step, intervalMs, igTarget, gmbTarget, forceReset);
@@ -319,35 +319,17 @@ export class StimulateService {
     }
   }
 
-  /** Hydrate in-memory stim cursor from runtime cache / Redis device hash. */
+  /** Hydrate in-memory stim cursor from stim device cache only. */
   private async seedProgressFromExistingCache(
     devices: string[],
     igTarget: number,
     gmbTarget: number
   ): Promise<void> {
-    const runtime = getIgDeviceRuntimeCache();
-    const redis = this.deps?.redis ?? null;
-
     for (const deviceId of devices) {
-      if (
-        (runtime.getFollowers(deviceId) == null || runtime.getGmbReviewCount(deviceId) == null) &&
-        redis?.isRedisConnected()
-      ) {
-        try {
-          const hash = await redis.getClient().hGetAll(REDIS_KEYS.deviceHash(deviceId));
-          if (hash && Object.keys(hash).length > 0) {
-            runtime.hydrateFromHashFields(deviceId, hash);
-          }
-        } catch (err: unknown) {
-          logger.debug('[STIM] Redis hash hydrate skipped', {
-            deviceId,
-            error: err instanceof Error ? err.message : String(err)
-          });
-        }
-      }
+      await stimDeviceCache.hydrate(deviceId);
 
       if (!readStimCache('instagram', deviceId)) {
-        const ig = runtime.getFollowers(deviceId);
+        const ig = stimDeviceCache.getFollowers(deviceId);
         if (ig != null && ig > 0) {
           writeStimCache('instagram', deviceId, {
             lastPublished: ig,
@@ -356,7 +338,7 @@ export class StimulateService {
         }
       }
       if (!readStimCache('gmb', deviceId)) {
-        const gmb = runtime.getGmbReviewCount(deviceId);
+        const gmb = stimDeviceCache.getGmbReviewCount(deviceId);
         if (gmb != null && gmb > 0) {
           writeStimCache('gmb', deviceId, {
             lastPublished: gmb,

@@ -9,7 +9,7 @@ import { readStimCache, resolveLastPublished, writeStimCache } from './cache';
 import { calcResume, ceilingSequence } from './math';
 import { instagramFollowerMetrics, resolveCelebrationState } from '../src/services/screenEnvelope';
 import { getLocalStimLock } from '../src/services/localCaches';
-import { getIgDeviceRuntimeCache, syncScreenFieldImmediate } from '../src/services/igDeviceRuntimeCache';
+import * as stimDeviceCache from './stimDeviceCache';
 
 export const STIM_IG_LOCK_TTL_SEC = 3600;
 const STIM_IG_LOCK_KEY_PREFIX = 'stim:ig:';
@@ -43,10 +43,10 @@ export function igStimLockKey(deviceId: string): string {
 }
 
 async function updateFollowerCache(deviceId: string, followers: number): Promise<void> {
-  const runtime = getIgDeviceRuntimeCache();
-  runtime.setFollowers(deviceId, followers);
-  runtime.markDirty(deviceId, 'ig_follower_count');
-  await syncScreenFieldImmediate(deviceId, 'ig_follower_count', followers);
+  await stimDeviceCache.set(deviceId, {
+    igFollowerCount: followers,
+    igFollowersOrigin: 'stim'
+  });
 }
 
 /**
@@ -77,7 +77,7 @@ export async function runIgTick(
     'instagram',
     deviceId,
     2,
-    getIgDeviceRuntimeCache().getFollowers(deviceId)
+    stimDeviceCache.getFollowers(deviceId)
   );
   // ponytail: live always 0 — credentials never gate or floor the ramp
   const publishValue = ceilingSequence(calcResume(0, lastPub, step), target);

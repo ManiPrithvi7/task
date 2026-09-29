@@ -1,7 +1,7 @@
 /**
  * TEMP STIMULATE — in-memory ramp cursor with TTL.
- * Last published counts also live on the device runtime hash (`ig_follower_count` /
- * `gmb_review_count`) so a process restart can resume.
+ * Durable follower/review counts live in stimDeviceCache (stim Redis/local),
+ * never in the production device hash.
  */
 
 export const STIM_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
@@ -12,23 +12,23 @@ export interface StimCacheEntry {
   expiresAt: number;
 }
 
-// process-local Map; Redis device hash is the restart source of truth
+// process-local Map; stimDeviceCache is the restart source of truth for counts
 const store = new Map<string, StimCacheEntry>();
 
 function key(platform: string, deviceId: string): string {
   return `${platform}:${deviceId}`;
 }
 
-/** Prefer in-memory cursor; else last runtime/Redis count; else emptyDefault. */
+/** Prefer in-memory cursor; else last stim-cache count; else emptyDefault. */
 export function resolveLastPublished(
   platform: string,
   deviceId: string,
   emptyDefault: number,
-  runtimeValue?: number
+  stimCachedValue?: number
 ): number {
   const cached = readStimCache(platform, deviceId);
   if (cached) return cached.lastPublished;
-  if (runtimeValue != null && runtimeValue > 0) return runtimeValue;
+  if (stimCachedValue != null && stimCachedValue > 0) return stimCachedValue;
   return emptyDefault;
 }
 

@@ -101,8 +101,10 @@ function buildBatchUpdates(state: DeviceRuntimeState): Record<string, string> {
       updates.status = state.status;
     } else if (field === 'ig_follower_count' && state.igFollowerCount !== undefined) {
       updates.ig_follower_count = String(state.igFollowerCount);
+      if (state.igFollowersOrigin) updates.ig_followers_origin = state.igFollowersOrigin;
     } else if (field === 'gmb_review_count' && state.gmbReviewCount !== undefined) {
       updates.gmb_review_count = String(state.gmbReviewCount);
+      if (state.gmbReviewsOrigin) updates.gmb_reviews_origin = state.gmbReviewsOrigin;
     }
   }
   return updates;

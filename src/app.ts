@@ -42,6 +42,7 @@ import {
   restoreActiveDevicesFromRedis,
   republishCachedScreensForActiveDevices
 } from './services/startupCacheRepublish';
+import { runStimCacheStartupHygiene } from './services/stimCacheHygiene';
 import { StimulateService } from './services/stimulateService';
 import { InfluxService } from './services/influxService';
 import { AuditService } from './services/auditService';
@@ -485,11 +486,21 @@ export class StatsMqttLite {
   }
 
   /**
-   * After restart: merge Redis `proof.mqtt:active:devices` into local cache, then
-   * republish Instagram (`device:followers:*`) and GMB (Redis location / Mongo) screens.
+   * After restart: purge/migrate stim pollution, merge Redis active devices,
+   * then republish Instagram/GMB/loyalty screens (stim data never from real hash).
    */
   private async restoreActiveAndRepublishFromCache(): Promise<void> {
     try {
+      await runStimCacheStartupHygiene(
+        this.mqttClient
+          ? {
+              mqttClient: this.mqttClient,
+              topicRoot: this.config.mqtt.topicRoot,
+              mqttPublishEnabled: this.config.webhooks.mqttPublishEnabled
+            }
+          : undefined
+      );
+
       const client = this.getRedisClientOrNull();
       await restoreActiveDevicesFromRedis(client, (deviceId) =>
         cacheActiveDevice(this.bootstrapHost(), deviceId)

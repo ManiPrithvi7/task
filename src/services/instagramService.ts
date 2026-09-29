@@ -575,9 +575,9 @@ export async function publishInstagramScreenIfChanged(
       }
     }
 
-    runtime.setFollowers(deviceId, result.data.followers_count);
+    runtime.setFollowers(deviceId, result.data.followers_count, Date.now(), 'social');
     runtime.setLastPub(deviceId, nowMs);
-    void syncScreenFieldImmediate(deviceId, 'ig_follower_count', result.data.followers_count);
+    void syncScreenFieldImmediate(deviceId, 'ig_follower_count', result.data.followers_count, 'social');
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);
     logger.error('[IG_SCREEN] MQTT publish failed', { deviceId, error: errMsg });

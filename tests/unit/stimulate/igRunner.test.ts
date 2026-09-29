@@ -3,7 +3,7 @@
  */
 import { runIgTick, resolveLiveFollowersForStim } from '../../../stimulate/igRunner';
 import { clearStimCache } from '../../../stimulate/cache';
-import { getIgDeviceRuntimeCache } from '../../../src/services/igDeviceRuntimeCache';
+import * as stimDeviceCache from '../../../stimulate/stimDeviceCache';
 
 const mockPublish = jest.fn().mockResolvedValue(undefined);
 
@@ -29,20 +29,31 @@ describe('resolveLiveFollowersForStim', () => {
 describe('runIgTick synthetic ramp', () => {
   const deviceId = 'DEVICE-STIM-IG-TEST';
 
-  beforeEach(() => {
+  beforeEach(async () => {
     mockPublish.mockClear();
     clearStimCache('instagram', deviceId);
-    getIgDeviceRuntimeCache().delete(deviceId);
+    stimDeviceCache._resetForTests();
+    await stimDeviceCache.del(deviceId);
   });
 
-  it('resumes from runtime last-published after empty in-memory cache', async () => {
-    getIgDeviceRuntimeCache().setFollowers(deviceId, 39);
+  it('resumes from stim device cache after empty in-memory cursor', async () => {
+    await stimDeviceCache.set(deviceId, { igFollowerCount: 39, igFollowersOrigin: 'stim' });
 
     const result = await runIgTick(deviceId, 'proof.mqtt', mqttClient, 1, 500, redis);
 
     expect(result).toEqual({ done: false, publishedCount: 1 });
     const call = mockPublish.mock.calls[0][0] as { payload: string };
     expect(JSON.parse(call.payload).payload.followers).toBe(40);
+  });
+
+  it('writes followers to stim cache only (not real runtime path)', async () => {
+    const { getIgDeviceRuntimeCache } = await import('../../../src/services/igDeviceRuntimeCache');
+    getIgDeviceRuntimeCache().delete(deviceId);
+
+    await runIgTick(deviceId, 'proof.mqtt', mqttClient, 1, 500, redis);
+
+    expect(stimDeviceCache.getFollowers(deviceId)).toBe(3);
+    expect(getIgDeviceRuntimeCache().getFollowers(deviceId)).toBeUndefined();
   });
 
   it('publishes step count on first tick', async () => {

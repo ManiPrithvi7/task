@@ -9,6 +9,12 @@ export const REDIS_KEYS = {
   /** Active device SET for restart hydration. */
   activeDevices: 'proof.mqtt:active:devices',
 
+  /** Stim-only per-device hash — never write stim counts into deviceHash. */
+  stimDeviceHash: (deviceId: string) => `proof.mqtt:stim:device:${deviceId}`,
+
+  /** Stim-only active device SET for purge / hygiene. */
+  stimActiveDevices: 'proof.mqtt:stim:active_devices',
+
   /** Attention queue — keep Redis-backed. */
   priorityZset: 'priority_zset',
 

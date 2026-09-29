@@ -2,22 +2,28 @@
  * After process restart: recover who was active from Redis and republish
  * last-known screen payloads without waiting for Graph/GBP live fetches.
  *
- * ponytail: Redis set + follower/review keys are the restart source of truth;
- * live poller/webhooks catch up afterward.
+ * Stimulated counts live only in stimDeviceCache — never republish stim-origin
+ * data from the real device hash when the device is not currently allowlisted.
  */
 import type { MqttClientManager } from '../servers/mqttClient';
 import { getActiveDeviceCache, type ActiveDevice } from './deviceService';
 import { getRedisService } from './redisService';
 import { formatInstagramScreenMqttPayload } from './instagramService';
-import { readFollowerCountForRepublish, getIgDeviceRuntimeCache } from './igDeviceRuntimeCache';
+import {
+  readFollowerCountForRepublish,
+  getIgDeviceRuntimeCache,
+  isStimPollutedIgCount
+} from './igDeviceRuntimeCache';
 import { REDIS_KEYS } from '../constants/redisKeys';
 import { getUserIntegrations } from './userIntegrationCache';
 import { resolveGmbContextForDevice } from '../lib/socials/resolveDeviceGmb';
 import { publishGmbScreen } from '../webhooks/delivery/publishGmbScreen';
 import { getGmbReviewCount } from '../webhooks/gmbReviewCache';
 import { logger } from '../utils/logger';
-import { shouldSkipForStimulate } from '../utils/stimulateAllowlist';
+import { isStimulateDevice, shouldSkipForStimulate } from '../utils/stimulateAllowlist';
 import { publishLoyaltyIdleForDevice } from './publishLoyaltyIdle';
+import * as stimDeviceCache from '../../stimulate/stimDeviceCache';
+import { buildStimIgPayload } from '../../stimulate/igRunner';
 
 export const REDIS_ACTIVE_DEVICES_SET = 'proof.mqtt:active:devices';
 
@@ -89,25 +95,65 @@ export async function restoreActiveDevicesFromRedis(
   return { redisActiveCount: members.length, hydrated };
 }
 
+async function republishInstagramFromStimCache(
+  deviceId: string,
+  topicRoot: string,
+  mqttClient: MqttClientManager
+): Promise<boolean> {
+  await stimDeviceCache.hydrate(deviceId);
+  const followers = stimDeviceCache.getFollowers(deviceId);
+  if (followers == null) return false;
+
+  const { topic, payload } = buildStimIgPayload(deviceId, followers, topicRoot);
+  await mqttClient.publish({ topic, payload, qos: 1, retain: true });
+  logger.info('[STARTUP_CACHE] Republished Instagram from stim cache', {
+    deviceId,
+    followers
+  });
+  return true;
+}
+
 async function republishInstagramFromFollowersCache(
   deviceId: string,
   topicRoot: string,
   mqttClient: MqttClientManager
 ): Promise<boolean> {
+  if (isStimulateDevice(deviceId)) {
+    return republishInstagramFromStimCache(deviceId, topicRoot, mqttClient);
+  }
+
   if (await shouldSkipForStimulate(deviceId, 'instagram')) return false;
 
   // Hydrate runtime cache from device hash when possible
   const runtime = getIgDeviceRuntimeCache();
   const redisSvc = getRedisService();
+  let hash: Record<string, string> = {};
   if (redisSvc?.isRedisConnected()) {
     try {
-      const hash = await redisSvc.getClient().hGetAll(REDIS_KEYS.deviceHash(deviceId));
+      hash = await redisSvc.getClient().hGetAll(REDIS_KEYS.deviceHash(deviceId));
       if (hash && Object.keys(hash).length > 0) {
+        if (isStimPollutedIgCount(hash)) {
+          logger.info('[STIM_CACHE] skipped stim-origin data for non-stimulated device', {
+            deviceId,
+            platform: 'instagram',
+            followers: hash.ig_follower_count
+          });
+          return false;
+        }
         runtime.hydrateFromHashFields(deviceId, hash);
       }
     } catch {
       /* best-effort */
     }
+  }
+
+  if (runtime.getIgFollowersOrigin(deviceId) === 'stim') {
+    logger.info('[STIM_CACHE] skipped stim-origin data for non-stimulated device', {
+      deviceId,
+      platform: 'instagram',
+      source: 'runtime'
+    });
+    return false;
   }
 
   const localFollowers = runtime.getFollowers(deviceId);
@@ -146,13 +192,67 @@ async function republishLoyaltyIdleFromMongo(
   return true;
 }
 
+async function republishGmbFromStimCache(
+  deviceId: string,
+  topicRoot: string,
+  mqttClient: MqttClientManager,
+  mqttPublishEnabled: boolean
+): Promise<boolean> {
+  await stimDeviceCache.hydrate(deviceId);
+  const reviews = stimDeviceCache.getGmbReviewCount(deviceId);
+  if (reviews == null) return false;
+
+  await publishGmbScreen(
+    mqttClient,
+    topicRoot,
+    deviceId,
+    { verifiedReview: reviews, rating: 4 },
+    mqttPublishEnabled
+  );
+  logger.info('[STARTUP_CACHE] Republished GMB from stim cache', {
+    deviceId,
+    verifiedReview: reviews
+  });
+  return true;
+}
+
 async function republishGmbFromCache(
   device: ActiveDevice,
   topicRoot: string,
   mqttClient: MqttClientManager,
   mqttPublishEnabled: boolean
 ): Promise<boolean> {
+  if (isStimulateDevice(device.deviceId)) {
+    return republishGmbFromStimCache(device.deviceId, topicRoot, mqttClient, mqttPublishEnabled);
+  }
+
   if (await shouldSkipForStimulate(device.deviceId, 'gmb')) return false;
+
+  const runtime = getIgDeviceRuntimeCache();
+  if (runtime.getGmbReviewsOrigin(device.deviceId) === 'stim') {
+    runtime.clearGmbReviewCount(device.deviceId);
+    logger.info('[STIM_CACHE] skipped stim-origin data for non-stimulated device', {
+      deviceId: device.deviceId,
+      platform: 'gmb',
+      source: 'runtime'
+    });
+  }
+
+  const redisSvc = getRedisService();
+  if (redisSvc?.isRedisConnected()) {
+    try {
+      const hash = await redisSvc.getClient().hGetAll(REDIS_KEYS.deviceHash(device.deviceId));
+      if (hash?.gmb_reviews_origin === 'stim') {
+        logger.info('[STIM_CACHE] skipped stim-origin data for non-stimulated device', {
+          deviceId: device.deviceId,
+          platform: 'gmb',
+          reviews: hash.gmb_review_count
+        });
+      }
+    } catch {
+      /* best-effort */
+    }
+  }
 
   const ctx = await resolveGmbContextForDevice(device.deviceId);
   if (!ctx) return false;
