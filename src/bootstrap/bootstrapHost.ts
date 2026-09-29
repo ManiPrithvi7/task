@@ -71,7 +71,12 @@ export interface BootstrapHost {
   redisRemoveDevice(deviceId: string): Promise<void>;
   loadLatestInstagramSocialForUser(
     userIdStr: string
-  ): Promise<{ socialAccountId: string; accessToken: string; tokenExp?: Date } | null>;
+  ): Promise<{
+    socialAccountId: string;
+    accessToken: string;
+    tokenExp?: string;
+    tokenCreatedAt?: number;
+  } | null>;
   buildReadinessPayload(): Promise<Record<string, unknown>>;
   initializeOtaServices(): void;
   processDeferredWork(): Promise<void>;

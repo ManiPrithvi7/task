@@ -253,7 +253,12 @@ export class StatsMqttLite {
   /** Latest Instagram row for a business id (`Social` collection; JWT userId is businessId). */
   private async loadLatestInstagramSocialForUser(
     userIdStr: string
-  ): Promise<{ socialAccountId: string; accessToken: string; tokenExp: string } | null> {
+  ): Promise<{
+    socialAccountId: string;
+    accessToken: string;
+    tokenExp: string;
+    tokenCreatedAt?: number;
+  } | null> {
     if (!mongoose.Types.ObjectId.isValid(userIdStr)) return null;
     try {
       const ig = await Social.findOne({
@@ -264,7 +269,8 @@ export class StatsMqttLite {
       return {
         socialAccountId: ig.socialAccountId,
         accessToken: ig.accessToken,
-        tokenExp: ig.tokenExp
+        tokenExp: ig.tokenExp,
+        ...(ig.tokenCreatedAt ? { tokenCreatedAt: ig.tokenCreatedAt.getTime() } : {})
       };
     } catch (err: unknown) {
       logger.debug('Mongo: failed to load Instagram social for user', {

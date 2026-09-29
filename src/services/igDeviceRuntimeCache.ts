@@ -16,6 +16,10 @@ export interface DeviceRuntimeState {
   registeredAt?: number;
   igAccountId?: string;
   igAccessToken?: string;
+  /** Duration in seconds (`Social.tokenExp` / Instagram `expires_in`). */
+  igTokenExp?: string;
+  /** Epoch ms when `igAccessToken` was issued or last refreshed. */
+  igTokenCreatedAt?: number;
   igFollowerCount?: number;
   /** Provenance of igFollowerCount — used to reject stim pollution on real paths. */
   igFollowersOrigin?: ScreenCountOrigin;
@@ -49,6 +53,21 @@ export interface ResolvedDeviceMeta {
   instagramAccountId: string;
   accessToken: string;
   businessId?: string;
+  tokenExp?: string;
+  tokenCreatedAt?: number;
+}
+
+export function readIgTokenFields(fields: Record<string, string>): {
+  tokenExp?: string;
+  tokenCreatedAt?: number;
+} {
+  const tokenExp = (fields.ig_token_exp || fields.tokenExpiresAt || '').trim() || undefined;
+  const raw = fields.ig_token_created_at;
+  const created = raw !== undefined && raw !== '' ? parseInt(raw, 10) : NaN;
+  return {
+    ...(tokenExp ? { tokenExp } : {}),
+    ...(Number.isNaN(created) ? {} : { tokenCreatedAt: created })
+  };
 }
 
 const DEVICE_HASH_TTL_SEC = 7 * 24 * 3600;
@@ -169,6 +188,46 @@ class IgDeviceRuntimeCacheImpl {
     this.entry(deviceId).powerSave = on;
   }
 
+  getBusinessId(deviceId: string): string | undefined {
+    const id = this.devices.get(deviceId)?.businessId?.trim();
+    return id || undefined;
+  }
+
+  hasInstagramCredentials(deviceId: string): boolean {
+    return this.getInstagramLink(deviceId) !== null;
+  }
+
+  getInstagramLink(deviceId: string): {
+    instagramAccountId: string;
+    accessToken: string;
+    businessId?: string;
+    tokenExp?: string;
+    tokenCreatedAt?: number;
+  } | null {
+    const e = this.devices.get(deviceId);
+    const instagramAccountId = e?.igAccountId?.trim();
+    const accessToken = e?.igAccessToken?.trim();
+    if (!instagramAccountId || !accessToken) return null;
+    const businessId = e?.businessId?.trim();
+    const tokenExp = e?.igTokenExp?.trim();
+    return {
+      instagramAccountId,
+      accessToken,
+      ...(businessId ? { businessId } : {}),
+      ...(tokenExp ? { tokenExp } : {}),
+      ...(e?.igTokenCreatedAt !== undefined ? { tokenCreatedAt: e.igTokenCreatedAt } : {})
+    };
+  }
+
+  private tokenExpiry(deviceId: string): { tokenExp?: string; tokenCreatedAt?: number } {
+    const e = this.devices.get(deviceId);
+    const tokenExp = e?.igTokenExp?.trim();
+    return {
+      ...(tokenExp ? { tokenExp } : {}),
+      ...(e?.igTokenCreatedAt !== undefined ? { tokenCreatedAt: e.igTokenCreatedAt } : {})
+    };
+  }
+
   /** Local session flag — do not persist. Removed when the device hash entry is deleted. */
   setIgNoCredentials(deviceId: string, absent: boolean): void {
     this.entry(deviceId).igNoCredentials = absent;
@@ -220,6 +279,18 @@ class IgDeviceRuntimeCacheImpl {
     }
     if (fields.ig_accountId !== undefined) e.igAccountId = fields.ig_accountId || undefined;
     if (fields.ig_accessToken !== undefined) e.igAccessToken = fields.ig_accessToken || undefined;
+    if (fields.ig_token_exp !== undefined || fields.tokenExpiresAt !== undefined) {
+      const tokenExp = (fields.ig_token_exp || fields.tokenExpiresAt || '').trim();
+      e.igTokenExp = tokenExp || undefined;
+    }
+    if (fields.ig_token_created_at !== undefined) {
+      if (fields.ig_token_created_at === '') {
+        e.igTokenCreatedAt = undefined;
+      } else {
+        const created = parseInt(fields.ig_token_created_at, 10);
+        if (!Number.isNaN(created)) e.igTokenCreatedAt = created;
+      }
+    }
     if (e.igAccountId?.trim() && e.igAccessToken?.trim()) e.igNoCredentials = false;
     if (fields.ig_follower_count !== undefined) {
       if (fields.ig_follower_count === '') {
@@ -283,6 +354,8 @@ class IgDeviceRuntimeCacheImpl {
     if (state.registeredAt !== undefined) out.registered_at = String(state.registeredAt);
     if (state.igAccountId !== undefined) out.ig_accountId = state.igAccountId;
     if (state.igAccessToken !== undefined) out.ig_accessToken = state.igAccessToken;
+    if (state.igTokenExp !== undefined) out.ig_token_exp = state.igTokenExp;
+    if (state.igTokenCreatedAt !== undefined) out.ig_token_created_at = String(state.igTokenCreatedAt);
     if (state.igFollowerCount !== undefined) out.ig_follower_count = String(state.igFollowerCount);
     if (state.igFollowersOrigin !== undefined) out.ig_followers_origin = state.igFollowersOrigin;
     if (state.gmbProfileId !== undefined) out.gmb_profile_id = state.gmbProfileId;
@@ -347,10 +420,15 @@ class IgDeviceRuntimeCacheImpl {
   async resolveMeta(deviceId: string): Promise<ResolvedDeviceMeta | null> {
     const local = await getActiveDeviceCache().getActive(deviceId);
     if (local?.instagramAccountId?.trim() && local.accessToken?.trim()) {
+      const fromRuntime = this.tokenExpiry(deviceId);
+      const tokenExp = local.tokenExp?.trim() || fromRuntime.tokenExp;
+      const tokenCreatedAt = local.tokenCreatedAt ?? fromRuntime.tokenCreatedAt;
       return {
         instagramAccountId: local.instagramAccountId.trim(),
         accessToken: local.accessToken.trim(),
-        businessId: local.businessId?.trim() || undefined
+        businessId: local.businessId?.trim() || undefined,
+        ...(tokenExp ? { tokenExp } : {}),
+        ...(tokenCreatedAt !== undefined ? { tokenCreatedAt } : {})
       };
     }
 
@@ -359,7 +437,8 @@ class IgDeviceRuntimeCacheImpl {
       return {
         instagramAccountId: cached.igAccountId.trim(),
         accessToken: cached.igAccessToken.trim(),
-        businessId: cached.businessId
+        businessId: cached.businessId,
+        ...this.tokenExpiry(deviceId)
       };
     }
 
@@ -368,7 +447,8 @@ class IgDeviceRuntimeCacheImpl {
       return {
         instagramAccountId: resolved.igAccountId.trim(),
         accessToken: resolved.igAccessToken.trim(),
-        businessId: resolved.businessId
+        businessId: resolved.businessId,
+        ...this.tokenExpiry(deviceId)
       };
     }
 
@@ -560,6 +640,32 @@ export async function clearDeviceHashFields(deviceId: string, fields: readonly s
   const empty: Record<string, string> = {};
   for (const field of fields) empty[field] = '';
   getIgDeviceRuntimeCache().hydrateFromHashFields(deviceId, empty);
+}
+
+/**
+ * Device hash written by a previous connect. Refreshes the 7-day TTL.
+ * Returns null when Redis has no hash so the caller can fall back to Mongo.
+ */
+export async function readDeviceHashIfPresent(
+  deviceId: string
+): Promise<Record<string, string> | null> {
+  const redisSvc = getRedisService();
+  if (!redisSvc?.isRedisConnected()) return null;
+  try {
+    const client = redisSvc.getClient();
+    const key = REDIS_KEYS.deviceHash(deviceId);
+    const hash = await client.hGetAll(key);
+    if (!hash || Object.keys(hash).length === 0) return null;
+    await client.expire(key, DEVICE_HASH_TTL_SEC);
+    getIgDeviceRuntimeCache().hydrateFromHashFields(deviceId, hash);
+    return hash;
+  } catch (err: unknown) {
+    logger.debug('[IG_RUNTIME_CACHE] device hash read failed', {
+      deviceId,
+      error: err instanceof Error ? err.message : String(err)
+    });
+    return null;
+  }
 }
 
 /** Write device hash on connect (hash-only; overwrites in place). */

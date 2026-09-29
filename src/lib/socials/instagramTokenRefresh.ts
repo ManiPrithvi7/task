@@ -8,9 +8,18 @@ import { getIgDeviceRuntimeCache } from '../../services/igDeviceRuntimeCache';
 import { REDIS_KEYS } from '../../constants/redisKeys';
 import { logger } from '../../utils/logger';
 
-async function updateDeviceTokenInRedis(deviceId: string, newToken: string, newExp: string): Promise<void> {
-  getIgDeviceRuntimeCache().set(deviceId, { igAccessToken: newToken });
-  getIgDeviceRuntimeCache().markDirty(deviceId, 'ig_accessToken');
+async function updateDeviceTokenInRedis(
+  deviceId: string,
+  newToken: string,
+  newExp: string,
+  createdAtMs: number
+): Promise<void> {
+  getIgDeviceRuntimeCache().set(deviceId, {
+    igAccessToken: newToken,
+    igTokenExp: newExp,
+    igTokenCreatedAt: createdAtMs
+  });
+  getIgDeviceRuntimeCache().markDirty(deviceId, 'ig_accessToken', 'ig_token_exp', 'ig_token_created_at');
 
   const redisSvc = getRedisService();
   if (!redisSvc?.isRedisConnected()) return;
@@ -19,7 +28,8 @@ async function updateDeviceTokenInRedis(deviceId: string, newToken: string, newE
     const client = redisSvc.getClient();
     await client.hSet(key, {
       ig_accessToken: newToken,
-      tokenExpiresAt: newExp
+      ig_token_exp: newExp,
+      ig_token_created_at: String(createdAtMs)
     });
     await client.expire(key, 7 * 24 * 3600);
   } catch (err: unknown) {
@@ -130,7 +140,8 @@ export async function ensureFreshInstagramAccessToken(opts: {
     }
   }
 
-  await updateDeviceTokenInRedis(opts.deviceId, newToken, newExp);
+  const createdAtMs = now.getTime();
+  await updateDeviceTokenInRedis(opts.deviceId, newToken, newExp, createdAtMs);
 
   try {
     const ad = await getActiveDeviceCache().getActive(opts.deviceId);
@@ -138,6 +149,8 @@ export async function ensureFreshInstagramAccessToken(opts: {
       await getActiveDeviceCache().setActive({
         ...ad,
         accessToken: newToken,
+        tokenExp: newExp,
+        tokenCreatedAt: createdAtMs,
         lastSeen: Date.now()
       });
     }

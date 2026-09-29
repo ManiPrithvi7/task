@@ -1,6 +1,15 @@
 import { logger } from '../utils/logger';
 import { envInt } from './envHelpers';
 
+/** Lab device: on /active, poll every 10s for 90s, then fall back to the background cadence. */
+export const IG_CONNECT_BURST_DEVICE_IDS = ['274968B43A1D'] as const;
+export const IG_CONNECT_BURST_INTERVAL_MS = 10_000;
+export const IG_CONNECT_BURST_DURATION_MS = 90_000;
+
+export function isConnectBurstDevice(deviceId: string): boolean {
+  return (IG_CONNECT_BURST_DEVICE_IDS as readonly string[]).includes(deviceId);
+}
+
 export interface InstagramServerlessConfig {
   fetchUrl: string;
   apiKey?: string;

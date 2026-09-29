@@ -8,7 +8,12 @@ import { getLocalConnectDebounce, getLocalPromoRotationCache } from '../services
 import { cacheUserIntegrations } from '../services/userIntegrationCache';
 import { getDeviceStateLogService } from '../services/deviceStateLogService';
 import { REDIS_KEYS } from '../constants/redisKeys';
-import { writeDeviceHashOnConnect, getIgDeviceRuntimeCache } from '../services/igDeviceRuntimeCache';
+import {
+  writeDeviceHashOnConnect,
+  getIgDeviceRuntimeCache,
+  readDeviceHashIfPresent,
+  readIgTokenFields
+} from '../services/igDeviceRuntimeCache';
 import { parsePilotBootPayload, isPilotOtaStatusEvent, normalizeOtaEventKey } from '../utils/pilotOtaPayload';
 import { logger } from '../utils/logger';
 import { publishLoyaltyIdleForDevice } from '../services/publishLoyaltyIdle';
@@ -93,6 +98,36 @@ export async function sendUnregistrationResponse(
 
 export async function cacheActiveDevice(host: BootstrapHost, deviceId: string): Promise<void> {
   try {
+    const cachedHash = await readDeviceHashIfPresent(deviceId);
+    if (cachedHash) {
+      const businessId = (cachedHash.business_id || cachedHash.businessId || cachedHash.userId || '').trim();
+      const igAccountId = (cachedHash.ig_accountId || '').trim();
+      const accessToken = (cachedHash.ig_accessToken || '').trim();
+      const linked = Boolean(igAccountId && accessToken);
+      const tokenFields = readIgTokenFields(cachedHash);
+      const active: ActiveDevice = {
+        deviceId,
+        businessId,
+        lastSeen: Date.now(),
+        ...(linked
+          ? {
+              instagramAccountId: igAccountId,
+              accessToken,
+              ...tokenFields
+            }
+          : {})
+      };
+      await host.activeDeviceCache.setActive(active);
+      await writeDeviceHashOnConnect(deviceId, { status: 'active' });
+      getIgDeviceRuntimeCache().setIgNoCredentials(deviceId, !linked);
+      logger.info('📋 [LIFECYCLE:CACHE] Redis device hash hit — skipped Mongo', {
+        deviceId,
+        userId: businessId || '(none)',
+        instagramLinked: linked
+      });
+      return;
+    }
+
     logger.info('📋 [LIFECYCLE:CACHE] Step 1/2 — Device lookup (MongoDB)', { deviceId });
     const deviceDoc = await Device.findOne({ clientId: deviceId });
     if (!deviceDoc) {
@@ -111,10 +146,21 @@ export async function cacheActiveDevice(host: BootstrapHost, deviceId: string): 
       deviceStatus: deviceDoc.status
     });
 
-    const mongoUserId = deviceDoc.businessId?.toString() || '';
+    const existingActive = await host.activeDeviceCache.getActive(deviceId);
+    const runtime = getIgDeviceRuntimeCache();
+    const mongoUserId =
+      deviceDoc.businessId?.toString() ||
+      existingActive?.businessId?.trim() ||
+      runtime.getBusinessId(deviceId) ||
+      '';
     const hasLinkedMongoUser = Boolean(mongoUserId && mongoose.Types.ObjectId.isValid(mongoUserId));
 
-    if (!hasLinkedMongoUser) {
+    if (!deviceDoc.businessId && mongoUserId) {
+      logger.info('📋 [LIFECYCLE:CACHE] Mongo Device.businessId empty — using cached owner for Instagram', {
+        deviceId,
+        userId: mongoUserId
+      });
+    } else if (!hasLinkedMongoUser) {
       logger.info('📋 [LIFECYCLE:CACHE] Device has no Mongo userId — cannot load Instagram from Social', { deviceId });
     }
 
@@ -128,12 +174,39 @@ export async function cacheActiveDevice(host: BootstrapHost, deviceId: string): 
       });
     }
 
+    const preservedIg = igFromSocial
+      ? {
+          instagramAccountId: igFromSocial.socialAccountId,
+          accessToken: igFromSocial.accessToken,
+          ...(igFromSocial.tokenExp ? { tokenExp: igFromSocial.tokenExp } : {}),
+          ...(igFromSocial.tokenCreatedAt !== undefined
+            ? { tokenCreatedAt: igFromSocial.tokenCreatedAt }
+            : {})
+        }
+      : existingActive?.instagramAccountId?.trim() && existingActive.accessToken?.trim()
+        ? {
+            instagramAccountId: existingActive.instagramAccountId.trim(),
+            accessToken: existingActive.accessToken.trim(),
+            ...(existingActive.tokenExp ? { tokenExp: existingActive.tokenExp } : {}),
+            ...(existingActive.tokenCreatedAt !== undefined
+              ? { tokenCreatedAt: existingActive.tokenCreatedAt }
+              : {})
+          }
+        : runtime.getInstagramLink(deviceId);
+
     const active: ActiveDevice = {
       deviceId,
       businessId: mongoUserId,
       lastSeen: Date.now(),
-      ...(igFromSocial
-        ? { instagramAccountId: igFromSocial.socialAccountId, accessToken: igFromSocial.accessToken }
+      ...(preservedIg
+        ? {
+            instagramAccountId: preservedIg.instagramAccountId,
+            accessToken: preservedIg.accessToken,
+            ...(preservedIg.tokenExp ? { tokenExp: preservedIg.tokenExp } : {}),
+            ...(preservedIg.tokenCreatedAt !== undefined
+              ? { tokenCreatedAt: preservedIg.tokenCreatedAt }
+              : {})
+          }
         : {})
     };
 
@@ -142,7 +215,8 @@ export async function cacheActiveDevice(host: BootstrapHost, deviceId: string): 
     logger.info('📋 [LIFECYCLE:CACHE] Active device record written (Mongo → file + Redis device hash)', {
       deviceId,
       userId: mongoUserId || '(none)',
-      instagramFromSocial: Boolean(igFromSocial)
+      instagramFromSocial: Boolean(igFromSocial),
+      instagramLinked: Boolean(preservedIg)
     });
 
     const hashFields: Record<string, string> = { status: 'active' };
@@ -151,12 +225,16 @@ export async function cacheActiveDevice(host: BootstrapHost, deviceId: string): 
     if (registeredAt && !Number.isNaN(registeredAt)) {
       hashFields.registered_at = String(registeredAt);
     }
-    if (igFromSocial) {
-      hashFields.ig_accountId = igFromSocial.socialAccountId;
-      hashFields.ig_accessToken = igFromSocial.accessToken;
+    if (preservedIg) {
+      hashFields.ig_accountId = preservedIg.instagramAccountId;
+      hashFields.ig_accessToken = preservedIg.accessToken;
+      if (preservedIg.tokenExp) hashFields.ig_token_exp = preservedIg.tokenExp;
+      if (preservedIg.tokenCreatedAt !== undefined) {
+        hashFields.ig_token_created_at = String(preservedIg.tokenCreatedAt);
+      }
     }
     await writeDeviceHashOnConnect(deviceId, hashFields);
-    getIgDeviceRuntimeCache().setIgNoCredentials(deviceId, !igFromSocial);
+    runtime.setIgNoCredentials(deviceId, !preservedIg);
   } catch (err: unknown) {
     logger.error('❌ [LIFECYCLE:CACHE] Failed to cache active device', {
       deviceId,
@@ -192,7 +270,8 @@ export async function handleDeviceRegistration(
   const fwVersion =
     pilotBoot.fwVersion || (message.appVersion as string) || (message.app_version as string);
 
-  const existingDevice = await host.deviceService.getDevice(deviceId);
+  const knownInRedis = (await readDeviceHashIfPresent(deviceId)) !== null;
+  const existingDevice = knownInRedis ? { deviceId } : await host.deviceService.getDevice(deviceId);
   if (!existingDevice) {
     await host.deviceService.registerDevice({
       deviceId,
@@ -256,8 +335,9 @@ export async function handleDeviceRegistration(
   await cacheActiveDevice(host, deviceId);
   await host.redisMarkDeviceActive(deviceId);
 
-  const mongoBusinessId = (await Device.findOne({ clientId: deviceId }).select({ businessId: 1 }).lean())?.businessId
-    ?.toString();
+  const mongoBusinessId =
+    (await host.activeDeviceCache.getActive(deviceId))?.businessId?.trim() ||
+    getIgDeviceRuntimeCache().getBusinessId(deviceId);
   const ip = pilotBoot.ipAddress;
   void getDeviceStateLogService()
     .recordTransition({

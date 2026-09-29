@@ -113,7 +113,30 @@ describe('instagramService outcome applicator', () => {
       })
     );
     expect(mockInflux.writeInstagramOutcomeBatch.mock.calls[0][0].milestones).toHaveLength(10);
-    expect(mockRuntime.setFollowers).toHaveBeenCalledWith('d1', 500, expect.any(Number));
+    expect(mqtt.publish).toHaveBeenCalled();
+    expect(mockRuntime.setFollowers).toHaveBeenCalledWith('d1', 500, expect.any(Number), 'social');
+  });
+
+  it('publishes MQTT when followers change before updating the runtime cache', async () => {
+    let cached = 5;
+    mockRuntime.getFollowers.mockImplementation(() => cached);
+    mockRuntime.setFollowers.mockImplementation((_id: string, n: number) => {
+      cached = n;
+    });
+    mockRuntime.getLastPub.mockReturnValue(Date.now());
+    const mqtt = makeMqtt();
+    await applyInstagramServerlessDeviceOutcome(
+      successRow({ followers_count: 4 }),
+      mqtt,
+      'proof',
+      'scheduled'
+    );
+    expect(mqtt.publish).toHaveBeenCalled();
+    const body = JSON.parse((mqtt.publish as jest.Mock).mock.calls[0][0].payload) as {
+      payload: { followers: number };
+    };
+    expect(body.payload.followers).toBe(4);
+    expect(cached).toBe(4);
   });
 
   it('success with correlationId: registers e2e latency write', async () => {

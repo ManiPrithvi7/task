@@ -16,6 +16,11 @@ import crypto from 'crypto';
 import type { RedisClientType } from 'redis';
 import { logger } from '../utils/logger';
 import type { InstagramServerlessConfig } from '../config';
+import {
+  IG_CONNECT_BURST_DURATION_MS,
+  IG_CONNECT_BURST_INTERVAL_MS,
+  isConnectBurstDevice
+} from '../config/instagramPollingConfig';
 import type { MqttClientManager } from '../servers/mqttClient';
 import { getRedisService } from './redisService';
 import type { RedisService } from './redisService';
@@ -58,6 +63,10 @@ function getOutcomeCircuitGate(): CircuitGate {
     sharedCircuitGate = new LocalCircuitGate();
   }
   return sharedCircuitGate;
+}
+
+export async function resetOutcomeCircuitForTests(): Promise<void> {
+  await getOutcomeCircuitGate().reset();
 }
 
 // ============================================================
@@ -309,6 +318,10 @@ export interface InstagramAccountInfo {
   accessToken: string;
   instagramAccountId: string;
   userId: string;
+  /** Duration in seconds. Omitted when the cache has not recorded an expiry yet. */
+  tokenExp?: string;
+  /** Epoch ms. Omitted when the cache has not recorded a creation time yet. */
+  tokenCreatedAt?: number;
 }
 
 export interface InstagramMetrics {
@@ -359,7 +372,11 @@ export async function fetchInstagramMetrics(
     const accessToken = await ensureFreshInstagramAccessToken({
       deviceId,
       accessToken: account.accessToken,
-      userId: account.userId || undefined
+      userId: account.userId || undefined,
+      ...(account.tokenExp ? { tokenExp: account.tokenExp } : {}),
+      ...(account.tokenCreatedAt !== undefined
+        ? { tokenCreatedAt: new Date(account.tokenCreatedAt) }
+        : {})
     });
 
     const profileResult = await fetchInstagramProfileMetrics(accessToken);
@@ -789,7 +806,6 @@ export async function applyInstagramServerlessDeviceOutcome(
             timestamp: auditTs,
           });
         }
-        runtime.setFollowers(deviceId, newFollowers, auditTs.getTime());
       }
 
       await influx.writeInstagramOutcomeBatch({
@@ -1074,6 +1090,8 @@ interface ResolvedMeta {
   instagramAccountId: string;
   accessToken: string;
   userId?: string;
+  tokenExp?: string;
+  tokenCreatedAt?: number;
 }
 
 function toNormalizedRow(deviceId: string, result: InstagramFetchResult): NormalizedDeviceFetchResult {
@@ -1126,7 +1144,9 @@ async function resolveDeviceMeta(deviceId: string): Promise<ResolvedMeta | null>
   return {
     instagramAccountId: meta.instagramAccountId,
     accessToken: meta.accessToken,
-    userId: meta.businessId
+    userId: meta.businessId,
+    ...(meta.tokenExp ? { tokenExp: meta.tokenExp } : {}),
+    ...(meta.tokenCreatedAt !== undefined ? { tokenCreatedAt: meta.tokenCreatedAt } : {})
   };
 }
 
@@ -1181,7 +1201,9 @@ export class InstagramDirectFetchInvoker implements InstagramFetchInvoker {
       const result = await fetchInstagramMetrics(deviceId, {
         accessToken: meta.accessToken,
         instagramAccountId: meta.instagramAccountId,
-        userId: meta.userId || ''
+        userId: meta.userId || '',
+        ...(meta.tokenExp ? { tokenExp: meta.tokenExp } : {}),
+        ...(meta.tokenCreatedAt !== undefined ? { tokenCreatedAt: meta.tokenCreatedAt } : {})
       });
 
       const row = toNormalizedRow(deviceId, result);
@@ -1240,6 +1262,9 @@ export interface InstagramPollerConfig {
 export class InstagramPoller {
   private priorityTimer: NodeJS.Timeout | null = null;
   private backgroundTimer: NodeJS.Timeout | null = null;
+  private readonly connectBursts = new Map<string, ReturnType<typeof setInterval>>();
+  /** Allowlisted devices join the 90s background poll only after their connect burst ends. */
+  private readonly connectBurstFinished = new Set<string>();
   private running = false;
   private scriptsReady = false;
   private localPriorityZsetSize = 0;
@@ -1310,7 +1335,80 @@ export class InstagramPoller {
     if (this.backgroundTimer) clearInterval(this.backgroundTimer);
     this.priorityTimer = null;
     this.backgroundTimer = null;
+    for (const deviceId of [...this.connectBursts.keys()]) {
+      this.stopConnectBurst(deviceId);
+    }
     logger.info('🛑 [IG_POLLER] Stopped');
+  }
+
+  /**
+   * On /active for an allowlisted device: fetch now, then every 10s for 90s.
+   * Restarting /active resets the window. Background 90s cadence is unchanged after.
+   */
+  async startConnectBurst(deviceId: string): Promise<void> {
+    if (!isConnectBurstDevice(deviceId)) return;
+    this.connectBurstFinished.delete(deviceId);
+    this.stopConnectBurst(deviceId);
+    const started = Date.now();
+    logger.info('[IG_POLLER] Connect burst started', {
+      deviceId,
+      intervalMs: IG_CONNECT_BURST_INTERVAL_MS,
+      durationMs: IG_CONNECT_BURST_DURATION_MS
+    });
+    const timer = setInterval(() => {
+      if (Date.now() - started >= IG_CONNECT_BURST_DURATION_MS) {
+        this.stopConnectBurst(deviceId);
+        this.connectBurstFinished.add(deviceId);
+        logger.info('[IG_POLLER] Connect burst ended', { deviceId });
+        return;
+      }
+      void this.requestImmediateFetch(deviceId, {
+        trigger: 'connect',
+        bypassDedupe: true,
+        bypassBackoff: true
+      });
+    }, IG_CONNECT_BURST_INTERVAL_MS);
+    this.connectBursts.set(deviceId, timer);
+    await this.leavePriorityQueue(deviceId);
+    await this.requestImmediateFetch(deviceId, {
+      trigger: 'connect',
+      bypassDedupe: true,
+      bypassBackoff: true
+    });
+  }
+
+  stopConnectBurst(deviceId: string): void {
+    const timer = this.connectBursts.get(deviceId);
+    if (!timer) return;
+    clearInterval(timer);
+    this.connectBursts.delete(deviceId);
+  }
+
+  hasConnectBurst(deviceId: string): boolean {
+    return this.connectBursts.has(deviceId);
+  }
+
+  /** Drop a burst device from the 15s priority queue so only the 10s window runs. */
+  private async leavePriorityQueue(deviceId: string): Promise<void> {
+    try {
+      const removed = await this.redisService.getClient().zRem(REDIS_KEYS.priorityZset, deviceId);
+      if (Number(removed) > 0) {
+        this.localPriorityZsetSize = Math.max(0, this.localPriorityZsetSize - 1);
+      }
+    } catch (err: unknown) {
+      logger.debug('[IG_POLLER] priority leave failed', {
+        deviceId,
+        error: err instanceof Error ? err.message : String(err)
+      });
+    }
+  }
+
+  private filterOutConnectBurst(deviceIds: string[]): string[] {
+    if (deviceIds.length === 0) return deviceIds;
+    return deviceIds.filter((id) => {
+      if (this.connectBursts.has(id)) return false;
+      return !(isConnectBurstDevice(id) && !this.connectBurstFinished.has(id));
+    });
   }
 
   /** Keep local ZSET size in sync when a device is removed (e.g. LWT disconnect). */
@@ -1360,7 +1458,7 @@ export class InstagramPoller {
 
   async requestImmediateFetch(
     deviceId: string,
-    opts?: { trigger?: InstagramFetchTrigger }
+    opts?: { trigger?: InstagramFetchTrigger; bypassDedupe?: boolean; bypassBackoff?: boolean }
   ): Promise<boolean> {
     const trigger: InstagramFetchTrigger = opts?.trigger ?? 'attention';
     if (!this.running || !this.scriptsReady || !this.fetchInvoker?.isConfigured() || !this.redisService.isRedisConnected()) {
@@ -1381,14 +1479,18 @@ export class InstagramPoller {
       }
       if (await this.circuitGate.isOpen()) return false;
 
-      const allowed = await this.backoff.shouldAllow(deviceId);
-      if (!allowed) {
-        igPollMetricsInc('attentionImmediateBackoffSkip');
-        return false;
+      if (!opts?.bypassBackoff) {
+        const allowed = await this.backoff.shouldAllow(deviceId);
+        if (!allowed) {
+          igPollMetricsInc('attentionImmediateBackoffSkip');
+          return false;
+        }
       }
 
-      if (!(await this.dedupe.tryAcquire(deviceId, this.config.fetchDedupeWindowMs))) {
-        return false;
+      if (!opts?.bypassDedupe) {
+        if (!(await this.dedupe.tryAcquire(deviceId, this.config.fetchDedupeWindowMs))) {
+          return false;
+        }
       }
 
       if (!(await consumeFetchBudget(this.budget, this.config.globalFetchBudgetPerMinute))) {
@@ -1526,7 +1628,7 @@ export class InstagramPoller {
       );
       this.localPriorityZsetSize = active.length;
       if (active.length === 0) return;
-      active = this.filterOutNoInstagram(active);
+      active = this.filterOutConnectBurst(this.filterOutNoInstagram(active));
       if (active.length === 0) return;
       // TEMP STIMULATE — remove after testing: skip stim devices (allowlist + lock)
       active = active.filter((id) => !isStimulateDevice(id));
@@ -1599,7 +1701,7 @@ export class InstagramPoller {
         allDeviceIds = filtered;
       }
 
-      allDeviceIds = this.filterOutNoInstagram(allDeviceIds);
+      allDeviceIds = this.filterOutConnectBurst(this.filterOutNoInstagram(allDeviceIds));
       if (allDeviceIds.length === 0) return;
 
       // Subtract devices currently in the active priority window (Redis zset).

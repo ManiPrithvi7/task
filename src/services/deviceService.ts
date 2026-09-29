@@ -27,6 +27,10 @@ export interface ActiveDevice {
   instagramAccountId?: string;
   /** Same source as Redis `proof.mqtt:device:{id}`. */
   accessToken?: string;
+  /** Instagram `expires_in` seconds, same meaning as `Social.tokenExp`. */
+  tokenExp?: string;
+  /** Epoch ms when the cached Instagram token was issued or last refreshed. */
+  tokenCreatedAt?: number;
 }
 
 /** Legacy local-file entries predate the userId→businessId rename. */
