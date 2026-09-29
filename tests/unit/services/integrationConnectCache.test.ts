@@ -122,7 +122,8 @@ describe('applyIntegrationDisconnectCache', () => {
     expect(clearHashFields.mock.calls[0][1]).toEqual([
       'ig_accountId',
       'ig_accessToken',
-      'ig_follower_count'
+      'ig_follower_count',
+      'ig_followers_origin'
     ]);
     expect(deleteKeys.mock.calls.some((c) => c[0].includes('device:followers:online-1'))).toBe(true);
     expect(setIgNoCredentials).toHaveBeenCalledWith('online-1', true);
@@ -156,7 +157,8 @@ describe('applyIntegrationDisconnectCache', () => {
     expect(clearHashFields.mock.calls[0][1]).toEqual([
       'gmb_accessToken',
       'gmb_profile_id',
-      'gmb_review_count'
+      'gmb_review_count',
+      'gmb_reviews_origin'
     ]);
     expect(deleteKeys.mock.calls[0][0]).toEqual(['gmb:reviews:loc-9']);
     expect(setActive).not.toHaveBeenCalled();
