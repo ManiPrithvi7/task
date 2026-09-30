@@ -3,6 +3,8 @@ import { buildGmbScreenPayload, buildScreenEnvelope } from '../../services/scree
 import { sha256Payload } from '../../utils/payloadHash';
 import { logger } from '../../utils/logger';
 import { webhookInfluxBatch } from '../influxAudit';
+import { isConnectBurstDevice } from '../../config/instagramPollingConfig';
+import { getScreenLiveHub } from '../../services/screenLiveHub';
 
 export type GmbFastScreenInput = {
   verifiedReview: number;
@@ -96,6 +98,10 @@ export async function publishGmbScreen(
         { flush: false }
       )
     );
+  }
+
+  if (success && isConnectBurstDevice(clientId)) {
+    getScreenLiveHub().pushReviews(clientId, input.verifiedReview);
   }
 
   return { topic, published, payload, success, errorMessage };

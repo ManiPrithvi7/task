@@ -367,6 +367,9 @@ export class HttpServer {
             spin: 'POST /loyalty/spin',
             getSpin: 'GET /loyalty/spin/:spinId',
             realtime: 'WSS /loyalty/realtime'
+          },
+          screenLive: {
+            realtime: 'WSS /screen/realtime?deviceId=&token='
           }
         }
       });

@@ -28,6 +28,7 @@ import type { RedisService } from './redisService';
 import { isStimulateDevice, shouldSkipForStimulate } from '../utils/stimulateAllowlist';
 import { getInfluxService } from './influxService';
 import { getActiveDeviceCache } from './deviceService';
+import { getScreenLiveHub } from './screenLiveHub';
 import {
   fetchInstagramProfileMetrics,
   getIgFetchBodySizeSnapshot,
@@ -595,6 +596,9 @@ export async function publishInstagramScreenIfChanged(
     runtime.setFollowers(deviceId, result.data.followers_count, Date.now(), 'social');
     runtime.setLastPub(deviceId, nowMs);
     void syncScreenFieldImmediate(deviceId, 'ig_follower_count', result.data.followers_count, 'social');
+    if (!unchanged && isConnectBurstDevice(deviceId)) {
+      getScreenLiveHub().pushFollowers(deviceId, result.data.followers_count);
+    }
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);
     logger.error('[IG_SCREEN] MQTT publish failed', { deviceId, error: errMsg });
@@ -1359,6 +1363,7 @@ export class InstagramPoller {
       if (Date.now() - started >= IG_CONNECT_BURST_DURATION_MS) {
         this.stopConnectBurst(deviceId);
         this.connectBurstFinished.add(deviceId);
+        getScreenLiveHub().closeDevice(deviceId);
         logger.info('[IG_POLLER] Connect burst ended', { deviceId });
         return;
       }
@@ -1386,6 +1391,11 @@ export class InstagramPoller {
 
   hasConnectBurst(deviceId: string): boolean {
     return this.connectBursts.has(deviceId);
+  }
+
+  /** True after the 90s timer expired this process. A new /active clears it. */
+  isConnectBurstFinished(deviceId: string): boolean {
+    return this.connectBurstFinished.has(deviceId);
   }
 
   /** Drop a burst device from the 15s priority queue so only the 10s window runs. */

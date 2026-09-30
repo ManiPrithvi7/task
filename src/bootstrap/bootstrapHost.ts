@@ -65,6 +65,7 @@ export interface BootstrapHost {
   keepAliveTimer: ReturnType<typeof setInterval> | null;
   loyaltyWsClose?: () => void;
   loyaltyWsPerIpSize?: () => number;
+  screenLiveWsClose?: () => void;
 
   getRedisClientOrNull(): ReturnType<RedisService['getClient']> | null;
   redisMarkDeviceActive(deviceId: string): Promise<void>;
