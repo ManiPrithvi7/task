@@ -1,3 +1,5 @@
+import { logger } from '../utils/logger';
+
 export type ScreenLiveClient = {
   send: (data: string) => void;
   close: (code: number, reason?: string) => void;
@@ -94,6 +96,11 @@ export class ScreenLiveHub {
       deviceId,
       ...patch,
       at: new Date().toISOString()
+    });
+    logger.info('[SCREEN_LIVE] dispatched', {
+      deviceId,
+      ...patch,
+      clients: room.size
     });
     for (const client of room) {
       try {

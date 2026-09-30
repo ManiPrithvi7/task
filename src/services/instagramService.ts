@@ -551,6 +551,9 @@ export async function publishInstagramScreenIfChanged(
 
   if (unchanged && !forceHeartbeat) {
     logger.debug('[IG_SCREEN] No follower change, skip MQTT', { deviceId, followers: next });
+    if (isConnectBurstDevice(deviceId)) {
+      getScreenLiveHub().pushFollowers(deviceId, next);
+    }
     return;
   }
 

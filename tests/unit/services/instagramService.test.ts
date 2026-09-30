@@ -7,6 +7,7 @@ import {
   type NormalizedDeviceFetchResult
 } from '@/services/instagramService';
 import { logger } from '@/utils/logger';
+import { getScreenLiveHub, resetScreenLiveHubForTests } from '@/services/screenLiveHub';
 
 const mockRuntime = {
   getFollowers: jest.fn(),
@@ -195,6 +196,68 @@ describe('instagramService outcome applicator', () => {
       data: { followers_count: 500 }
     });
     expect(mqtt.publish).not.toHaveBeenCalled();
+  });
+
+  it('delivers burst follower frames to a mock screen socket', async () => {
+    resetScreenLiveHubForTests();
+    const sent: string[] = [];
+    const closed: Array<{ code: number; reason?: string }> = [];
+    const deviceId = '274968B43A1D';
+    getScreenLiveHub().accept(
+      {
+        deviceId,
+        allowlisted: true,
+        burstFinished: false,
+        userId: 'biz-1',
+        businessId: 'biz-1',
+        followers: 4
+      },
+      {
+        send: (data) => sent.push(data),
+        close: (code, reason) => closed.push({ code, reason })
+      }
+    );
+
+    expect(JSON.parse(sent[0])).toMatchObject({
+      event: 'screen.count',
+      deviceId,
+      followers: 4
+    });
+
+    mockRuntime.getFollowers.mockReturnValue(4);
+    mockRuntime.getLastPub.mockReturnValue(Date.now());
+    const mqtt = makeMqtt();
+    await publishInstagramScreenIfChanged(mqtt, 'proof', {
+      deviceId,
+      success: true,
+      fetched_at: '2026-08-01T00:00:00.000Z',
+      data: { followers_count: 4 }
+    });
+    expect(mqtt.publish).not.toHaveBeenCalled();
+    expect(JSON.parse(sent[1])).toMatchObject({
+      event: 'screen.count',
+      deviceId,
+      followers: 4
+    });
+
+    mockRuntime.getFollowers.mockReturnValue(4);
+    await publishInstagramScreenIfChanged(mqtt, 'proof', {
+      deviceId,
+      success: true,
+      fetched_at: '2026-08-01T00:00:10.000Z',
+      data: { followers_count: 5 }
+    });
+    expect(mqtt.publish).toHaveBeenCalled();
+    expect(JSON.parse(sent[2])).toMatchObject({
+      event: 'screen.count',
+      deviceId,
+      followers: 5
+    });
+
+    getScreenLiveHub().closeDevice(deviceId);
+    expect(JSON.parse(sent[3])).toMatchObject({ event: 'screen.burst.ended', deviceId });
+    expect(closed[0]).toEqual({ code: 1000, reason: 'burst ended' });
+    resetScreenLiveHubForTests();
   });
 
   it('publishInstagramScreenIfChanged force-publishes heartbeat after 10min silence', async () => {

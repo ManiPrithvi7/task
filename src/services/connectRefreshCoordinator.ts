@@ -9,6 +9,7 @@ import { getActiveDeviceCache } from './deviceService';
 // TEMP STIMULATE — remove after testing
 import { shouldSkipForStimulate } from '../utils/stimulateAllowlist';
 import { isConnectBurstDevice } from '../config/instagramPollingConfig';
+import { getScreenLiveHub } from './screenLiveHub';
 import {
   clearDeviceHashFields,
   getIgDeviceRuntimeCache,
@@ -211,6 +212,9 @@ export class ConnectRefreshCoordinator {
           topic,
           reason
         });
+        if (isConnectBurstDevice(deviceId)) {
+          getScreenLiveHub().pushFollowers(deviceId, 0);
+        }
         return;
       }
 
@@ -231,6 +235,9 @@ export class ConnectRefreshCoordinator {
         topic,
         reason
       });
+      if (isConnectBurstDevice(deviceId)) {
+        getScreenLiveHub().pushReviews(deviceId, 0);
+      }
     } catch (err: unknown) {
       logger.warn('[CONNECT_REFRESH] Zeroed screen publish failed', {
         deviceId,

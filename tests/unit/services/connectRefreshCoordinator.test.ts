@@ -1,4 +1,5 @@
 import { ConnectRefreshCoordinator } from '@/services/connectRefreshCoordinator';
+import { getScreenLiveHub, resetScreenLiveHubForTests } from '@/services/screenLiveHub';
 
 const mockGetActive = jest.fn();
 const mockGetUserIntegrations = jest.fn();
@@ -255,6 +256,31 @@ describe('ConnectRefreshCoordinator.publishDisconnected', () => {
     expect(call.retain).toBe(true);
     const body = JSON.parse(call.payload) as { payload: { followers: number } };
     expect(body.payload.followers).toBe(0);
+  });
+
+  it('passes a zeroed follower count to a mock screen socket', async () => {
+    resetScreenLiveHubForTests();
+    const sent: string[] = [];
+    const deviceId = '274968B43A1D';
+    getScreenLiveHub().accept(
+      {
+        deviceId,
+        allowlisted: true,
+        burstFinished: false,
+        userId: 'biz-1',
+        businessId: 'biz-1',
+        followers: 5
+      },
+      { send: (data) => sent.push(data), close: () => undefined }
+    );
+
+    const deps = makeDeps();
+    const coord = new ConnectRefreshCoordinator(deps as never);
+    await coord.publishDisconnected(deviceId, 'INSTAGRAM' as never);
+
+    const frames = sent.map((line) => JSON.parse(line) as { event: string; followers?: number });
+    expect(frames.at(-1)).toMatchObject({ event: 'screen.count', followers: 0 });
+    resetScreenLiveHubForTests();
   });
 
   it('publishes a zeroed GMB screen', async () => {
