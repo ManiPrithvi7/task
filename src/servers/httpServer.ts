@@ -13,6 +13,7 @@ import { DeviceService } from '../services/deviceService';
 import { MqttClientManager } from './mqttClient';
 import { getRedisService } from '../services/redisService';
 import { isAllowedLoyaltyOrigin } from '../utils/loyaltyOrigin';
+import { isScreenLiveRequest } from './screenLiveSse';
 
 export interface HttpConfig {
   port: number;
@@ -138,6 +139,10 @@ export class HttpServer {
         loyaltyCors(req, res, next);
         return;
       }
+      if (isScreenLiveRequest(req)) {
+        loyaltyCors(req, res, next);
+        return;
+      }
       if (req.originalUrl.startsWith('/api/v1/admin/ota/stim')) {
         cors({ origin: true })(req, res, next);
         return;
@@ -147,7 +152,12 @@ export class HttpServer {
     this.app.use(helmet({
       contentSecurityPolicy: false
     }));
-    this.app.use(compression() as unknown as RequestHandler);
+    this.app.use(compression({
+      filter: (req, res) => {
+        if (isScreenLiveRequest(req)) return false;
+        return compression.filter(req, res);
+      }
+    }) as unknown as RequestHandler);
 
     // Webhook HMAC routes must run before express.json() (raw body preserved).
     for (const router of this.earlyRouters) {
@@ -369,7 +379,7 @@ export class HttpServer {
             realtime: 'WSS /loyalty/realtime'
           },
           screenLive: {
-            realtime: 'WSS /screen/realtime?deviceId=&token='
+            realtime: 'GET /screen/realtime?deviceId=&token='
           }
         }
       });

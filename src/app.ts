@@ -154,7 +154,6 @@ export class StatsMqttLite {
   private keepAliveTimer: NodeJS.Timeout | null = null;
   private loyaltyWsClose?: () => void;
   private loyaltyWsPerIpSize?: () => number;
-  private screenLiveWsClose?: () => void;
   private lifecycleTopicsSubscribed = false;
   private nonLifecycleTopicsSubscribed = false;
 
@@ -1062,7 +1061,6 @@ export class StatsMqttLite {
 
       this.otaRolloutScheduler?.stop();
       this.loyaltyWsClose?.();
-      this.screenLiveWsClose?.();
 
       // Stop Instagram poller
       if (this.instagramPoller) {

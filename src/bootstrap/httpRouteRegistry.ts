@@ -18,7 +18,7 @@ import { createRecoverySessionService } from '../services/recoverySessionService
 import { logger } from '../utils/logger';
 import { createLoyaltyRoutes } from '../routes/loyaltyRoutes';
 import { attachLoyaltyWs } from '../servers/loyaltyWs';
-import { attachScreenLiveWs } from '../servers/screenLiveWs';
+import { createScreenLiveRoutes } from '../servers/screenLiveSse';
 
 export async function initializeHttpServer(host: BootstrapHost): Promise<void> {
   logger.info('🌐 Initializing HTTP server...');
@@ -211,18 +211,20 @@ export async function initializeHttpServer(host: BootstrapHost): Promise<void> {
   );
   logger.info('✅ Loyalty routes registered at /loyalty');
 
+  host.httpServer.getApp().use(
+    '/screen',
+    createScreenLiveRoutes({
+      authService: host.authService,
+      isBurstFinished: (deviceId) => host.instagramPoller?.isConnectBurstFinished(deviceId) ?? false
+    })
+  );
+  logger.info('✅ Screen-live SSE registered at GET /screen/realtime');
+
   host.earlyHttp?.attachExpress(host.httpServer.getApp());
   await host.httpServer.start(host.earlyHttp?.server);
   const loyaltyWs = attachLoyaltyWs(host.httpServer.getServer(), () => host.loyaltyService);
   host.loyaltyWsClose = loyaltyWs.close;
   host.loyaltyWsPerIpSize = loyaltyWs.perIpSize;
   logger.info('✅ Loyalty WebSocket attached at /loyalty/realtime');
-
-  const screenLiveWs = attachScreenLiveWs(host.httpServer.getServer(), {
-    authService: host.authService,
-    isBurstFinished: (deviceId) => host.instagramPoller?.isConnectBurstFinished(deviceId) ?? false
-  });
-  host.screenLiveWsClose = screenLiveWs.close;
-  logger.info('✅ Screen-live WebSocket attached at /screen/realtime');
   logger.info('✅ HTTP server initialized');
 }
