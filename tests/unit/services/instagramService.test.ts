@@ -185,6 +185,72 @@ describe('instagramService outcome applicator', () => {
     expect(Number(getInstagramPollingMetricsSnapshot().circuitOpenEvents)).toBe(before + 1);
   });
 
+  it('connect burst publishes a matching cached count and writes the cache when it changes', async () => {
+    const deviceId = '274968B43A1D';
+    resetScreenLiveHubForTests();
+    const sent: string[] = [];
+    getScreenLiveHub().accept(
+      {
+        deviceId,
+        allowlisted: true,
+        burstFinished: false,
+        userId: 'biz-1',
+        businessId: 'biz-1'
+      },
+      {
+        send: (data) => sent.push(data),
+        close: () => undefined
+      }
+    );
+
+    let cached = 5;
+    mockRuntime.getFollowers.mockImplementation(() => cached);
+    mockRuntime.setFollowers.mockImplementation((_id: string, n: number) => {
+      cached = n;
+    });
+    mockRuntime.getLastPub.mockReturnValue(Date.now());
+    const mqtt = makeMqtt();
+
+    await applyInstagramServerlessDeviceOutcome(
+      successRow({ deviceId, followers_count: 4 }),
+      mqtt,
+      'proof',
+      'connect'
+    );
+    expect(mqtt.publish).toHaveBeenCalled();
+    expect(cached).toBe(4);
+    expect(JSON.parse(sent.at(-1) as string)).toMatchObject({
+      event: 'screen.count',
+      deviceId,
+      followers: 4
+    });
+
+    (mqtt.publish as jest.Mock).mockClear();
+    sent.length = 0;
+    await applyInstagramServerlessDeviceOutcome(
+      successRow({ deviceId, followers_count: 4 }),
+      mqtt,
+      'proof',
+      'connect'
+    );
+    expect(mqtt.publish).toHaveBeenCalled();
+    expect(cached).toBe(4);
+    expect(JSON.parse(sent.at(-1) as string)).toMatchObject({
+      event: 'screen.count',
+      followers: 4
+    });
+
+    (mqtt.publish as jest.Mock).mockClear();
+    await applyInstagramServerlessDeviceOutcome(
+      successRow({ deviceId, followers_count: 4 }),
+      mqtt,
+      'proof',
+      'scheduled'
+    );
+    expect(mqtt.publish).not.toHaveBeenCalled();
+    resetScreenLiveHubForTests();
+  });
+
   it('publishInstagramScreenIfChanged skips unchanged followers when heartbeat recent', async () => {
     mockRuntime.getFollowers.mockReturnValue(500);
     mockRuntime.getLastPub.mockReturnValue(Date.now());

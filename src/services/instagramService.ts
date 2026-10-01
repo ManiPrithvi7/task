@@ -529,7 +529,8 @@ export function formatInstagramScreenMqttPayload(
 export async function publishInstagramScreenIfChanged(
   mqttClient: MqttClientManager,
   topicRoot: string,
-  result: ScreenDeliveryFetchShape
+  result: ScreenDeliveryFetchShape,
+  opts?: { ignoreFollowerCache?: boolean }
 ): Promise<void> {
   const { deviceId, success } = result;
   if (!success || !result.data) {
@@ -547,7 +548,9 @@ export async function publishInstagramScreenIfChanged(
   const cached = runtime.getFollowers(deviceId);
   const lastPubMs = runtime.getLastPub(deviceId);
   forceHeartbeat = !lastPubMs || (nowMs - lastPubMs) > HEARTBEAT_MS;
-  unchanged = typeof cached === 'number' && cached === next;
+  const cacheMatches = typeof cached === 'number' && cached === next;
+  // Connect-burst fetches publish the live count. A matching runtime cache must not skip them.
+  unchanged = opts?.ignoreFollowerCache === true ? false : cacheMatches;
 
   if (unchanged && !forceHeartbeat) {
     logger.debug('[IG_SCREEN] No follower change, skip MQTT', { deviceId, followers: next });
@@ -569,7 +572,8 @@ export async function publishInstagramScreenIfChanged(
       deviceId,
       topic,
       followers: result.data.followers_count,
-      heartbeat: forceHeartbeat && unchanged
+      heartbeat: forceHeartbeat && unchanged,
+      ...(opts?.ignoreFollowerCache ? { connectBurst: true, cacheMatches } : {})
     });
 
     const influx = getInfluxService();
@@ -596,9 +600,11 @@ export async function publishInstagramScreenIfChanged(
       }
     }
 
-    runtime.setFollowers(deviceId, result.data.followers_count, Date.now(), 'social');
+    if (!cacheMatches || opts?.ignoreFollowerCache === true) {
+      runtime.setFollowers(deviceId, result.data.followers_count, Date.now(), 'social');
+      void syncScreenFieldImmediate(deviceId, 'ig_follower_count', result.data.followers_count, 'social');
+    }
     runtime.setLastPub(deviceId, nowMs);
-    void syncScreenFieldImmediate(deviceId, 'ig_follower_count', result.data.followers_count, 'social');
     if (!unchanged && isConnectBurstDevice(deviceId)) {
       getScreenLiveHub().pushFollowers(deviceId, result.data.followers_count);
     }
@@ -835,7 +841,9 @@ export async function applyInstagramServerlessDeviceOutcome(
     }
   }
 
-  await publishInstagramScreenIfChanged(mqttClient, topicRoot, screenShape);
+  await publishInstagramScreenIfChanged(mqttClient, topicRoot, screenShape, {
+    ignoreFollowerCache: trigger === 'connect'
+  });
 
   if (influx) {
     try {
