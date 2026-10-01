@@ -185,7 +185,7 @@ describe('instagramService outcome applicator', () => {
     expect(Number(getInstagramPollingMetricsSnapshot().circuitOpenEvents)).toBe(before + 1);
   });
 
-  it('connect burst publishes a matching cached count and writes the cache when it changes', async () => {
+  it('connect burst publishes MQTT only when the count changes and still pushes SSE', async () => {
     const deviceId = '274968B43A1D';
     resetScreenLiveHubForTests();
     const sent: string[] = [];
@@ -217,7 +217,7 @@ describe('instagramService outcome applicator', () => {
       'proof',
       'connect'
     );
-    expect(mqtt.publish).toHaveBeenCalled();
+    expect(mqtt.publish).toHaveBeenCalledTimes(1);
     expect(cached).toBe(4);
     expect(JSON.parse(sent.at(-1) as string)).toMatchObject({
       event: 'screen.count',
@@ -233,7 +233,7 @@ describe('instagramService outcome applicator', () => {
       'proof',
       'connect'
     );
-    expect(mqtt.publish).toHaveBeenCalled();
+    expect(mqtt.publish).not.toHaveBeenCalled();
     expect(cached).toBe(4);
     expect(JSON.parse(sent.at(-1) as string)).toMatchObject({
       event: 'screen.count',

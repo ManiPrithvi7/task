@@ -549,8 +549,7 @@ export async function publishInstagramScreenIfChanged(
   const lastPubMs = runtime.getLastPub(deviceId);
   forceHeartbeat = !lastPubMs || (nowMs - lastPubMs) > HEARTBEAT_MS;
   const cacheMatches = typeof cached === 'number' && cached === next;
-  // Connect-burst fetches publish the live count. A matching runtime cache must not skip them.
-  unchanged = opts?.ignoreFollowerCache === true ? false : cacheMatches;
+  unchanged = cacheMatches;
 
   if (unchanged && !forceHeartbeat) {
     logger.debug('[IG_SCREEN] No follower change, skip MQTT', { deviceId, followers: next });
@@ -600,7 +599,7 @@ export async function publishInstagramScreenIfChanged(
       }
     }
 
-    if (!cacheMatches || opts?.ignoreFollowerCache === true) {
+    if (!cacheMatches) {
       runtime.setFollowers(deviceId, result.data.followers_count, Date.now(), 'social');
       void syncScreenFieldImmediate(deviceId, 'ig_follower_count', result.data.followers_count, 'social');
     }
